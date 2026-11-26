@@ -93,6 +93,7 @@ impl Exec {
                     request_id: meta.request_id,
                     expected_rev: meta.expected_rev,
                     tx: meta.tx,
+                    replace: meta.replace,
                 };
                 let reply = self.conn.call(call).await?;
                 let mut output = reply.output;

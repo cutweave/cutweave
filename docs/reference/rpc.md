@@ -62,6 +62,7 @@ Reserved methods (not registry entries):
 | `request_id` | A client-generated UUIDv7. **Required on every mutating call** (an entry not annotated read-only, `view.*` aside): missing, it is `invalid` at `/_meta/request_id`. A repeat within 10 minutes by the same actor with the same method and params returns the original result (also over another connection, also after a reconnect); with other params it is a `conflict` (`request_id_reused`). |
 | `expected_rev` | Fail with `conflict` (`stale_rev`, `data.current_rev` = the current revision) unless the document is at this revision. |
 | `tx` | Run inside this open transaction of the connection (`tx_<n>` from `edit.begin_tx`). |
+| `replace` | `true` on an update of an open `gesture` (with `tx`): the engine rolls the gesture's live changes back to the committed document and applies this command there, atomically, so the gesture commits the effect of its last update (timeline spec INV-301/302, ADR-0023, WP-2A.12). A refused update leaves the previous one in place. The items every update touched stay soft-locked until the gesture closes. Without `tx`, or in a batch or proposal: `invalid` at `/_meta/replace`. |
 
 There is **no actor field**: the actor is always the connection credential's. An `actor` key (or any other unknown key) in `_meta` is ignored.
 
@@ -88,9 +89,25 @@ A failed call answers `{"jsonrpc":"2.0","id":…,"error":{"code":…,"message":�
 | -32603 | `internal` | A bug or panic in the engine | `msg` |
 | -32001 | `not_found` | An ID does not exist | `kind`, `id` |
 | -32002 | `locked` | A locked track or item, or another connection's transaction | `kind`, `id`, `by?`, `tx?` |
-| -32003 | `conflict` | `stale_rev` (with `current_rev`), `request_id_reused`, `history_target_modified`, `item_in_gesture` (with `retry_after_ms`) | `reason`, `current_rev?`, `retry_after_ms?`, `detail` |
+| -32003 | `conflict` | `stale_rev` (with `current_rev`), `request_id_reused`, `history_target_modified`, `item_in_gesture` (with `holder` and `retry_after_ms`; see below) | `reason`, `current_rev?`, `retry_after_ms?`, `holder?`, `detail` |
 | -32004 | `forbidden` | The credential lacks the scope (UI-only commands from an agent token) | `scope`, `msg` |
 | -32005 | `unsupported` | A valid request this engine cannot do (a missing subsystem, the engine shutting down) | `msg` |
+
+### Soft locks: `conflict` / `item_in_gesture`
+
+While a `gesture` or `proposal` is open, the items its commands touched (also the items a ripple shifted, the linked members and attached children that moved with them, and the items of earlier `replace` updates) are soft-locked for every other actor (arch §5.2, WP-2A.12). A request by another actor that would change one of them fails before anything changes:
+
+```json
+{"code":"conflict","reason":"item_in_gesture","holder":"user","retry_after_ms":27500,"current_rev":41,
+ "detail":"item `itm_…` is being edited in open gesture tx_12 by user (\"Move clip\"); retry in 27500 ms or once it closes; `edit.locks` lists who holds what",
+ "message":"conflict (item_in_gesture): item `itm_…` is being edited … (current rev 41)"}
+```
+
+- `holder` is the actor holding the item (`user`, `agent:<label>`, `plugin:<id>`).
+- `retry_after_ms` is the time left until the gesture's 30 s idle deadline (at least 250 ms); it is absent for a proposal, which waits for a person to accept or reject it.
+- Retry once after the hint, or work on other items; never in a tight loop. The editor never retries on its own: it marks the held clips "In use by …" and shows the refusal in an agent-blue toast with the code. Commands on other items proceed, and the holder's own actor is never blocked.
+- The same error reaches MCP clients (with a `hint` that names the holder and the retry time) and `cutweave exec` (stderr, exit 1).
+- `edit.locks` lists the open transactions and their items; `tx.opened`, `tx.locked` and `tx.closed` announce them, and `gesture.cancelled` (`reason: "idle_timeout"`) says the engine rolled back a gesture nobody updated for 30 s.
 
 ## Events
 
@@ -102,7 +119,7 @@ Events are notifications named after the event, with the event's payload as `par
 
 | Events | Source |
 |---|---|
-| `doc.patched`, `doc.reset`, `doc.command_panicked`, `edit.history_changed`, `tx.opened`, `tx.locked`, `tx.closed` | The document actor |
+| `doc.patched`, `doc.reset`, `doc.command_panicked`, `edit.history_changed`, `tx.opened`, `tx.locked`, `tx.closed`, `gesture.cancelled` | The document actor |
 | `project.dirty`, `project.saved`, `project.recovery_available`, `project.autosave_failed`, `project.opening`, `project.opened`, `project.open_failed`, `project.closed` | The project file and the session (`project.opening` starts every `project.open`; `project.opened` or `project.open_failed` ends it; ADR-0029) |
 | `job.progress`, `media.indexed`, `media.analysis_failed`, `media.import_progress` | Jobs and media analysis |
 | `view.changed` | View state; not sent back to the connection that made the change |

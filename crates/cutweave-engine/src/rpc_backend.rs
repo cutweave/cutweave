@@ -83,6 +83,7 @@ impl RpcConnection for Connection {
                 request_id,
                 expected_rev,
                 tx,
+                replace,
             } = call;
             let reply = conn
                 .call_async(Call {
@@ -91,6 +92,7 @@ impl RpcConnection for Connection {
                     request_id,
                     expected_rev,
                     tx,
+                    replace,
                 })
                 .await?;
             let (request_id, tx_id) = reply

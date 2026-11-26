@@ -9,7 +9,7 @@
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,6 +88,11 @@ export interface EngineHandle {
   /** The UI credential this engine was started with. */
   readonly token: string;
   readonly info: ConnectionInfo;
+  /**
+   * The connection info of an agent token from the engine's run-file (`cli`, `mcp`): a second
+   * client that edits as `agent:<label>`, like `cutweave exec` or an MCP client.
+   */
+  agent(label: string): ConnectionInfo;
   /** Closes stdin (the engine stops when it closes), waits for the exit, removes the temp dir. */
   stop(): Promise<void>;
 }
@@ -183,6 +188,14 @@ export async function startEngine(
     pid: ready.pid,
     token,
     info: { wsUrl: `ws://127.0.0.1:${ready.port}/rpc`, token },
+    agent(label) {
+      const runFile = JSON.parse(readFileSync(join(dir, "run", `${ready.pid}.json`), "utf8")) as {
+        agent_tokens: { label: string; token: string }[];
+      };
+      const found = runFile.agent_tokens.find((t) => t.label === label);
+      if (found === undefined) throw new Error(`no \`${label}\` agent token in the run-file`);
+      return { wsUrl: `ws://127.0.0.1:${ready.port}/rpc`, token: found.token };
+    },
     async stop() {
       child.stdin?.end();
       const killer = setTimeout(() => child.kill(), 5_000);

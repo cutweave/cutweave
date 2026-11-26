@@ -3,6 +3,7 @@
 // "Errors": what happened and the next step, no apology). The engine's message is the fallback.
 import { isTransactionLost, type RpcError } from "@cutweave/protocol";
 import type { TKey } from "../i18n/index.ts";
+import { actorDisplayName } from "../session/historyLabels.ts";
 
 /** The edits the timeline reports on. */
 export type TimelineEdit = "move" | "trim" | "split" | "delete" | "insert" | "rename";
@@ -27,17 +28,38 @@ export function translator(t: unknown): Translate {
   return (key, vars) => plain(key, vars);
 }
 
+/** The soft-lock reason of a `conflict` (arch §5.2): an item in another actor's gesture or proposal. */
+const IN_GESTURE = "item_in_gesture";
+
+/** Who holds the clip a refused edit touched (`Conflict{item_in_gesture, holder}`, WP-2A.12). */
+export function lockHolder(error: RpcError): string | null {
+  if (error.code !== "conflict" || error.data?.reason !== IN_GESTURE) return null;
+  const holder = error.data?.holder;
+  return typeof holder === "string" ? holder : null;
+}
+
+/** Whether an agent, a plugin or the engine (not the person) holds the clip the edit touched. */
+export function heldByOther(error: RpcError): boolean {
+  const holder = lockHolder(error);
+  return holder !== null && holder !== "user";
+}
+
 /** Why the engine refused, for the toast body. */
 export function describeRefusal(error: RpcError, t: Translate): string {
   switch (error.code) {
     case "locked":
       return t("timeline.reason.locked");
-    case "conflict":
+    case "conflict": {
       // The engine restarted under the gesture: its transaction died with the socket.
       if (isTransactionLost(error)) return t("timeline.reason.restarted");
-      return error.data?.reason === "item_in_gesture"
-        ? t("timeline.reason.inGesture")
-        : t("timeline.reason.changed");
+      if (error.data?.reason !== IN_GESTURE) return t("timeline.reason.changed");
+      // Who holds it, and the machine code (WP-2A.12); the editor never retries on its own.
+      const holder = lockHolder(error);
+      const who = holder === null ? null : actorDisplayName(holder, t);
+      return who === null
+        ? t("timeline.reason.inGesture", { code: IN_GESTURE })
+        : t("timeline.reason.inUseBy", { who, code: IN_GESTURE });
+    }
     case "not_found":
       // The gesture's transaction is gone: idle past the engine's timeout, or rolled back.
       if (error.data?.kind === "transaction" || /^transaction\b/i.test(error.message)) {

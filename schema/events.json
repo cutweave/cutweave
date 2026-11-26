@@ -25,6 +25,12 @@
       "summary": "An actor's undo/redo stacks changed"
     },
     {
+      "name": "gesture.cancelled",
+      "payload": "GestureCancelled",
+      "source": "doc",
+      "summary": "The engine cancelled a gesture idle for 30 s: rolled back, locks released"
+    },
+    {
       "name": "job.progress",
       "payload": "JobInfo",
       "source": "engine",

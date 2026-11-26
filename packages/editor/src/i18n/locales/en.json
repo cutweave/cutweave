@@ -1249,10 +1249,12 @@
       "label": "Track name",
       "empty": "A track needs a name. It stays {{name}}."
     },
+    "inUse": "In use by {{who}}",
     "reason": {
       "overlap": "It would overlap another clip on that track. Drop it on a free spot.",
       "locked": "The track is locked. Unlock it to edit its clips.",
-      "inGesture": "Someone else is editing this clip right now. Try again in a moment.",
+      "inGesture": "Someone else is editing this clip right now. Try again in a moment. ({{code}})",
+      "inUseBy": "In use by {{who}}. Try again when they finish. ({{code}})",
       "changed": "The project changed while you were editing. Try again.",
       "missing": "The clip no longer exists.",
       "interrupted": "The edit was interrupted and undone. Try again.",

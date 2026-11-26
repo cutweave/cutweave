@@ -736,6 +736,35 @@ body {
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-popover);
 }
+/* "In use by <actor>" (WP-2A.12): a clip another actor's open gesture or proposal holds. The
+   dashed agent outline lets the pointer through; only the badge takes hover and focus. */
+.cw-timeline__in-use {
+  position: absolute;
+  z-index: var(--z-overlay);
+  box-sizing: border-box;
+  border: var(--border-thick) dashed var(--agent);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.cw-timeline__in-use-badge {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  color: var(--on-agent);
+  background: var(--agent);
+  border-radius: var(--radius-full);
+  pointer-events: auto;
+}
+.cw-timeline__in-use-badge:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: var(--border-thick);
+}
 .cw-timeline__lanes {
   display: flex;
   flex-direction: column;

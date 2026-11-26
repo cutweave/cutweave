@@ -7,7 +7,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RpcClient, SequenceId, TrackId } from "@cutweave/protocol";
+import { RpcClient, RpcConnection, type SequenceId, type TrackId } from "@cutweave/protocol";
 import {
   type EngineHandle,
   resolveEngineBinary,
@@ -31,6 +31,7 @@ import { createToastStore } from "../state/toastStore.ts";
 import { createViewStore } from "../state/viewStore.ts";
 import { TimelineController } from "./controller.ts";
 import { translator } from "./errors.ts";
+import { createLocksStore, LocksFeed } from "./locks.ts";
 
 const F = 705_600_000;
 const sec = (s: number) => Math.round(s * F);
@@ -501,6 +502,60 @@ describe("timeline interactions against the real engine", () => {
       expect((itemById(s.clip)?.start ?? 1) % frame).toBe(0);
       expect(itemById(s.clip)?.start).toBeGreaterThan(sec(2));
       expect(longestHandlerMs).toBeLessThan(50);
+    },
+  );
+
+  // WP-2A.12: an agent (the run-file's `cli` token) holds a clip in an open proposal.
+  live(
+    "a clip an agent holds is marked in use, and the person's drag of it is refused naming the agent",
+    async () => {
+      const s = await seed();
+      if (handle === undefined) throw new Error("no engine");
+      const agentInfo = handle.agent("cli");
+      const agentConnection = new RpcConnection({ resolve: () => agentInfo });
+      const agent = new RpcClient(agentConnection);
+      const locks = createLocksStore();
+      const feed = new LocksFeed({ rpc, store: locks, onError: (e) => errors.push(e) });
+      try {
+        agentConnection.connect();
+        await agentConnection.whenReady();
+        feed.start();
+        const { tx } = await agent.call("edit.begin_tx", { kind: "proposal", label: "Tidy up" });
+        await agent.call("item.move", { item: s.clip as never, start: "6s" }, { tx });
+        // The clip and its linked audio are marked, with who holds them.
+        await until(() => locks.getState().byItem.get(s.clip) === "agent:cli");
+        expect(locks.getState().byItem.get(s.partner)).toBe("agent:cli");
+        await until(() => itemById(s.clip)?.start === sec(6));
+        const before = await historyLength();
+
+        // The person drags it: refused at once, nothing moves, an agent-blue toast says who.
+        const mid = xOf(sec(8));
+        await drag(mid, mid + 100, laneY(0));
+        await until(() => toasts.getState().notices.length > 0);
+        expect(toasts.getState().notices).toMatchObject([
+          {
+            tone: "agent",
+            title: "Clip not moved",
+            message: "In use by cli. Try again when they finish. (item_in_gesture)",
+          },
+        ]);
+        expect(itemById(s.clip)?.start).toBe(sec(6));
+        expect(await historyLength()).toBe(before);
+        expect(await openTransactions()).toBe(1); // only the agent's proposal
+
+        // The agent withdraws it: the marks go, and the same drag now works.
+        await agent.call("edit.cancel_tx", { tx });
+        // (A rollback leaves `rev` ahead of `committed_rev` until the next commit.)
+        await until(() => locks.getState().byItem.size === 0 && itemById(s.clip)?.start === sec(1));
+        toasts.getState().clear();
+        const start = xOf(sec(3));
+        await drag(start, start + 100, laneY(0));
+        await until(() => itemById(s.clip)?.start === sec(2) && settledDoc());
+        expect(toasts.getState().notices).toEqual([]);
+      } finally {
+        feed.stop();
+        agentConnection.close();
+      }
     },
   );
 

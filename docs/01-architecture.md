@@ -294,7 +294,7 @@ impl Command for SplitItem {
 - **Deterministic test mode:** `--deterministic-ids <seed>` replaces UUIDv7 generation with a seeded sequence. Parity tests (CLI = MCP = RPC) and golden tests can then byte-compare saved project documents.
 - **Error semantics (decided in WP-1B.01):**
   - `Locked{kind,id,by,tx}` means the target is *user-locked* (locked track or item).
-  - Contention with another actor's open gesture is `Conflict{reason:"item_in_gesture", retry_after_ms}` (§5.2).
+  - Contention with another actor's open gesture is `Conflict{reason:"item_in_gesture", holder, retry_after_ms}` (§5.2).
   - Patch ops follow RFC 6902 (`replace` carries `value`). `move` into a path's own descendant is rejected so every op stays invertible.
 - **Registration is explicit:** each crate that defines commands exposes `register(&mut Registry)`, and the engine composition root calls them all. No link-time registration magic, so this works identically on native and wasm32 and nothing is silently dropped by the linker. *(Decided after Spike S5.)*
 - **Validation** happens before apply: JSON Schema, then semantic checks (IDs exist, ranges, locks). Errors are typed (`NotFound`, `Locked`, `Conflict{current_rev}`, `Invalid{path,msg}`, `Unsupported`). Each error carries a human message plus a machine code; agents rely on both.
@@ -308,7 +308,7 @@ impl Command for SplitItem {
   - `cutweave_execute` (MCP) is a transaction by default.
   - **Ephemeral transactions** cover continuous gestures (dragging, scrubbing a slider). They update the doc live but collapse into one undo entry on commit, or roll back on cancel.
 - **Gestures vs. concurrent actors.** All commands are serialized on the doc actor, so history is always linear.
-  - An open ephemeral transaction holds a **soft lock on the items it touches**. Another actor's command that touches one of those items fails fast with `Conflict{reason:"item_in_gesture", retry_after_ms}`.
+  - An open ephemeral transaction holds a **soft lock on the items it touches**. Another actor's command that touches one of those items fails fast with `Conflict{reason:"item_in_gesture", holder, retry_after_ms}`.
   - Commands on other items proceed normally. Undoing a gesture inverts only its own ops, which stays valid because the ops are on disjoint items.
   - **Transaction kinds and ownership:**
     - A transaction is owned by the connection that opened it, and a dropped connection rolls it back.
@@ -329,8 +329,13 @@ impl Command for SplitItem {
   - `gesture` and `proposal` transactions lock every item they touch, including items they create and changes above them (for example removing the item's track). `batch` transactions lock nothing, but their commit waits.
   - Another actor's change to a locked item fails with `Conflict{item_in_gesture, retry_after_ms}`. The hint is the time left until the gesture's idle deadline, at least 250 ms; proposals give none. The holder's own actor is not blocked.
   - `edit.locks` lists open transactions with their locked items and deadlines. Events: `tx.opened`, `tx.locked`, `tx.closed`.
-  - A closed connection ID can never open transactions again, so the API server (WP-1I.02) must not reuse connection IDs. A `holder` field on the error would be a contract change (ADR).
+  - A closed connection ID can never open transactions again, so the API server (WP-1I.02) must not reuse connection IDs.
 - **P2 gesture updates (ADR-0023, spec §5):** each update of a gesture carries `_meta.replace: true` and replaces the previous one atomically, so a gesture commits the effect of its last command; its soft-lock set is the union of the items each update's `EditReport` names, and `Conflict{item_in_gesture}` gains `holder` (WP-2A.12).
+- **Soft-lock extension (decided in WP-2A.12, ADR-0023):**
+  - The touched set is computed from each update's patch, which is exactly what its `EditReport` names: ripple-shifted items, linked members and following attached children are locked because the commands that move them write them; a partial (`unlink: true`) edit leaves the members it does not write unlocked. Items inside a whole track or sequence an op adds, removes or replaces are locked too.
+  - The error names the actor holding the item (`holder`); `retry_after_ms` is the holder's remaining idle budget (none for proposals). MCP adds a hint naming both; the editor never retries on its own, marks held clips "in use by <actor>" and shows the refusal in an agent-blue toast with the code.
+  - The doc actor cancels a gesture idle for 30 s on its own timer (injectable clock) and emits `gesture.cancelled{reason:"idle_timeout"}` after the rollback's `doc.patched` and `tx.closed`.
+  - The lock check is a read-only scan of the holders' item sets: about 3 µs per command on a 5,000-item document with every item locked (`benches/soft_lock.rs`, budget 20 µs).
 - **Checkpoints:** `edit.checkpoint{name}` and `edit.restore{checkpoint}` (cheap, thanks to persistent snapshots) let agents try something and roll back.
 - **Checkpoints (decided in WP-2I.03):**
   - `edit.checkpoint{name?, note?}` keeps an O(1) snapshot of the committed document; at most 50 are kept, 20 of them named, least recently used (made or restored) first out. Reusing a name moves it. Ids (`cp_<n>`) are never reused, also across restarts. `edit.list_checkpoints` lists them and `edit.delete_checkpoint` deletes one. Nothing is created automatically except one per `cutweave_execute{checkpoint: true}` call (§14).

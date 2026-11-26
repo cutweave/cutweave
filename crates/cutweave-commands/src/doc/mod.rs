@@ -21,6 +21,10 @@
 //!   `Conflict{reason: item_in_gesture, retry_after_ms}` ([`SOFT_LOCK_RETRY_MS`]); locks are
 //!   listed by `edit.locks` ([`LockList`]) and announced by `tx.opened` / `tx.locked` /
 //!   `tx.closed` events ([`TxActivity`], [`TxEnded`]).
+//! - Soft-lock extension (WP-2A.12, spec §5): the conflict names its `holder`; a gesture's
+//!   updates may replace each other (`_meta.replace`, [`Submit::replacing`]) and its lock set is
+//!   the union of what each update touched (ripple-shifted items and linked members included);
+//!   the engine's idle cancel is announced by `gesture.cancelled` ([`GestureCancelled`]).
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod actor;
@@ -57,7 +61,7 @@ pub use clock::{Clock, ManualClock, WallTime};
 pub use dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, Fingerprint};
 pub use event::{
     CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, EVENT_CATALOG, EventInfo,
-    PatchCause, TxActivity, TxEnded,
+    GestureCancelReason, GestureCancelled, PatchCause, TxActivity, TxEnded,
 };
 pub use history::{
     ActorStacks, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES, DEFAULT_HISTORY_PAGE,

@@ -272,6 +272,51 @@ impl Command for TrimClip {
     }
 }
 
+/// Shifts every item of `track` that starts at or after frame `at` right by `frames` (a ripple:
+/// the stand-in for the ripple of WP-2A.03, so the items it shifts are in its patch).
+#[command(
+    name = "timeline.shift_after",
+    summary = "Shift the items after a time right (ripple)",
+    undoable,
+    mcp = "hidden",
+    annotations(destructive = false)
+)]
+pub struct ShiftAfter {
+    /// The track.
+    pub track: TrackId,
+    /// From this frame on.
+    pub at: u32,
+    /// By this many frames.
+    pub frames: u32,
+}
+
+impl Command for ShiftAfter {
+    type Output = Done;
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<Done, CmdError> {
+        let from = i64::from(self.at) * FRAME;
+        let by = i64::from(self.frames) * FRAME;
+        let shifted: Vec<(ItemId, i64)> = tx
+            .track(self.track)?
+            .1
+            .items
+            .iter()
+            .filter(|i| i.start().flicks() >= from)
+            .map(|i| (i.id(), i.start().flicks()))
+            .collect();
+        // Right to left, so no shifted item ever overlaps the next one.
+        for (item, start) in shifted.into_iter().rev() {
+            let to = Time::from_flicks(start + by)
+                .map_err(|e| CmdError::invalid("/frames", e.to_string()))?;
+            tx.update_item(item, |i| {
+                i.set_start(to);
+                Ok(())
+            })?;
+        }
+        Ok(Done {})
+    }
+}
+
 /// Removes a track with its items (one op on the whole track: a change *above* its items).
 #[command(
     name = "track.remove",
@@ -537,6 +582,8 @@ pub fn registry() -> Arc<Registry> {
         .register::<MoveClip>()
         .unwrap()
         .register::<TrimClip>()
+        .unwrap()
+        .register::<ShiftAfter>()
         .unwrap()
         .register::<RemoveTrack>()
         .unwrap()

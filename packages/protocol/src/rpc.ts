@@ -33,6 +33,11 @@ export interface RequestMeta {
   readonly expected_rev?: number;
   /** Run inside this open transaction of the connection. */
   readonly tx?: string;
+  /**
+   * With `tx` naming an open gesture: this update replaces the gesture's earlier ones, atomically
+   * (timeline spec INV-301/302, WP-2A.12); a refused update leaves the previous one in place.
+   */
+  readonly replace?: boolean;
 }
 
 /** Result of `project.snapshot`: the live document and its revisions (rpc.md). */

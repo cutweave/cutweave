@@ -266,6 +266,11 @@ pub struct Submit {
     pub expected_rev: Option<Rev>,
     /// Run inside this open transaction (it must belong to `ctx`'s connection).
     pub tx: Option<TxId>,
+    /// `_meta.replace` (spec INV-301, ADR-0023, WP-2A.12): this update of an open `gesture`
+    /// replaces the previous ones. The engine rolls the gesture's changes back to the
+    /// committed document and applies the command there, atomically: if it fails, the
+    /// previous update stays (INV-302). Only valid with [`tx`](Self::tx) naming a gesture.
+    pub replace: bool,
 }
 
 impl Submit {
@@ -279,6 +284,7 @@ impl Submit {
             request_id: None,
             expected_rev: None,
             tx: None,
+            replace: false,
         }
     }
 
@@ -302,6 +308,13 @@ impl Submit {
         self.tx = Some(tx);
         self
     }
+
+    /// As an update that replaces the open gesture's earlier ones (`_meta.replace`).
+    #[must_use]
+    pub fn replacing(mut self) -> Submit {
+        self.replace = true;
+        self
+    }
 }
 
 /// The result of a request that succeeded.
@@ -321,7 +334,9 @@ pub struct Applied {
     /// The command's output (a JSON object).
     pub output: Value,
     /// What the request changed: the committed patch of an implicit transaction, or the
-    /// step's patch inside an open transaction. Empty for queries and no-ops.
+    /// step's patch inside an open transaction (for a `_meta.replace` gesture update: its whole
+    /// patch from the committed document, which replaced the earlier ones). Empty for queries
+    /// and no-ops.
     pub ops: Patch,
     /// Set when this is the stored result of an earlier request with the same `request_id`
     /// (nothing was re-applied).

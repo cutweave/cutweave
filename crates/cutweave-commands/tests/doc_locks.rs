@@ -416,12 +416,20 @@ fn an_idle_gesture_expires_and_releases_its_locks() {
                 );
                 "tx.closed"
             }
+            DocEvent::GestureCancelled(g) => {
+                // WP-2A.12: the engine says why it cancelled the gesture.
+                assert_eq!((g.tx_id, &g.items[..]), (tx, &[x][..]));
+                "gesture.cancelled"
+            }
             DocEvent::History(_) => "history",
             other => panic!("{other:?}"),
         })
         .collect();
-    assert_eq!(kinds[..3], ["rollback", "tx.closed", "patched"]);
-    assert!(kinds[3..].iter().all(|k| *k == "history"), "{kinds:?}");
+    assert_eq!(
+        kinds[..4],
+        ["rollback", "tx.closed", "gesture.cancelled", "patched"]
+    );
+    assert!(kinds[4..].iter().all(|k| *k == "history"), "{kinds:?}");
     s.verify().unwrap();
 }
 

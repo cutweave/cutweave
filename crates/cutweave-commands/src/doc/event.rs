@@ -167,6 +167,47 @@ pub struct TxEnded {
     pub committed_rev: Rev,
 }
 
+/// Why the engine cancelled a gesture (`gesture.cancelled`, WP-2A.12).
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum GestureCancelReason {
+    /// No request named it for 30 s (the gesture idle timeout).
+    IdleTimeout,
+}
+
+/// `gesture.cancelled`: the engine cancelled an open gesture on its own (WP-2A.12, arch §5.2):
+/// its live changes were rolled back and its soft locks released. Comes after the
+/// `doc.patched` of the rollback and the `tx.closed` (outcome `expired`). An editor that was
+/// still dragging goes back to idle (WP-2A.08); a client never re-sends the gesture's updates
+/// on its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct GestureCancelled {
+    /// The gesture.
+    pub tx_id: TxId,
+    /// Who opened it.
+    pub actor: Actor,
+    /// Why: `idle_timeout`.
+    pub reason: GestureCancelReason,
+    /// The items it no longer locks, in id order.
+    pub items: Vec<ItemId>,
+    /// The live revision afterwards.
+    pub rev: Rev,
+    /// The committed revision (unchanged: nothing was committed).
+    pub committed_rev: Rev,
+}
+
 /// Everything the document actor broadcasts to subscribers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
@@ -193,6 +234,9 @@ pub enum DocEvent {
     /// `tx.closed`: a transaction ended and released its locks (WP-1B.09).
     #[serde(rename = "tx.closed")]
     TxClosed(TxEnded),
+    /// `gesture.cancelled`: the engine cancelled an idle gesture (WP-2A.12).
+    #[serde(rename = "gesture.cancelled")]
+    GestureCancelled(GestureCancelled),
 }
 
 /// One entry of the event catalog (`schema/events.json`, WP-1N.01).
@@ -230,6 +274,11 @@ pub const EVENT_CATALOG: &[EventInfo] = &[
         payload: "HistoryChanged",
     },
     EventInfo {
+        name: "gesture.cancelled",
+        summary: "The engine cancelled a gesture idle for 30 s: rolled back, locks released",
+        payload: "GestureCancelled",
+    },
+    EventInfo {
         name: "tx.closed",
         summary: "A transaction ended and released its soft locks",
         payload: "TxEnded",
@@ -258,6 +307,7 @@ impl DocEvent {
             DocEvent::TxOpened(_) => "tx.opened",
             DocEvent::TxLocked(_) => "tx.locked",
             DocEvent::TxClosed(_) => "tx.closed",
+            DocEvent::GestureCancelled(_) => "gesture.cancelled",
         }
     }
 
@@ -271,7 +321,8 @@ impl DocEvent {
             | DocEvent::History(_)
             | DocEvent::TxOpened(_)
             | DocEvent::TxLocked(_)
-            | DocEvent::TxClosed(_) => None,
+            | DocEvent::TxClosed(_)
+            | DocEvent::GestureCancelled(_) => None,
         }
     }
 
@@ -285,7 +336,8 @@ impl DocEvent {
             | DocEvent::History(_)
             | DocEvent::TxOpened(_)
             | DocEvent::TxLocked(_)
-            | DocEvent::TxClosed(_) => None,
+            | DocEvent::TxClosed(_)
+            | DocEvent::GestureCancelled(_) => None,
         }
     }
 
@@ -303,6 +355,15 @@ impl DocEvent {
     pub fn as_history(&self) -> Option<&HistoryChanged> {
         match self {
             DocEvent::History(h) => Some(h),
+            _ => None,
+        }
+    }
+
+    /// The `gesture.cancelled` payload, if this is one.
+    #[must_use]
+    pub fn as_gesture_cancelled(&self) -> Option<&GestureCancelled> {
+        match self {
+            DocEvent::GestureCancelled(g) => Some(g),
             _ => None,
         }
     }

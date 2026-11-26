@@ -614,6 +614,8 @@ reason: ConflictReason;
 current_rev?: Rev | null; 
 /**  When retrying may succeed. */
 retry_after_ms?: number | null; 
+/**  The actor holding the soft lock (`item_in_gesture` only). */
+holder?: Actor | null; 
 /**  Human detail. */
 detail: string; 
 /**  Human message. */
@@ -1442,6 +1444,33 @@ export type FormatSpec = {
 export type FrameRate = {
 	num: number,
 	den: number,
+};
+
+/**  Why the engine cancelled a gesture (`gesture.cancelled`, WP-2A.12). */
+export type GestureCancelReason = 
+/**  No request named it for 30 s (the gesture idle timeout). */
+"idle_timeout";
+
+/**
+ *  `gesture.cancelled`: the engine cancelled an open gesture on its own (WP-2A.12, arch §5.2):
+ *  its live changes were rolled back and its soft locks released. Comes after the
+ *  `doc.patched` of the rollback and the `tx.closed` (outcome `expired`). An editor that was
+ *  still dragging goes back to idle (WP-2A.08); a client never re-sends the gesture's updates
+ *  on its own.
+ */
+export type GestureCancelled = {
+	/**  The gesture. */
+	tx_id: TxId,
+	/**  Who opened it. */
+	actor: Actor,
+	/**  Why: `idle_timeout`. */
+	reason: GestureCancelReason,
+	/**  The items it no longer locks, in id order. */
+	items: ItemId[],
+	/**  The live revision afterwards. */
+	rev: Rev,
+	/**  The committed revision (unchanged: nothing was committed). */
+	committed_rev: Rev,
 };
 
 /**
