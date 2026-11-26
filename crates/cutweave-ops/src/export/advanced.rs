@@ -31,7 +31,8 @@
 //!   primaries and transfer are always only tags (the renderer's picture is not gamut-mapped).
 //!   HDR transfers (PQ, HLG) are `Unsupported` in P2.
 //! - **Audio.** `codec`, `bitrate_kbps` (lossy codecs), `sample_rate` (44100, 48000, 96000;
-//!   the mix is made at that rate) and `channels` (a stereo mix is averaged to mono).
+//!   the mix is made at that rate), `channels` (a stereo mix is averaged to mono) and `limiter`
+//!   (WP-2E.02: the master's true-peak limiter at −1 dBTP, on unless `false`).
 
 use cutweave_commands::__private::schemars::{Schema, SchemaGenerator, json_schema};
 use cutweave_commands::{
@@ -248,6 +249,9 @@ pub struct AdvancedAudio {
     /// "mono" or "stereo".
     #[serde(default)]
     pub channels: Option<AudioChannels>,
+    /// The master's true-peak limiter (−1 dBTP): on unless false (WP-2E.02).
+    #[serde(default)]
+    pub limiter: Option<bool>,
 }
 
 /// The tool-list schema of [`AdvancedExportOptions`]: names only. The tool list of an agent is
@@ -256,7 +260,7 @@ pub struct AdvancedAudio {
 fn compact_schema(_: &mut SchemaGenerator) -> Schema {
     json_schema!({
         "type": "object",
-        "description": "Fine control of the encode; export.describe_options{codec} gives the JSON Schema of a codec's options. video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit}, gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune, profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only}, audio{codec, bitrate_kbps, sample_rate, channels}",
+        "description": "Fine control of the encode; export.describe_options{codec} gives the JSON Schema of a codec's options. video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit}, gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune, profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only}, audio{codec, bitrate_kbps, sample_rate, channels, limiter}",
         "properties": {
             "video": {"type": "object"},
             "color": {"type": "object"},
@@ -325,6 +329,7 @@ pub fn merge(
             bitrate_kbps: r.bitrate_kbps.or(p.bitrate_kbps),
             sample_rate: r.sample_rate.or(p.sample_rate),
             channels: r.channels.or(p.channels),
+            limiter: r.limiter.or(p.limiter),
         }),
     };
     Some(AdvancedExportOptions {
@@ -1277,6 +1282,9 @@ fn audio(
         // A codec change drops the old codec's bitrate.
         output.audio_bitrate_kbps = None;
     }
+    if let Some(on) = a.limiter {
+        next.audio_limiter = Some(on);
+    }
     if let Some(c) = a.channels {
         next.audio_channels = Some(match c {
             AudioChannels::Mono => 1,
@@ -1540,7 +1548,9 @@ pub fn options_schema(caps: &Caps, container: Container) -> Value {
                             "description": "lossy codecs: aac 32-512, mp3 32-320, opus 6-510"},
                     "sample_rate": {"enum": [44100, 48000, 96000],
                             "description": "opus 48000 only; mp3 not 96000"},
-                    "channels": {"enum": ["mono", "stereo"]}
+                    "channels": {"enum": ["mono", "stereo"]},
+                    "limiter": {"type": "boolean",
+                            "description": "the master's true-peak limiter at -1 dBTP; default true"}
                 }
             }
         }
@@ -2206,6 +2216,26 @@ mod tests {
             ),
             (Some(16), Some(96_000), Some(1))
         );
+        assert_eq!(out.advanced.audio_limiter, None);
+    }
+
+    /// WP-2E.02: the master limiter is on unless switched off, and nothing else changes.
+    #[test]
+    fn the_master_limiter_is_on_unless_switched_off() {
+        let (out, ..) = run(
+            &AdvancedExportOptions {
+                audio: Some(AdvancedAudio {
+                    limiter: Some(false),
+                    ..AdvancedAudio::default()
+                }),
+                ..AdvancedExportOptions::default()
+            },
+            VideoCodec::H264,
+            ExportHw::Off,
+        )
+        .unwrap();
+        assert_eq!(out.advanced.audio_limiter, Some(false));
+        assert_eq!(out.audio_codec, AudioCodec::Aac);
     }
 
     #[test]

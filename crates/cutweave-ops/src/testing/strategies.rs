@@ -397,6 +397,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "audio.set_volume" => (edits.div_ceil(2), audio_set_volume(p)),
         "audio.set_pan" => (edits.div_ceil(2), audio_set_pan(p)),
         "audio.set_gain" => (edits.div_ceil(3), audio_set_gain(p)),
+        "audio.get_levels" => (1, audio_get_levels(p)),
         "keyframe.set" => (edits, keyframe_set(p)),
         "keyframe.delete" => (edits.div_ceil(3), keyframe_delete(p)),
         "keyframe.move" => (edits.div_ceil(3), keyframe_move(p)),
@@ -1301,6 +1302,33 @@ fn timeline_list_markers(p: &Pools) -> BoxedStrategy<Value> {
     let invalid = fresh::<SequenceId>()
         .prop_map(|sequence| json!({"sequence": sequence}))
         .boxed();
+    mix(valid, invalid)
+}
+
+/// `audio.get_levels`: a sequence, sometimes a range and the limiter switch; sometimes a range
+/// that is empty or past the end, or an unknown sequence.
+fn audio_get_levels(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.seqs.clone()),
+        option::of(select(vec![("0s", "1s"), ("0.5s", "f:30"), ("f:0", "2s")])),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|(sequence, range, limiter)| {
+            let mut v = json!({"sequence": sequence, "limiter": limiter});
+            if let Some((start, end)) = range {
+                v["in"] = json!(start);
+                v["out"] = json!(end);
+            }
+            v
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        fresh::<SequenceId>().prop_map(|sequence| json!({"sequence": sequence})),
+        one_of(p.seqs.clone())
+            .prop_map(|sequence| json!({"sequence": sequence, "in": "2s", "out": "1s"})),
+        one_of(p.seqs.clone()).prop_map(|sequence| json!({"sequence": sequence, "out": "99999s"})),
+    ]
+    .boxed();
     mix(valid, invalid)
 }
 
