@@ -23,8 +23,8 @@ use super::{
     clock::{Clock, ManualClock, WallTime},
     dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, DedupTable, Fingerprint},
     event::{
-        CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, PatchCause, TxActivity,
-        TxEnded,
+        CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, GestureCancelReason,
+        GestureCancelled, PatchCause, TxActivity, TxEnded,
     },
     history::{
         EntryCause, History, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
@@ -425,6 +425,9 @@ impl Changes {
     }
 }
 
+// Four independent facts about one open transaction (conflicted, undoable, rebased, replaced),
+// each read on its own path; an enum would combine states that never interact.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug)]
 struct OpenTx {
     id: TxId,
@@ -448,7 +451,11 @@ struct OpenTx {
     rebased: bool,
     /// The items it soft-locks for other actors: everything its ops touched, for a gesture or
     /// proposal; nothing for a batch (WP-1B.09). Dropped with it, so closing it releases them.
+    /// The union over every step, also the steps a later `_meta.replace` update rolled back.
     locks: ItemLocks,
+    /// A step replaced the earlier ones (`_meta.replace`): `locks` may hold more than `ops`
+    /// touch now.
+    replaced: bool,
 }
 
 impl OpenTx {
@@ -969,7 +976,8 @@ impl DocState {
         }
     }
 
-    /// `Conflict{item_in_gesture}`: `what` is being edited in `t`.
+    /// `Conflict{item_in_gesture, holder, retry_after_ms}`: `what` is being edited in `t`
+    /// (WP-2A.12: `holder` names `t`'s actor).
     fn in_use(&self, t: &OpenTx, what: &str) -> CmdError {
         let retry_after_ms = self.retry_after(t);
         let when = match (t.kind, retry_after_ms) {
@@ -981,6 +989,7 @@ impl DocState {
             reason: ConflictReason::ItemInGesture,
             current_rev: None,
             retry_after_ms,
+            holder: Some(t.actor.clone()),
             detail: format!(
                 "{what} is being edited in open {} {} by {} (\"{}\"); {when}; `edit.locks` \
                  lists who holds what",
@@ -1000,9 +1009,12 @@ impl DocState {
         self.in_use(t, &format!("`{}`", path.as_str()))
     }
 
-    /// `Conflict{item_in_gesture}` if `patch` touches an item soft-locked by an open gesture
-    /// or proposal of an actor other than `actor` (the holder's own actor is never blocked).
-    fn check_locks(&self, actor: &Actor, patch: &Patch) -> Result<(), CmdError> {
+    /// The soft-lock check every change runs before anything is applied (WP-1B.09, WP-2A.12):
+    /// `Conflict{item_in_gesture, holder, retry_after_ms}` if `patch` touches an item
+    /// soft-locked by an open gesture or proposal of an actor other than `actor` (the holder's
+    /// own actor is never blocked). Read-only; public for the lock-check budget benchmark
+    /// (< 20 µs per command on a 5,000-item document).
+    pub fn check_locks(&self, actor: &Actor, patch: &Patch) -> Result<(), CmdError> {
         for t in self.open.values() {
             if t.actor == *actor || t.locks.is_empty() {
                 continue;
@@ -1065,7 +1077,14 @@ impl DocState {
             request_id,
             expected_rev,
             tx,
+            replace,
         } = submit;
+        if replace && tx.is_none() {
+            return Err(CmdError::invalid(
+                "/_meta/replace",
+                "needs `_meta.tx`: only an update inside an open gesture replaces the earlier ones",
+            ));
+        }
         let at = self.clock.now();
         let request_id = request_id.unwrap_or_else(|| RequestId::generate(&mut *self.request_ids));
         let registry = Arc::clone(&self.registry);
@@ -1109,7 +1128,9 @@ impl DocState {
                 call.name
             ))),
             (EntryKind::Command | EntryKind::Query, None) => self.run_implicit(&call, params),
-            (EntryKind::Command | EntryKind::Query, Some(tx)) => self.run_in_tx(tx, &call, params),
+            (EntryKind::Command | EntryKind::Query, Some(tx)) => {
+                self.run_in_tx(tx, &call, params, replace)
+            }
         }
     }
 
@@ -1440,8 +1461,19 @@ impl DocState {
         Ok(applied)
     }
 
-    /// A command inside the caller's open transaction `tx_id`, run against its view.
-    fn run_in_tx(&mut self, tx_id: TxId, call: &Call, params: Value) -> Result<Applied, CmdError> {
+    /// A command inside the caller's open transaction `tx_id`, run against its view; with
+    /// `replace` (a gesture update with `_meta.replace`, spec INV-301/302), run against the
+    /// committed document instead, its patch replacing the gesture's ops atomically.
+    // One sequence (checks, execute, compose, publish); splitting it would scatter the order
+    // in which a failed update must leave everything as it was.
+    #[allow(clippy::too_many_lines)]
+    fn run_in_tx(
+        &mut self,
+        tx_id: TxId,
+        call: &Call,
+        params: Value,
+        replace: bool,
+    ) -> Result<Applied, CmdError> {
         let t = self
             .open
             .get_mut(&tx_id)
@@ -1451,15 +1483,33 @@ impl DocState {
         }
         // Any request naming it keeps a gesture alive, even one that fails.
         t.last_activity = t.last_activity.max(call.at);
+        if replace && t.kind != TxKind::Gesture {
+            return Err(CmdError::invalid(
+                "/_meta/replace",
+                format!(
+                    "transaction {} is a {}: only the updates of a gesture replace each other",
+                    t.id, t.kind
+                ),
+            ));
+        }
         if t.conflicted {
             return Err(conflicted(t));
         }
-        let (base, kind) = (t.view.clone(), t.kind);
+        let kind = t.kind;
+        let own_view = (!replace).then(|| t.view.clone());
+        let base = own_view.unwrap_or_else(|| self.committed.clone());
         let (done, output) = self
             .execute(call, params, base)
             .map_err(|e| self.explain_missing(call.ctx.actor(), e))?;
-        if done.is_empty() {
-            let applied = self.applied(call, Some(tx_id), output, Patch::new());
+        // A replacing update that ends where the gesture already is (or an accumulating one
+        // that changes nothing) changes nothing visible.
+        let unchanged = if replace {
+            self.open.get(&tx_id).is_some_and(|t| t.ops == done.patch)
+        } else {
+            done.is_empty()
+        };
+        if unchanged {
+            let applied = self.applied(call, Some(tx_id), output, done.patch);
             self.add_step(tx_id, call, &applied, None);
             return Ok(applied);
         }
@@ -1468,12 +1518,13 @@ impl DocState {
             patch: step,
             ..
         } = done;
-        // Fail fast on another actor's soft lock, before anything is applied.
+        // Fail fast on another actor's soft lock, before anything is applied. A replacing
+        // update's rollback only touches this gesture's own (locked) items.
         self.check_locks(call.ctx.actor(), &step)?;
         if !kind.is_live() {
             // A batch: nothing visible until it commits.
             let applied = self.applied(call, Some(tx_id), output, step.clone());
-            self.add_step(tx_id, call, &applied, Some((step, view)));
+            self.add_step(tx_id, call, &applied, Some((step, view, false)));
             return Ok(applied);
         }
 
@@ -1482,8 +1533,13 @@ impl DocState {
             .values()
             .any(|o| o.id != tx_id && o.contributes_live());
         let (live, delta) = if others_live {
-            let mut ops = self.open.get(&tx_id).map_or_default(|t| t.ops.clone());
-            ops.extend(step.iter().cloned());
+            let ops = if replace {
+                step.clone()
+            } else {
+                let mut ops = self.open.get(&tx_id).map_or_default(|t| t.ops.clone());
+                ops.extend(step.iter().cloned());
+                ops
+            };
             let layers: Vec<Layer<'_>> = self
                 .open
                 .values()
@@ -1520,6 +1576,11 @@ impl DocState {
             })?;
             let delta = LiveDelta::between(&self.live, &live);
             (live, delta)
+        } else if replace {
+            // The live document is this gesture's view: undo its ops, then apply the update.
+            let mut delta = self.open.get(&tx_id).map_or_default(|t| t.ops.invert());
+            delta.extend(step.iter().cloned());
+            (view.clone(), LiveDelta::Ops(delta))
         } else {
             (view.clone(), LiveDelta::Ops(step.clone()))
         };
@@ -1527,7 +1588,7 @@ impl DocState {
         let prev_rev = self.rev;
         self.rev = self.rev.next();
         let applied = self.applied(call, Some(tx_id), output, step.clone());
-        let locked_more = self.add_step(tx_id, call, &applied, Some((step, view)));
+        let locked_more = self.add_step(tx_id, call, &applied, Some((step, view, replace)));
         self.live = live;
         self.emit(
             prev_rev,
@@ -1545,25 +1606,36 @@ impl DocState {
         Ok(applied)
     }
 
-    /// Records a step in open transaction `tx_id`; a gesture or proposal soft-locks what it
-    /// touched. Returns whether that locked items not locked before.
+    /// Records a step in open transaction `tx_id`: its patch and the view after it, and
+    /// whether it replaces the earlier steps' changes (`_meta.replace`) or adds to them. A
+    /// gesture or proposal soft-locks what it touched; the lock set only grows, also when a
+    /// step replaces the earlier ones (spec INV-304). Returns whether that locked items not
+    /// locked before.
     fn add_step(
         &mut self,
         tx_id: TxId,
         call: &Call,
         applied: &Applied,
-        change: Option<(Patch, Project)>,
+        change: Option<(Patch, Project, bool)>,
     ) -> bool {
         let record = Self::record(call, applied);
         let mut locked_more = false;
         if let Some(t) = self.open.get_mut(&tx_id) {
-            if let Some((step, view)) = change {
+            if let Some((step, view, replace)) = change {
                 if t.kind.is_live() {
                     locked_more = t.locks.extend(&step) > 0;
                 }
-                t.ops.extend(step);
+                if replace {
+                    // Built on the committed document as it is now: nothing left to rebase.
+                    t.ops = step;
+                    t.rebased = false;
+                    t.replaced = true;
+                    t.undoable = call.undoable;
+                } else {
+                    t.ops.extend(step);
+                    t.undoable &= call.undoable;
+                }
                 t.view = view;
-                t.undoable &= call.undoable;
             }
             t.last_activity = t.last_activity.max(call.at);
             t.steps.push(JournalStep {
@@ -1710,6 +1782,7 @@ impl DocState {
             undoable: true,
             rebased: false,
             locks: ItemLocks::default(),
+            replaced: false,
         };
         let info = t.info(self.gesture_timeout);
         self.outbox.push(DocEvent::TxOpened(t.activity(self.rev)));
@@ -2071,7 +2144,22 @@ impl DocState {
         idle.into_iter()
             .filter_map(|id| {
                 tracing::info!(tx = %id, "gesture idle for {timeout:?}; cancelled");
-                self.close(id, TxOutcome::Expired)
+                let (actor, items) = self
+                    .open
+                    .get(&id)
+                    .map(|t| (t.actor.clone(), t.locks.items()))?;
+                let closed = self.close(id, TxOutcome::Expired)?;
+                // After its rollback's `doc.patched` and its `tx.closed` (WP-2A.12).
+                self.outbox
+                    .push(DocEvent::GestureCancelled(GestureCancelled {
+                        tx_id: id,
+                        actor,
+                        reason: GestureCancelReason::IdleTimeout,
+                        items,
+                        rev: self.rev,
+                        committed_rev: self.committed_rev,
+                    }));
+                Some(closed)
             })
             .collect()
     }
@@ -2615,7 +2703,13 @@ impl DocState {
             } else {
                 ItemLocks::default()
             };
-            if t.locks != expected {
+            // Replaced updates keep their items locked (spec INV-304): a superset then.
+            let consistent = if t.replaced {
+                t.locks.covers(&expected)
+            } else {
+                t.locks == expected
+            };
+            if !consistent {
                 return Err(format!(
                     "{}: locks {:?} are not the items its ops touch {:?}",
                     t.id,

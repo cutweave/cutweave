@@ -12,14 +12,21 @@
 //! - [`TxLocks`] / [`LockList`]: what `edit.locks` reports (UI "in use by" indicators, agents
 //!   deciding whether to wait).
 //!
-//! What "touch" means here is the P1 minimum: every item an op adds, removes, moves or edits,
-//! plus every item below a path an op writes. P2 (WP-2A.12) widens it to ripple-shifted and
-//! linked items.
+//! What "touch" means (WP-2A.12, spec INV-304): every item an op adds, removes, moves or edits,
+//! including the items inside a whole track or sequence an op adds, removes or replaces, plus
+//! every item below a path an op writes. A command's patch is exactly the difference its
+//! `EditReport` names (spec INV-21), so this is the union of the items the reports of a
+//! gesture's updates name: ripple-shifted items, linked group members and following attached
+//! children included, because the commands that move them (WP-2A.03/04/05) write them. A
+//! member a partial (`unlink: true`) edit leaves alone is not written, so it is not locked.
+//! The set only grows until the transaction closes, also when `_meta.replace` rolls earlier
+//! updates back.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cutweave_model::ItemId;
+use cutweave_model::{ItemId, TrackId};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::{
     clock::WallTime,
@@ -65,22 +72,72 @@ impl ItemLocks {
         self.items.keys().copied().collect()
     }
 
+    /// Whether every item and place of `other` is locked here too.
+    pub(crate) fn covers(&self, other: &ItemLocks) -> bool {
+        other.places.is_subset(&self.places)
+            && other.items.keys().all(|item| self.items.contains_key(item))
+    }
+
     /// Locks the items `patch` touches; returns how many were not locked yet.
     pub(crate) fn extend(&mut self, patch: &Patch) -> usize {
         let before = self.items.len();
-        for path in patch.iter().flat_map(PatchOp::paths) {
-            if let EntityRef::Item {
-                sequence,
-                track,
-                item,
-            } = path.entity()
-            {
-                let place = DocPath::item(sequence, track, item);
-                self.places.insert(place.clone());
-                self.items.entry(item).or_default().insert(place);
+        for op in patch {
+            for path in op.paths() {
+                if let EntityRef::Item {
+                    sequence,
+                    track,
+                    item,
+                } = path.entity()
+                {
+                    self.lock(DocPath::item(sequence, track, item), item);
+                }
+            }
+            // A whole track or sequence added, removed or replaced: the items inside it.
+            for (path, value) in whole_values(op) {
+                self.lock_nested(path, value);
             }
         }
         self.items.len() - before
+    }
+
+    fn lock(&mut self, place: DocPath, item: ItemId) {
+        self.places.insert(place.clone());
+        self.items.entry(item).or_default().insert(place);
+    }
+
+    /// Locks the items of the track (`/sequences/S/tracks/T`), its item map (`…/items`) or the
+    /// sequence (`/sequences/S`) that `value` is at `path`.
+    fn lock_nested(&mut self, path: &DocPath, value: &Value) {
+        match path.entity() {
+            EntityRef::Track { sequence, track } => {
+                let whole = DocPath::track(sequence, track);
+                let items = if *path == whole {
+                    value.get("items")
+                } else if *path == whole.join("items") {
+                    Some(value)
+                } else {
+                    None
+                };
+                for item in items
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flat_map(|m| m.keys())
+                {
+                    if let Ok(item) = item.parse::<ItemId>() {
+                        self.lock(DocPath::item(sequence, track, item), item);
+                    }
+                }
+            }
+            EntityRef::Sequence(sequence) if *path == DocPath::sequence(sequence) => {
+                let tracks = value.get("tracks").and_then(Value::as_object);
+                for (track, value) in tracks.into_iter().flatten() {
+                    if let Ok(track) = track.parse::<TrackId>() {
+                        self.lock_nested(&DocPath::track(sequence, track), value);
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// The first locked item `patch` touches: an op on the item or inside it, or an op on a
@@ -109,6 +166,18 @@ impl ItemLocks {
                 _ => None,
             })
     }
+}
+
+/// The values an op puts at or takes from its path (an add's value, a removal's preimage, both
+/// sides of a replacement), for the items inside a whole track or sequence.
+fn whole_values(op: &PatchOp) -> impl Iterator<Item = (&DocPath, &Value)> {
+    let (path, first, second) = match op {
+        PatchOp::Add { path, value } => (path, Some(value), None),
+        PatchOp::Remove { path, old } => (path, Some(old), None),
+        PatchOp::Replace { path, old, value } => (path, Some(old), Some(value)),
+        PatchOp::Move { path, .. } => (path, None, None),
+    };
+    first.into_iter().chain(second).map(move |v| (path, v))
 }
 
 /// An open transaction and the items it soft-locks, as `edit.locks` reports it.
@@ -222,6 +291,43 @@ mod tests {
         assert_eq!(
             ItemLocks::default().touched_by(&Patch(vec![replace(DocPath::root())])),
             None
+        );
+    }
+
+    #[test]
+    fn items_inside_a_whole_track_or_sequence_are_locked() {
+        let (seq, t1, t2, removed, mapped) = ids();
+        let mut gen_ids = SeededGen::new(10);
+        let (added, seq2): (ItemId, SequenceId) = (gen_ids.mint(), gen_ids.mint());
+        let t3: TrackId = gen_ids.mint();
+        let items = |id: ItemId| json!({ id.to_string(): {"start": 0} });
+        let locks = ItemLocks::of(&Patch(vec![
+            // A track removed with its items, one created with an item, one's map replaced.
+            PatchOp::Remove {
+                path: DocPath::track(seq, t1),
+                old: json!({"name": "V1", "items": items(removed)}),
+            },
+            PatchOp::Replace {
+                path: DocPath::track(seq, t2).join("items"),
+                old: json!({}),
+                value: items(mapped),
+            },
+            PatchOp::Add {
+                path: DocPath::sequence(seq2),
+                value: json!({"tracks": { t3.to_string(): {"items": items(added)} }}),
+            },
+            // Track fields beside the items lock nothing.
+            replace(DocPath::track(seq, t2).join("name")),
+        ]));
+        let mut all = vec![removed, mapped, added];
+        all.sort();
+        assert_eq!(locks.items(), all);
+        // Edits of those items by another actor are caught, wherever they are addressed.
+        let edit = DocPath::item(seq2, t3, added).join("name");
+        assert_eq!(locks.touched_by(&Patch(vec![replace(edit)])), Some(added));
+        assert_eq!(
+            locks.touched_by(&Patch(vec![replace(DocPath::track(seq, t1))])),
+            Some(removed)
         );
     }
 

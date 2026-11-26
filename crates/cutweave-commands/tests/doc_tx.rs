@@ -334,12 +334,18 @@ fn other_connections_edit_untouched_items_and_fail_fast_on_touched_ones() {
         reason,
         retry_after_ms,
         current_rev,
+        holder,
         detail,
     } = &err
     else {
         panic!("{err:?}")
     };
     assert_eq!(*reason, ConflictReason::ItemInGesture);
+    // WP-2A.12: the holder is named.
+    assert_eq!(
+        holder.as_ref().map(ToString::to_string).as_deref(),
+        Some("user")
+    );
     // The time left until the gesture's idle deadline (the test clock stands still).
     assert_eq!(
         *retry_after_ms,

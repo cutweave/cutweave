@@ -8,7 +8,7 @@ use cutweave_model::EntityKind;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::meta::Scope;
+use crate::{doc::Actor, meta::Scope};
 
 /// Document revision: increases by one per committed transaction (WP-1B.03).
 ///
@@ -224,8 +224,12 @@ pub enum CmdError {
         reason: ConflictReason,
         /// The document revision when the error was raised (filled in by the engine).
         current_rev: Option<Rev>,
-        /// When retrying may succeed (soft locks).
+        /// When retrying may succeed (soft locks): the time left until the holding gesture's
+        /// idle deadline; none for a proposal, which waits for a person (WP-2A.12).
         retry_after_ms: Option<u64>,
+        /// The actor holding the soft lock (`user`, `agent:<label>`, …) of an `item_in_gesture`
+        /// conflict (WP-2A.12, ADR-0023); none for the other reasons.
+        holder: Option<Actor>,
         /// Human detail.
         detail: String,
     },
@@ -307,6 +311,7 @@ impl CmdError {
             reason,
             current_rev: None,
             retry_after_ms: None,
+            holder: None,
             detail: detail.into(),
         }
     }
@@ -472,7 +477,7 @@ impl JsonSchema for CmdError {
 mod wire {
     use serde::{Deserialize, Serialize};
 
-    use super::{CmdError, ConflictReason, ResourceKind, Rev, Scope};
+    use super::{Actor, CmdError, ConflictReason, ResourceKind, Rev, Scope};
 
     /// A command error: tagged by `code`, with a human `message`.
     #[derive(Serialize, Deserialize, schemars::JsonSchema, specta::Type)]
@@ -515,6 +520,9 @@ mod wire {
             #[serde(default, skip_serializing_if = "Option::is_none")]
             #[specta(type = Option<specta_typescript::Number>)]
             retry_after_ms: Option<u64>,
+            /// The actor holding the soft lock (`item_in_gesture` only).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            holder: Option<Actor>,
             /// Human detail.
             detail: String,
             /// Human message.
@@ -570,11 +578,13 @@ mod wire {
                     reason,
                     current_rev,
                     retry_after_ms,
+                    holder,
                     detail,
                 } => CmdErrorWire::Conflict {
                     reason,
                     current_rev,
                     retry_after_ms,
+                    holder,
                     detail,
                     message,
                 },
@@ -601,12 +611,14 @@ mod wire {
                     reason,
                     current_rev,
                     retry_after_ms,
+                    holder,
                     detail,
                     ..
                 } => CmdError::Conflict {
                     reason,
                     current_rev,
                     retry_after_ms,
+                    holder,
                     detail,
                 },
                 CmdErrorWire::Invalid { path, msg, .. } => CmdError::Invalid { path, msg },
@@ -670,6 +682,7 @@ mod tests {
                 reason: ConflictReason::ItemInGesture,
                 current_rev: Some(Rev(2)),
                 retry_after_ms: Some(250),
+                holder: Some(Actor::User),
                 detail: "item is being dragged".into(),
             },
             CmdError::invalid("", "params must be an object"),
