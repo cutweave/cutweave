@@ -150,16 +150,20 @@ impl Detector {
             vec![1.0f32].into_boxed_slice()
         } else {
             (0..TAPS)
-                .map(|j| {
+                .map(|tap| {
                     #[allow(clippy::cast_precision_loss)]
-                    let (j, n, f) = (j as f64, TAPS as f64, factor as f64);
-                    let window = 0.5 * (1.0 - (2.0 * std::f64::consts::PI * j / n).cos());
-                    let m = j - n / 2.0;
-                    let x = m * std::f64::consts::PI / f;
-                    let sinc = if m.abs() < 1e-9 { 1.0 } else { x.sin() / x };
+                    let (tap, taps, factor) = (tap as f64, TAPS as f64, factor as f64);
+                    let window = 0.5 * (1.0 - (2.0 * std::f64::consts::PI * tap / taps).cos());
+                    let offset = tap - taps / 2.0;
+                    let arg = offset * std::f64::consts::PI / factor;
+                    let sinc = if offset.abs() < 1e-9 {
+                        1.0
+                    } else {
+                        arg.sin() / arg
+                    };
                     #[allow(clippy::cast_possible_truncation)]
-                    let c = (window * sinc) as f32;
-                    c
+                    let coeff = (window * sinc) as f32;
+                    coeff
                 })
                 .collect()
         };
@@ -519,11 +523,15 @@ mod tests {
         let hi = Limiter::new(LimiterConfig::default(), SampleRate::HZ_96_000).unwrap();
         assert_eq!(hi.detector_delay(), 12);
         assert_eq!(hi.latency(), 480 + 12 - 1);
-        let mut bad = LimiterConfig::default();
-        bad.ceiling_dbtp = 1.0;
+        let bad = LimiterConfig {
+            ceiling_dbtp: 1.0,
+            ..LimiterConfig::default()
+        };
         assert!(Limiter::new(bad, RATE).is_err());
-        bad = LimiterConfig::default();
-        bad.lookahead_ms = 0;
+        let bad = LimiterConfig {
+            lookahead_ms: 0,
+            ..LimiterConfig::default()
+        };
         assert!(Limiter::new(bad, RATE).is_err());
     }
 
@@ -568,8 +576,10 @@ mod tests {
             (17_000.0, -1.0),
             (997.0, -6.0),
         ] {
-            let mut config = LimiterConfig::default();
-            config.ceiling_dbtp = ceiling;
+            let config = LimiterConfig {
+                ceiling_dbtp: ceiling,
+                ..LimiterConfig::default()
+            };
             let mut l = Limiter::new(config, RATE).unwrap();
             let mut buf = sine(freq, 2.0, 48_000);
             l.process(&mut buf);

@@ -432,6 +432,7 @@ impl std::fmt::Debug for MixerHandle {
 impl Mixer {
     /// A mixer at `config.rate` reading clips through `sources`, with its control handle.
     /// Starts `config.workers` worker threads (they stop when the handle is dropped).
+    #[allow(clippy::too_many_lines)] // validation, threads and wiring in one place
     pub fn new(
         config: MixerConfig,
         sources: Arc<dyn SourceFactory>,
