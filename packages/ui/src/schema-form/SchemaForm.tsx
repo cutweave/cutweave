@@ -3,6 +3,7 @@ import {
   createContext,
   memo,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -46,6 +47,9 @@ import {
 } from "./types.ts";
 import { deepEqual, getPath } from "./values.ts";
 import { evalVisible } from "./visibleWhen.ts";
+
+/** How long a committed value stays shown while the host has not changed its own. */
+const SETTLE_MS = 800;
 
 export interface SchemaFormProps {
   /** A JSON Schema object (a command's params) with optional `x-ui` hints. */
@@ -142,21 +146,69 @@ export function SchemaForm({
   const [expanded, setExpandedState] = useState<Readonly<Record<string, boolean>>>({});
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  // A committed value stays on screen until the host's value moves on (or this long passes, for
+  // an edit the host refused): a second key press right after the first must start from the
+  // first's result, not from the value the host has not caught up with yet.
+  const settling = useRef(
+    new Map<string, { before: unknown; timer: ReturnType<typeof setTimeout> }>(),
+  );
+  const forget = useCallback((path: string) => {
+    const entry = settling.current.get(path);
+    if (entry === undefined) return;
+    clearTimeout(entry.timer);
+    settling.current.delete(path);
+    setDrafts((d) => {
+      if (!(path in d)) return d;
+      const { [path]: _gone, ...rest } = d;
+      return rest;
+    });
+  }, []);
   const bus = useMemo(
     () =>
       new GestureBus(
         () => onChangeRef.current,
-        (path, next, active) =>
-          setDrafts((d) => {
-            if (active) return { ...d, [path]: next };
-            if (!(path in d)) return d;
-            const { [path]: _gone, ...rest } = d;
-            return rest;
-          }),
+        (path, next, active) => {
+          const earlier = settling.current.get(path);
+          if (earlier !== undefined) clearTimeout(earlier.timer);
+          if (active) {
+            settling.current.delete(path);
+            setDrafts((d) => ({ ...d, [path]: next }));
+            return;
+          }
+          const before = getPath(valueRef.current, path);
+          if (deepEqual(before, next)) {
+            settling.current.delete(path);
+            setDrafts((d) => {
+              if (!(path in d)) return d;
+              const { [path]: _gone, ...rest } = d;
+              return rest;
+            });
+            return;
+          }
+          const keep = earlier?.before ?? before;
+          settling.current.set(path, {
+            before: keep,
+            timer: setTimeout(() => forget(path), SETTLE_MS),
+          });
+          setDrafts((d) => ({ ...d, [path]: next }));
+        },
       ),
-    [],
+    [forget],
   );
-  useEffect(() => () => bus.dispose(), [bus]);
+  useEffect(
+    () => () => {
+      bus.dispose();
+      for (const entry of settling.current.values()) clearTimeout(entry.timer);
+    },
+    [bus],
+  );
+  useEffect(() => {
+    for (const [path, entry] of [...settling.current]) {
+      if (!deepEqual(getPath(value, path), entry.before)) forget(path);
+    }
+  }, [value, forget]);
 
   const mixedKey = mixed === undefined ? "" : [...mixed].sort().join("\u0000");
   const mixedSet = useMemo(() => new Set(mixed ?? []), [mixedKey]);

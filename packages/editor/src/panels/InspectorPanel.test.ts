@@ -165,6 +165,24 @@ describe("InspectorPanel", () => {
     );
   });
 
+  it("a second key press starts from the first one's result, before the document catches up", async () => {
+    selectItems("itm_v");
+    renderPanel();
+    const rotation = screen.getByRole("spinbutton", { name: "Rotation" });
+    act(() => rotation.focus());
+    fireEvent.keyDown(rotation, { key: "ArrowUp" });
+    fireEvent.keyDown(rotation, { key: "ArrowUp", shiftKey: true });
+    await waitFor(() =>
+      expect(engine.names().filter((n) => n === "edit.commit_tx")).toHaveLength(2),
+    );
+    const sent = engine.calls
+      .filter((c) => c.name === "item.set_props")
+      .map(
+        (c) => (c.input as { props: { transform: { rotation: number } } }).props.transform.rotation,
+      );
+    expect(sent).toEqual([1, 11]);
+  });
+
   it("renames a clip with item.set_props", async () => {
     selectItems("itm_v");
     renderPanel();
