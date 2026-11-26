@@ -7,7 +7,7 @@
 // walk over every table; axe on every opened menu.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Project } from "@cutweave/protocol";
+import type { MediaId, Project } from "@cutweave/protocol";
 import type { MenuEntry, MenuItem, MenuSubmenu } from "@cutweave/ui";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -630,7 +630,12 @@ describe("the bin menus", () => {
     healthStore
       .getState()
       .setMissing([
-        { media_id: MED_V, name: "interview.mp4", path: "/old/interview.mp4", status: "missing" },
+        {
+          media_id: MED_V as MediaId,
+          name: "interview.mp4",
+          path: "/old/interview.mp4",
+          status: "missing",
+        },
       ]);
     try {
       await menuFor("bin.card", { ids: [MED_V] }).choose("Relink…");
