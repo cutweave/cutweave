@@ -36,6 +36,7 @@ import { OverlayEditor, type PropsPatch, setPropsStep } from "./overlayEditor.ts
 import { buildScene, type Scene, type SceneLayer, unionBounds } from "./scene.ts";
 import {
   type Guide,
+  guideSegment,
   SNAP_DISTANCE_PX,
   type SnapTargets,
   snapBounds,
@@ -437,13 +438,7 @@ export function TransformOverlay() {
           />
         )}
         {guides.map((g) => (
-          <line
-            key={`${g.axis}${g.at}`}
-            className="cw-xform__guide"
-            {...(g.axis === "x"
-              ? { x1: g.at, x2: g.at, y1: -canvas.h, y2: canvas.h * 2 }
-              : { y1: g.at, y2: g.at, x1: -canvas.w, x2: canvas.w * 2 })}
-          />
+          <line key={`${g.axis}${g.at}`} className="cw-xform__guide" {...guideSegment(g, canvas)} />
         ))}
         {single !== undefined && !cropMode ? <RotateStalk layer={single} zoom={zoom} /> : null}
       </svg>

@@ -10,7 +10,7 @@ import {
 import { cx } from "../components/cx.ts";
 import { IconButton } from "../components/IconButton.tsx";
 import { NumberScrubber } from "../components/NumberScrubber.tsx";
-import { clamp, decimalsOf, roundTo } from "../components/numberMath.ts";
+import { clamp, decimalsOf, formatNumber, roundTo } from "../components/numberMath.ts";
 import { SegmentedControl } from "../components/SegmentedControl.tsx";
 import { Slider } from "../components/Slider.tsx";
 import { Switch } from "../components/Switch.tsx";
@@ -98,7 +98,7 @@ export function SliderControl({ node, label, value, mixed, disabled, live, commi
   const unit = node.unit;
   const format = (d: number) => {
     if (mixed) return "—";
-    const text = node.precision === undefined ? String(d) : d.toFixed(node.precision);
+    const text = formatNumber(d, node.precision);
     return unit ? (unit === "%" || unit === "°" ? `${text}${unit}` : `${text} ${unit}`) : text;
   };
   return (

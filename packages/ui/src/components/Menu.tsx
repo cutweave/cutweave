@@ -98,12 +98,48 @@ export function menuItemClass(entry: Pick<MenuItem, "variant">): string {
   return cx("cw-menu__item body", entry.variant && `cw-menu__item--${entry.variant}`);
 }
 
-/** Icon, label and shortcut of one command row (shared with `MenuBar`). */
-export function MenuItemBody({ entry }: { entry: MenuItem }) {
+/** Which leading slots a list reserves, so every label shares one column. */
+export interface MenuGutters {
+  readonly check: boolean;
+  readonly icon: boolean;
+}
+
+interface GutterEntry {
+  id?: string | undefined;
+  kind?: string | undefined;
+  icon?: IconName | undefined;
+  variant?: string | undefined;
+  checked?: boolean | undefined;
+}
+
+/** A list reserves a check slot if any row is checkable and an icon slot if any row has an icon. */
+export function menuGutters(items: readonly GutterEntry[]): MenuGutters {
+  let check = false;
+  let icon = false;
+  for (const e of items) {
+    if (e.kind === "separator" || e.kind === "label") continue;
+    if (e.checked !== undefined) check = true;
+    if (e.icon !== undefined || e.variant === "agent") icon = true;
+  }
+  return { check, icon };
+}
+
+/** Empty slot that keeps a row without an icon aligned with its neighbours. */
+export function MenuGutter() {
+  return <span className="cw-menu__gutter" aria-hidden="true" />;
+}
+
+/** Check slot, icon, label and shortcut of one command row (shared with `MenuBar`). */
+export function MenuItemBody({ entry, gutters }: { entry: MenuItem; gutters: MenuGutters }) {
   const icon = entry.icon ?? (entry.variant === "agent" ? "sparkles" : undefined);
   return (
     <>
-      {icon ? <Icon name={icon} size="md" /> : null}
+      {gutters.check ? (
+        <span className="cw-menu__check" aria-hidden="true">
+          {entry.checked ? <Icon name="check" size="md" /> : null}
+        </span>
+      ) : null}
+      {icon ? <Icon name={icon} size="md" /> : gutters.icon ? <MenuGutter /> : null}
       <Label text={entry.label} reason={entry.disabled ? entry.disabledReason : undefined} />
       {entry.shortcut ? <span className="cw-menu__kbd numeric">{entry.shortcut}</span> : null}
     </>
@@ -136,6 +172,7 @@ function Label({ text, reason }: { text: string; reason: string | undefined }) {
 /** The rows of a list, for any of the Radix kits. */
 function Rows({ kit, items }: { kit: MenuKit; items: readonly MenuEntry[] }): ReactNode {
   const container = usePortalContainer() ?? undefined;
+  const gutters = menuGutters(items);
   return items.map((entry, index) => {
     if (entry.kind === "separator") {
       return <kit.Separator key={entry.id ?? `sep-${index}`} className="cw-menu__sep" />;
@@ -155,7 +192,12 @@ function Rows({ kit, items }: { kit: MenuKit; items: readonly MenuEntry[] }): Re
             disabled={entry.disabled}
             textValue={entry.label}
           >
-            {entry.icon ? <Icon name={entry.icon} size="md" /> : null}
+            {gutters.check ? <MenuGutter /> : null}
+            {entry.icon ? (
+              <Icon name={entry.icon} size="md" />
+            ) : gutters.icon ? (
+              <MenuGutter />
+            ) : null}
             <Label text={entry.label} reason={entry.disabled ? entry.disabledReason : undefined} />
             <Icon name="chevron-right" size="md" />
           </kit.SubTrigger>
@@ -182,10 +224,7 @@ function Rows({ kit, items }: { kit: MenuKit; items: readonly MenuEntry[] }): Re
           onSelect={select}
           className={cx(menuItemClass(entry), "cw-menu__item--check")}
         >
-          <span className="cw-menu__check" aria-hidden="true">
-            {entry.checked ? <Icon name="check" size="md" /> : null}
-          </span>
-          <MenuItemBody entry={entry} />
+          <MenuItemBody entry={entry} gutters={gutters} />
         </kit.CheckboxItem>
       );
     }
@@ -197,7 +236,7 @@ function Rows({ kit, items }: { kit: MenuKit; items: readonly MenuEntry[] }): Re
         onSelect={select}
         className={menuItemClass(entry)}
       >
-        <MenuItemBody entry={entry} />
+        <MenuItemBody entry={entry} gutters={gutters} />
       </kit.Item>
     );
   });

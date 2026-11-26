@@ -16,6 +16,18 @@ export function roundTo(n: number, places: number): number {
   return Number(n.toFixed(Math.min(Math.max(places, 0), 20)));
 }
 
+/** Decimals shown when a field gives no `precision`. The model keeps the exact value. */
+export const DEFAULT_DISPLAY_DECIMALS = 2;
+
+/** Display text: `precision` fixed decimals, else at most two with trailing zeros trimmed. */
+export function formatNumber(n: number, precision?: number): string {
+  if (precision !== undefined) return n.toFixed(precision);
+  if (!Number.isFinite(n)) return String(n);
+  const text = n.toFixed(DEFAULT_DISPLAY_DECIMALS);
+  const trimmed = text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+  return trimmed === "-0" ? "0" : trimmed;
+}
+
 export function clamp(n: number, min: number, max: number): number {
   return Math.min(Math.max(n, min), max);
 }

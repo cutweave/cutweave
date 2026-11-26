@@ -293,12 +293,16 @@
   color: var(--text-primary);
   text-align: right;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: inherit;
 }
 .cw-num__value:focus-visible {
   outline: none;
 }
 .cw-num__unit {
+  flex: none;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
@@ -763,6 +767,7 @@
   padding: var(--space-1) var(--space-2) 0;
   color: var(--text-muted);
 }
+.cw-menu__gutter,
 .cw-menu__check {
   display: inline-flex;
   flex: none;

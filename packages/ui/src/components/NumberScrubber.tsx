@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { cx } from "./cx.ts";
-import { clamp, modifierScale, parseEntry, stepValue } from "./numberMath.ts";
+import { clamp, formatNumber, modifierScale, parseEntry, stepValue } from "./numberMath.ts";
 import { useOwnerWindow } from "./PortalContainer.ts";
 
 export interface NumberScrubberProps {
@@ -25,7 +25,7 @@ export interface NumberScrubberProps {
   step?: number | undefined;
   /** Pixels of drag per step. Default 4. */
   sensitivity?: number | undefined;
-  /** Fixed decimals for display. Default: the shortest exact representation. */
+  /** Fixed decimals for display. Default: at most 2, trailing zeros trimmed (the value itself stays exact). */
   precision?: number | undefined;
   /** Live value during a drag, key press or typed commit. */
   onChange: (value: number) => void;
@@ -71,12 +71,13 @@ export function NumberScrubber({
   const inputRef = useRef<HTMLInputElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const editDone = useRef(true);
+  const initialDraft = useRef("");
   const restoreFocus = useRef(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
   const name = ariaLabel ?? label;
-  const shown = precision === undefined ? String(value) : value.toFixed(precision);
+  const shown = formatNumber(value, precision);
 
   // The pointer lock is its own document's: a detached panel's window has its own.
   const ownerWindow = useOwnerWindow();
@@ -129,7 +130,8 @@ export function NumberScrubber({
   const startEdit = () => {
     if (disabled || editing) return;
     editDone.current = false;
-    setDraft(mixed ? "" : shown);
+    initialDraft.current = mixed ? "" : shown;
+    setDraft(initialDraft.current);
     setEditing(true);
   };
 
@@ -138,7 +140,8 @@ export function NumberScrubber({
     editDone.current = true;
     restoreFocus.current = true;
     setEditing(false);
-    if (!commit) return;
+    // An untouched draft is the rounded display: keep the exact value rather than commit it.
+    if (!commit || (!mixed && draft === initialDraft.current)) return;
     const n = parseEntry(draft, value, unit);
     if (Number.isNaN(n)) return;
     const next = clamp(n, min, max);

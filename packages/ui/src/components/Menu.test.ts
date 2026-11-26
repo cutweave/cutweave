@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { createElement as h } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { Menu, type MenuEntry } from "./Menu.tsx";
+import { Menu, type MenuEntry, menuGutters } from "./Menu.tsx";
 
 beforeAll(() => {
   // Radix menus measure with ResizeObserver and scroll items into view; jsdom has neither.
@@ -248,6 +248,37 @@ describe("Menu choices (checked rows, headings)", () => {
     expect(screen.getByRole("menuitemradio", { name: "Newest first" })).toBeTruthy();
     expect(screen.getByText("Kind")).toBeTruthy();
     expect(screen.getByText("Sort by")).toBeTruthy();
+  });
+
+  it("reserves the same leading slots on every row so labels share a column", () => {
+    expect(menuGutters([{ id: "a" }, { id: "b" }])).toEqual({ check: false, icon: false });
+    expect(menuGutters([{ id: "a" }, { id: "b", checked: false }])).toEqual({
+      check: true,
+      icon: false,
+    });
+    expect(menuGutters([{ id: "a", icon: "scissors" }, { kind: "separator" }])).toEqual({
+      check: false,
+      icon: true,
+    });
+    expect(menuGutters([{ id: "a", variant: "agent" }, { id: "b" }]).icon).toBe(true);
+  });
+
+  it("puts a check slot on text-only rows beside a checkable one", async () => {
+    const user = userEvent.setup();
+    render(
+      h(Menu, {
+        mode: "dropdown",
+        items: [
+          { id: "speed", label: "Speed" },
+          { id: "rev", label: "Reverse", checked: false },
+        ],
+        "aria-label": "Clip",
+        children: h("button", { type: "button" }, "Open"),
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const speed = await screen.findByRole("menuitem", { name: "Speed" });
+    expect(speed.querySelector(".cw-menu__check")).not.toBeNull();
   });
 
   it("keeps the menu open for a keepOpen row and closes for the others", async () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   clamp,
   decimalsOf,
+  formatNumber,
   modifierScale,
   parseEntry,
   parseNumber,
@@ -77,5 +78,20 @@ describe("numberMath", () => {
     expect(parseEntry("/0", 5)).toBeNaN();
     expect(parseEntry("*", 5)).toBeNaN();
     expect(parseEntry("two", 5)).toBeNaN();
+  });
+
+  it("formats with at most two decimals and trims trailing zeros", () => {
+    expect(formatNumber(72.2582866787)).toBe("72.26");
+    expect(formatNumber(100)).toBe("100");
+    expect(formatNumber(10.5)).toBe("10.5");
+    expect(formatNumber(1.004)).toBe("1");
+    expect(formatNumber(-0.001)).toBe("0");
+    expect(formatNumber(1200)).toBe("1200");
+    expect(formatNumber(Number.POSITIVE_INFINITY)).toBe("Infinity");
+  });
+
+  it("honours an explicit precision", () => {
+    expect(formatNumber(1.5, 3)).toBe("1.500");
+    expect(formatNumber(72.2582866787, 1)).toBe("72.3");
   });
 });

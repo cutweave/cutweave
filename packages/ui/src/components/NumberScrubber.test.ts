@@ -298,3 +298,18 @@ describe("NumberScrubber: typing", () => {
     expect(onCommit).toHaveBeenCalledExactlyOnceWith(100);
   });
 });
+
+describe("NumberScrubber: long decimals", () => {
+  it("shows a rounded value but keeps the exact one", async () => {
+    const onChange = vi.fn();
+    render(h(Harness, { initial: 72.2582866787, unit: "%", onChange }));
+    expect(spin().textContent).toContain("72.26");
+    expect(spin().getAttribute("aria-valuenow")).toBe("72.2582866787");
+    // Opening the editor and leaving it untouched must not overwrite the exact value.
+    await userEvent.dblClick(spin());
+    const input = screen.getByRole("textbox", { name: "Scale" }) as HTMLInputElement;
+    expect(input.value).toBe("72.26");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
