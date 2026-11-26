@@ -163,10 +163,17 @@ fn is_file_asset(asset: &MediaAsset) -> bool {
 
 /// Plans collecting `doc` (a project in `project_root`, if it is saved) into `options.dest`.
 #[must_use]
-pub fn plan_collect(doc: &Project, project_root: Option<&str>, options: &CollectOptions) -> CollectPlan {
+pub fn plan_collect(
+    doc: &Project,
+    project_root: Option<&str>,
+    options: &CollectOptions,
+) -> CollectPlan {
     let dest = PathBuf::from(&options.dest);
     let mode = options.mode.unwrap_or_default();
-    let used = options.trim_unused.unwrap_or(false).then(|| used_media(doc));
+    let used = options
+        .trim_unused
+        .unwrap_or(false)
+        .then(|| used_media(doc));
     let mut out = doc.clone();
     let mut files: Vec<PlannedFile> = Vec::new();
     let mut by_hash: HashMap<String, usize> = HashMap::new();
@@ -205,7 +212,11 @@ pub fn plan_collect(doc: &Project, project_root: Option<&str>, options: &Collect
             );
             let mut n = 1;
             let parts = loop {
-                let candidate = if n == 1 { name.clone() } else { numbered(&name, n) };
+                let candidate = if n == 1 {
+                    name.clone()
+                } else {
+                    numbered(&name, n)
+                };
                 let mut parts = folder.clone();
                 parts.push(candidate);
                 if taken.insert(parts.join("/").to_lowercase()) {
@@ -227,7 +238,13 @@ pub fn plan_collect(doc: &Project, project_root: Option<&str>, options: &Collect
         files[index].media.push(asset.id);
         if let Some(copy) = out.media.get_mut(&asset.id) {
             // The asset keeps the name the bin shows even if its file was renamed on the way.
-            if copy.name.is_none() && file_name(from) != files[index].to.file_name().map_or("", |n| n.to_str().unwrap_or("")) {
+            if copy.name.is_none()
+                && file_name(from)
+                    != files[index]
+                        .to
+                        .file_name()
+                        .map_or("", |n| n.to_str().unwrap_or(""))
+            {
                 copy.name = Some(asset_name(asset).into_owned());
             }
             copy.path_abs = Some(files[index].to.to_string_lossy().into_owned());
@@ -290,7 +307,11 @@ impl CollectProgress for JobCtx {
 
     #[allow(clippy::cast_precision_loss)] // a fraction for a progress bar
     fn report(&self, done: u64, total: u64, file: &str) {
-        let fraction = if total == 0 { 1.0 } else { done as f64 / total as f64 };
+        let fraction = if total == 0 {
+            1.0
+        } else {
+            done as f64 / total as f64
+        };
         self.progress(fraction.min(1.0), Some(file));
     }
 }
@@ -369,7 +390,9 @@ fn copy_verified(
         fs::create_dir_all(parent).map_err(|e| failed("create the folder", parent, &e))?;
     }
     let part = part_path(to);
-    let label = from.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let label = from
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
     let mut source = fs::File::open(from).map_err(|e| failed("read", from, &e))?;
     let mut target = fs::File::create(&part).map_err(|e| failed("write", &part, &e))?;
     let mut buf = vec![0; CHUNK];
@@ -424,7 +447,9 @@ fn copy_tree(
     let entries = fs::read_dir(from).map_err(|e| failed("read", from, &e))?;
     for entry in entries {
         let entry = entry.map_err(|e| failed("read", from, &e))?;
-        let kind = entry.file_type().map_err(|e| failed("read", &entry.path(), &e))?;
+        let kind = entry
+            .file_type()
+            .map_err(|e| failed("read", &entry.path(), &e))?;
         let target = to.join(entry.file_name());
         if kind.is_dir() {
             copy_tree(&entry.path(), &target, progress, report)?;
@@ -475,7 +500,12 @@ pub fn run_collect(
         report.copied += 1;
     }
     if let Some(generated) = &plan.generated {
-        copy_tree(generated, &plan.dest.join("generated"), progress, &mut report)?;
+        copy_tree(
+            generated,
+            &plan.dest.join("generated"),
+            progress,
+            &mut report,
+        )?;
     }
     if progress.cancelled() {
         return Err(JobError::Cancelled);
@@ -545,7 +575,10 @@ pub struct CollectEstimate {
 }
 
 /// The plan and estimate of a request, after checking it.
-fn prepare(options: &CollectOptions, ctx: &CollectCtx) -> Result<(CollectPlan, CollectEstimate), CmdError> {
+fn prepare(
+    options: &CollectOptions,
+    ctx: &CollectCtx,
+) -> Result<(CollectPlan, CollectEstimate), CmdError> {
     check_abs_path("/dest", &options.dest)?;
     if let Some(roots) = &ctx.allowed_roots
         && !roots.allows(&options.dest)
@@ -660,12 +693,16 @@ impl EngineCommand for ProjectCollectEstimate {
     type Output = CollectEstimate;
 
     fn run(&self, ctx: &mut CollectCtx) -> Result<CollectEstimate, CmdError> {
-        prepare(&CollectOptions {
-            dest: self.dest.clone(),
-            mode: self.mode,
-            trim_unused: self.trim_unused,
-            include_generated: self.include_generated,
-        }, ctx).map(|(_, estimate)| estimate)
+        prepare(
+            &CollectOptions {
+                dest: self.dest.clone(),
+                mode: self.mode,
+                trim_unused: self.trim_unused,
+                include_generated: self.include_generated,
+            },
+            ctx,
+        )
+        .map(|(_, estimate)| estimate)
     }
 }
 
@@ -714,12 +751,15 @@ impl EngineCommand for ProjectCollect {
     type Output = ProjectCollectOutput;
 
     fn run(&self, ctx: &mut CollectCtx) -> Result<ProjectCollectOutput, CmdError> {
-        let (plan, estimate) = prepare(&CollectOptions {
-            dest: self.dest.clone(),
-            mode: self.mode,
-            trim_unused: self.trim_unused,
-            include_generated: self.include_generated,
-        }, ctx)?;
+        let (plan, estimate) = prepare(
+            &CollectOptions {
+                dest: self.dest.clone(),
+                mode: self.mode,
+                trim_unused: self.trim_unused,
+                include_generated: self.include_generated,
+            },
+            ctx,
+        )?;
         if let Some(first) = estimate.missing.first() {
             let more = estimate.missing.len() - 1;
             return Err(CmdError::invalid(
@@ -728,7 +768,11 @@ impl EngineCommand for ProjectCollect {
                     "the file of `{}` is missing{}; relink it first (media.relink_folder), or \
                      remove it from the project",
                     first.name,
-                    if more == 0 { String::new() } else { format!(" (and {more} more)") }
+                    if more == 0 {
+                        String::new()
+                    } else {
+                        format!(" (and {more} more)")
+                    }
                 ),
             ));
         }

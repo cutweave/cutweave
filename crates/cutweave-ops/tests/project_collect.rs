@@ -125,7 +125,8 @@ impl Progress {
 
 impl CollectProgress for Progress {
     fn cancelled(&self) -> bool {
-        self.stop_after.is_some_and(|limit| self.seen.get() >= limit)
+        self.stop_after
+            .is_some_and(|limit| self.seen.get() >= limit)
     }
 
     fn report(&self, done: u64, _total: u64, _file: &str) {
@@ -221,7 +222,13 @@ fn every_file_goes_under_media_in_a_folder_named_after_its_own() {
         copy.path_abs.as_deref(),
         Some(s(&dest.join("media").join("day1").join("clip.mp4")).as_str())
     );
-    assert!(f.h.doc().media[&f.a].path_abs.as_deref().unwrap().contains("Footage"));
+    assert!(
+        f.h.doc().media[&f.a]
+            .path_abs
+            .as_deref()
+            .unwrap()
+            .contains("Footage")
+    );
 }
 
 #[test]
@@ -293,14 +300,13 @@ fn a_collect_copies_every_file_and_writes_the_project_last() {
     let f = fixture("run");
     let dest = f.t.path("Out");
     let host = Host::new(None);
-    let originals: Vec<(PathBuf, std::time::SystemTime)> = f
-        .h
-        .doc()
-        .media
-        .values()
-        .map(|m| PathBuf::from(m.path_abs.clone().unwrap()))
-        .map(|p| (p.clone(), fs::metadata(&p).unwrap().modified().unwrap()))
-        .collect();
+    let originals: Vec<(PathBuf, std::time::SystemTime)> =
+        f.h.doc()
+            .media
+            .values()
+            .map(|m| PathBuf::from(m.path_abs.clone().unwrap()))
+            .map(|p| (p.clone(), fs::metadata(&p).unwrap().modified().unwrap()))
+            .collect();
     let plan = plan_collect(&f.h.doc(), Some(&f.root()), &options(&dest));
     let report = run_collect(&plan, &*host, &Progress::all()).unwrap();
     assert_eq!((report.copied, report.skipped), (4, 0));
@@ -371,7 +377,11 @@ fn the_generated_folder_comes_along_unless_declined() {
     );
     let mut o = options(&f.t.path("Out2"));
     o.include_generated = Some(false);
-    assert!(plan_collect(&f.h.doc(), Some(&f.root()), &o).generated.is_none());
+    assert!(
+        plan_collect(&f.h.doc(), Some(&f.root()), &o)
+            .generated
+            .is_none()
+    );
 }
 
 // ----- the commands -------------------------------------------------------------------------
@@ -401,7 +411,10 @@ fn the_estimate_counts_files_bytes_and_free_space() {
             json!({"dest": dest, "trim_unused": true}),
         )
         .unwrap();
-    assert_eq!((trimmed["files"].clone(), trimmed["trimmed"].clone()), (json!(3), json!(1)));
+    assert_eq!(
+        (trimmed["files"].clone(), trimmed["trimmed"].clone()),
+        (json!(3), json!(1))
+    );
 }
 
 #[test]
@@ -453,7 +466,8 @@ fn collect_refuses_a_full_drive_and_missing_media_before_copying() {
 fn collect_validates_the_destination() {
     let f = fixture("dest");
     let host = Host::new(None);
-    let run = |dest: &str, ctx: &mut CollectCtx| f.call("project.collect", ctx, json!({"dest": dest}));
+    let run =
+        |dest: &str, ctx: &mut CollectCtx| f.call("project.collect", ctx, json!({"dest": dest}));
     assert_invalid(run("relative/out", &mut f.ctx(&host)), "/dest");
     // Inside the project, or around it.
     assert_invalid(run(&s(&f.t.path("Promo/copy")), &mut f.ctx(&host)), "/dest");
@@ -492,7 +506,10 @@ fn collect_runs_as_a_job_that_ends_with_the_project_written() {
 #[test]
 fn the_collect_commands_are_in_the_mcp_catalog() {
     let h = H::empty();
-    for (name, read_only) in [("project.collect", false), ("project.collect_estimate", true)] {
+    for (name, read_only) in [
+        ("project.collect", false),
+        ("project.collect_estimate", true),
+    ] {
         let meta = &h.registry.get(name).unwrap().meta;
         assert_eq!(meta.mcp, McpExposure::Catalog, "{name}");
         assert_eq!(meta.annotations.read_only, read_only, "{name}");
