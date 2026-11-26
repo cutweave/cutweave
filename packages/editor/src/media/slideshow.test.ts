@@ -143,11 +143,7 @@ describe("Add frame to media bin", () => {
       at: Math.round(2.4 * F),
     });
     expect(s.notices()).toEqual([
-      [
-        "success",
-        "Frame added to the media bin",
-        "Sequence 1 00:00:02:12 is in the media bin.",
-      ],
+      ["success", "Frame added to the media bin", "Sequence 1 00:00:02:12 is in the media bin."],
     ]);
   });
 

@@ -177,7 +177,9 @@ test.describe("F55 slideshow and frame to the bin", () => {
       );
       const frame = listed.media.find((m) => frameName.test(m.name));
       expect(frame?.kind).toBe("image");
-      expect(frame?.path.replaceAll("\\", "/")).toMatch(/\/Slides\/generated\/frames\/med_\w+\.png$/);
+      expect(frame?.path.replaceAll("\\", "/")).toMatch(
+        /\/Slides\/generated\/frames\/med_\w+\.png$/,
+      );
       await snapshot(page, info, "frame in the bin");
 
       // One undo removes the card (and nothing else).
