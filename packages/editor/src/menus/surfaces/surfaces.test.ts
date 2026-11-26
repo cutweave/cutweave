@@ -627,16 +627,14 @@ describe("the bin menus", () => {
     expect(menuFor("bin.card", { ids: [MED_V] }).items.map((i) => i.label)).not.toContain(
       "Relink…",
     );
-    healthStore
-      .getState()
-      .setMissing([
-        {
-          media_id: MED_V as MediaId,
-          name: "interview.mp4",
-          path: "/old/interview.mp4",
-          status: "missing",
-        },
-      ]);
+    healthStore.getState().setMissing([
+      {
+        media_id: MED_V as MediaId,
+        name: "interview.mp4",
+        path: "/old/interview.mp4",
+        status: "missing",
+      },
+    ]);
     try {
       await menuFor("bin.card", { ids: [MED_V] }).choose("Relink…");
       expect(healthStore.getState().dialogOpen).toBe(true);
