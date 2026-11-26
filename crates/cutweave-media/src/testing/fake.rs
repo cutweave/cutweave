@@ -17,8 +17,8 @@
 //! **Decoders** behave like the real ones (the backend contract holds both to it): they poll
 //! their [`CancelToken`](crate::CancelToken), report their [`FrameIndex`], and with
 //! [`FakeBackend::with_frame_cost`] take time like a real decoder (a seek decodes forward from its
-//! keyframe, every [`FAKE_GOP_FRAMES`] frames), so timing and cancellation can be tested without
-//! FFmpeg.
+//! keyframe, every [`FAKE_GOP_FRAMES`] frames unless [`FakeVideo::with_gop`] says otherwise), so
+//! timing and cancellation can be tested without FFmpeg.
 //!
 //! **Encoded files read back.** A finished encode registers its output, so probing or decoding
 //! it serves synthetic media of the same size, rate and length (frames decode as `Yuv420p`, like
@@ -59,7 +59,8 @@ pub const FAKE_VIDEO_CODEC: &str = "rawvideo";
 /// Codec name the fake reports for its tones.
 pub const FAKE_AUDIO_CODEC: &str = "pcm_f32le";
 
-/// Frames per group of pictures in the fake's index (a keyframe every this many frames).
+/// Frames per group of pictures in the fake's index unless [`FakeVideo::with_gop`] sets another
+/// (a keyframe every this many frames).
 pub const FAKE_GOP_FRAMES: u64 = 12;
 /// Bytes per packet in the fake's index (`pos` of frame `n` is `n × this`).
 const FAKE_PACKET_BYTES: u64 = 1000;
@@ -81,6 +82,8 @@ pub struct FakeVideo {
     pub color: ColorTags,
     /// Display rotation reported by the probe (0, 90, 180, 270).
     pub rotation: u16,
+    /// Frames per group of pictures: a keyframe every this many frames (at least 1).
+    pub gop: u64,
 }
 
 impl FakeVideo {
@@ -95,6 +98,7 @@ impl FakeVideo {
             format: PixelFormat::Yuv420p,
             color: ColorTags::default(),
             rotation: 0,
+            gop: FAKE_GOP_FRAMES,
         }
     }
 
@@ -127,6 +131,14 @@ impl FakeVideo {
     #[must_use]
     pub fn with_rotation(mut self, degrees: u16) -> FakeVideo {
         self.rotation = degrees;
+        self
+    }
+
+    /// The same stream with a keyframe every `frames` frames (at least 1; default
+    /// [`FAKE_GOP_FRAMES`]).
+    #[must_use]
+    pub fn with_gop(mut self, frames: u64) -> FakeVideo {
+        self.gop = frames.max(1);
         self
     }
 
@@ -263,7 +275,7 @@ impl FakeMedia {
 
     /// What [`MediaBackend::index_media`] reports: one packet per frame in presentation order
     /// (no B-frames), pts and dts equal to the frame's time in flicks (time base
-    /// [`TimeBase::FLICKS`]), a keyframe every [`FAKE_GOP_FRAMES`] frames.
+    /// [`TimeBase::FLICKS`]), a keyframe every [`FakeVideo::gop`] frames.
     pub fn index(&self, p: &Path) -> Result<FrameIndex, MediaError> {
         let v = self.video.as_ref().ok_or_else(|| MediaError::NoStream {
             path: path::display(p),
@@ -276,7 +288,7 @@ impl FakeMedia {
                 Ok(IndexEntry {
                     pts: Some(flicks),
                     dts: Some(flicks),
-                    is_key: n % FAKE_GOP_FRAMES == 0,
+                    is_key: n % v.gop.max(1) == 0,
                     discard: false,
                     pos: i64::try_from(n * FAKE_PACKET_BYTES).unwrap_or(-1),
                 })
@@ -841,7 +853,7 @@ impl VideoDecoder for FakeVideoDecoder {
             .min(self.video.frames - 1);
         // Decode forward from the keyframe, or from where the decoder is when that is on the
         // way (the same frame again costs nothing).
-        let key = n - n % FAKE_GOP_FRAMES;
+        let key = n - n % self.video.gop.max(1);
         let from = if (key..=n + 1).contains(&self.next) {
             self.next
         } else {
@@ -986,6 +998,7 @@ impl Encoder for FakeEncoder {
                 format: PixelFormat::Yuv420p,
                 color: output_color(&v.color),
                 rotation: 0,
+                gop: FAKE_GOP_FRAMES,
             }),
             audio: self.spec.audio.as_ref().map(|a| FakeAudio {
                 rate: a.rate,

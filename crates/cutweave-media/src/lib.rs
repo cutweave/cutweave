@@ -23,7 +23,8 @@
 //! frame-exact seek and the decoder pool, and WP-1D.04 hardware decode with software fallback
 //! ([`HwMode`], [`Capabilities::hw_decode`], [`VideoDecoder::hw_failed`]). WP-2F.01 adds what
 //! proxies need: scaling while decoding ([`DecodeOpts::target_size`]), the intra-frame proxy
-//! codecs and PCM in MOV, and joining files ([`MediaBackend::concat`]).
+//! codecs and PCM in MOV, and joining files ([`MediaBackend::concat`]). WP-2D.01b adds
+//! [`ReadBack`]: a long-GOP stream decoded forward once and served backwards (reverse playback).
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
@@ -41,6 +42,7 @@ mod index;
 mod log_filter;
 mod path;
 mod pool;
+mod readback;
 pub mod testing;
 mod version;
 
@@ -65,6 +67,7 @@ pub use index::{
     is_vfr_range,
 };
 pub use pool::{DecoderLease, DecoderPool};
+pub use readback::ReadBack;
 pub use testing::FakeBackend;
 pub use version::{LibVersion, LinkedLibrary, PINNED_FFMPEG, Release};
 
