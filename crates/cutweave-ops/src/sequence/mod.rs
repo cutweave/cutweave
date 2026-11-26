@@ -270,11 +270,7 @@ fn planned(doc: &Project, media: &[MediaId], rate: FrameRate) -> Result<Vec<Plac
                 ));
             }
             let frames = match (asset.kind, asset.probe.duration) {
-                (MediaKind::Image, _) => {
-                    let five = Time::from_secs(DEFAULT_STILL_SECS)
-                        .map_err(|e| CmdError::internal(e.to_string()))?;
-                    rate.time_to_frame(five, Rounding::Nearest).max(1)
-                }
+                (MediaKind::Image, _) => crate::timeline::default_still_frames(doc, rate)?,
                 (_, Some(total)) => {
                     let t = Time::from_flicks(total.flicks())
                         .map_err(|e| CmdError::invalid(&path, e.to_string()))?;
