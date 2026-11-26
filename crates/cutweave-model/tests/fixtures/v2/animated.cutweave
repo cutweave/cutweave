@@ -110,6 +110,12 @@
               "markers": {},
               "media": "med_0000000000017c9fa16a0416be76c2a2",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": {

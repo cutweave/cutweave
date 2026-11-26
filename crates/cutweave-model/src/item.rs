@@ -10,7 +10,8 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Animatable, Custom, Duration, Extra, GroupId, ItemId, Markers, MediaId, PropId, Time, TimeError,
+    Animatable, Custom, Duration, Extra, Freeze, GroupId, ItemId, Markers, MediaId, PropId, Speed,
+    Time, TimeError,
 };
 
 /// A 2D vector (positions, scales, anchors).
@@ -310,7 +311,8 @@ pub struct Fade {
 /// A media clip: a range of a `MediaAsset` placed on a track.
 ///
 /// The clip occupies `[start, start + duration)` on the timeline and plays the source range
-/// `[source_in, source_in + duration)` (speed 1 in schema v1).
+/// `[source_in, source_in + duration × speed)`, backwards when `reverse`, or one frame of it for
+/// its whole length when it is a `freeze` frame (WP-2D.01; the mapping is `SourceMap`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
 pub struct Clip {
     /// The item ID (also its key in the track's `items`).
@@ -334,8 +336,20 @@ pub struct Clip {
     pub markers: Markers,
     /// The media this clip plays.
     pub media: MediaId,
-    /// Source position (from the start of the media) of the first frame.
+    /// Source position (from the start of the media) of the first frame (of the last frame
+    /// shown, when reversed).
     pub source_in: Time,
+    /// Playback speed (WP-2D.01): a timeline span `d` plays `d × speed` of media (INV-47).
+    /// Absent in documents written before it (the v2 fill-in adds it): normal speed.
+    #[serde(default)]
+    pub speed: Speed,
+    /// Plays its source range backwards (WP-2D.01). Absent in older documents: forwards.
+    #[serde(default)]
+    pub reverse: bool,
+    /// A freeze frame (WP-2D.01): shows the frame at `at_source` for its whole length, silent.
+    /// Absent in older documents: not a freeze frame.
+    #[serde(default)]
+    pub freeze: Option<Freeze>,
     /// Audio properties.
     pub audio: AudioProps,
     /// Visual properties.
@@ -364,6 +378,9 @@ impl Clip {
             markers: Markers::new(),
             media,
             source_in: Time::ZERO,
+            speed: Speed::ONE,
+            reverse: false,
+            freeze: None,
             audio: AudioProps::default(),
             visual: VisualProps::default(),
             custom: Custom::new(),

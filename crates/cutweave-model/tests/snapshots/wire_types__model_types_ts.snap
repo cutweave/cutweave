@@ -52,7 +52,8 @@ export type BlendMode =
  *  A media clip: a range of a `MediaAsset` placed on a track.
  * 
  *  The clip occupies `[start, start + duration)` on the timeline and plays the source range
- *  `[source_in, source_in + duration)` (speed 1 in schema v1).
+ *  `[source_in, source_in + duration × speed)`, backwards when `reverse`, or one frame of it for
+ *  its whole length when it is a `freeze` frame (WP-2D.01; the mapping is `SourceMap`).
  */
 export type Clip = {
 	/**  The item ID (also its key in the track's `items`). */
@@ -76,8 +77,23 @@ export type Clip = {
 	markers: { [key in MarkerId]: Marker },
 	/**  The media this clip plays. */
 	media: MediaId,
-	/**  Source position (from the start of the media) of the first frame. */
+	/**
+	 *  Source position (from the start of the media) of the first frame (of the last frame
+	 *  shown, when reversed).
+	 */
 	source_in: Time,
+	/**
+	 *  Playback speed (WP-2D.01): a timeline span `d` plays `d × speed` of media (INV-47).
+	 *  Absent in documents written before it (the v2 fill-in adds it): normal speed.
+	 */
+	speed?: Speed,
+	/**  Plays its source range backwards (WP-2D.01). Absent in older documents: forwards. */
+	reverse?: boolean,
+	/**
+	 *  A freeze frame (WP-2D.01): shows the frame at `at_source` for its whole length, silent.
+	 *  Absent in older documents: not a freeze frame.
+	 */
+	freeze?: Freeze | null,
 	/**  Audio properties. */
 	audio: AudioProps,
 	/**  Visual properties. */
@@ -220,6 +236,15 @@ export type FrameRate = {
 };
 
 /**
+ *  A freeze frame (WP-2D.01): the clip shows one frame of its media for its whole length, and is
+ *  silent.
+ */
+export type Freeze = {
+	/**  The media position of the frame shown. */
+	at_source: Time,
+};
+
+/**
  *  The ID of a linked group (items that move and delete together, e.g. the video and audio
  *  of one imported file): `grp_…`.
  * 
@@ -353,13 +378,16 @@ media_kind: MediaKind } |
 item: ItemId; 
 /**  What is wrong. */
 reason: string } | 
-/**  A clip that reads past the end of its media (`source_in + duration > media duration`). */
+/**
+ *  A clip that reads past the end of its media (`source_in + duration × speed > media
+ *  duration`, or a freeze frame at or past the end).
+ */
 { invariant: "source_out_of_bounds"; 
 /**  The item. */
 item: ItemId; 
 /**  The media. */
 media: MediaId; 
-/**  `source_in + duration`. */
+/**  `source_in + duration × speed` (a freeze frame's position). */
 source_end: Time; 
 /**  The media duration. */
 media_duration: Duration } | 
@@ -730,6 +758,16 @@ export type SequenceFormat = {
  *  Serialized as a string, exported to TypeScript as `string`.
  */
 export type SequenceId = string;
+
+/**
+ *  A constant playback speed: `num/den` times normal, from 1/10 to 100, in lowest terms.
+ * 
+ *  Serialized as `{"num": 2, "den": 1}`; unreduced input is reduced on parse.
+ */
+export type Speed = {
+	num: number,
+	den: number,
+};
 
 /**  One stream of a media file. */
 export type StreamInfo = {

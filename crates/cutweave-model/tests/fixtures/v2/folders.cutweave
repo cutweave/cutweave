@@ -257,6 +257,12 @@
               "markers": {},
               "media": "med_0000000000067f14a41525f167e5145f",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,

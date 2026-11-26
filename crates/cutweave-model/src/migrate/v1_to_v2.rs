@@ -29,6 +29,8 @@
 //!
 //! 7. **Audio fades** (`add_audio_fades`, WP-2E.01): every clip gets `audio.fade_in` and
 //!    `audio.fade_out` (`{"duration": 0, "curve": "linear"}`, no fade).
+//! 8. **Speed** (`add_clip_speed`, WP-2D.01): every clip gets `speed` (`{"num": 1, "den": 1}`),
+//!    `reverse` (`false`) and `freeze` (`null`).
 //!
 //! Adding a step for another work package: write `fn(&mut Value, &mut Vec<String>) ->
 //! Result<(), MigrationError>`, append it to [`STEPS`], extend `tests/fixtures/v2/` through
@@ -53,6 +55,7 @@ const STEPS: &[Step] = &[
     add_media_folders,
     add_visual_props,
     add_audio_fades,
+    add_clip_speed,
 ];
 
 /// The v1 → v2 migration.
@@ -93,6 +96,7 @@ pub(super) fn fill_in_v2(doc: &mut Value) -> Result<(), MigrationError> {
         add_media_folders,
         add_visual_props,
         add_audio_fades,
+        add_clip_speed,
     ] {
         step(root, &mut notes)?;
     }
@@ -451,6 +455,24 @@ fn add_audio_fades(root: &mut JsonObject, _notes: &mut Vec<String>) -> Result<()
     Ok(())
 }
 
+fn add_clip_speed(root: &mut JsonObject, _notes: &mut Vec<String>) -> Result<(), MigrationError> {
+    for (path, seq) in sequences(root)? {
+        for (track_path, track) in tracks(seq, &path)? {
+            for (_, item) in items(track, &track_path)? {
+                // Schema v2 holds only clips; a kind this step does not know keeps its shape.
+                if item.get("kind").is_some_and(|k| k != "clip") {
+                    continue;
+                }
+                item.entry("speed")
+                    .or_insert_with(|| serde_json::json!({"num": 1, "den": 1}));
+                item.entry("reverse").or_insert(Value::Bool(false));
+                item.entry("freeze").or_insert(Value::Null);
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -472,6 +494,31 @@ mod tests {
         assert_eq!(item["audio"]["pan"], 0.0);
         assert_eq!(item["audio"]["fade_in"]["duration"], 0);
         assert_eq!(item["audio"]["fade_out"]["curve"], "linear");
+        assert_eq!(item["speed"], json!({"num": 1, "den": 1}));
+        assert_eq!(item["reverse"], false);
+        assert_eq!(item["freeze"], Value::Null);
+        let once = doc.clone();
+        fill_in_v2(&mut doc).unwrap();
+        assert_eq!(doc, once);
+    }
+
+    #[test]
+    fn a_v2_document_without_speed_gets_normal_speed_and_keeps_a_set_one() {
+        let mut doc = json!({"meta": {"schema_version": 2},
+            "sequences": {"s": {"tracks": {"t": {"items": {
+                "plain": {"kind": "clip"},
+                "fast": {"kind": "clip", "speed": {"num": 2, "den": 1}, "reverse": true,
+                         "freeze": {"at_source": 5}},
+                "other": {"kind": "text"}}}}}}});
+        fill_in_v2(&mut doc).unwrap();
+        let items = &doc["sequences"]["s"]["tracks"]["t"]["items"];
+        assert_eq!(items["plain"]["speed"], json!({"num": 1, "den": 1}));
+        assert_eq!(items["plain"]["reverse"], false);
+        assert_eq!(items["plain"]["freeze"], Value::Null);
+        assert_eq!(items["fast"]["speed"], json!({"num": 2, "den": 1}));
+        assert_eq!(items["fast"]["reverse"], true);
+        assert_eq!(items["fast"]["freeze"], json!({"at_source": 5}));
+        assert_eq!(items["other"].get("speed"), None);
         let once = doc.clone();
         fill_in_v2(&mut doc).unwrap();
         assert_eq!(doc, once);

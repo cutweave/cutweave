@@ -189,6 +189,12 @@
               "markers": {},
               "media": "med_0000000000027d0d864d96abce9059f8",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,
@@ -283,6 +289,12 @@
               "markers": {},
               "media": "med_0000000000027d0d864d96abce9059f8",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,
@@ -339,6 +351,12 @@
               "markers": {},
               "media": "med_0000000000027d0d864d96abce9059f8",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,
@@ -409,6 +427,12 @@
               "markers": {},
               "media": "med_0000000000017bfc91f4e4cb54a6dfef",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,
@@ -469,6 +493,12 @@
               "markers": {},
               "media": "med_00000000000771e28ce44861530185ff",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,
@@ -539,6 +569,12 @@
               "markers": {},
               "media": "med_0000000000017bfc91f4e4cb54a6dfef",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 4.25,
                 "pan": 0.0,
@@ -595,6 +631,12 @@
               "markers": {},
               "media": "med_00000000000371efa3e10f159aef3ea3",
               "source_in": 235200000,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,

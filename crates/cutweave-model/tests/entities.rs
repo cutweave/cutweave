@@ -354,3 +354,46 @@ fn seeded_id_high_water_finds_the_streams_own_ids_only() {
     assert_eq!(project.seeded_id_high_water(8), 0);
     assert_eq!(Project::new("Empty").seeded_id_high_water(7), 0);
 }
+
+/// WP-2D.01: the source bound (INV-4) counts the speed, and a freeze frame reads one position.
+#[test]
+fn the_source_bound_counts_speed_and_freeze_frames() {
+    let check = |edit: &dyn Fn(&mut Value)| {
+        let mut value: Value =
+            serde_json::from_str(&fixture("invalid/valid-base.cutweave")).unwrap();
+        let seq = "seq_0000000000017000800000000000b001";
+        let track = "trk_0000000000017000800000000000c001";
+        let item = "itm_0000000000017000800000000000d001";
+        edit(&mut value["sequences"][seq]["tracks"][track]["items"][item]);
+        let project: Project = serde_json::from_value(value).unwrap();
+        project.violations()
+    };
+    // A 2 s clip of 10 s media: 5× plays exactly all of it, 6× would read 12 s.
+    assert_eq!(check(&|c| c["speed"] = json!({"num": 5, "den": 1})), vec![]);
+    let past = check(&|c| c["speed"] = json!({"num": 6, "den": 1}));
+    assert!(
+        matches!(past.as_slice(), [Invariant::SourceOutOfBounds { source_end, .. }]
+            if *source_end == Time::from_secs(12).unwrap()),
+        "{past:?}"
+    );
+    // Reversed reads the same range.
+    let reversed = check(&|c| {
+        c["speed"] = json!({"num": 5, "den": 1});
+        c["reverse"] = json!(true);
+    });
+    assert_eq!(reversed, vec![]);
+    // A freeze frame's speed does not count; its position must lie inside the media.
+    let frozen = check(&|c| {
+        c["speed"] = json!({"num": 100, "den": 1});
+        c["freeze"] = json!({"at_source": 9 * 705_600_000_i64});
+    });
+    assert_eq!(frozen, vec![]);
+    let frozen_past = check(&|c| c["freeze"] = json!({"at_source": 7_056_000_000_i64}));
+    assert!(
+        matches!(
+            frozen_past.as_slice(),
+            [Invariant::SourceOutOfBounds { .. }]
+        ),
+        "{frozen_past:?}"
+    );
+}
