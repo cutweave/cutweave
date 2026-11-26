@@ -443,6 +443,25 @@ Invariants:
 - **INV-191** Each copy equals its source except id, group, attachment, start and (under `new_track`) track.
 - **INV-192** The originals never change, except by the ripple of an `insert` placement.
 
+### 4.8a `timeline.copy`, `timeline.paste`, `clip.paste_attributes`
+
+```text
+timeline.copy { items: [ItemId] } -> { clipboard: ClipboardPayload }                  # query, nothing changes
+timeline.paste { payload, at, track?, mode? } -> { copies: [{source, copy}], created_tracks, report }
+clip.paste_attributes { from, to: [ItemId], which: ["transform"|"crop"|"flip"|"compositing"|"audio"] } -> { changed: [ItemId] }
+```
+
+`ClipboardPayload` (version 1) holds the copied items (and their linked partners) with starts relative to the earliest one, the source tracks in display order with their kind and row (distance from the top-most one), the source frame rate and the span. The editor keeps it as `application/x-cutweave-items+json` on the system clipboard; an agent passes it from `timeline.copy` to `timeline.paste`.
+
+Paste places the items like `item.duplicate` does: each on the track its row maps to (the top-most payload track goes to `track`; the others keep their rows and need the same kind, `Invalid{path:"/track"}` otherwise; without `track` they return to their source tracks), at `at` plus the relative start, with the placement `mode` (default `insert` when an item lands on the magnetic track, else `reject`). Items on the magnetic track form one block from `at` (INV-41, INV-123). Every item, group and item marker gets a new ID and links are remapped; a group left with one member is dropped. A copied child stays attached to the copy of its parent; with its parent not copied it keeps it only if the parent is in the target sequence and the copy starts inside it (INV-9). Media references are kept (a media not in the project is `NotFound`), so paste works across sequences. Another frame rate snaps starts and durations to the target's frame grid. `clip.paste_attributes` copies the chosen property groups with their keyframes and leaves names, timing, media and links alone; there is no `effects` group until effects exist.
+
+Invariants:
+
+- **INV-193** `paste(copy(x))` equals `x` except IDs, groups, attachments and start (a shift by `at − earliest start`).
+- **INV-194** Locked target tracks: `Locked`, nothing changes (INV-27).
+- **INV-195** Pasting never reuses an ID, in the payload or the document (INV-10, INV-23).
+- **INV-196** `timeline.copy` and a payload never change the document; a payload of another version is `Invalid{path:"/payload/version"}`.
+
 ### 4.9 `clip.trim`
 
 ```text
