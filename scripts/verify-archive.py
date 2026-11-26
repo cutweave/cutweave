@@ -10,8 +10,7 @@ again and compares. Usage:
 
 It prints one line per problem and exits 1 if there is any: a missing file, a wrong size or hash,
 a file the list does not name (the engine's own `.cutweave/` folder aside), or (in a zip) a
-compressed entry. It needs only Python's standard
-library and writes nothing.
+compressed entry. It needs only Python's standard library and writes nothing.
 """
 
 import hashlib
