@@ -11,7 +11,8 @@
 //! - disconnecting mid-request cancels the decode within 100 ms; the semaphore bounds the work
 //!   in flight;
 //! - filmstrips (sprite + manifest), waveforms (peak data and PNG, `not_ready` before the
-//!   analysis) and `/media/frame` = `render.frame`, byte for byte.
+//!   analysis) and `/media/frame` = `render.frame`, byte for byte;
+//! - media with a display rotation: upright thumbnails and filmstrip tiles (#207).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -34,11 +35,21 @@ use serde_json::{Value, json};
 
 /// A 4 s 30 fps 320×180 clip with a stereo tone, on disk (only hashed) and in `fake`.
 fn fake_clip(dir: &Path, name: &str, fake: FakeBackend) -> (FakeBackend, PathBuf) {
+    fake_clip_turned(dir, name, fake, 0)
+}
+
+/// [`fake_clip`] whose probe reports a display rotation (a phone clip shot upright).
+fn fake_clip_turned(
+    dir: &Path,
+    name: &str,
+    fake: FakeBackend,
+    rotation: u16,
+) -> (FakeBackend, PathBuf) {
     let path = dir.join(name);
     std::fs::write(&path, format!("fake media {name}")).unwrap();
     let d = Duration::from_secs(4).unwrap();
     let media = FakeMedia {
-        video: Some(FakeVideo::lasting(320, 180, FrameRate::FPS_30, d)),
+        video: Some(FakeVideo::lasting(320, 180, FrameRate::FPS_30, d).with_rotation(rotation)),
         audio: Some(FakeAudio::tone(SampleRate::HZ_48_000, 2, d)),
     };
     (fake.with_media(&path, media), path)
@@ -56,11 +67,23 @@ struct Fixture {
 
 /// `analysis`: run the import analysis (and wait for it); `cost`: wall time per decoded frame.
 fn fixture(tag: &str, analysis: bool, cost: Wall, concurrency: usize) -> Fixture {
+    fixture_turned(tag, analysis, cost, concurrency, 0)
+}
+
+/// [`fixture`] with a clip whose probe reports a display rotation.
+fn fixture_turned(
+    tag: &str,
+    analysis: bool,
+    cost: Wall,
+    concurrency: usize,
+    rotation: u16,
+) -> Fixture {
     let dir = TempDir::new(tag);
-    let (fake, clip) = fake_clip(
+    let (fake, clip) = fake_clip_turned(
         dir.path(),
         "a.mp4",
         FakeBackend::new().with_frame_cost(cost),
+        rotation,
     );
     let config = FullConfig {
         analysis,
@@ -492,6 +515,57 @@ fn filmstrips_waveforms_and_frames() {
     }
     let boxed = s.get("/media/frame?t=0&w=320&h=90", &[]);
     assert_eq!(jpeg_size(&boxed.body), (160, 90));
+}
+
+#[test]
+fn rotated_media_give_upright_thumbnails_and_filmstrips() {
+    // A 320×180 clip the probe says to show turned a quarter: a 180×320 picture.
+    let f = fixture_turned("turned", true, Wall::ZERO, 4, 90);
+    let s = &f.server;
+    let decoded = f.fake.decoded_frames();
+
+    // The poster and the filmstrip of the import analysis are the upright ones.
+    let poster = s.get(&format!("/media/{}/thumb", f.media), &[]);
+    assert_eq!(
+        poster.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&poster.body)
+    );
+    // Never upscaled: 320 px asked for, the upright picture is 180 wide.
+    assert_eq!(jpeg_size(&poster.body), (180, 320));
+    let strip = s.get(&format!("/media/{}/filmstrip", f.media), &[]);
+    assert_eq!(strip.status, 200);
+    let manifest: Value =
+        serde_json::from_str(&strip.header("x-cutweave-filmstrip").unwrap()).unwrap();
+    assert_eq!(
+        (manifest["tile_w"].clone(), manifest["tile_h"].clone()),
+        (json!(160), json!(284))
+    );
+    let sprite = jpeg_size(&strip.body);
+    assert_eq!(
+        (json!(sprite.0), json!(sprite.1)),
+        (manifest["sprite_w"].clone(), manifest["sprite_h"].clone())
+    );
+    assert_eq!(
+        f.fake.decoded_frames(),
+        decoded,
+        "both were made by the import analysis"
+    );
+
+    // A width is the upright picture's, and `h` narrows the tiles by its aspect.
+    let thumb = s.get(&format!("/media/{}/thumb?t=1000&w=90", f.media), &[]);
+    assert_eq!(jpeg_size(&thumb.body), (90, 160));
+    let short = s.get(
+        &format!("/media/{}/filmstrip?w=160&h=160&count=4", f.media),
+        &[],
+    );
+    let short: Value =
+        serde_json::from_str(&short.header("x-cutweave-filmstrip").unwrap()).unwrap();
+    assert_eq!(
+        (short["tile_w"].clone(), short["tile_h"].clone()),
+        (json!(90), json!(160))
+    );
 }
 
 #[test]

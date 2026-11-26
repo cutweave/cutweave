@@ -146,12 +146,14 @@ impl MediaState {
         self.doc.snapshot()
     }
 
-    /// The cache reference of `file`: its registered hash, or a fast hash of the file.
+    /// The cache reference of `file`: its registered hash, or a fast hash of the file, and the
+    /// probe's display rotation (thumbnails are upright, as the preview shows the picture).
     pub fn media_ref(file: &MediaFile) -> Result<MediaRef, CacheError> {
-        match file.hash {
-            Some(hash) => Ok(MediaRef::new(file.path.clone(), hash)),
-            None => MediaRef::from_path(file.path.clone()),
-        }
+        let reference = match file.hash {
+            Some(hash) => MediaRef::new(file.path.clone(), hash),
+            None => MediaRef::from_path(file.path.clone())?,
+        };
+        Ok(reference.with_rotation(file.probe.rotation))
     }
 }
 
@@ -387,7 +389,8 @@ impl AnalysisStage for ThumbStage {
 
     fn run(&self, media: &AnalysisInput, ctx: &JobCtx) -> Result<(), JobError> {
         ctx.check()?;
-        let reference = MediaRef::new(PathBuf::from(&media.path), hash_of(media)?);
+        let reference = MediaRef::new(PathBuf::from(&media.path), hash_of(media)?)
+            .with_rotation(media.probe.rotation);
         let cancel = job_cancel(ctx);
         self.thumbs
             .prefetch(&reference, PrefetchSpec::default(), &cancel, &mut |f| {
