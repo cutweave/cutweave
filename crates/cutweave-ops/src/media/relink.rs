@@ -566,6 +566,33 @@ struct Candidate {
     taken: bool,
 }
 
+/// For each asset of `targets` no hash matched: the one untaken candidate with its file name,
+/// kind and duration, if there is exactly one.
+fn match_by_name(
+    targets: &[MediaAsset],
+    candidates: &mut [Candidate],
+    found: &mut BTreeMap<MediaId, (usize, RelinkMatch)>,
+) {
+    for asset in targets {
+        if found.contains_key(&asset.id) {
+            continue;
+        }
+        let Some(name) = asset.path_abs.as_deref().map(file_name_key) else {
+            continue;
+        };
+        let mut alike = candidates.iter().enumerate().filter(|(_, c)| {
+            !c.taken
+                && file_name_key(&c.path) == name
+                && kind_of_probe(&c.probed.probe) == Some(asset.kind)
+                && c.probed.probe.duration == asset.probe.duration
+        });
+        if let (Some((index, _)), None) = (alike.next(), alike.next()) {
+            candidates[index].taken = true;
+            found.insert(asset.id, (index, RelinkMatch::Name));
+        }
+    }
+}
+
 impl EngineCommand for MediaRelinkFolder {
     type Context = RelinkCtx;
     type Output = MediaRelinkFolderOutput;
@@ -634,25 +661,7 @@ impl EngineCommand for MediaRelinkFolder {
             }
         }
 
-        // No file has the content: the one file with the name, kind and duration.
-        for asset in &targets {
-            if found.contains_key(&asset.id) {
-                continue;
-            }
-            let Some(name) = asset.path_abs.as_deref().map(file_name_key) else {
-                continue;
-            };
-            let mut alike = candidates.iter().enumerate().filter(|(_, c)| {
-                !c.taken
-                    && file_name_key(&c.path) == name
-                    && kind_of_probe(&c.probed.probe) == Some(asset.kind)
-                    && c.probed.probe.duration == asset.probe.duration
-            });
-            if let (Some((index, _)), None) = (alike.next(), alike.next()) {
-                candidates[index].taken = true;
-                found.insert(asset.id, (index, RelinkMatch::Name));
-            }
-        }
+        match_by_name(&targets, &mut candidates, &mut found);
 
         let mut batch = Vec::with_capacity(found.len());
         for asset in &targets {
