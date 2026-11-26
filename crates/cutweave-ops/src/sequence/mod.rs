@@ -38,7 +38,6 @@ pub use reframe::ReframePolicy;
 use crate::{
     media::has_audio_stream,
     project::SequenceBrief,
-    timeline::DEFAULT_STILL_SECS,
     util::{MAX_NAME_CHARS, check_name},
 };
 

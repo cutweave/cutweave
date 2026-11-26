@@ -26,7 +26,7 @@ use cutweave_model::{
 };
 
 use super::{
-    DEFAULT_STILL_SECS, OverlapPolicy,
+    OverlapPolicy,
     magnetic::clamp_to_end,
     placement::{DryIds, Edit, Ids, PlacementMode, Plan, resolve_mode, time},
 };
@@ -155,6 +155,7 @@ enum Slot {
 /// the media bounds (INV-24, INV-25).
 fn range(
     cmd: &TimelineInsert,
+    doc: &Project,
     sequence: &Sequence,
     media: &MediaAsset,
 ) -> Result<(i64, Time, Duration), CmdError> {
@@ -281,7 +282,7 @@ fn plan(cmd: &TimelineInsert, doc: &Project, ids: &mut dyn Ids) -> Result<Planne
         PlacementMode::Reject
     };
     let mode = resolve_mode(cmd.mode, cmd.overlap, default)?;
-    let (at, source_in, duration) = range(cmd, sequence, media)?;
+    let (at, source_in, duration) = range(cmd, doc, sequence, media)?;
 
     let mut e = Edit::new(doc, cmd.sequence, "/at")?;
     let at = if track.magnetic {

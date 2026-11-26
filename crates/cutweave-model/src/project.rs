@@ -2,6 +2,7 @@
 //! The project document root (arch §4.2), schema v2: meta, settings, media, the media folders
 //! (ADR-0020) and sequences, plus plugin data.
 
+use crate::Duration;
 use std::collections::BTreeMap;
 
 use imbl::OrdMap;
