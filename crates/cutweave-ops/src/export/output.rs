@@ -251,7 +251,7 @@ pub fn settle(
                 return Err(CmdError::invalid(
                     "/path",
                     format!(
-                        "another queued or running export writes `{}`; choose another file or \
+                        "another queued or running export is already writing `{}`; choose another file or \
                          `collision: \"rename\"`",
                         out.display()
                     ),
