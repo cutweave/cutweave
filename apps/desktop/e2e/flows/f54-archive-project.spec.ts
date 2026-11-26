@@ -91,9 +91,12 @@ function verifyArchive(folder: string): Manifest {
     expect(bytes.length, file.path).toBe(file.size);
     expect(createHash("sha256").update(bytes).digest("hex"), file.path).toBe(file.hash);
   }
-  // The list is the whole folder but the list itself.
+  // The list is the whole folder but the list itself (and the engine's own bookkeeping folder,
+  // which every project folder has).
   expect([...manifest.files.map((f) => f.path), "archive.json"].sort()).toEqual(
-    filesBelow(folder).sort(),
+    filesBelow(folder)
+      .filter((file) => !file.startsWith(".cutweave/"))
+      .sort(),
   );
   return manifest;
 }

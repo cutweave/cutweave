@@ -20,7 +20,9 @@
 //!   name: an interrupted or cancelled run leaves no file under the final name.
 //!
 //! **The manifest** ([`ArchiveManifest`]) lists every file but itself, with paths relative to
-//! its own folder, sorted. `scripts/verify-archive.py` checks a folder or a zip against it.
+//! its own folder, sorted. `scripts/verify-archive.py` checks a folder or a zip against it. The
+//! engine's bookkeeping folder of a project folder (`.cutweave/`: the lock, the journal) is not
+//! listed and never goes into a zip: it is written whenever the project is opened.
 //!
 //! The open project and its files are never written to, so this is not an undo step. Agents
 //! and headless callers may only archive into the folders the user approved, as for

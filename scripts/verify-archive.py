@@ -9,7 +9,8 @@ again and compares. Usage:
     python scripts/verify-archive.py <archive folder | archive.zip>
 
 It prints one line per problem and exits 1 if there is any: a missing file, a wrong size or hash,
-a file the list does not name, or (in a zip) a compressed entry. It needs only Python's standard
+a file the list does not name (the engine's own `.cutweave/` folder aside), or (in a zip) a
+compressed entry. It needs only Python's standard
 library and writes nothing.
 """
 
@@ -20,6 +21,9 @@ import zipfile
 from pathlib import Path
 
 MANIFEST = "archive.json"
+# The engine's bookkeeping folder of a project folder (its lock and journal). It is written
+# whenever the project is opened, so it is not part of the archive's list.
+BOOKKEEPING = ".cutweave/"
 CHUNK = 1 << 20
 
 
@@ -61,6 +65,7 @@ def verify_folder(folder: Path) -> list[str]:
         return [f"no {MANIFEST} in {folder}"]
     manifest = json.loads((folder / MANIFEST).read_text(encoding="utf-8"))
     names = {p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()}
+    names = {name for name in names if not name.startswith(BOOKKEEPING)}
     return check(manifest, names, lambda path: (folder / path).open("rb"))
 
 
