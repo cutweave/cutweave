@@ -2,12 +2,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PreviewFrame } from "../shared/api.ts";
 import {
+  canvasLoopClock,
   currentFramePresenter,
   DEFAULT_LATENCY_MS,
   type FramePresenter,
   installedPresenter,
   type LoopClock,
-  canvasLoopClock,
   PresentLoop,
   setFramePresenter,
 } from "./present-loop.ts";
@@ -220,7 +220,11 @@ describe("the canvas clock", () => {
     const loop = new PresentLoop(
       source,
       null,
-      canvasLoopClock(() => canvasIn, main, () => 0),
+      canvasLoopClock(
+        () => canvasIn,
+        main,
+        () => 0,
+      ),
     );
     loop.start();
     expect(main.requestAnimationFrame).toHaveBeenCalledTimes(1);
@@ -245,7 +249,11 @@ describe("the canvas clock", () => {
     const loop = new PresentLoop(
       { frameAtClock: () => null },
       null,
-      canvasLoopClock(() => canvasIn, main, () => 0),
+      canvasLoopClock(
+        () => canvasIn,
+        main,
+        () => 0,
+      ),
     );
     loop.start();
     expect(popout.requestAnimationFrame).toHaveBeenCalledTimes(1);

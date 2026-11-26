@@ -105,7 +105,9 @@ export function useWindowTitle(): void {
   const docName = useDocStore((s) => s.project?.meta.name ?? null);
   const name = docName ?? (engineName === "" ? t("projectUi.untitled") : engineName);
   useEffect(() => {
-    // Without an engine (plain `vite` dev) there is no project to name.
+    // Without an engine (plain `vite` dev) there is no project to name. The main window's title
+    // (a detached panel's window is titled by `shell/windows.ts`).
+    // biome-ignore lint/style/noRestrictedGlobals: the main window's own title
     document.title = known
       ? t(dirty ? "projectUi.windowTitleDirty" : "projectUi.windowTitle", { name })
       : t("app.windowTitle");

@@ -63,7 +63,9 @@ const wrapped = new WeakMap<FunctionComponent, FunctionComponent<IDockviewPanelP
  * The panel component the dock renders for `component`: the same panel, with its menus and
  * tooltips in its own window. One wrapper per component, so the dock never remounts a panel.
  */
-export function inPanelWindow(component: FunctionComponent): FunctionComponent<IDockviewPanelProps> {
+export function inPanelWindow(
+  component: FunctionComponent,
+): FunctionComponent<IDockviewPanelProps> {
   const known = wrapped.get(component);
   if (known !== undefined) return known;
   const Panel = component;

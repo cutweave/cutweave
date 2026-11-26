@@ -15,6 +15,7 @@ import type {
 } from "@cutweave/protocol";
 import { createStore } from "zustand/vanilla";
 import { activeSequence } from "../menus/surfaces/facts.ts";
+import { activeDocument } from "../shell/windows.ts";
 import { viewStore } from "../state/viewStore.ts";
 
 /** The system clipboard's format for copied clips (WP-2A.06). */
@@ -83,20 +84,23 @@ export function isWritingClipboard(): boolean {
  * clipboard from a `copy` event, so this asks the browser for one and fills it in.
  */
 function writeSystemClipboard(payload: ClipboardPayload): void {
-  if (typeof document === "undefined") return;
+  if (typeof globalThis.document === "undefined") return;
+  // The document the person is working in: a detached Timeline's window has its own, and only a
+  // document with the person's key press may write the clipboard.
+  const doc = activeDocument();
   const json = JSON.stringify(payload);
   const fill = (event: ClipboardEvent): void => {
     event.clipboardData?.setData(CLIPBOARD_MIME, json);
     event.preventDefault();
   };
   writing = true;
-  document.addEventListener("copy", fill, { capture: true, once: true });
+  doc.addEventListener("copy", fill, { capture: true, once: true });
   try {
-    document.execCommand("copy");
+    doc.execCommand("copy");
   } catch {
     // The in-app clipboard still works; only the cross-window paste is lost.
   } finally {
-    document.removeEventListener("copy", fill, { capture: true });
+    doc.removeEventListener("copy", fill, { capture: true });
     writing = false;
   }
 }

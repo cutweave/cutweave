@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { DEFAULT_VIEW_STATE, TimelineCanvas, type ViewState } from "@cutweave/timeline";
-import {
-  Icon,
-  IconButton,
-  Toolbar,
-  ToolbarSeparator,
-  Tooltip,
-  useOwnerWindow,
-} from "@cutweave/ui";
+import { Icon, IconButton, Toolbar, ToolbarSeparator, Tooltip, useOwnerWindow } from "@cutweave/ui";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";

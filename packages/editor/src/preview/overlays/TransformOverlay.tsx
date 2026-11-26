@@ -9,6 +9,8 @@
 //
 // It is DOM in the preview frame (same page as the canvas, so it lines up at every size) and, unlike
 // the canvas, may draw outside it: a clip scaled past the frame keeps its handles reachable.
+
+import { useOwnerWindow } from "@cutweave/ui";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -20,11 +22,10 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useOwnerWindow } from "@cutweave/ui";
-import { observeSize } from "../../shell/windows.ts";
 import { engineStore } from "../../engine/engineStore.ts";
 import { i18n } from "../../i18n/index.ts";
 import { matchEvent } from "../../keymap/store.ts";
+import { observeSize } from "../../shell/windows.ts";
 import { useDocStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { useViewStore, viewStore } from "../../state/viewStore.ts";

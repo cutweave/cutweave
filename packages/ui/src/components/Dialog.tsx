@@ -20,6 +20,12 @@ function focusWindowOf(doc: Document): void {
   }
 }
 
+/** Whether `doc` is the main document: the one Radix places and focuses dialogs in by default. */
+function isMainDocument(doc: Document): boolean {
+  // biome-ignore lint/style/noRestrictedGlobals: Radix's own default is the main document
+  return doc === document;
+}
+
 export interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -92,12 +98,13 @@ export function Dialog({
           className={cx("cw-dialog", className)}
           onOpenAutoFocus={(event) => {
             const content = event.target as HTMLElement | null;
-            const doc = content?.ownerDocument ?? document;
+            const doc = content?.ownerDocument;
+            if (content === null || doc === undefined) return;
             openerRef.current = doc.activeElement as HTMLElement | null;
             focusWindowOf(doc);
             // Radix finds the first field by the main document's focus; in another window's
             // document the dialog focuses it itself.
-            if (doc !== document && content !== null) {
+            if (!isMainDocument(doc)) {
               event.preventDefault();
               (content.querySelector<HTMLElement>(FOCUSABLE) ?? content).focus();
             }

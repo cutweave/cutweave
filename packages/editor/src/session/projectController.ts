@@ -14,10 +14,10 @@
 import { type ProjectStatus, RpcError } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
+import { activeDocument } from "../shell/windows.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
-import { activeDocument } from "../shell/windows.ts";
 import { applyNewProjectWorkspace } from "../workspace/newProject.ts";
 import { type DesktopBridge, isSessionCommand, type SessionMenuCommand } from "./desktop.ts";
 import { asRpcError, describeProjectError, isUnsavedChanges } from "./errors.ts";

@@ -6,8 +6,10 @@ import type { DockviewTheme } from "dockview-react";
  * Returns 0 where the token stylesheet is not loaded (unit tests).
  */
 export function tokenPx(name: string): number {
-  if (typeof document === "undefined") return 0;
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // biome-ignore lint/style/noRestrictedGlobals: the main document's tokens: every window copies its stylesheets
+  const root = typeof document === "undefined" ? null : document.documentElement;
+  if (root === null) return 0;
+  const raw = getComputedStyle(root).getPropertyValue(name).trim();
   const value = Number.parseFloat(raw);
   return Number.isFinite(value) ? value : 0;
 }

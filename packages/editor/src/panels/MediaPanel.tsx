@@ -616,10 +616,10 @@ export function MediaPanel() {
   };
 
   // A slow second click on the name of the only selected tile renames it, as in a file manager.
-  const slowRename = useRef<number | null>(null);
+  const slowRename = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
-      if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+      if (slowRename.current !== null) clearTimeout(slowRename.current);
     },
     [],
   );
@@ -635,10 +635,10 @@ export function MediaPanel() {
     applySelection(clickTile(order, before, tile, { ctrl, shift: e.shiftKey }));
     const at = order.findIndex((o) => o.kind === tile.kind && o.id === tile.id);
     if (at >= 0) setFocusIndex(at);
-    if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+    if (slowRename.current !== null) clearTimeout(slowRename.current);
     slowRename.current = null;
     if (sole && onName && !ctrl && !e.shiftKey) {
-      slowRename.current = window.setTimeout(() => {
+      slowRename.current = setTimeout(() => {
         slowRename.current = null;
         folderUiStore.getState().startRename(tile);
       }, SLOW_CLICK_MS);
@@ -1302,7 +1302,7 @@ export function MediaPanel() {
             onKeyDown={onKeyDown}
             // A double-click is not a slow click: it opens or inserts instead of renaming.
             onDoubleClickCapture={() => {
-              if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+              if (slowRename.current !== null) clearTimeout(slowRename.current);
               slowRename.current = null;
             }}
             onFocus={(e) => {
