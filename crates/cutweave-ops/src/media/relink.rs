@@ -184,7 +184,8 @@ pub struct MediaLocationSet {
 /// Records where a media file is now. Internal plumbing of `media.relink` and
 /// `media.relink_folder`, which check the file first: this command only writes the path, and
 /// the content hash and probe results when the file's content is not what was imported. The
-/// project-relative path is recomputed when the project is saved.
+/// project-relative path is dropped (it named the old place) and recomputed when the project is
+/// saved.
 #[command(
     name = "media.set_location",
     summary = "Record where a media file is now (used by relink)",
@@ -261,6 +262,8 @@ impl Command for MediaSetLocation {
         self.validate(&tx.query_ctx())?;
         tx.update_media(self.media, |m| {
             m.path_abs = Some(self.path.clone());
+            // The old relative path names the old place; the next save computes the new one.
+            m.path_rel = None;
             if let Some(hash) = &self.content_hash {
                 m.content_hash = Some(hash.clone());
             }

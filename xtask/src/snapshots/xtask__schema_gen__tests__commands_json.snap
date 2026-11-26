@@ -21005,7 +21005,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Records where a media file is now. Internal plumbing of `media.relink` and\n`media.relink_folder`, which check the file first: this command only writes the path, and\nthe content hash and probe results when the file's content is not what was imported. The\nproject-relative path is recomputed when the project is saved.",
+        "description": "Records where a media file is now. Internal plumbing of `media.relink` and\n`media.relink_folder`, which check the file first: this command only writes the path, and\nthe content hash and probe results when the file's content is not what was imported. The\nproject-relative path is dropped (it named the old place) and recomputed when the project is\nsaved.",
         "properties": {
           "content_hash": {
             "default": null,
