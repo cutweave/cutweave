@@ -34,6 +34,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "rpc.subscribe",
   "rpc.unsubscribe",
   "sequence.list",
+  "timeline.copy",
   "timeline.get",
   "timeline.list_markers",
   "track.list",

@@ -26,6 +26,8 @@ export type MenuDialog =
     }
   // Deleting a folder that holds something (WP-2F.08); `rest` are folders still to ask about.
   | { readonly kind: "delete-folder"; readonly folder: string; readonly rest: readonly string[] }
+  // Paste attributes… (WP-2A.06): which groups of `from` go onto the clips `to`.
+  | { readonly kind: "paste-attributes"; readonly from: string; readonly to: readonly string[] }
   // The folder picker of "Move to…" for the assets and folders chosen.
   | {
       readonly kind: "move-to";

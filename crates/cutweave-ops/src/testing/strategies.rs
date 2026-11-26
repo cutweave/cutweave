@@ -378,6 +378,9 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "item.attach" => (3, item_attach(p)),
         "item.detach" => (3, item_detach(p)),
         "item.group_select" => (1, item_group_select(p)),
+        "timeline.copy" => (1, item_delete(p)),
+        "timeline.paste" => (edits.div_ceil(2), timeline_paste(p)),
+        "clip.paste_attributes" => (edits.div_ceil(3), clip_paste_attributes(p)),
         "item.duplicate" => (edits.div_ceil(2), item_duplicate(p)),
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
@@ -2045,6 +2048,79 @@ fn item_attach(p: &Pools) -> BoxedStrategy<Value> {
 
 fn item_detach(p: &Pools) -> BoxedStrategy<Value> {
     item_unlink(p)
+}
+
+/// `timeline.paste`: a one-clip payload of an existing media onto a track of the right kind,
+/// or a payload that is not one (another version, no items, a media that does not exist).
+fn timeline_paste(p: &Pools) -> BoxedStrategy<Value> {
+    let clip = |media: MediaId, id: u128, len: i64| {
+        let item = cutweave_model::Clip::new(
+            ItemId::from_u128(id),
+            media,
+            cutweave_model::Time::ZERO,
+            cutweave_model::Duration::from_flicks(len * FPF_30)
+                .unwrap_or(cutweave_model::Duration::ZERO),
+        );
+        serde_json::to_value(cutweave_model::Item::Clip(item)).unwrap_or(Value::Null)
+    };
+    let payload = move |t: &Trk, media: MediaId, id: u128, len: i64| {
+        json!({"version": 1, "sequence": t.seq, "frame_rate": {"num": 30, "den": 1},
+               "span": len * FPF_30,
+               "tracks": [{"kind": t.kind, "row": 0, "source": t.id}],
+               "items": [{"track": 0, "item": clip(media, id, len)}]})
+    };
+    let invalid = prop_oneof![
+        any::<u32>().prop_map(|n| json!({"payload": {"version": n.saturating_add(2), "sequence": SequenceId::from_u128(1),
+            "frame_rate": {"num": 30, "den": 1}, "span": 0, "tracks": [], "items": []}, "at": 0})),
+        Just(json!({"payload": {}, "at": 0})),
+    ]
+    .boxed();
+    let tracks: Vec<Trk> = p
+        .tracks
+        .iter()
+        .filter(|t| matches!(t.kind, TrackKind::Video | TrackKind::Audio))
+        .cloned()
+        .collect();
+    if tracks.is_empty() || p.media.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let valid = (
+        select(tracks),
+        select(p.media.clone()),
+        any::<u128>(),
+        1..40_i64,
+        0..60_i64,
+        any::<bool>(),
+        option::weighted(0.4, select(MODES.to_vec())),
+    )
+        .prop_map(move |(t, m, id, len, at, back, mode)| {
+            json!({"payload": payload(&t, m.id, id, len), "at": format!("f:{at}"),
+                   "track": back.then_some(t.id), "mode": mode})
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `clip.paste_attributes`: a source, some targets and some groups.
+fn clip_paste_attributes(p: &Pools) -> BoxedStrategy<Value> {
+    let groups = ["transform", "crop", "flip", "compositing", "audio"];
+    let invalid = prop_oneof![
+        Just(json!({"from": ItemId::from_u128(1), "to": [], "which": []})),
+        (fresh::<ItemId>(), fresh::<ItemId>())
+            .prop_map(|(a, b)| json!({"from": a, "to": [b], "which": ["audio"]})),
+    ]
+    .boxed();
+    if p.items.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let valid = (
+        one_of(p.item_ids()),
+        vec(one_of(p.item_ids()), 1..=2),
+        subsequence(groups.to_vec(), 0..=5),
+    )
+        .prop_map(|(from, to, which)| json!({"from": from, "to": to, "which": which}))
+        .boxed();
+    mix(valid, invalid)
 }
 
 fn item_group_select(p: &Pools) -> BoxedStrategy<Value> {

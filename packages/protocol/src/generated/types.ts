@@ -45,6 +45,19 @@ export type AgentConnection = {
 /**  A static value or keyed values (keyframes §3.1); the wire form for TypeScript. */
 export type Animatable<T> = T | Keyframes<T>;
 
+/**  A group of properties, as `item.reset_props` and the Inspector name them. */
+export type Attribute = 
+/**  Position, scale, rotation and anchor. */
+"transform" | 
+/**  The four crop edges. */
+"crop" | 
+/**  Flip horizontal and vertical. */
+"flip" | 
+/**  Opacity and blend mode. */
+"compositing" | 
+/**  Clip gain, pan and fades. */
+"audio";
+
 /**  What `audio.set` changes. */
 export type AudioChange = 
 /**  Fade in and/or out. */
@@ -455,6 +468,26 @@ export type ClipFreezeFrameOutput = {
 };
 
 /**
+ *  Copies the chosen property groups (`transform`, `crop`, `flip`, `compositing`, `audio`) of
+ *  `from` onto each clip of `to`, with their keyframes. Names, timing, media and links are not
+ *  touched. `Locked` if a target's track is locked; nothing changes then.
+ */
+export type ClipPasteAttributes = {
+	/**  The clip to read the values from. */
+	from: ItemId,
+	/**  The clips to change, at least one, of one sequence. */
+	to: ItemId[],
+	/**  The groups to copy, at least one. */
+	which: Attribute[],
+};
+
+/**  Result of `clip.paste_attributes`. */
+export type ClipPasteAttributesOutput = {
+	/**  The clips whose properties changed (those that already matched are left out). */
+	changed: ItemId[],
+};
+
+/**
  *  Plays a clip (`item`), or several (`items`), and their linked partners forwards at normal speed
  *  again, keeping the media they play (their length changes as in `clip.set_speed` with `keep:
  *  "in_point"`; `ripple` and `keyframes` as there).
@@ -714,6 +747,17 @@ export type ClipTrimOutput = {
 	report: EditReport,
 };
 
+/**  One copied item. */
+export type ClipboardItem = {
+	/**  Index into the payload's `tracks`. */
+	track: number,
+	/**
+	 *  The item as copied, with its `start` relative to the earliest copied item. Its `id`,
+	 *  `linked_group` and `attached_to` only relate the items of the payload to each other.
+	 */
+	item: Item,
+};
+
 /**  One copied key. */
 export type ClipboardKey = {
 	/**  The property it was on. */
@@ -724,6 +768,35 @@ export type ClipboardKey = {
 	value: KeyValue,
 	/**  How the segment that starts at the key moves to the next one (stored form). */
 	interp: Interp,
+};
+
+/**
+ *  Copied items, as `application/x-cutweave-items+json` on the system clipboard (arch §5;
+ *  WP-2A.06). Version 1.
+ */
+export type ClipboardPayload = {
+	/**  Always 1. */
+	version: number,
+	/**  The sequence the items came from. */
+	sequence: SequenceId,
+	/**  Its frame rate: pasting into a sequence with another one snaps to the frame grid. */
+	frame_rate: FrameRate,
+	/**  Length of the copied range: the latest end minus the earliest start. */
+	span: Duration,
+	/**  The source tracks in display order, top first. */
+	tracks: ClipboardTrack[],
+	/**  The items, by source track (display order), then start, then ID. */
+	items: ClipboardItem[],
+};
+
+/**  One track of a payload: the kind it had and where it was. */
+export type ClipboardTrack = {
+	/**  What the track holds; pasted items go only to tracks of this kind. */
+	kind: TrackKind,
+	/**  Display-order distance from the top-most track of the payload (0 for the first). */
+	row: number,
+	/**  The track the items were copied from (where `timeline.paste` goes without `track`). */
+	source: TrackId,
 };
 
 /**
@@ -5142,6 +5215,22 @@ export type TimelineClearInOutOutput = {
 };
 
 /**
+ *  Reads items and their linked partners into a clipboard payload (nothing changes).
+ *  `NotFound` for an unknown item; `Invalid{path:"/items"}` for none or items of several
+ *  sequences.
+ */
+export type TimelineCopy = {
+	/**  The items to copy, at least one, of one sequence. */
+	items: ItemId[],
+};
+
+/**  Result of `timeline.copy`. */
+export type TimelineCopyOutput = {
+	/**  The payload to paste. */
+	clipboard: ClipboardPayload,
+};
+
+/**
  *  Closes the gap of a track that contains `at`: the items from the gap's end on move left by
  *  its length, and so do the tracks of linked partners of what moves (or every track with
  *  `ripple_all_tracks`). A gap is the empty space between two items, or before the first one;
@@ -5355,6 +5444,35 @@ export type TimelineOverwrite = {
 	link?: boolean | null,
 	/**  The audio track for the linked sound (default: the first unlocked free one). */
 	audio_track?: TrackId | null,
+};
+
+/**
+ *  Pastes a clipboard payload at `at`. Every item and group gets a new ID and links are
+ *  remapped; media references are kept, so it works across sequences. `track` is where the
+ *  top-most payload track goes (the others keep their rows and need the same kind); without it
+ *  the items return to their source tracks. `mode` picks the placement (default `insert` with
+ *  items on the magnetic main track, else `reject`). `Locked` if a track it would change is
+ *  locked; nothing changes then.
+ */
+export type TimelinePaste = {
+	/**  The payload `timeline.copy` returned. */
+	payload: ClipboardPayload,
+	/**  Where the earliest copied item goes. */
+	at: TimeInput,
+	/**  The track for the top-most payload track (default: the source tracks). */
+	track?: TrackId | null,
+	/**  Placement mode. */
+	mode?: PlacementMode | null,
+};
+
+/**  Result of `timeline.paste`. */
+export type TimelinePasteOutput = {
+	/**  The new items: each payload item's ID (`source`) and the ID of its copy. */
+	copies: DuplicatedItem[],
+	/**  Tracks created by the placement, in creation order. */
+	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**  A time range in the params: `[start, end)`, `end > start`. */

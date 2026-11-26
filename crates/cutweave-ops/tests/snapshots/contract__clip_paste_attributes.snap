@@ -1,0 +1,184 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "clip.paste_attributes",
+    "summary": "Copy transform, crop, flip, compositing or audio settings of a clip onto other clips",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The clip to read the values from."
+        },
+        "to": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The clips to change, at least one, of one sequence."
+        },
+        "which": {
+          "type": "array",
+          "items": {
+            "description": "A group of properties, as `item.reset_props` and the Inspector name them.",
+            "oneOf": [
+              {
+                "description": "Position, scale, rotation and anchor.",
+                "type": "string",
+                "const": "transform"
+              },
+              {
+                "description": "The four crop edges.",
+                "type": "string",
+                "const": "crop"
+              },
+              {
+                "description": "Flip horizontal and vertical.",
+                "type": "string",
+                "const": "flip"
+              },
+              {
+                "description": "Opacity and blend mode.",
+                "type": "string",
+                "const": "compositing"
+              },
+              {
+                "description": "Clip gain, pan and fades.",
+                "type": "string",
+                "const": "audio"
+              }
+            ]
+          },
+          "description": "The groups to copy, at least one."
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "which"
+      ],
+      "description": "Copies the chosen property groups (`transform`, `crop`, `flip`, `compositing`, `audio`) of\n`from` onto each clip of `to`, with their keyframes. Names, timing, media and links are not\ntouched. `Locked` if a target's track is locked; nothing changes then.",
+      "title": "ClipPasteAttributes"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The clips whose properties changed (those that already matched are left out)."
+        }
+      },
+      "required": [
+        "changed"
+      ],
+      "description": "Result of `clip.paste_attributes`.",
+      "title": "ClipPasteAttributesOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "from": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The clip to read the values from."
+      },
+      "to": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The clips to change, at least one, of one sequence."
+      },
+      "which": {
+        "type": "array",
+        "items": {
+          "description": "A group of properties, as `item.reset_props` and the Inspector name them.",
+          "oneOf": [
+            {
+              "description": "Position, scale, rotation and anchor.",
+              "type": "string",
+              "const": "transform"
+            },
+            {
+              "description": "The four crop edges.",
+              "type": "string",
+              "const": "crop"
+            },
+            {
+              "description": "Flip horizontal and vertical.",
+              "type": "string",
+              "const": "flip"
+            },
+            {
+              "description": "Opacity and blend mode.",
+              "type": "string",
+              "const": "compositing"
+            },
+            {
+              "description": "Clip gain, pan and fades.",
+              "type": "string",
+              "const": "audio"
+            }
+          ]
+        },
+        "description": "The groups to copy, at least one."
+      }
+    },
+    "required": [
+      "from",
+      "to",
+      "which"
+    ],
+    "description": "Copies the chosen property groups (`transform`, `crop`, `flip`, `compositing`, `audio`) of\n`from` onto each clip of `to`, with their keyframes. Names, timing, media and links are not\ntouched. `Locked` if a target's track is locked; nothing changes then.",
+    "title": "ClipPasteAttributes"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The clips whose properties changed (those that already matched are left out)."
+      }
+    },
+    "required": [
+      "changed"
+    ],
+    "description": "Result of `clip.paste_attributes`.",
+    "title": "ClipPasteAttributesOutput"
+  }
+}

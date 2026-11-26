@@ -14,6 +14,7 @@
 //! the right halves in member order (the clip, then its partners by track ID and item ID).
 
 pub mod speed;
+pub mod attributes;
 pub mod trim;
 
 use std::collections::BTreeSet;
@@ -28,6 +29,7 @@ pub use speed::{
     ClipFreezeFrame, ClipFreezeFrameOutput, ClipResetSpeed, ClipReverse, ClipSetSpeed,
     ClipSpeedOutput, KeyframeTiming, SpeedClip, SpeedInput, SpeedKeep,
 };
+pub use attributes::{Attribute, ClipPasteAttributes, ClipPasteAttributesOutput};
 pub use trim::{
     ClipRippleTrim, ClipRoll, ClipSlide, ClipSlip, ClipSpan, ClipTrim, ClipTrimOutput, Speed,
     TrimEdge, TrimOutput, TrimmedClip,
@@ -55,7 +57,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ClipSetSpeed>()?
         .register::<ClipReverse>()?
         .register::<ClipResetSpeed>()?
-        .register::<ClipFreezeFrame>()?;
+        .register::<ClipFreezeFrame>()?
+        .register::<ClipPasteAttributes>()?;
     Ok(())
 }
 

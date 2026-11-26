@@ -1,0 +1,55 @@
+{
+  "description": "Clipboard (WP-2A.06): copy a clip with its sound and paste it later on the same tracks, set an opacity on the original and paste its attributes onto the copy, duplicate the copy, paste across sequences, undo and redo, then paste over a locked track (the failing step comes last: MCP allocates a transaction ID for a failed call, the CLI does not).",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0,
+        "duration": "6s"
+      }
+    },
+    { "cmd": "timeline.copy", "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }] } },
+    {
+      "cmd": "timeline.paste",
+      "args": { "payload": { "$ref": "steps[3].output.clipboard" }, "at": "10s" }
+    },
+    {
+      "cmd": "item.set_props",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "props": { "opacity": 0.4 } }
+    },
+    {
+      "cmd": "clip.paste_attributes",
+      "args": {
+        "from": { "$ref": "steps[2].output.clips[0]" },
+        "to": [{ "$ref": "steps[4].output.copies[0].copy" }],
+        "which": ["compositing"]
+      }
+    },
+    { "cmd": "item.duplicate", "args": { "items": [{ "$ref": "steps[4].output.copies[0].copy" }] } },
+    { "cmd": "sequence.create", "args": { "name": "Second" } },
+    {
+      "cmd": "timeline.paste",
+      "args": {
+        "payload": { "$ref": "steps[3].output.clipboard" },
+        "at": "2s",
+        "track": { "$ref": "steps[8].output.video_track" }
+      }
+    },
+    { "cmd": "edit.undo" },
+    { "cmd": "edit.redo" },
+    {
+      "cmd": "track.set",
+      "args": { "track": { "$ref": "steps[0].output.audio_track" }, "locked": true }
+    },
+    {
+      "cmd": "timeline.paste",
+      "args": { "payload": { "$ref": "steps[3].output.clipboard" }, "at": "40s" },
+      "expect": { "error": "locked" }
+    }
+  ]
+}

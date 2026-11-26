@@ -13,6 +13,7 @@ import { formatTimecode } from "@cutweave/timeline";
 import { canSwap, visualClipIds } from "../../layout/actions.ts";
 import { LAYOUT_NAMES } from "../../layout/names.ts";
 import { LAYOUTS } from "../../layout/table.ts";
+import { attributesSource, hasClipboardItems } from "../../timeline/clipboard.ts";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
 import type { ContextValues } from "../when.ts";
@@ -51,6 +52,7 @@ export function clipKeys(target: MenuTarget): ContextValues {
     "item.linked": facts.some((f) => f.clip.linked_group !== null),
     "selection.videoCount": facts.filter((f) => f.track.kind === "video").length,
     "item.movingPicture": facts.length > 0 && facts.every(moving),
+    "clipboard.hasItems": hasClipboardItems(),
   };
 }
 
@@ -226,6 +228,20 @@ const speedRows: readonly MenuRow[] = [
     args: (ctx) => ({ item: ctx.ids[0], at: playheadOf(ctx) }),
   },
 ];
+/** Paste attributes reads from the copied clip, which must still be here and not the target. */
+const canPasteAttributes = (ctx: MenuContext): boolean => {
+  const source = attributesSource();
+  return (
+    ctx.keys["track.locked"] !== true && source !== null && ctx.ids.some((id) => id !== source)
+  );
+};
+
+const pasteAttributesReason = (ctx: MenuContext) =>
+  ctx.keys["track.locked"] === true
+    ? LOCKED
+    : attributesSource() === null
+      ? ("contextMenu.reason.noCopiedClip" as const)
+      : ("contextMenu.reason.oneClip" as const);
 
 const clipRows: readonly MenuRow[] = [
   {
@@ -246,6 +262,29 @@ const clipRows: readonly MenuRow[] = [
     command: "item.delete",
     group: "edit",
     order: 1,
+    when: "!track.locked",
+    reason: LOCKED,
+    args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
+    command: "timeline.cut",
+    group: "clipboard",
+    order: 0,
+    when: "!track.locked",
+    reason: LOCKED,
+  },
+  { command: "timeline.copy_clips", group: "clipboard", order: 1 },
+  {
+    command: "timeline.paste_attributes",
+    group: "clipboard",
+    order: 2,
+    enabledIf: canPasteAttributes,
+    reason: pasteAttributesReason,
+  },
+  {
+    command: "item.duplicate",
+    group: "clipboard",
+    order: 3,
     when: "!track.locked",
     reason: LOCKED,
     args: (ctx) => ({ items: ctx.ids }),
@@ -373,7 +412,7 @@ const clipName = (target: MenuTarget) =>
 export const TIMELINE_CLIP: MenuSurfaceDef = {
   id: "timeline.clip",
   name: clipName,
-  groups: ["edit", "speed", "link", "layout", "state", "reveal"],
+  groups: ["edit", "clipboard", "speed", "link", "layout", "state", "reveal"],
   selection: itemSelection,
   keys: clipKeys,
   rows: clipRows,
@@ -598,13 +637,23 @@ const moveHere: MenuRow = {
 export const TIMELINE_LANE: MenuSurfaceDef = {
   id: "timeline.lane",
   name: () => ({ key: "contextMenu.name.lane" }),
-  groups: ["playhead", "select", "tracks"],
+  groups: ["playhead", "clipboard", "select", "tracks"],
   selection: itemSelection,
   keys: (target) => ({
     "track.locked": trackFact(target.place?.trackId ?? "")?.track.locked === true,
+    "clipboard.hasItems": hasClipboardItems(),
   }),
   rows: [
     moveHere,
+    {
+      command: "timeline.paste_here",
+      group: "clipboard",
+      order: 0,
+      enabledIf: (ctx) =>
+        ctx.keys["clipboard.hasItems"] === true && ctx.keys["track.locked"] !== true,
+      reason: (ctx) =>
+        ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.clipboardEmpty" as const),
+    },
     {
       command: "timeline.select_all_on_track",
       group: "select",

@@ -18,6 +18,7 @@ use cutweave_model::{
 /// frame, INV-25).
 pub const DEFAULT_STILL_SECS: i64 = 5;
 
+pub mod clipboard;
 pub mod edit;
 mod insert;
 pub(crate) mod magnetic;
@@ -40,6 +41,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<TimelineExtract>()?
         .register::<TimelineRippleDelete>()?
         .register::<TimelineDeleteGap>()?
+        .register::<clipboard::TimelineCopy>()?
+        .register::<clipboard::TimelinePaste>()?
         .register::<TimelineGet>()?;
     markers::register(registry)
 }

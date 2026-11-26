@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (128 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (131 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -14,6 +14,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | audio | `audio.set_pan` | Set a clip's stereo pan (-1 left, 1 right; keyed at the playhead when animated) | command, undoable, idempotent | catalog |
 | audio | `audio.set_volume` | Set a clip's volume in dB (keyed at the playhead when animated) | command, undoable, idempotent | catalog |
 | clip | `clip.freeze_frame` | Freeze a clip's frame at a time: split there and insert a still of it (3 s by default) | command, undoable | catalog |
+| clip | `clip.paste_attributes` | Copy transform, crop, flip, compositing or audio settings of a clip onto other clips | command, undoable, idempotent | catalog |
 | clip | `clip.reset_speed` | Play a clip forwards at normal speed again (linked partners follow) | command, undoable, idempotent | catalog |
 | clip | `clip.reverse` | Play a clip backwards, or forwards again (linked partners follow) | command, undoable | catalog |
 | clip | `clip.ripple_trim` | Trim a clip's edge and move what follows by the same amount (ripple) | command, undoable | catalog |
@@ -112,6 +113,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | sequence | `sequence.set_format` | Change a sequence's size, frame rate, sample rate or background | command, undoable, destructive, idempotent | core |
 | timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | catalog |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |
+| timeline | `timeline.copy` | Copy items and their linked partners into a clipboard payload | query | catalog |
 | timeline | `timeline.delete_gap` | Close the gap of a track at a time (what follows moves left; partners follow) | command, undoable | catalog |
 | timeline | `timeline.extract` | Cut time ranges out of tracks and close them (ripple) | command, undoable, destructive | catalog |
 | timeline | `timeline.get` | Get a sequence: summary (depth 0), tracks (1) or tracks with items (2) | query | core |
@@ -120,6 +122,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | timeline | `timeline.list_markers` | List the markers of a sequence (with its in/out range) or of one item | query | catalog |
 | timeline | `timeline.move_marker` | Move a marker to another time | command, undoable, idempotent | catalog |
 | timeline | `timeline.overwrite` | Place a media clip over a range of a track, cutting out what is there | command, undoable, destructive | catalog |
+| timeline | `timeline.paste` | Paste a clipboard payload from timeline.copy at a time and track | command, undoable | catalog |
 | timeline | `timeline.remove_marker` | Remove a marker | command, undoable, destructive | catalog |
 | timeline | `timeline.ripple_delete` | Delete items on one track and close the space they leave (partners follow) | command, undoable, destructive | catalog |
 | timeline | `timeline.set_in_out` | Set the sequence's in and out points | command, undoable, idempotent | catalog |
