@@ -142,7 +142,7 @@ fn conversions() -> Value {
             .map(|f| {
                 let got = m::cw_frame_to_time(f, num, den);
                 let want = rate.and_then(|r| r.frame_to_time(f).ok());
-                assert_eq!(want.map(Time::flicks).unwrap_or(m::ERR_TIME), got);
+                assert_eq!(want.map_or(m::ERR_TIME, Time::flicks), got);
                 json!([f.to_string(), int(got)])
             })
             .collect();
@@ -555,7 +555,9 @@ fn render(doc: &Value) -> String {
     let mut out = String::from("{\n");
     let fields = doc.as_object().unwrap();
     for (i, (key, value)) in fields.iter().enumerate() {
-        out.push_str(&format!("  {}: ", serde_json::to_string(key).unwrap()));
+        out.push_str("  ");
+        out.push_str(&serde_json::to_string(key).unwrap());
+        out.push_str(": ");
         match value {
             Value::Array(rows) if !rows.is_empty() => {
                 out.push_str("[\n");
