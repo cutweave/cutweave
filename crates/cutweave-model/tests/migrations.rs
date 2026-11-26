@@ -680,7 +680,7 @@ fn the_v1_migration_repairs_legacy_shapes() {
     let text = read(&fixtures().join("v1/legacy-needs-fixes.cutweave"));
     let (migrated, report) = migrate_value(serde_json::from_str(&text).unwrap()).unwrap();
     assert_eq!((report.from_version, report.to_version), (1, 3));
-    assert!(report.steps[1].notes.is_empty());
+    assert_eq!(report.steps[1].notes, Vec::<String>::new());
     let notes = &report.steps[0].notes;
     assert_eq!(
         notes,
