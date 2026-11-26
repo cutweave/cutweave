@@ -310,7 +310,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                             "pattern": "^med_[0-9a-f]{32}$"
                           },
                           "source_in": {
-                            "description": "Source position (from the start of the media) of the first frame.",
+                            "description": "Source position (from the start of the media) of the first frame (of the last frame\nshown, when reversed).",
                             "anyOf": [
                               {
                                 "type": "integer",
@@ -322,6 +322,66 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                                 "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
                               }
                             ]
+                          },
+                          "speed": {
+                            "description": "Playback speed (WP-2D.01): a timeline span `d` plays `d × speed` of media (INV-47).\nAbsent in documents written before it (the v2 fill-in adds it): normal speed.",
+                            "type": "object",
+                            "properties": {
+                              "num": {
+                                "description": "Numerator.",
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100000
+                              },
+                              "den": {
+                                "description": "Denominator.",
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100000
+                              }
+                            },
+                            "required": [
+                              "num",
+                              "den"
+                            ],
+                            "additionalProperties": false,
+                            "default": {
+                              "num": 1,
+                              "den": 1
+                            }
+                          },
+                          "reverse": {
+                            "description": "Plays its source range backwards (WP-2D.01). Absent in older documents: forwards.",
+                            "type": "boolean",
+                            "default": false
+                          },
+                          "freeze": {
+                            "description": "A freeze frame (WP-2D.01): shows the frame at `at_source` for its whole length, silent.\nAbsent in older documents: not a freeze frame.",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "at_source": {
+                                "description": "The media position of the frame shown.",
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "string",
+                                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                                  }
+                                ]
+                              }
+                            },
+                            "additionalProperties": false,
+                            "required": [
+                              "at_source"
+                            ],
+                            "default": null
                           },
                           "audio": {
                             "description": "Audio properties.",
@@ -3630,7 +3690,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                           "pattern": "^med_[0-9a-f]{32}$"
                         },
                         "source_in": {
-                          "description": "Source position (from the start of the media) of the first frame.",
+                          "description": "Source position (from the start of the media) of the first frame (of the last frame\nshown, when reversed).",
                           "anyOf": [
                             {
                               "type": "integer",
@@ -3642,6 +3702,66 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                               "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
                             }
                           ]
+                        },
+                        "speed": {
+                          "description": "Playback speed (WP-2D.01): a timeline span `d` plays `d × speed` of media (INV-47).\nAbsent in documents written before it (the v2 fill-in adds it): normal speed.",
+                          "type": "object",
+                          "properties": {
+                            "num": {
+                              "description": "Numerator.",
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            },
+                            "den": {
+                              "description": "Denominator.",
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            }
+                          },
+                          "required": [
+                            "num",
+                            "den"
+                          ],
+                          "additionalProperties": false,
+                          "default": {
+                            "num": 1,
+                            "den": 1
+                          }
+                        },
+                        "reverse": {
+                          "description": "Plays its source range backwards (WP-2D.01). Absent in older documents: forwards.",
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "freeze": {
+                          "description": "A freeze frame (WP-2D.01): shows the frame at `at_source` for its whole length, silent.\nAbsent in older documents: not a freeze frame.",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "at_source": {
+                              "description": "The media position of the frame shown.",
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "string",
+                                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                                }
+                              ]
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "at_source"
+                          ],
+                          "default": null
                         },
                         "audio": {
                           "description": "Audio properties.",

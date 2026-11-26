@@ -13,8 +13,8 @@
 //! ripples. IDs (INV-23): per given clip, in order, the right halves' group (when linked), then
 //! the right halves in member order (the clip, then its partners by track ID and item ID).
 
-pub mod speed;
 pub mod attributes;
+pub mod speed;
 pub mod trim;
 
 use std::collections::BTreeSet;
@@ -25,11 +25,11 @@ use cutweave_model::{
     TrackKind,
 };
 
+pub use attributes::{Attribute, ClipPasteAttributes, ClipPasteAttributesOutput};
 pub use speed::{
     ClipFreezeFrame, ClipFreezeFrameOutput, ClipResetSpeed, ClipReverse, ClipSetSpeed,
     ClipSpeedOutput, KeyframeTiming, SpeedClip, SpeedInput, SpeedKeep,
 };
-pub use attributes::{Attribute, ClipPasteAttributes, ClipPasteAttributesOutput};
 pub use trim::{
     ClipRippleTrim, ClipRoll, ClipSlide, ClipSlip, ClipSpan, ClipTrim, ClipTrimOutput, Speed,
     TrimEdge, TrimOutput, TrimmedClip,
