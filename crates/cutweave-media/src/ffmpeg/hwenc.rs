@@ -561,7 +561,9 @@ fn vbv(spec: &VideoEncodeSpec, out: &mut Vec<(&'static str, String)>) {
         }
         RateControl::Cbr(bps) => {
             out.push(("b", bps.to_string()));
-            (Some(bps), Some(adv.buffer_size.unwrap_or(bps)))
+            // A tight buffer unless one is given: 200 ms of the bitrate keeps any second of
+            // the file within 1.2 times the bitrate.
+            (Some(bps), Some(adv.buffer_size.unwrap_or(bps / 5)))
         }
     };
     if let Some(max) = max {
@@ -588,6 +590,9 @@ fn x264_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
     }
     if let Some(level) = &adv.level {
         out.push(("level", level.clone()));
+    }
+    if let Some(profile) = &spec.profile {
+        out.push(("profile", profile.clone()));
     }
     let mut params: Vec<&str> = Vec::new();
     if matches!(spec.rate_control, RateControl::Cbr(_)) {

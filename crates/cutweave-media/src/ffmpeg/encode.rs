@@ -62,10 +62,12 @@ use ffmpeg_next::{ChannelLayout, Dictionary, Packet, Rational, frame};
 
 use super::hwenc::{self, Choice, Codec, Intra};
 use super::sys::{HwFrames, Scaler};
-use crate::backend::{AudioEncodeSpec, EncodeSpec, EncodeSummary, Encoder, VideoEncodeSpec};
+use crate::backend::{
+    AudioEncodeSpec, EncodeSpec, EncodeSummary, Encoder, VideoAdvanced, VideoEncodeSpec,
+};
 use crate::encode::{InputCheck, output_color};
 use crate::path::display;
-use crate::{AudioChunk, CancelCheck, MediaError, PixelFormat, ProgressSink, VideoFrame};
+use crate::{AudioChunk, CancelCheck, MediaError, PixelFormat, ProgressSink, RateControl, VideoFrame};
 
 /// The containers this encoder writes.
 const MP4: &str = "mp4";
@@ -295,6 +297,46 @@ fn check_prores(spec: &VideoEncodeSpec, is_444: bool) -> Result<(), MediaError> 
     Ok(())
 }
 
+/// The advanced settings (WP-2G.05) an export codec cannot take: ProRes none (it is intra-only
+/// and set by its profile), SVT-AV1 no constant bitrate, B-frame count, minimum keyframe
+/// distance or level.
+fn check_advanced(spec: &VideoEncodeSpec, codec: Codec) -> Result<(), MediaError> {
+    let adv = &spec.advanced;
+    let refuse = |what: &str| {
+        Err(unsupported(format!(
+            "{} takes no {what} here (use the settings `export.describe_options` lists)",
+            codec.id()
+        )))
+    };
+    match codec {
+        Codec::ProRes => {
+            let given = VideoAdvanced {
+                tag_only: false,
+                ..adv.clone()
+            };
+            if given != VideoAdvanced::default() {
+                return refuse("encoder settings: ProRes is set by its profile");
+            }
+        }
+        Codec::Av1 => {
+            if matches!(spec.rate_control, RateControl::Cbr(_)) {
+                return refuse("constant bitrate (use a variable bitrate)");
+            }
+            if adv.bframes.is_some() {
+                return refuse("B-frame count");
+            }
+            if adv.keyint_min.is_some() {
+                return refuse("minimum keyframe distance");
+            }
+            if adv.level.is_some() {
+                return refuse("level");
+            }
+        }
+        Codec::H264 | Codec::Hevc => {}
+    }
+    Ok(())
+}
+
 /// The input and settings of an H.264, HEVC or AV1 export: 8-bit input for 8-bit video, 10-bit
 /// for 10-bit, no alpha, HEVC's profile following the bit depth.
 fn check_coded(spec: &VideoEncodeSpec, codec: Codec) -> Result<(), MediaError> {
@@ -365,6 +407,7 @@ impl VideoPlan {
         } else {
             check_coded(spec, codec)?;
         }
+        check_advanced(spec, codec)?;
         let even_height = codec != Codec::ProRes;
         if !spec.width.is_multiple_of(2) && !prores_444
             || even_height && !spec.height.is_multiple_of(2)
@@ -931,6 +974,20 @@ impl VideoEncoder {
                 .is_some_and(|hw| matches!(hw.family, hwenc::Family::Vaapi))
         {
             return Err(fault(format!("{name}: 10-bit input is not supported here")));
+        }
+        if choice.hardware().is_some() {
+            let adv = &spec.advanced;
+            let needs_software = adv.closed_gop.is_some()
+                || adv.scenecut.is_some()
+                || adv.keyint_min.is_some()
+                || adv.tune.is_some()
+                || adv.level.is_some();
+            if needs_software {
+                return Err(fault(format!(
+                    "{name}: closed_gop, scenecut, keyint_min, tune and level need a software \
+                     encoder"
+                )));
+            }
         }
         let codec = encoder::find_by_name(choice.ffmpeg_name())
             .ok_or_else(|| fault(format!("{name} is not in this FFmpeg build")))?;
