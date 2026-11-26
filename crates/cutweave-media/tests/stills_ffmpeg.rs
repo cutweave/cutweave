@@ -213,9 +213,14 @@ fn the_exif_orientation_is_the_probe_rotation() {
         &stills::webp(W, H, &second, [1, 2, 255], [3, 4], Some(&exif)),
     );
     assert_eq!(info.rotation, 90, "WebP EXIF");
-    // A mirrored orientation keeps its turn (the mirror is not applied yet).
-    let info = rotation("o5.jpg", &card_jpeg(Some(&exif_orientation(5, false))));
-    assert_eq!(info.rotation, 90, "JPEG, EXIF 5");
+    // A mirrored orientation reports its turn; the decoder applies the mirror.
+    for (value, degrees) in [(2, 0), (4, 180), (5, 90), (7, 270)] {
+        let info = rotation(
+            &format!("m{value}.jpg"),
+            &card_jpeg(Some(&exif_orientation(value, false))),
+        );
+        assert_eq!(info.rotation, degrees, "JPEG, EXIF {value}");
+    }
     // No EXIF: as coded.
     assert_eq!(rotation("plain.jpg", &card_jpeg(None)).rotation, 0);
 }
@@ -388,4 +393,72 @@ fn a_jpeg_is_full_range_bt601_in_the_decoders_own_layout() {
         "{:?}",
         pixel(&f, 640, 360)
     );
+}
+
+/// The card turned clockwise by `degrees`: its size and the colour at each pixel.
+fn turned(f: &VideoFrame, degrees: u16, x: u32, y: u32) -> [u8; 4] {
+    // Display (x, y) of a picture turned clockwise comes from this coded pixel.
+    let (cx, cy) = match degrees {
+        0 => (x, y),
+        90 => (y, f.height - 1 - x),
+        180 => (f.width - 1 - x, f.height - 1 - y),
+        _ => (f.width - 1 - y, x),
+    };
+    pixel(f, cx, cy)
+}
+
+#[test]
+fn a_mirrored_exif_orientation_is_applied_by_the_decoder() {
+    // What each EXIF orientation shows at display pixel (x, y), from the card as stored
+    // (`s` is the stored picture, W × H): the definitions of the EXIF specification.
+    type Shown = fn(u32, u32) -> (u32, u32);
+    let cases: [(u16, (u32, u32), Shown); 4] = [
+        // 2: mirrored left to right.
+        (2, (W, H), |x, y| (W - 1 - x, y)),
+        // 4: mirrored top to bottom.
+        (4, (W, H), |x, y| (x, H - 1 - y)),
+        // 5: transposed (rows become columns).
+        (5, (H, W), |x, y| (y, x)),
+        // 7: transposed along the other diagonal.
+        (7, (H, W), |x, y| (W - 1 - y, H - 1 - x)),
+    ];
+    let dir = TempDir::new("stills-mirror");
+    let backend = backend();
+    for (value, (dw, dh), stored) in cases {
+        let exif = exif_orientation(value, false);
+        let files = [
+            (format!("m{value}.jpg"), card_jpeg(Some(&exif)), 4),
+            (
+                format!("m{value}.png"),
+                stills::png(W, H, 8, png_color::RGBA, &card(4, 1), &[(*b"eXIf", &exif)]),
+                0,
+            ),
+        ];
+        for (name, bytes, tolerance) in files {
+            let path = write(&dir, &name, &bytes);
+            let degrees = backend.probe(&path).unwrap().rotation;
+            // Both the RGBA conversion and the decoder's own layout (JPEG: Y'CbCr planes).
+            let f = rgba(&path);
+            for (x, y) in [
+                (2, 2),
+                (dw - 3, 2),
+                (2, dh - 3),
+                (dw - 3, dh - 3),
+                (dw / 2, 2),
+            ] {
+                let (sx, sy) = stored(x, y);
+                let [r, g, b] = cell_of(sx, sy);
+                let got = turned(&f, degrees, x, y);
+                assert!(
+                    close(got, [r, g, b, 255], tolerance),
+                    "{name}: display ({x}, {y}) is {got:?}, expected {:?}",
+                    [r, g, b]
+                );
+            }
+            let mut d = backend.open_decoder(&path, &DecodeOpts::default()).unwrap();
+            let native = d.seek_exact(Time::ZERO).unwrap();
+            native.validate().unwrap();
+            assert_eq!((native.width, native.height), (W, H), "{name}");
+        }
+    }
 }

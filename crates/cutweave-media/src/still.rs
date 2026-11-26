@@ -6,7 +6,8 @@
 //! Decoders return stills in coded orientation, like video ([`VideoFrame`](crate::VideoFrame));
 //! a backend's probe reports the turn as [`ProbeInfo::rotation`](cutweave_model::ProbeInfo) and
 //! the compositor applies it. A photo taken with the camera on its side (orientation 6 or 8)
-//! then shows upright.
+//! then shows upright. A rotation cannot say "mirrored" (orientations 2, 4, 5 and 7), so a
+//! backend's decoder mirrors those pictures itself (FFmpeg: `ffmpeg::decode`).
 //!
 //! The reader is bounded: it walks at most [`MAX_CHUNKS`] container chunks, reads at most
 //! [`MAX_EXIF_BYTES`] of an EXIF block and never allocates from a length it has not capped, so a

@@ -126,6 +126,16 @@ pub struct Plane {
     pub stride: u32,
 }
 
+/// The axis a picture is mirrored along ([`VideoFrame::mirror`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(any(feature = "ffmpeg", test)), allow(dead_code))]
+pub(crate) enum Mirror {
+    /// Left to right.
+    Horizontal,
+    /// Top to bottom.
+    Vertical,
+}
+
 /// A decoded picture in CPU memory.
 #[derive(Clone, Debug, PartialEq)]
 pub struct VideoFrame {
@@ -177,6 +187,39 @@ impl VideoFrame {
             }
         }
         Ok(())
+    }
+
+    /// Mirrors the picture in place, every plane: left to right ([`Mirror::Horizontal`]) or top
+    /// to bottom ([`Mirror::Vertical`]). Subsampled chroma is mirrored on its own grid, so an
+    /// odd-sized picture's chroma moves by up to half a chroma sample. A frame whose planes do
+    /// not match its format ([`VideoFrame::validate`]) is left alone.
+    #[cfg_attr(not(any(feature = "ffmpeg", test)), allow(dead_code))]
+    pub(crate) fn mirror(&mut self, axis: Mirror) {
+        if self.validate().is_err() {
+            return;
+        }
+        for (index, plane) in self.planes.iter_mut().enumerate() {
+            let (w, h, bpt) = self.format.plane_layout(index, self.width, self.height);
+            let (w, h, bpt) = (w as usize, h as usize, bpt as usize);
+            let stride = plane.stride as usize;
+            match axis {
+                Mirror::Vertical => {
+                    for y in 0..h / 2 {
+                        let (upper, lower) = plane.data.split_at_mut((h - 1 - y) * stride);
+                        upper[y * stride..y * stride + w * bpt]
+                            .swap_with_slice(&mut lower[..w * bpt]);
+                    }
+                }
+                Mirror::Horizontal => {
+                    for row in plane.data.chunks_mut(stride).take(h) {
+                        for x in 0..w / 2 {
+                            let (left, right) = row.split_at_mut((w - 1 - x) * bpt);
+                            left[x * bpt..(x + 1) * bpt].swap_with_slice(&mut right[..bpt]);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Row `y` of plane `index` without stride padding, or `None` if out of bounds.
@@ -358,5 +401,66 @@ mod tests {
         let mut wrong = ok;
         wrong.channels = 1;
         assert!(wrong.validate().is_err());
+    }
+
+    #[test]
+    fn mirroring_swaps_texels_not_bytes_and_leaves_stride_padding_alone() {
+        // 3 × 2 RGBA with 4 bytes of padding per row (0xEE): texel (x, y) is [x, y, 7, 9].
+        let mut f = frame(PixelFormat::Rgba8, 3, 2);
+        f.planes[0].stride = 16;
+        f.planes[0].data = (0..2_u8)
+            .flat_map(|y| {
+                let mut row: Vec<u8> = (0..3_u8).flat_map(|x| [x, y, 7, 9]).collect();
+                row.extend_from_slice(&[0xEE; 4]);
+                row
+            })
+            .collect();
+        let original = f.clone();
+        f.mirror(Mirror::Horizontal);
+        assert_eq!(f.row(0, 0).unwrap(), [2, 0, 7, 9, 1, 0, 7, 9, 0, 0, 7, 9]);
+        assert_eq!(f.row(0, 1).unwrap(), [2, 1, 7, 9, 1, 1, 7, 9, 0, 1, 7, 9]);
+        assert_eq!(f.planes[0].data[12..16], [0xEE; 4]);
+        f.mirror(Mirror::Vertical);
+        assert_eq!(f.row(0, 0).unwrap(), [2, 1, 7, 9, 1, 1, 7, 9, 0, 1, 7, 9]);
+        assert_eq!(f.planes[0].data[28..32], [0xEE; 4]);
+        f.mirror(Mirror::Horizontal);
+        f.mirror(Mirror::Vertical);
+        assert_eq!(f, original, "two mirrors along each axis are the identity");
+    }
+
+    #[test]
+    fn mirroring_keeps_chroma_pairs_and_wide_samples_whole() {
+        // NV12, 4 × 2: one chroma row of two interleaved (Cb, Cr) pairs.
+        let mut f = frame(PixelFormat::Nv12, 4, 2);
+        f.planes[0].data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        f.planes[1].data = vec![10, 11, 20, 21];
+        f.mirror(Mirror::Horizontal);
+        assert_eq!(f.planes[0].data, [4, 3, 2, 1, 8, 7, 6, 5]);
+        assert_eq!(f.planes[1].data, [20, 21, 10, 11]);
+        f.mirror(Mirror::Vertical);
+        assert_eq!(f.planes[0].data, [8, 7, 6, 5, 4, 3, 2, 1]);
+        assert_eq!(f.planes[1].data, [20, 21, 10, 11]);
+        // 10-bit planar, 2 × 1: two-byte samples stay in byte order.
+        let mut f = frame(PixelFormat::Yuv420p10, 2, 1);
+        f.planes[0].data = vec![0x34, 0x12, 0x78, 0x56];
+        f.mirror(Mirror::Horizontal);
+        assert_eq!(f.planes[0].data, [0x78, 0x56, 0x34, 0x12]);
+        // Every layout, odd sizes: valid before and after, and an involution.
+        for format in PixelFormat::ALL {
+            let mut f = frame(format, 5, 3);
+            for plane in &mut f.planes {
+                for (i, b) in plane.data.iter_mut().enumerate() {
+                    *b = (i % 251) as u8;
+                }
+            }
+            let original = f.clone();
+            for axis in [Mirror::Horizontal, Mirror::Vertical] {
+                f.mirror(axis);
+                f.validate().unwrap();
+                assert_ne!(f, original, "{format:?} {axis:?}");
+                f.mirror(axis);
+                assert_eq!(f, original, "{format:?} {axis:?}");
+            }
+        }
     }
 }

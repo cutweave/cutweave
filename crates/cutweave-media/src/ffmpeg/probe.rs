@@ -88,14 +88,10 @@ pub(super) fn probe(path: &Path) -> Result<ProbeInfo, MediaError> {
         info.duration = duration(&input, video);
     } else if let Some(orientation) = crate::still_orientation(path) {
         // A photo's EXIF orientation (WP-2F.05a). FFmpeg's image demuxers put no display matrix
-        // on the stream, and its decoders return the picture as coded, like video.
+        // on the stream, and its decoders return the picture as coded, like video. The quarter
+        // turn is reported here; a mirrored orientation's mirror is applied by the decoder
+        // (`decode::still_mirror`).
         info.rotation = orientation.rotation;
-        if orientation.mirrored {
-            tracing::debug!(
-                path = %crate::path::display(path),
-                "the still's EXIF orientation is mirrored; it is shown turned but not mirrored"
-            );
-        }
     }
     Ok(info)
 }
@@ -109,7 +105,7 @@ pub(super) fn parse_name<T: std::str::FromStr<Err = std::convert::Infallible>>(n
 }
 
 /// Image demuxers (`image2`, `png_pipe`, `jpeg_pipe`, ...): one picture, no timeline of its own.
-fn is_image_container(name: &str) -> bool {
+pub(super) fn is_image_container(name: &str) -> bool {
     name.split(',')
         .any(|n| n == "image2" || n.ends_with("_pipe") || n == "ppm" || n == "pgm")
 }
