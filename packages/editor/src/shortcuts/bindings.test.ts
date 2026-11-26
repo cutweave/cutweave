@@ -278,6 +278,8 @@ describe("every key handler in the editor is accounted for", () => {
     "keymap/dispatch.ts": "the global dispatcher: every `global` binding of the keymap",
     "menus/host.tsx":
       "Shift+F10 and the Menu key open the context menu of the focused surface: the platform's own keys (reserved)",
+    "inspector/TrackSection.tsx":
+      "track name field: Enter commits, Escape puts the old name back (dialogs group)",
     "palette/CommandPalette.tsx":
       "the palette's search field: Up, Down, Page Up, Page Down and Enter move through and run its list",
     "panels/InspectorPanel.tsx":

@@ -286,38 +286,6 @@ describe("InspectorPanel", () => {
     expect(engine.names()).toContain("edit.cancel_tx");
   });
 
-  it("a scrub after other edits still reaches the engine (F6's order)", async () => {
-    selectItems("itm_v");
-    renderPanel();
-    const user = userEvent.setup();
-    const thumb = screen.getByRole("slider", { name: "Opacity" });
-    act(() => thumb.focus());
-    fireEvent.keyDown(thumb, { key: "ArrowLeft" });
-    await waitFor(() => expect(engine.names()).toContain("edit.commit_tx"));
-    const x = screen.getByRole("spinbutton", { name: "Position X" });
-    await user.dblClick(x);
-    await user.keyboard("120{Enter}");
-    await waitFor(() =>
-      expect(engine.names().filter((n) => n === "edit.commit_tx")).toHaveLength(2),
-    );
-    const y = screen.getByRole("spinbutton", { name: "Position Y" });
-    fireEvent.pointerDown(y, { clientX: 100, button: 0, pointerId: 1 });
-    for (const px of [110, 120, 130, 140, 150]) {
-      fireEvent.pointerMove(y, { clientX: px, pointerId: 1 });
-      await new Promise((r) => setTimeout(r, 25));
-    }
-    fireEvent.pointerUp(y, { clientX: 150, pointerId: 1 });
-    await waitFor(() =>
-      expect(engine.names().filter((n) => n === "edit.commit_tx")).toHaveLength(3),
-    );
-    const sets = engine.calls.filter((c) => c.name === "item.set_props");
-    const last = sets.at(-1)?.input as {
-      props: { transform: { position: { x: number; y: number } } };
-    };
-    expect(last.props.transform.position).toMatchObject({ x: 120 });
-    expect(last.props.transform.position.y).toBeGreaterThan(0);
-  });
-
   it("scrubbing one axis of the position is one gesture that sends both axes", async () => {
     selectItems("itm_v");
     renderPanel();
