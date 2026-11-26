@@ -19708,7 +19708,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video asset (`source: {\"media\": id}`) at time `at` as a PNG picture in the\nbin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
+        "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video or image-sequence asset (`source: {\"media\": id}`) at time `at` as a PNG\npicture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
         "properties": {
           "at": {
             "anyOf": [
@@ -19742,7 +19742,7 @@ expression: text
             ]
           },
           "source": {
-            "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video asset on its own).",
+            "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video or image sequence on its own).",
             "oneOf": [
               {
                 "const": "sequence",
@@ -19751,7 +19751,7 @@ expression: text
               },
               {
                 "additionalProperties": false,
-                "description": "The frame the Source viewer shows for this video asset, at its own size.",
+                "description": "The frame the Source viewer shows for this video or image-sequence asset, at its own\nsize.",
                 "properties": {
                   "media": {
                     "description": "A Media id: `^med_[0-9a-f]{32}$`.",
@@ -20084,6 +20084,11 @@ expression: text
                     {
                       "const": "image",
                       "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
                       "type": "string"
                     },
                     {

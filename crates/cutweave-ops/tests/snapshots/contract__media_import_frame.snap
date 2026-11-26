@@ -42,10 +42,10 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "media"
               ],
               "additionalProperties": false,
-              "description": "The frame the Source viewer shows for this video asset, at its own size."
+              "description": "The frame the Source viewer shows for this video or image-sequence asset, at its own\nsize."
             }
           ],
-          "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video asset on its own)."
+          "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video or image sequence on its own)."
         },
         "at": {
           "description": "The time of the frame: flicks, \"2.5s\", \"f:60\" or a timecode.",
@@ -83,7 +83,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "source",
         "at"
       ],
-      "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video asset (`source: {\"media\": id}`) at time `at` as a PNG picture in the\nbin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
+      "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video or image-sequence asset (`source: {\"media\": id}`) at time `at` as a PNG\npicture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
       "title": "MediaImportFrame"
     },
     "output_schema": {
@@ -173,10 +173,10 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "media"
             ],
             "additionalProperties": false,
-            "description": "The frame the Source viewer shows for this video asset, at its own size."
+            "description": "The frame the Source viewer shows for this video or image-sequence asset, at its own\nsize."
           }
         ],
-        "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video asset on its own)."
+        "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video or image sequence on its own)."
       },
       "at": {
         "description": "The time of the frame: flicks, \"2.5s\", \"f:60\" or a timecode.",
@@ -214,7 +214,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "source",
       "at"
     ],
-    "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video asset (`source: {\"media\": id}`) at time `at` as a PNG picture in the\nbin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
+    "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video or image-sequence asset (`source: {\"media\": id}`) at time `at` as a PNG\npicture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
     "title": "MediaImportFrame"
   },
   "output": {

@@ -93,10 +93,11 @@ const REGRESSIONS: &str = concat!(
     "/proptest-regressions/registry_props.txt"
 );
 /// Sequences of the deterministic coverage run. Each new command shifts the fixed seed's
-/// stream; at 48 the export queue and lock commands dropped coverage to 93%. Commands whose
+/// stream; at 48 the export queue and lock commands dropped coverage to 93%, and at 128 the
+/// three import commands of ADR-0035 dropped it to 94.3%. Commands whose
 /// preconditions are rare (keyframes to move, a proxy to delete) want strategies that set
 /// them up rather than more cases (issue #184).
-const COVERAGE_CASES: u32 = 128;
+const COVERAGE_CASES: u32 = 160;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 
