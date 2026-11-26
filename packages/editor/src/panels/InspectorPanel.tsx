@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
+import { AudioSection } from "../inspector/AudioSection.tsx";
 import { selectSelectedClips, selectSelectedMedia } from "../inspector/clips.ts";
 import { InspectorEditor } from "../inspector/editor.ts";
 import {
@@ -23,11 +24,13 @@ import { LayoutSection } from "../inspector/LayoutSection.tsx";
 import { PROXY_STATES } from "../inspector/labels.ts";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { Section } from "../inspector/Section.tsx";
+import { SequenceSection } from "../inspector/SequenceSection.tsx";
+import { SpeedSection } from "../inspector/SpeedSection.tsx";
 import { TrackSection } from "../inspector/TrackSection.tsx";
 import { VideoSections } from "../inspector/VideoSections.tsx";
 import { ContextSurface } from "../menus/host.tsx";
 import { useDocStore } from "../state/docStore.ts";
-import { selectSequenceSummary } from "../state/selectors.ts";
+import { selectActiveSequenceId, selectSequenceSummary } from "../state/selectors.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { parseTimeInput, type TimeInputError } from "../time/timeInput.ts";
@@ -379,6 +382,8 @@ function ClipInspector({
           {section.id === "timing" ? (
             <>
               <VideoSections clips={clips} editor={editor} locked={locked} />
+              <SpeedSection project={project} clips={clips} editor={editor} locked={locked} />
+              <AudioSection project={project} clips={clips} editor={editor} locked={locked} />
               <LayoutSection clips={clips} locked={locked} />
             </>
           ) : null}
@@ -467,15 +472,13 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
   );
 }
 
-/** Nothing selected: the empty state and the project's settings. */
-function ProjectInspector() {
+/** Nothing selected: the empty state, the active sequence's format and the project's length. */
+function ProjectInspector({ editor }: { readonly editor: InspectorEditor }) {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
   const summary = useMemo(() => selectSequenceSummary(project), [project]);
-  const rate =
-    summary === null
-      ? null
-      : Math.round((summary.frameRate.num / summary.frameRate.den) * 1000) / 1000;
+  const sequenceId = selectActiveSequenceId(project);
+  const sequence = sequenceId === null ? undefined : project?.sequences[sequenceId];
   return (
     <div className="cw-inspector">
       <EmptyState
@@ -483,18 +486,16 @@ function ProjectInspector() {
         title={t("inspector.emptyTitle")}
         body={t("inspector.emptyBody")}
       />
+      {sequenceId === null || sequence === undefined ? null : (
+        <SequenceSection
+          key={sequenceId}
+          sequence={sequenceId}
+          format={sequence.format}
+          editor={editor}
+        />
+      )}
       {summary === null ? null : (
         <Section id="project" label={t("inspector.project")}>
-          <InspectorRow label={t("inspector.resolution")}>
-            <span className="numeric" data-testid="project-resolution">
-              {t("inspector.resolutionValue", { width: summary.width, height: summary.height })}
-            </span>
-          </InspectorRow>
-          <InspectorRow label={t("inspector.frameRate")}>
-            <span className="numeric" data-testid="project-frame-rate">
-              {t("inspector.frameRateValue", { fps: rate })}
-            </span>
-          </InspectorRow>
           <InspectorRow label={t("inspector.duration")}>
             <span className="numeric" data-testid="project-duration">
               {formatTimecode(summary.duration, summary.frameRate)}
@@ -519,5 +520,5 @@ export function InspectorPanel() {
   const media = useMemo(() => selectSelectedMedia(project, selection), [project, selection]);
   if (clips.length > 0) return <ClipInspector clips={clips} editor={editor} />;
   if (media !== null) return <MediaInfo media={media} />;
-  return <ProjectInspector />;
+  return <ProjectInspector editor={editor} />;
 }

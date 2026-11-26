@@ -12,10 +12,10 @@ import type { FrameRate } from "@cutweave/timeline";
 import type { TKey } from "../i18n/index.ts";
 import type { GestureUpdate } from "../timeline/gesture.ts";
 
-export type FieldId = "name" | "start" | "duration" | "gain";
+export type FieldId = "name" | "start" | "duration";
 
 /** The sections of hand-built rows. The Video sections come from the schema (`video.ts`). */
-export type SectionId = "clip" | "timing" | "audio";
+export type SectionId = "clip" | "timing";
 
 /** A selected clip with what its edits need to know. */
 export interface SelectedClip {
@@ -88,7 +88,7 @@ export function propsUpdate(item: ItemId, patch: Partial<ItemProps>): GestureUpd
 /**
  * The value of a property that may be animated: the static value, or the first key's (what the
  * engine's `Animatable::value` returns). The Video sections show the value at the playhead
- * instead (`video.ts`); this is for the rows that are not animated yet (Gain, WP-2H.03b).
+ * instead (`video.ts`); this is for a value read without a playhead.
  */
 export function staticValue<T>(value: Animatable<T>): T {
   if (typeof value === "object" && value !== null && "keyframes" in value) {
@@ -129,26 +129,11 @@ export const FIELDS: readonly FieldDef[] = [
       { name: "clip.trim", input: { item: item.id, edge: "end", to: item.start + flicks } },
     ],
   },
-  {
-    id: "gain",
-    section: "audio",
-    control: "scrub",
-    label: "inspector.fields.gain",
-    history: "inspector.history.gain",
-    min: -144,
-    max: 48,
-    step: 0.5,
-    precision: 1,
-    unit: "dB",
-    read: (item) => staticValue(item.audio.gain),
-    updates: ({ item }, value) => [propsUpdate(item.id, { audio_gain: value })],
-  },
 ];
 
 export const SECTIONS: readonly { readonly id: SectionId; readonly label: TKey }[] = [
   { id: "clip", label: "inspector.clip" },
   { id: "timing", label: "inspector.timing" },
-  { id: "audio", label: "inspector.audio" },
 ];
 
 /** One field's value across the selection: the shared value, or `mixed`. */

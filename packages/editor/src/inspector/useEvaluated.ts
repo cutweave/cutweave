@@ -16,7 +16,11 @@ const EVAL_INTERVAL_MS = 80;
 
 const NONE: Evaluated = [];
 
-export function useEvaluated(clips: readonly SelectedClip[], playhead: number): Evaluated {
+export function useEvaluated(
+  clips: readonly SelectedClip[],
+  playhead: number,
+  which: "visual" | "audio" = "visual",
+): Evaluated {
   const rpc = useStore(engineStore, (s) => (s.blocked === null ? s.rpc : null));
   const [state, setState] = useState<{ clips: readonly SelectedClip[]; values: Evaluated }>({
     clips: [],
@@ -24,7 +28,7 @@ export function useEvaluated(clips: readonly SelectedClip[], playhead: number): 
   });
   useEffect(() => {
     if (rpc === null) return;
-    if (clips.every((c) => animatedPaths(c.item).length === 0)) {
+    if (clips.every((c) => animatedPaths(c.item, which).length === 0)) {
       setState((s) => (s.values === NONE ? s : { clips, values: NONE }));
       return;
     }
@@ -33,7 +37,7 @@ export function useEvaluated(clips: readonly SelectedClip[], playhead: number): 
       void Promise.all(
         clips.map(async ({ item }) => {
           const out: Record<string, unknown> = {};
-          for (const path of animatedPaths(item)) {
+          for (const path of animatedPaths(item, which)) {
             try {
               const result = await rpc.call("keyframe.eval", {
                 item: item.id,
@@ -56,7 +60,7 @@ export function useEvaluated(clips: readonly SelectedClip[], playhead: number): 
       live = false;
       clearTimeout(timer);
     };
-  }, [rpc, clips, playhead]);
+  }, [rpc, clips, playhead, which]);
   // A value from before the selection changed does not belong to these clips.
   return state.clips.length === clips.length &&
     state.clips.every((c, i) => c.item.id === clips[i]?.item.id)

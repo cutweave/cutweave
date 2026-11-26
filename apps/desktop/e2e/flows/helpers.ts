@@ -769,7 +769,6 @@ export function inspector(page: Page) {
     positionY: panel.getByRole("spinbutton", { name: "Position Y" }),
     scale: panel.getByRole("spinbutton", { name: "Scale X" }),
     rotation: panel.getByRole("spinbutton", { name: "Rotation" }),
-    gain: panel.getByRole("spinbutton", { name: "Gain", exact: true }),
   };
 }
 

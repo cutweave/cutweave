@@ -20,7 +20,7 @@ const clip = (id: string, extra: object = {}) => ({
   markers: {},
   media: "med_a",
   source_in: 0,
-  audio: { gain: 0 },
+  audio: { gain: 0, pan: 0 },
   visual: {
     transform: {
       position: { x: 0, y: 0 },

@@ -71,7 +71,7 @@ describe("InspectorPanel", () => {
     expect(screen.getByRole("slider", { name: "Opacity" }).getAttribute("aria-valuenow")).toBe(
       "100",
     );
-    for (const name of ["Position X", "Position Y", "Scale X", "Rotation", "Gain"]) {
+    for (const name of ["Position X", "Position Y", "Scale X", "Rotation"]) {
       expect(screen.getByRole("spinbutton", { name }), name).toBeTruthy();
     }
     expect(screen.getByRole("spinbutton", { name: "Scale X" }).getAttribute("aria-valuenow")).toBe(
@@ -274,9 +274,9 @@ describe("InspectorPanel", () => {
     const start = screen.getByRole("textbox", { name: "Start" }) as HTMLInputElement;
     expect(start.disabled).toBe(true);
     expect(start.placeholder).toBe("Mixed");
-    // The gain is the same on both clips: no placeholder.
+    // The volume belongs to the sound clip alone: no placeholder.
     expect(
-      screen.getByRole("spinbutton", { name: "Gain" }).getAttribute("aria-valuetext"),
+      screen.getByRole("spinbutton", { name: "Volume" }).getAttribute("aria-valuetext"),
     ).not.toBe("mixed");
 
     const rotation = screen.getByRole("spinbutton", { name: "Rotation" });
