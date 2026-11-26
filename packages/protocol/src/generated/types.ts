@@ -1279,7 +1279,7 @@ export type DescribeOptionsOutput = {
 	/**  Whether it is a hardware encoder. */
 	hardware: boolean,
 	/**  JSON Schema of `advanced` for this encoder. */
-	schema: any,
+	schema: unknown,
 };
 
 /**

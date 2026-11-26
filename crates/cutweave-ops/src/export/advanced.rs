@@ -1389,7 +1389,7 @@ pub struct DescribeOptionsOutput {
     /// Whether it is a hardware encoder.
     pub hardware: bool,
     /// JSON Schema of `advanced` for this encoder.
-    #[specta(type = specta_typescript::Any)]
+    #[specta(type = specta_typescript::Unknown)]
     pub schema: Value,
 }
 
