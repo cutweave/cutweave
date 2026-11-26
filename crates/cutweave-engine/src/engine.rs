@@ -218,6 +218,8 @@ pub(crate) struct Core {
     pub(crate) exports: ExportJobs,
     /// The export presets: built-in and the user's (WP-2G.01).
     presets: Arc<PresetStore>,
+    /// Free disk space of a folder, for the exports' disk check (WP-2G.03b).
+    free_space: crate::export::FreeSpaceProbe,
     /// The run-file, once the server runs (its `shm` follows the preview ring).
     run_file: Mutex<Option<PathBuf>>,
 }
@@ -531,7 +533,8 @@ impl Core {
                 self.path_roots(ctx, session),
             )
         };
-        let starter = Starter::new(self.exports.clone(), Arc::clone(&self.deps.subsystems));
+        let starter = Starter::new(self.exports.clone(), Arc::clone(&self.deps.subsystems))
+            .with_free_space(Arc::clone(&self.free_space));
         let mut export = ExportCtx {
             snapshot,
             allowed_roots,
@@ -1199,6 +1202,10 @@ impl Engine {
             session: RwLock::new(None),
             exports: Core::new_exports(&deps, config.jobs.export_slots),
             presets: Arc::new(PresetStore::open(config.presets_dir.clone())),
+            free_space: config
+                .free_space
+                .clone()
+                .unwrap_or_else(|| Arc::new(crate::export::disk::free_space)),
             run_file: Mutex::new(None),
             deps,
         });
