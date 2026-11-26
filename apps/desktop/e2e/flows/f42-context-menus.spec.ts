@@ -23,9 +23,9 @@ import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   clickClip,
-  clipNames,
   clipAt,
   clipBox,
+  clipNames,
   createProject,
   dirtyDot,
   drag,
