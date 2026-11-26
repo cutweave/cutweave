@@ -260,7 +260,7 @@ pub struct AdvancedAudio {
 fn compact_schema(_: &mut SchemaGenerator) -> Schema {
     json_schema!({
         "type": "object",
-        "description": "Fine control of the encode; export.describe_options{codec} gives the JSON Schema of a codec's options. video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit}, gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune, profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only}, audio{codec, bitrate_kbps, sample_rate, channels, limiter}",
+        "description": "Fine control of the encode; export.describe_options{codec} gives the JSON Schema of a codec's options. video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit}, gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune, profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only}, audio{codec, bitrate_kbps, sample_rate, channels}",
         "properties": {
             "video": {"type": "object"},
             "color": {"type": "object"},

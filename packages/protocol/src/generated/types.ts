@@ -32,6 +32,8 @@ export type AdvancedAudio = {
 	sample_rate?: number | null,
 	/**  "mono" or "stereo". */
 	channels?: AudioChannels | null,
+	/**  The master's true-peak limiter (−1 dBTP): on unless false (WP-2E.02). */
+	limiter?: boolean | null,
 };
 
 /**  The audio codec of an export. */
@@ -2008,6 +2010,54 @@ export type GetHistory = {
 	actor?: Actor | null,
 };
 
+/**
+ *  Measures the audio of a sequence over a range, mixed as an export would be (track gain,
+ *  mute and solo, the master limiter at −1 dBTP unless `limiter` is false): sample peak, true
+ *  peak (dBTP), RMS (dBFS, AES17: a sine reads its peak level), integrated loudness (LUFS),
+ *  the loudest momentary and short-term loudness and the loudness range of the master, and
+ *  the same levels (without momentary, short-term and range) for every audio track
+ *  (post-fader). Silent values are null. Read-only; it decodes the range, so long ranges take a
+ *  while (about a second per few minutes of audio).
+ */
+export type GetLevels = {
+	/**  Sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  Measure after the master limiter, as an export does (default true). */
+	limiter?: boolean | null,
+} & ({
+	/**  Start: flicks, "2.5s", "f:60" or a timecode (default: 0). */
+	in?: TimeInput | null,
+} & {
+	/**  Start: flicks, "2.5s", "f:60" or a timecode (default: 0). */
+	start?: TimeInput | null,
+}) & ({
+	/**  End, exclusive, at most the sequence end (default: the sequence end). */
+	out?: TimeInput | null,
+} & {
+	/**  End, exclusive, at most the sequence end (default: the sequence end). */
+	end?: TimeInput | null,
+});
+
+/**  Result of `audio.get_levels`. */
+export type GetLevelsOutput = {
+	/**  The measured sequence. */
+	sequence: SequenceId,
+	/**  Range start (sequence time, flicks). */
+	in: Time,
+	/**  Range end, exclusive. */
+	out: Time,
+	/**  Whether the master limiter was on (as in an export). */
+	limiter: boolean,
+	/**  The master output. */
+	master: LevelReading,
+	/**  The audio tracks with clips in the range, top to bottom (post-fader). */
+	tracks: TrackLevels[],
+	/**  The deepest gain reduction of the master limiter in dB (0: it never limited). */
+	limiter_reduction_db: number | null,
+	/**  Clips whose audio could not be decoded (measured as silence). */
+	source_errors: number,
+};
+
 /**  The graphics adapter the renderer runs on. */
 export type GpuAdapterInfo = {
 	/**  The adapter's name (`NVIDIA GeForce RTX 3060`). */
@@ -3373,6 +3423,27 @@ export type LayoutInfo = {
 	count: number,
 	/**  The cells in fractions of the canvas at gap 0, in cell order (for diagrams). */
 	cells: CellFraction[],
+};
+
+/**  What the engine measures for one signal. */
+export type LevelReading = {
+	/**  Sample peak in dBFS (the louder channel); null when silent. */
+	peak_db?: number | null,
+	/**  True peak in dBTP (4× oversampled; the louder channel); null when silent. */
+	true_peak_db?: number | null,
+	/**
+	 *  RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null
+	 *  when silent.
+	 */
+	rms_db?: number | null,
+	/**  Integrated loudness in LUFS; null when everything is below the −70 LUFS gate. */
+	lufs_integrated?: number | null,
+	/**  The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only). */
+	lufs_momentary_max?: number | null,
+	/**  The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only). */
+	lufs_short_term_max?: number | null,
+	/**  Loudness range in LU (master only). */
+	loudness_range_lu?: number | null,
 };
 
 /**  Every checkpoint, oldest first. */
@@ -6007,6 +6078,14 @@ export type TrackKind =
 "caption" | 
 /**  Adjustment layers (later versions). */
 "adjustment";
+
+/**  One track bus's levels (post-fader). */
+export type TrackLevels = {
+	/**  The audio track. */
+	track: TrackId,
+	/**  Its levels after its gain, pan, mute and solo. */
+	levels: LevelReading,
+};
 
 /**  Lists a sequence's tracks in display order with their flags, height and item counts. */
 export type TrackList = {

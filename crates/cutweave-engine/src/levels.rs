@@ -106,7 +106,7 @@ pub fn measured(report: &LevelReport) -> LevelsMeasured {
             })
             .collect(),
         limiter_reduction_db: level_db(f64::from(report.limiter_gain)).map_or(0.0, |db| -db),
-        source_errors: report.source_errors,
+        source_errors: u32::try_from(report.source_errors).unwrap_or(u32::MAX),
     }
 }
 

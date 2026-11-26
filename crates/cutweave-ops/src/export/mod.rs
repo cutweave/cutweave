@@ -265,8 +265,8 @@ pub struct ExportStart {
     /// video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
     /// gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,
     /// profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only},
-    /// audio{codec, bitrate_kbps, sample_rate, channels, limiter}. Impossible combinations fail
-    /// with Invalid and a hint.
+    /// audio{codec, bitrate_kbps, sample_rate, channels}. Impossible combinations fail with
+    /// Invalid and a hint.
     pub advanced: Option<AdvancedExportOptions>,
 }
 

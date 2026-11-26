@@ -75,7 +75,7 @@ pub struct LevelsMeasured {
     /// The deepest gain reduction of the master limiter in dB (0: it never limited).
     pub limiter_reduction_db: f64,
     /// Clips whose audio could not be decoded (they were measured as silence).
-    pub source_errors: u64,
+    pub source_errors: u32,
 }
 
 /// Result of `audio.get_levels`.
@@ -98,7 +98,7 @@ pub struct GetLevelsOutput {
     /// The deepest gain reduction of the master limiter in dB (0: it never limited).
     pub limiter_reduction_db: f64,
     /// Clips whose audio could not be decoded (measured as silence).
-    pub source_errors: u64,
+    pub source_errors: u32,
 }
 
 /// Measures the audio of a sequence over a range, mixed as an export would be (track gain,
