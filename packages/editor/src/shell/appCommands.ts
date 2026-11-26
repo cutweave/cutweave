@@ -12,6 +12,7 @@ import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { useEngineReady } from "../engine/engineStore.ts";
 import { exportController, useTimelineHasItems } from "../export/useExport.ts";
+import { openCollectDialog } from "../media/CollectDialog.tsx";
 import { usePref } from "../prefs/prefsStore.ts";
 import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session/desktop.ts";
 import { redoText, undoText } from "../session/historyLabels.ts";
@@ -72,6 +73,9 @@ export function runAppCommand(command: AppCommand, deps: AppCommandDeps): void {
       return;
     case "export":
       exportController().open();
+      return;
+    case "collect":
+      openCollectDialog();
       return;
     case "quit":
       void desktop?.app?.quit().catch(ignore);

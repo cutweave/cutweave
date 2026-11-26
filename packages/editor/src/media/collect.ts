@@ -4,12 +4,7 @@
 // missing media) and starts `project.collect`: a background job whose progress comes from
 // `jobStore`. Both are catalog commands, so MCP and the CLI make the same calls. The open project
 // is never changed, so nothing here is an undo step.
-import {
-  type CollectEstimate,
-  type JobId,
-  type JobInfo,
-  RpcError,
-} from "@cutweave/protocol";
+import { type CollectEstimate, type JobId, type JobInfo, RpcError } from "@cutweave/protocol";
 import type { StoreApi } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
@@ -112,7 +107,8 @@ export async function estimateCollect(deps: CollectDeps): Promise<void> {
   const dest = destOf(form);
   const rpc = deps.engine.getState().rpc;
   if (dest === null || rpc === null) return;
-  const current = () => destOf(state.getState()) === dest && state.getState().trimUnused === form.trimUnused;
+  const current = () =>
+    destOf(state.getState()) === dest && state.getState().trimUnused === form.trimUnused;
   try {
     const estimate = await rpc.call("project.collect_estimate", paramsOf(dest, form));
     if (current()) state.getState().set({ estimate, error: null });

@@ -60,7 +60,11 @@ export function CollectDialog() {
   const estimate = state.estimate;
   const missing = estimate?.missing.length ?? 0;
   const ready =
-    dest !== null && estimate !== null && missing === 0 && estimate.enough_space && state.error === null;
+    dest !== null &&
+    estimate !== null &&
+    missing === 0 &&
+    estimate.enough_space &&
+    state.error === null;
   const start = () => {
     if (ready) void startCollect(deps);
   };
@@ -95,9 +99,7 @@ export function CollectDialog() {
                 variant="primary"
                 size="lg"
                 icon="folder-open"
-                onClick={() =>
-                  void desktopFromWindow()?.shell?.showItemInFolder(state.dest ?? "")
-                }
+                onClick={() => void desktopFromWindow()?.shell?.showItemInFolder(state.dest ?? "")}
               >
                 {t("collect.reveal")}
               </Button>
