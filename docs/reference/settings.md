@@ -141,8 +141,8 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 |---|---|---|---|---|---|---|
 | `media.hover_scrub` | Show a video's frames while the pointer moves across its card in the bin | On | App | Renderer | — | WP-1M.14 |
 | `history.order` | History panel order: oldest first or newest first | Oldest first | App | Renderer (History panel) | — | #171 |
-| `media.proxy_policy` | Proxies for new projects: off, auto, all | Auto | App, copied to the project | `project.new` | Read and change the project's value | WP-2F.03 |
-| `media.proxy_size` | Proxy size: 540p, 720p, 960p | 960p | Machine | Engine (UI-only) | Read | WP-2F.03 |
+| `media.proxy_policy` | Proxies for new projects: off, auto (H.264 and HEVC video larger than 1920 pixels, faster than 60 fps, or 10-bit HEVC), all video | Auto | App, copied to the project | Renderer (passes it to `project.new` as `proxy_policy`) | Read and change the project's value (`media.set_proxy_policy`) | WP-2F.03b ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md)) |
+| `media.proxy_size` | Proxy size: 540p, 720p, 960p (the longest side of a proxy picture in pixels; a new size applies to proxies made from then on) | 960p | Machine | Engine (UI-only, `media.set_proxy_config`) | Read (`media.cache_status`) | WP-2F.03b |
 | `media.keep_structure` | Keep folder structure when importing folders | On | App | Renderer (passes it to `media.import`) | — | WP-2F.09 |
 | `media.copy_on_import` | Copy imported files into the project folder | Off | App | Renderer | — | WP-2F.04 |
 | `media.image_sequence_fps` | Frame rate for image sequences: the sequence's frame rate, or 23.976, 24, 25, 29.97, 30, 50, 59.94 or 60 fps | The sequence's frame rate | App | Renderer (passes it to `media.import_sequence` as `fps`; the engine's own default is the frame rate of the sequence the editor shows, 30 without one) | — | WP-2F.05c |
@@ -258,7 +258,7 @@ Cutweave collects no usage analytics, so there is no setting for it (product bri
 | `cache.folder` | Cache folder, chosen with the OS folder picker (applies at the next start; the old folder is left for the person to delete) | The OS cache folder | Machine | Main (`--cache-dir` at engine start) | Read (`media.cache_status`) | WP-1D.08 |
 | `cache.thumbnails_limit` | Thumbnails and filmstrips: 512 MiB, 1, 2, 5, 10 or 25 GiB (lowering it deletes the oldest at once) | 2 GiB | Machine | Engine (UI-only, `media.set_cache_config`) | Read | WP-1D.08 |
 | `cache.waveforms_limit` | Waveforms: 128, 256, 512 MiB, 1 or 2 GiB | 512 MiB | Machine | Engine (UI-only, `media.set_cache_config`) | Read | WP-1D.08 |
-| `cache.proxies_limit` | Proxies | 50 GiB | Machine | Engine (UI-only) | Read | WP-2F.03 |
+| `cache.proxies_limit` | Proxies: 10, 25, 50, 100, 250 or 500 GiB (lowering it deletes the proxies used longest ago at once), with its usage and "Clear proxies" | 50 GiB | Machine | Engine (UI-only, `media.set_cache_config`) | Read | WP-2F.03b |
 | `cache.render_limit` | Background renders | 20 GiB | Machine | Engine (UI-only) | Read | WP-2J.09 |
 | — | Usage per kind, Clear one kind, Clear all (asks first) | — | — | Engine (UI-only, `media.clear_cache`) | Read (usage) | WP-1D.08 |
 
@@ -269,7 +269,7 @@ Cutweave collects no usage analytics, so there is no setting for it (product bri
 | `performance.hw_decode` | Hardware decoding: auto or off (applies to decoders opened from then on; open pools reopen on their next seek) | Auto | Machine | Engine (UI-only, `media.set_decode_policy`) | Read | WP-1D.08 |
 | `performance.frame_memory` | Memory for decoded frames: Auto, 512 MiB, 1, 2 or 4 GiB | Auto (the smaller of 1 GiB and a quarter of RAM) | Machine | Engine (UI-only, `media.set_cache_config`) | Read | WP-1D.08 |
 | — | GPU in use, hardware encoders and hardware decoders found (information) | — | — | — | Read (`media.capabilities`) | WP-1D.08 |
-| `performance.proxy_jobs` | Proxy jobs at once | 2 | Machine | Engine (UI-only) | Read | WP-2F.03 |
+| `performance.proxy_jobs` | Proxy jobs at once: 1 to 4 (one while an export runs) | 2 | Machine | Engine (UI-only, `media.set_proxy_config`) | Read (`media.cache_status`) | WP-2F.03b |
 | `performance.background_delay` | Start background rendering after this much idle time | 1.5 s | Machine | Engine (UI-only) | Read | WP-2J.09 |
 | `performance.pause_on_battery` | Pause background work on battery | On | Machine | Engine (UI-only) | Read | WP-2J.09 |
 
@@ -290,7 +290,7 @@ Stored in the document, changed with undoable commands (`project.set_settings`, 
 | `meta.name` | Project name | Chosen at creation | Read and change (`project.rename`) | Exists (P1) |
 | `default_format` | Format of new sequences | 1920 × 1080, 30 fps, 48 kHz | Read and change | WP-2H.08 (field exists since WP-1A.02) |
 | `still_duration` | Still image duration | The app default (5 s) | Read; change with `project.set_settings` (WP-2H.08) | The field and the insert default: WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)); the row in File > Project settings…: WP-2H.08 |
-| `proxy_policy` | Proxies: off, auto, all | The app default (auto) | Read and change | WP-2F.01 follow-up ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md), Proposed; every project is `auto` until then) |
+| `proxy_policy` | Proxies: off, auto, all (each asset can also be forced or turned off: `media.set_proxy_mode`) | The app default (auto) | Read and change (`media.set_proxy_policy`) | The field and the commands: WP-2F.03b ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md)); the row in File > Project settings…: WP-2H.08 |
 | `render_cache.enabled` | Render heavy parts in the background | On | Read and change | WP-2J.09 |
 | `autosave` | Autosave for engines without the app (headless, agents) | On, every 30 s | Read and change | WP-1C.03 (dialog row: WP-2H.08) |
 | `ai_budget` | AI spending cap for this project | None | Read only (changing budgets is UI-only, ADR-0016) | WP-5A.07 (dialog row: WP-2H.08) |

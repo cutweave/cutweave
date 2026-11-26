@@ -319,10 +319,12 @@ export class ProjectController {
           project: ProjectStatus;
         };
         this.#applyStatus(closed.project);
-        // Settings > Editing > Still image duration becomes the project's own (ADR-0035).
+        // Settings > Editing > Still image duration becomes the project's own (ADR-0035), and
+        // Settings > Media and import > Proxies for new projects its proxy policy (ADR-0027).
         await this.#call("project.new", {
           name: target.name,
           still_duration: `${preferences.get("editing.still_duration")}s`,
+          proxy_policy: preferences.get("media.proxy_policy"),
         });
         const saved = (await this.#call("project.save_as", { path: target.path })) as {
           path: string;
