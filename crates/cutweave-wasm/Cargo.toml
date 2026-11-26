@@ -1,0 +1,24 @@
+[package]
+name = "cutweave-wasm"
+description = "Cutweave: the UI's shared math module (time, keyframes, easing), a thin C ABI over cutweave-model for wasm32"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+# cdylib: the wasm module (`just wasm` builds it for wasm32-unknown-unknown with the `wasm`
+# profile). rlib: the native parity test calls the very same exports.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Everything the module computes lives here (wasm-clean, arch §3); this crate only marshals.
+cutweave-model = { path = "../cutweave-model" }
+# Animatables and interpolations arrive as their JSON wire form and are parsed by the model's own
+# `from_json`. Already a dependency of cutweave-model.
+serde_json.workspace = true
+
+[lints]
+workspace = true
