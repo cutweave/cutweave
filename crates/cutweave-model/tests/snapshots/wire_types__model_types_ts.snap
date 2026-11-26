@@ -20,6 +20,13 @@ export type AudioProps = {
 	gain: Animatable<number>,
 	/**  Stereo position, -1.0 (left) to 1.0 (right), 0.0 = centre. */
 	pan: Animatable<number>,
+	/**
+	 *  Fade from silence at the start of the clip (WP-2E.01). Absent in documents written
+	 *  before it: no fade.
+	 */
+	fade_in?: Fade,
+	/**  Fade to silence at the end of the clip (WP-2E.01). Absent in older documents: no fade. */
+	fade_out?: Fade,
 } & { [key in string]: unknown };
 
 /**  How an item's picture combines with what is below it (arch §8's core set). Not animatable. */
@@ -156,6 +163,32 @@ export type EntityKind =
 "marker" | 
 /**  A folder of the media bin (`fld_`, ADR-0020). */
 "folder";
+
+/**
+ *  A fade at one end of a clip. A zero duration is no fade. Fades are measured on the clip as
+ *  placed (after trimming), so trimming keeps their length unless the clip becomes shorter than
+ *  both fades together, when they are scaled down at playback (the stored values stay).
+ */
+export type Fade = {
+	/**  Length of the fade. */
+	duration: Duration,
+	/**  Its shape. */
+	curve: FadeCurve,
+};
+
+/**
+ *  The shape of a fade: how the gain goes from 0 to 1 over the fade's duration (a fade out runs
+ *  it backwards).
+ */
+export type FadeCurve = 
+/**  Gain rises in a straight line (the default). */
+"linear" | 
+/**  Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in. */
+"log" | 
+/**  Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`. */
+"equal_power" | 
+/**  Gentle at both ends: `(1 - cos(x*pi)) / 2`. */
+"s_curve";
 
 /**
  *  Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed

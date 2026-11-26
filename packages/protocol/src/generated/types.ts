@@ -45,6 +45,24 @@ export type AgentConnection = {
 /**  A static value or keyed values (keyframes §3.1); the wire form for TypeScript. */
 export type Animatable<T> = T | Keyframes<T>;
 
+/**  What `audio.set` changes. */
+export type AudioChange = 
+/**  Fade in and/or out. */
+{
+	kind: "fade",
+} & FadeChange | 
+/**
+ *  Clip volume in dB (`-144..=12`; at or below `-144` is silence). Keyed at `at` when the
+ *  volume is animated.
+ */
+({ kind: "volume"; 
+/**  The volume. */
+db: number | null }) & { pan?: never } | 
+/**  Stereo position, `-1` (left) to `1` (right); centre is `0`. Keyed at `at` when animated. */
+({ kind: "pan"; 
+/**  The position. */
+pan: number | null }) & { db?: never };
+
 /**  The audio codec. */
 export type AudioCodec = 
 /**  AAC-LC. */
@@ -72,7 +90,107 @@ export type AudioProps = {
 	gain: Animatable<number>,
 	/**  Stereo position, -1.0 (left) to 1.0 (right), 0.0 = centre. */
 	pan: Animatable<number>,
+	/**
+	 *  Fade from silence at the start of the clip (WP-2E.01). Absent in documents written
+	 *  before it: no fade.
+	 */
+	fade_in?: Fade,
+	/**  Fade to silence at the end of the clip (WP-2E.01). Absent in older documents: no fade. */
+	fade_out?: Fade,
 } & { [key in string]: unknown };
+
+/**
+ *  Sets a clip's fades, volume or pan: `{item, set:{kind:"fade", in:"0.5s", out:"1s",
+ *  curve:"equal_power"}}`, `{item, set:{kind:"volume", db:-6}}` or `{item, set:{kind:"pan",
+ *  pan:-0.5}}`.
+ * 
+ *  Volume and pan are set like `item_set_props` does: an animated property is keyed at `at`
+ *  (the playhead), a static one is set. A fade is cut to the room the other fade leaves in the
+ *  clip. `Locked` if the track is locked.
+ */
+export type AudioSet = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to change the same way. */
+	items?: ItemId[] | null,
+	/**  What to change. */
+	set: AudioChange,
+	/**  Key an animated volume or pan at `at` (default true). */
+	auto_key?: boolean | null,
+	/**  Sequence time (the playhead) to key at. */
+	at?: TimeInput | null,
+};
+
+/**  Fade in and out of a clip (`audio.set` with `kind: fade`). */
+export type AudioSetFade = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to change the same way. */
+	items?: ItemId[] | null,
+	/**  Length of the fade in, `0` removes it. */
+	in?: TimeInput | null,
+	/**  Length of the fade out, `0` removes it. */
+	out?: TimeInput | null,
+	/**  The shape of the fades being set. */
+	curve?: FadeCurve | null,
+};
+
+/**  One flat gain for the whole clip: any volume keys are removed. */
+export type AudioSetGain = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to change the same way. */
+	items?: ItemId[] | null,
+	/**  The gain, `-144..=12` dB. */
+	db: number | null,
+};
+
+/**  Result of the audio commands. */
+export type AudioSetOutput = {
+	/**  The first item. */
+	item: ItemId,
+	/**
+	 *  What changed on any item (`audio.fade_in`, `audio.fade_out`, `audio.gain`, `audio.pan`);
+	 *  empty when everything was already as requested.
+	 */
+	changed: string[],
+	/**  The first item's fade in after the change (a fade longer than the room left is cut). */
+	fade_in: Fade,
+	/**  The first item's fade out after the change. */
+	fade_out: Fade,
+	/**  A requested fade was cut to fit the clip. */
+	clamped: boolean,
+	/**  The keys written on animated properties. */
+	keyed: KeyedProp[],
+};
+
+/**  Clip pan (`audio.set` with `kind: pan`; a wrapper over `item.set_props`). */
+export type AudioSetPan = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to change the same way. */
+	items?: ItemId[] | null,
+	/**  The position, `-1..=1`. */
+	pan: number | null,
+	/**  Key an animated pan at `at` (default true). */
+	auto_key?: boolean | null,
+	/**  Sequence time (the playhead) to key at. */
+	at?: TimeInput | null,
+};
+
+/**  Clip volume (`audio.set` with `kind: volume`; a wrapper over `item.set_props`). */
+export type AudioSetVolume = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to change the same way. */
+	items?: ItemId[] | null,
+	/**  The volume, `-144..=12` dB. */
+	db: number | null,
+	/**  Key an animated volume at `at` (default true). */
+	auto_key?: boolean | null,
+	/**  Sequence time (the playhead) to key at. */
+	at?: TimeInput | null,
+};
 
 /**  Audio settings. */
 export type AudioSpec = {
@@ -1059,6 +1177,45 @@ export type ExportStartOutput = {
 	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
 	warnings: PresetWarning[],
 };
+
+/**
+ *  A fade at one end of a clip. A zero duration is no fade. Fades are measured on the clip as
+ *  placed (after trimming), so trimming keeps their length unless the clip becomes shorter than
+ *  both fades together, when they are scaled down at playback (the stored values stay).
+ */
+export type Fade = {
+	/**  Length of the fade. */
+	duration: Duration,
+	/**  Its shape. */
+	curve: FadeCurve,
+};
+
+/**  A fade change: absent fields keep their value. */
+export type FadeChange = {
+	/**  Length of the fade in, `0` removes it. Seconds (`"0.5s"`), flicks or a timecode. */
+	in: TimeInput | null,
+	/**  Length of the fade out, `0` removes it. */
+	out: TimeInput | null,
+	/**
+	 *  The shape of the fades being set (both when neither `in` nor `out` is given): `linear`
+	 *  (default), `log`, `equal_power`, `s_curve`.
+	 */
+	curve: FadeCurve | null,
+};
+
+/**
+ *  The shape of a fade: how the gain goes from 0 to 1 over the fade's duration (a fade out runs
+ *  it backwards).
+ */
+export type FadeCurve = 
+/**  Gain rises in a straight line (the default). */
+"linear" | 
+/**  Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in. */
+"log" | 
+/**  Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`. */
+"equal_power" | 
+/**  Gentle at both ends: `(1 - cos(x*pi)) / 2`. */
+"s_curve";
 
 /**
  *  Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed
@@ -3802,7 +3959,7 @@ export type ResetGroup =
 "flip" | 
 /**  Opacity and blend mode. */
 "compositing" | 
-/**  Clip gain and pan. */
+/**  Clip gain, pan and fades. */
 "audio";
 
 /**

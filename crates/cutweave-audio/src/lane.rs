@@ -92,7 +92,7 @@ impl LaneRenderer {
             };
             let range = offset(a - from)..offset(b - from);
             if let Some(voice) = self.active[slot].voice.as_mut()
-                && let Err(e) = voice.render_add(&mut out[range], clip.gain)
+                && let Err(e) = voice.render_add(&mut out[range])
             {
                 self.active[slot].voice = None;
                 self.fail(clip, &e);
@@ -116,6 +116,7 @@ mod tests {
     use cutweave_model::{Duration, ItemId, MediaId, Time};
 
     use super::*;
+    use crate::automation::Envelope;
     use crate::source::PcmFormat;
     use crate::tone::{Tone, ToneFactory, ToneSpec};
 
@@ -130,7 +131,7 @@ mod tests {
             src_end: Time::ZERO
                 .checked_add(Duration::from_secs(10).unwrap())
                 .unwrap(),
-            gain,
+            env: Envelope::flat(gain, start, end - start),
         }
     }
 
@@ -140,7 +141,7 @@ mod tests {
                 amplitude: 1.0,
                 period: 0,
             },
-            PcmFormat::new(SampleRate::HZ_48_000, 1),
+            PcmFormat::new(SampleRate::HZ_48_000, 2),
         )
     }
 

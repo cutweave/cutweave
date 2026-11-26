@@ -79,7 +79,8 @@ const SEC: i64 = 705_600_000;
 /// The standard profile's tools in Phase 1: the registry's 15 core tools and the 4 generic
 /// ones. `render_frame` is not here: this suite runs the dev-stub engine, which has no renderer
 /// (the full engine lists 20; standard budget, R36).
-const CORE_TOOLS: [&str; 16] = [
+const CORE_TOOLS: [&str; 17] = [
+    "audio_set",
     "clip_split",
     "clip_trim",
     "edit_undo",
@@ -793,6 +794,11 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         json!({ "item": right, "prop": "opacity",
                 "keys": [{ "at": "40s", "value": 0.0, "easing": "ease_out" },
                          { "at": "42s", "value": 1.0 }] }),
+    )
+    .await;
+    c.tool(
+        "audio_set",
+        json!({ "item": right, "set": { "kind": "fade", "in": "0.5s", "out": "1s" } }),
     )
     .await;
     c.tool("item_delete", json!({ "items": [right] })).await;

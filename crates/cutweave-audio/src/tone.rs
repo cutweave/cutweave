@@ -34,6 +34,11 @@ pub enum Tone {
         /// Frames between impulses (0: a single impulse at frame 0).
         period: u64,
     },
+    /// A constant `level` (a DC offset): what the envelope tests multiply their gains by.
+    Dc {
+        /// The value of every frame.
+        level: f32,
+    },
     /// Digital silence.
     Silence,
 }
@@ -93,6 +98,7 @@ impl ToneSpec {
                 };
                 if hit { amplitude } else { 0.0 }
             }
+            Tone::Dc { level } => level,
             Tone::Silence => 0.0,
         }
     }

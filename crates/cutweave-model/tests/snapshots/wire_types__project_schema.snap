@@ -65,6 +65,22 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
     "AudioProps": {
       "description": "Audio properties of an item (arch §4.2 `audio{…}`, v1 subset).",
       "properties": {
+        "fade_in": {
+          "$ref": "#/$defs/Fade",
+          "default": {
+            "curve": "linear",
+            "duration": 0
+          },
+          "description": "Fade from silence at the start of the clip (WP-2E.01). Absent in documents written\nbefore it: no fade."
+        },
+        "fade_out": {
+          "$ref": "#/$defs/Fade",
+          "default": {
+            "curve": "linear",
+            "duration": 0
+          },
+          "description": "Fade to silence at the end of the clip (WP-2E.01). Absent in older documents: no fade."
+        },
         "gain": {
           "$ref": "#/$defs/Animatable_double",
           "description": "Gain in decibels (0.0 = unchanged)."
@@ -346,6 +362,59 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "bottom"
       ],
       "type": "object"
+    },
+    "Fade": {
+      "description": "A fade at one end of a clip. A zero duration is no fade. Fades are measured on the clip as\nplaced (after trimming), so trimming keeps their length unless the clip becomes shorter than\nboth fades together, when they are scaled down at playback (the stored values stay).",
+      "properties": {
+        "curve": {
+          "$ref": "#/$defs/FadeCurve",
+          "description": "Its shape."
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "Length of the fade."
+        }
+      },
+      "required": [
+        "duration",
+        "curve"
+      ],
+      "type": "object"
+    },
+    "FadeCurve": {
+      "description": "The shape of a fade: how the gain goes from 0 to 1 over the fade's duration (a fade out runs\nit backwards).",
+      "oneOf": [
+        {
+          "const": "linear",
+          "description": "Gain rises in a straight line (the default).",
+          "type": "string"
+        },
+        {
+          "const": "log",
+          "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+          "type": "string"
+        },
+        {
+          "const": "equal_power",
+          "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+          "type": "string"
+        },
+        {
+          "const": "s_curve",
+          "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+          "type": "string"
+        }
+      ]
     },
     "Flip": {
       "description": "Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed\nflip switches at its keys.",

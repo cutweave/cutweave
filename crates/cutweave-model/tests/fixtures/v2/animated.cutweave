@@ -129,6 +129,14 @@
                       }
                     }
                   ]
+                },
+                "fade_in": {
+                  "duration": 0,
+                  "curve": "linear"
+                },
+                "fade_out": {
+                  "duration": 0,
+                  "curve": "linear"
                 }
               },
               "visual": {

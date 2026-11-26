@@ -53,7 +53,9 @@ fn four_overlapping_tones_equal_the_analytical_sum() {
     assert_eq!(mix.len() as i64, sample_of(end) * 2);
 
     // 5.1 → stereo: L = FL + C/√2 + Ls/√2 with all three equal.
-    let downmix = [1.0, 1.0, 1.0, 1.0 + std::f64::consts::SQRT_2];
+    // Mono sources are panned centre with the constant-power law (−3 dB per channel).
+    let half = std::f64::consts::FRAC_1_SQRT_2;
+    let downmix = [half, 1.0, half, 1.0 + std::f64::consts::SQRT_2];
     let mut worst = 0.0f64;
     let mut overlap_samples = 0;
     for (n, frame) in mix.as_chunks::<2>().0.iter().enumerate() {
@@ -95,21 +97,21 @@ fn four_overlapping_tones_equal_the_analytical_sum() {
 /// fill exactly `[time_to_samples(start), time_to_samples(end))`, abutting with no gap.
 #[test]
 fn clip_boundaries_are_sample_accurate() {
-    let mono = PcmFormat::new(RATE, 1);
+    let stereo = PcmFormat::new(RATE, 2);
     // Below the limiter knee, so every value passes the master stage unchanged.
     let impulse = ToneSpec::new(
         Tone::Impulse {
             amplitude: 0.75,
             period: 0,
         },
-        mono,
+        stereo,
     );
     let train = ToneSpec::new(
         Tone::Impulse {
             amplitude: 0.5,
             period: 480,
         },
-        mono,
+        stereo,
     );
     let dc = |amplitude| {
         ToneSpec::new(
@@ -117,7 +119,7 @@ fn clip_boundaries_are_sample_accurate() {
                 amplitude,
                 period: 1,
             },
-            mono,
+            stereo,
         )
     };
     let sources = factory(&[impulse, train, dc(0.25), dc(0.125)]);
@@ -159,7 +161,7 @@ fn clip_boundaries_are_sample_accurate() {
     let audible = left.iter().filter(|&&v| v != 0.0).count();
     let train_hits = (b - a).div_ceil(480);
     assert_eq!(audible, 1 + train_hits + (c5 - c3));
-    // Left and right are identical for mono sources.
+    // Left and right are identical for centred sources.
     for f in mix.as_chunks::<2>().0 {
         assert_eq!(f[0], f[1]);
     }
@@ -215,7 +217,7 @@ fn project_mixes_through_evaluate_audio() {
             height: None,
             pixel_format: None,
             sample_rate: Some(SampleRate::HZ_48_000),
-            channels: Some(1),
+            channels: Some(2),
             language: None,
             extra: Extra::new(),
         });
@@ -231,7 +233,7 @@ fn project_mixes_through_evaluate_audio() {
                     amplitude: 0.25,
                     period: 1,
                 },
-                PcmFormat::new(SampleRate::HZ_48_000, 1),
+                PcmFormat::new(SampleRate::HZ_48_000, 2),
             ),
         );
         let mut clip = Clip::new(

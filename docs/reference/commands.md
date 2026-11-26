@@ -2,12 +2,17 @@
 
 # Command reference
 
-Every command and query the engine registers (97 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (102 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
 | Namespace | Command | Summary | Flags | MCP |
 |---|---|---|---|---|
+| audio | `audio.set` | Set a clip's fades, volume (dB) or pan | command, undoable, idempotent | core |
+| audio | `audio.set_fade` | Set a clip's fade in and fade out (length and curve) | command, undoable, idempotent | catalog |
+| audio | `audio.set_gain` | Give a clip one flat gain in dB, removing its volume keys | command, undoable, idempotent | catalog |
+| audio | `audio.set_pan` | Set a clip's stereo pan (-1 left, 1 right; keyed at the playhead when animated) | command, undoable, idempotent | catalog |
+| audio | `audio.set_volume` | Set a clip's volume in dB (keyed at the playhead when animated) | command, undoable, idempotent | catalog |
 | clip | `clip.ripple_trim` | Trim a clip's edge and move what follows by the same amount (ripple) | command, undoable | catalog |
 | clip | `clip.roll` | Move the cut between two adjacent clips (one gets longer, the other shorter) | command, undoable | catalog |
 | clip | `clip.slide` | Move a clip between its neighbours, which get longer or shorter to make room | command, undoable | catalog |

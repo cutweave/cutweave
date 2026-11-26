@@ -13,6 +13,7 @@ use std::sync::Arc;
 use cutweave_model::{Duration, ItemId, MediaId, Rounding, SampleRate, Time, TrackId};
 use cutweave_render::AudioSegment;
 
+use crate::automation::Envelope;
 use crate::dsp::db_to_gain;
 use crate::error::MixError;
 
@@ -33,8 +34,8 @@ pub(crate) struct ClipPlan {
     pub src_start: Time,
     /// End of the played source range (exclusive).
     pub src_end: Time,
-    /// Linear clip gain.
-    pub gain: f32,
+    /// Gain, pan and fades of the whole clip (WP-2E.01), on the output grid.
+    pub env: Envelope,
 }
 
 /// The clips of one track, in start order, and the track's gain.
@@ -100,7 +101,7 @@ pub(crate) fn plan_buses(
             end,
             src_start: seg.src_start,
             src_end: seg.src_start.checked_add(seg.dst_duration)?,
-            gain: db_to_gain(seg.clip_gain_db),
+            env: Envelope::of_segment(seg, rate)?,
         });
     }
     Ok(buses
@@ -144,6 +145,12 @@ mod tests {
             dst_duration: Duration::from_flicks(dur).unwrap(),
             src_start: Time::from_flicks(0).unwrap(),
             clip_gain_db: 0.0,
+            clip_start: Time::from_flicks(start).unwrap(),
+            clip_duration: Duration::from_flicks(dur).unwrap(),
+            gain: cutweave_model::Animatable::Static(0.0),
+            pan: cutweave_model::Animatable::Static(0.0),
+            fade_in: cutweave_model::Fade::default(),
+            fade_out: cutweave_model::Fade::default(),
             track_gain_db: -6.0,
             reverse: false,
             speed: (1, 1),
