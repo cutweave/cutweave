@@ -115,6 +115,9 @@ pub struct ImageSequence {
 /// The most numbers one image sequence may cover (about 9 hours at 30 fps).
 pub const MAX_IMAGE_SEQUENCE_FRAMES: u32 = 1_000_000;
 
+/// The path component that marks an image-sequence locator ([`ImageSequence::locator`]).
+const LOCATOR_TAG: &str = "@image-sequence;";
+
 impl ImageSequence {
     /// Where the counter is in `pattern`: the text before it, the zero-padded width (`None` for
     /// `%d`) and the text after it. `None` if the pattern has no counter, more than one, or
@@ -208,6 +211,125 @@ impl ImageSequence {
     pub fn duration(&self) -> Option<Duration> {
         let end = self.fps.frame_to_time(i64::from(self.count)).ok()?;
         Duration::from_flicks(end.flicks()).ok()
+    }
+
+    /// The numbers with no file, as ascending inclusive ranges (`[(120, 121), (250, 250)]`).
+    #[must_use]
+    pub fn missing_ranges(&self) -> Vec<(u32, u32)> {
+        let mut ranges: Vec<(u32, u32)> = Vec::new();
+        for &n in &self.missing {
+            match ranges.last_mut() {
+                Some((_, end)) if end.checked_add(1) == Some(n) => *end = n,
+                _ => ranges.push((n, n)),
+            }
+        }
+        ranges
+    }
+
+    /// The runs of numbers that have files, as `(first number, how many)`, ascending: the run
+    /// without its missing numbers.
+    #[must_use]
+    pub fn segments(&self) -> Vec<(u32, u32)> {
+        let mut segments = Vec::new();
+        let mut start = self.first;
+        let end = self.first.saturating_add(self.count);
+        for (from, to) in self.missing_ranges() {
+            if from > start {
+                segments.push((start, from - start));
+            }
+            start = to.saturating_add(1).max(start);
+        }
+        if end > start {
+            segments.push((start, end - start));
+        }
+        segments
+    }
+
+    /// The path a media backend reads the whole run by (ADR-0035): the pattern in the directory
+    /// of `first_file`, followed by one more path component that carries the start number, the
+    /// count, the frame rate and the missing numbers
+    /// (`/renders/shot_%04d.png/@image-sequence;first=98;count=300;fps=30x1;missing=120-121`).
+    /// It names no file on disk (a picture has no children), so it cannot be mistaken for one;
+    /// [`parse_locator`](Self::parse_locator) reads it back.
+    #[must_use]
+    pub fn locator(&self, first_file: &str) -> String {
+        let cut = first_file.rfind(['/', '\\']).map_or(0, |i| i + 1);
+        let dir = &first_file[..cut];
+        let sep = if dir.contains('\\') && !dir.contains('/') {
+            '\\'
+        } else {
+            '/'
+        };
+        let missing: Vec<String> = self
+            .missing_ranges()
+            .into_iter()
+            .map(|(a, b)| {
+                if a == b {
+                    a.to_string()
+                } else {
+                    format!("{a}-{b}")
+                }
+            })
+            .collect();
+        format!(
+            "{dir}{}{sep}{LOCATOR_TAG}first={};count={};fps={}x{};missing={}",
+            self.pattern,
+            self.first,
+            self.count,
+            self.fps.num(),
+            self.fps.den(),
+            missing.join(",")
+        )
+    }
+
+    /// Reads a [`locator`](Self::locator) back: the directory (with its trailing separator;
+    /// empty for a bare pattern) and the run. `None` for any other path.
+    #[must_use]
+    pub fn parse_locator(locator: &str) -> Option<(String, ImageSequence)> {
+        let tag_at = locator.rfind(LOCATOR_TAG)?;
+        let head = locator[..tag_at].strip_suffix(['/', '\\'])?;
+        let cut = head.rfind(['/', '\\']).map_or(0, |i| i + 1);
+        let (dir, pattern) = head.split_at(cut);
+        let mut first = None;
+        let mut count = None;
+        let mut fps = None;
+        let mut missing = Vec::new();
+        for field in locator[tag_at + LOCATOR_TAG.len()..].split(';') {
+            let (key, value) = field.split_once('=')?;
+            match key {
+                "first" => first = Some(value.parse::<u32>().ok()?),
+                "count" => count = Some(value.parse::<u32>().ok()?),
+                "fps" => {
+                    let (num, den) = value.split_once('x')?;
+                    fps = Some(FrameRate::new(num.parse().ok()?, den.parse().ok()?).ok()?);
+                }
+                "missing" => {
+                    for range in value.split(',').filter(|r| !r.is_empty()) {
+                        let (a, b) = match range.split_once('-') {
+                            Some((a, b)) => (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?),
+                            None => {
+                                let n = range.parse::<u32>().ok()?;
+                                (n, n)
+                            }
+                        };
+                        if a > b || b - a >= MAX_IMAGE_SEQUENCE_FRAMES {
+                            return None;
+                        }
+                        missing.extend(a..=b);
+                    }
+                }
+                _ => return None,
+            }
+        }
+        let run = ImageSequence {
+            pattern: pattern.to_owned(),
+            first: first?,
+            count: count?,
+            fps: fps?,
+            missing,
+            extra: Extra::new(),
+        };
+        run.problem().is_none().then(|| (dir.to_owned(), run))
     }
 
     /// What is wrong with the description, if anything.
@@ -309,6 +431,17 @@ impl MediaAsset {
             MediaKind::Audio | MediaKind::Video | MediaKind::SequenceRef => true,
             MediaKind::Image | MediaKind::ImageSequence => false,
         }
+    }
+
+    /// The path the media backend decodes this asset by: the file, or for an image sequence the
+    /// locator of its run ([`ImageSequence::locator`]). `None` for media without a file.
+    #[must_use]
+    pub fn source_path(&self) -> Option<String> {
+        let path = self.path_abs.as_ref()?;
+        Some(match &self.image_sequence {
+            Some(run) if self.kind == MediaKind::ImageSequence => run.locator(path),
+            _ => path.clone(),
+        })
     }
 
     /// An image-sequence asset (ADR-0035): `first_file` is the absolute path of the first
@@ -685,6 +818,78 @@ mod tests {
         let shown: Vec<u32> = (0..10).map(|f| seq.number_for_frame(f)).collect();
         assert_eq!(shown, [10, 11, 11, 11, 14, 14, 16, 17, 17, 17]);
         assert_eq!(seq.problem(), None);
+    }
+
+    #[test]
+    fn locators_round_trip_and_real_paths_are_not_locators() {
+        let mut seq = run("shot 50%%_%04d.png", 98, 300, &[120, 121, 250]);
+        seq.fps = FrameRate::FPS_23_976;
+        let unix = seq.locator("/renders/a b/shot 50%_0098.png");
+        assert_eq!(
+            unix,
+            "/renders/a b/shot 50%%_%04d.png/@image-sequence;first=98;count=300;fps=24000x1001;missing=120-121,250"
+        );
+        assert_eq!(
+            ImageSequence::parse_locator(&unix),
+            Some(("/renders/a b/".to_owned(), seq.clone()))
+        );
+        let win = seq.locator("D:\\renders\\shot 50%_0098.png");
+        assert!(
+            win.starts_with("D:\\renders\\shot 50%%_%04d.png\\@image-sequence;"),
+            "{win}"
+        );
+        assert_eq!(
+            ImageSequence::parse_locator(&win),
+            Some(("D:\\renders\\".to_owned(), seq.clone()))
+        );
+        let plain = run("f%d.png", 0, 2, &[]);
+        assert_eq!(
+            ImageSequence::parse_locator(&plain.locator("f0.png")),
+            Some((String::new(), plain))
+        );
+        for not in [
+            "/renders/shot_0098.png",
+            "/renders/shot_%04d.png",
+            "/renders/@image-sequence;first=1;count=2;fps=30x1;missing=",
+            "/r/f%d.png/@image-sequence;first=1;count=1;fps=30x1;missing=",
+            "/r/f%d.png/@image-sequence;first=1;count=5;fps=30x0;missing=",
+            "/r/f%d.png/@image-sequence;first=1;count=5;fps=30x1;missing=9",
+            "/r/f%d.png/@image-sequence;first=1;count=5;fps=30x1;missing=;more=1",
+            "/r/f%d.png/@image-sequence;count=5;fps=30x1;missing=",
+        ] {
+            assert_eq!(ImageSequence::parse_locator(not), None, "{not}");
+        }
+    }
+
+    #[test]
+    fn segments_are_the_runs_between_the_missing_numbers() {
+        assert_eq!(run("f%d.png", 10, 8, &[]).segments(), [(10, 8)]);
+        let seq = run("f%d.png", 10, 8, &[12, 13, 15]);
+        assert_eq!(seq.missing_ranges(), [(12, 13), (15, 15)]);
+        assert_eq!(seq.segments(), [(10, 2), (14, 1), (16, 2)]);
+    }
+
+    #[test]
+    fn the_source_path_of_a_sequence_is_its_locator() {
+        let asset = MediaAsset::image_sequence(
+            MediaId::from_u128(4),
+            "/renders/shot_0001.exr",
+            run("shot_%04d.exr", 1, 300, &[]),
+            ProbeInfo::default(),
+        );
+        assert_eq!(
+            asset.source_path().as_deref(),
+            Some("/renders/shot_%04d.exr/@image-sequence;first=1;count=300;fps=30x1;missing=")
+        );
+        let still = MediaAsset::file(
+            MediaId::from_u128(1),
+            MediaKind::Image,
+            "/media/still.png",
+            ProbeInfo::default(),
+        );
+        assert_eq!(still.source_path().as_deref(), Some("/media/still.png"));
+        let compound = MediaAsset::sequence_ref(MediaId::from_u128(2), SequenceId::from_u128(3));
+        assert_eq!(compound.source_path(), None);
     }
 
     #[test]
