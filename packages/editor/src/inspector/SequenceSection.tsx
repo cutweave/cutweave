@@ -26,7 +26,7 @@ const REFRAMES: readonly ReframePolicy[] = ["fit", "fill", "keep_scale", "none"]
 const REFRAME_LABEL: Readonly<Record<ReframePolicy, TKey>> = {
   fit: "inspector.sequence.reframes.fit",
   fill: "inspector.sequence.reframes.fill",
-  keep_scale: "inspector.sequence.reframes.keep_scale",
+  keep_scale: "inspector.sequence.reframes.keepScale",
   none: "inspector.sequence.reframes.none",
 };
 

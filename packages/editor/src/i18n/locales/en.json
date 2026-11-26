@@ -1046,8 +1046,8 @@
       "curves": {
         "linear": "Linear",
         "log": "Logarithmic",
-        "equal_power": "Equal power",
-        "s_curve": "S-curve"
+        "equalPower": "Equal power",
+        "sCurve": "S-curve"
       }
     },
     "speed": {
@@ -1081,7 +1081,7 @@
       "reframes": {
         "fit": "Fit",
         "fill": "Fill",
-        "keep_scale": "Keep scale",
+        "keepScale": "Keep scale",
         "none": "None"
       }
     },

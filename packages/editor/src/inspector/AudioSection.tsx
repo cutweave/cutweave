@@ -22,8 +22,8 @@ const CURVES: readonly FadeCurve[] = ["linear", "log", "equal_power", "s_curve"]
 const CURVE_LABEL: Readonly<Record<FadeCurve, TKey>> = {
   linear: "inspector.audio.curves.linear",
   log: "inspector.audio.curves.log",
-  equal_power: "inspector.audio.curves.equal_power",
-  s_curve: "inspector.audio.curves.s_curve",
+  equal_power: "inspector.audio.curves.equalPower",
+  s_curve: "inspector.audio.curves.sCurve",
 };
 
 const FADE_NAME: Readonly<Record<"fade_in" | "fade_out" | "fade_curve", TKey>> = {

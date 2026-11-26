@@ -83,8 +83,12 @@ export function SpeedSection({
     if (next === undefined || next === "" || (!mixed && next === shown)) return;
     void editor.setSpeed(clips, next, options, name);
   };
-  const freezeReason =
-    only === undefined ? "freezeNeedsOne" : inside ? null : "freezeNeedsPlayhead";
+  const freezeReason: string | null =
+    only === undefined
+      ? t("inspector.speed.freezeNeedsOne")
+      : inside
+        ? null
+        : t("inspector.speed.freezeNeedsPlayhead");
   const reset = (): void => void editor.resetSpeed(clips, options, name);
 
   return (
@@ -164,13 +168,7 @@ export function SpeedSection({
               onClick={reset}
             />
           </Tooltip>
-          <Tooltip
-            label={
-              freezeReason === null
-                ? t("inspector.speed.freeze")
-                : t(`inspector.speed.${freezeReason}`)
-            }
-          >
+          <Tooltip label={freezeReason ?? t("inspector.speed.freeze")}>
             <IconButton
               size="sm"
               icon="image"

@@ -42,7 +42,7 @@ type Edits = Record<string, object>;
 /** The sample project with a second sound clip `itm_a2` next to `itm_a` on the audio track. */
 function withSecondSound(edits: Edits = {}): Project {
   const project = sampleProject(edits);
-  const track = project.sequences.seq_1 as unknown as {
+  const track = (project.sequences as unknown as Record<string, unknown>).seq_1 as {
     tracks: { trk_a: { items: Record<string, object> } };
   };
   const first = track.tracks.trk_a.items.itm_a as { id: string };
