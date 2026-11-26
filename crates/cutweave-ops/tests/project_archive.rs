@@ -43,9 +43,12 @@ struct Temp(PathBuf);
 impl Temp {
     fn new(tag: &str) -> Temp {
         let dir = std::env::temp_dir().join(format!(
-            "cutweave-archive-{tag}-{}-{:?}",
+            "cwa-{tag}-{}-{}",
             std::process::id(),
-            std::thread::current().id()
+            format!("{:?}", std::thread::current().id())
+                .chars()
+                .filter(char::is_ascii_digit)
+                .collect::<String>()
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
