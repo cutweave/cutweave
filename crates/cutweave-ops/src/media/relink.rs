@@ -237,13 +237,22 @@ impl Command for MediaSetLocation {
             ));
         }
         let asset = file_asset(ctx.doc(), "/media", self.media)?;
-        if let Some(probe) = &self.probe
-            && kind_of_probe(probe) != Some(asset.kind)
-        {
-            return Err(CmdError::invalid(
-                "/probe/streams",
-                format!("the file is not {} media like the asset", asset.kind),
-            ));
+        if let Some(probe) = &self.probe {
+            if kind_of_probe(probe) != Some(asset.kind) {
+                return Err(CmdError::invalid(
+                    "/probe/streams",
+                    format!("the file is not {} media like the asset", asset.kind),
+                ));
+            }
+            if let (Some(old), Some(new)) = (asset.probe.duration, probe.duration)
+                && new < old
+            {
+                return Err(CmdError::invalid(
+                    "/probe/duration",
+                    "the file is shorter than the asset, so clips that use it could run past \
+                     its end",
+                ));
+            }
         }
         Ok(())
     }

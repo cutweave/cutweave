@@ -154,12 +154,11 @@ fn agents_only_search_folders_they_may_read() {
         ))
         .unwrap_err();
     assert_eq!(err.code(), "invalid", "{err}");
-    // The person's own window may search anywhere.
-    let ui = engine.handle().connect(&Credential::Ui).unwrap();
+    // Inside the allowed folder the search runs (and finds nothing to do).
     let out = must(
-        &ui,
+        &conn,
         "media.relink_folder",
-        json!({ "folder": path_str(outside.path()) }),
+        json!({ "folder": path_str(t.path()) }),
     );
     assert_eq!(out["relinked"], json!([]));
 }
