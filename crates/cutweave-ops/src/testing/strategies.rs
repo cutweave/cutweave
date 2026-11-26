@@ -2593,9 +2593,19 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         .join(EXPORT_FILE_NAME)
         .to_string_lossy()
         .into_owned();
-    let range = (0..120_i64, 1..120_i64, any::<u8>(), any::<u8>()).prop_map(|(at, len, fa, fb)| {
-        json!({"in": time_json(FPF_30, at, fa, 0), "out": time_json(FPF_30, at + len, fb, 0)})
-    });
+    let custom_range =
+        (0..120_i64, 1..120_i64, any::<u8>(), any::<u8>()).prop_map(|(at, len, fa, fb)| {
+            json!({"in": time_json(FPF_30, at, fa, 0), "out": time_json(FPF_30, at + len, fb, 0)})
+        });
+    // The range kinds of WP-2G.03b: the sequence's in/out points and marker sets are often
+    // refused (no points set, a plain file name for several files), which is the point.
+    let range = prop_oneof![
+        4 => custom_range,
+        1 => Just(json!({"kind": "sequence"})),
+        1 => Just(json!({"kind": "in_out"})),
+        1 => Just(json!({"kind": "markers"})),
+        1 => Just(json!({"kind": "markers", "pair_mode": "pairs"})),
+    ];
     let custom = (
         option::of(select(vec![320_u32, 640, 1280, 1920])),
         option::of(select(vec![180_u32, 360, 720, 1080])),
@@ -2621,10 +2631,11 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
             json!({"force": "h264_nvenc"}),
         ])),
         option::of(any::<bool>()),
+        option::of(select(vec!["rename", "overwrite", "fail"])),
     )
-        .prop_map(move |(sequence, range, preset, hw, overwrite)| {
+        .prop_map(move |(sequence, range, preset, hw, overwrite, collision)| {
             json!({"sequence": sequence, "path": to, "range": range, "preset": preset,
-                   "hw": hw, "overwrite": overwrite})
+                   "hw": hw, "overwrite": overwrite, "collision": collision})
         })
         .boxed();
     let in_temp = move |name: &str| {
@@ -2640,6 +2651,8 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         Just(json!({"path": path, "preset": {"custom": {"width": 641}}})),
         Just(json!({"path": path, "preset": {"custom": {"fps": {"num": 1000, "den": 1}}}})),
         Just(json!({"path": path, "range": {"in": "2s", "out": "1s"}})),
+        Just(json!({"path": path, "range": {"kind": "wholesale"}})),
+        Just(json!({"path": path, "overwrite": true, "collision": "rename"})),
         Just(json!({"path": path, "preset": "h265-mkv"})),
         Just(json!({"path": path, "hw": {"force": "H264 NVENC"}})),
         Just(json!({"path": path, "hw": "nvenc"})),
