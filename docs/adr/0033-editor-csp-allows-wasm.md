@@ -26,3 +26,4 @@ Option 1: the editor window and its popouts allow `'wasm-unsafe-eval'` in `scrip
 
 - With option 1: `csp.ts` adds `'wasm-unsafe-eval'` to `script-src` for the editor and popout policy only; its test asserts the directive appears there and nowhere else; the editor awaits `initMath()` at startup and refuses to start on a version mismatch.
 - A script-injection bug could compile WebAssembly, which it could already approximate with plain script; the CSP's origin rules, the navigation guard and the absence of Node in the renderer are unchanged.
+- The policy is served per response for app pages, not per window. Today only the editor and its popouts load app pages; the first `auxiliary` window that does must be served the strict variant (`buildCsp(..., { wasm: false })`).
