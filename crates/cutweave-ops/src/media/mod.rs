@@ -3,7 +3,8 @@
 //! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
 //! `media.analysis_failed` events of background analysis (which never mutates the document);
 //! the proxy commands of WP-2F.01 ([`proxy`]); the folders of the bin (WP-2F.07, ADR-0020:
-//! [`folders`]); relinking missing media (WP-2F.03: [`relink`]).
+//! [`folders`]); relinking missing media (WP-2F.03: [`relink`]); slideshows and frames saved
+//! to the bin (WP-2F.05d, ADR-0035: [`slideshow`], [`frame`]).
 //!
 //! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
 //! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
@@ -17,10 +18,12 @@
 mod analysis;
 mod find;
 pub mod folders;
+mod frame;
 mod policy;
 mod probe;
 pub mod proxy;
 pub mod relink;
+mod slideshow;
 mod tree;
 mod walk;
 
@@ -61,6 +64,14 @@ pub use relink::{
     MediaRelinkFolderOutput, MediaSetLocation, MediaStatus, MemoryFiles, MissingMedia, RelinkCtx,
     RelinkFiles, RelinkMatch, RelinkSink, Relinked, relocate_batch,
 };
+pub use frame::{
+    FrameGrabber, FrameOf, FrameRegistered, GrabbedFrame, MediaImportFrame,
+    MediaImportFrameOutput, frame_label, register_frame,
+};
+pub use slideshow::{
+    MediaImportImagesAsSlideshow, MediaSlideshowOutput, SlideshowBatch, SlideshowOrder,
+    SlideshowPlaced, SlideshowSteps, place_slideshow,
+};
 pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
 pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
 
@@ -82,7 +93,9 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<MediaImport>()?
         .register::<MediaRegisterTree>()?
         .register::<MediaList>()?
-        .register::<MediaRemove>()?;
+        .register::<MediaRemove>()?
+        .register::<MediaImportImagesAsSlideshow>()?
+        .register::<MediaImportFrame>()?;
     folders::register(registry)?;
     relink::register(registry)?;
     proxy::register(registry)
@@ -285,6 +298,30 @@ pub trait MediaSink: Send {
             "this media sink cannot create bin folders (import with keep_structure off)",
         ))
     }
+
+    /// Registers the pictures of a slideshow and inserts them on a track, atomically
+    /// (`media.import_images_as_slideshow`, WP-2F.05d): run [`place_slideshow`] in one
+    /// transaction. A sink that cannot edit the timeline keeps this default, which refuses.
+    fn slideshow(&mut self, batch: SlideshowBatch) -> Result<SlideshowPlaced, CmdError> {
+        let _ = batch;
+        Err(CmdError::internal(
+            "this media sink cannot place a slideshow on the timeline",
+        ))
+    }
+
+    /// Registers the picture of `media.import_frame` and gives it the bin name `name`,
+    /// atomically ([`register_frame`]). A sink that cannot rename keeps this default, which
+    /// refuses.
+    fn register_frame(
+        &mut self,
+        register: MediaRegister,
+        name: String,
+    ) -> Result<FrameRegistered, CmdError> {
+        let _ = (register, name);
+        Err(CmdError::internal(
+            "this media sink cannot register an imported frame",
+        ))
+    }
 }
 
 /// What `media.import` runs against (the [`EngineCommand::Context`]). The engine builds one
@@ -302,6 +339,8 @@ pub struct ImportCtx {
     pub proxies: Option<Arc<dyn ProxyService>>,
     /// Where `media.import_progress` goes; `None` announces nothing.
     pub events: Option<Arc<dyn AnalysisSink>>,
+    /// Renders and stores the frames of `media.import_frame`; `None`: no renderer.
+    pub frames: Option<Arc<dyn FrameGrabber>>,
 }
 
 impl ImportCtx {
@@ -316,7 +355,15 @@ impl ImportCtx {
             analysis: None,
             proxies: None,
             events: None,
+            frames: None,
         }
+    }
+
+    /// The same context, rendering the frames of `media.import_frame` through `frames`.
+    #[must_use]
+    pub fn with_frames(mut self, frames: Arc<dyn FrameGrabber>) -> ImportCtx {
+        self.frames = Some(frames);
+        self
     }
 
     /// The same context with `policy`.
