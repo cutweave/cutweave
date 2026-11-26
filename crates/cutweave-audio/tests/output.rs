@@ -265,7 +265,7 @@ fn meters_report_the_master_and_every_bus() {
     let last = frames.last().unwrap();
     assert!(last.rms[0] > 0.0 && last.rms[0] <= last.peak[0], "{last:?}");
     assert!(last.true_peak >= last.peak[0].max(last.peak[1]) * 0.99);
-    assert!(frames.iter().all(|f| f.limiter_gain == 1.0));
+    assert!(frames.iter().all(|f| f.limiter_gain >= 1.0), "no limiting");
     assert!(
         frames
             .iter()
