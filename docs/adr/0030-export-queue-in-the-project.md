@@ -1,6 +1,6 @@
 # ADR-0030: Keep the export queue in the project folder (`.cutweave/exports.sqlite`)
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-26)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers, product owner (on the review of WP-2G.03a)
 - **Supersedes:** none
@@ -27,6 +27,8 @@ ADR-0006 fixes the project folder as the document, `generated/`, `compositions/`
 3. **In the project document:** queued exports as document state. Exports are not edits: they would enter undo, the journal and every agent's view of the document, and each snapshot would grow the document.
 
 ## Decision
+
+Accepted by the product owner on 2026-11-26 as built in WP-2G.03a (option 1).
 
 **Decided by:** the owner's review of WP-2G.03a. Pass criteria are its acceptance tests: three queued exports, the engine killed during the second one and restarted, all three files valid (ffprobe), and no partial file left (`export_queue_ffmpeg.rs`). Also: a queue that survives a clean restart, stays with its project on a switch, and moves along when an untitled document is saved (`export_queue.rs`).
 

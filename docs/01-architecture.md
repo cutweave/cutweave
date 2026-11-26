@@ -989,7 +989,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 026 | Context menus: in-app on every platform, built from commands per named surface, plugins contribute to the same surfaces (§10; [research](research/09-context-menus.md)) | **Accepted** (product owner, 2026-11-25) |
 | 027 | Proxy policy in the project (`settings.proxy_policy`) and a proxy mode per asset, as optional fields without a schema bump (§4.2, §7) | Proposed: review of WP-2F.01 |
 | 028 | MCP result schemas: `cutweave_describe_command` serves the output schema of the MCP result (untrusted-text wrappers, no `render_frame` picture), generated from the wrapping rules (§14) | **Accepted** (product owner, 2026-11-25) |
-| 030 | The export queue lives in the project folder (`.cutweave/exports.sqlite`): queued exports and their snapshots survive a restart; untitled queues move into the saved project; a project switch suspends the old one's exports (§7, §17) | Proposed: review of WP-2G.03a |
+| 030 | The export queue lives in the project folder (`.cutweave/exports.sqlite`): queued exports and their snapshots survive a restart; untitled queues move into the saved project; a project switch suspends the old one's exports (§7, §17) | **Accepted** (product owner, 2026-11-26) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 
