@@ -82,9 +82,10 @@ fn rgba(path: &Path) -> VideoFrame {
 }
 
 fn pixel(f: &VideoFrame, x: u32, y: u32) -> [u8; 4] {
-    let p = &f.planes[0];
-    let i = y as usize * p.stride as usize + x as usize * 4;
-    [p.data[i], p.data[i + 1], p.data[i + 2], p.data[i + 3]]
+    let plane = &f.planes[0];
+    let at = y as usize * plane.stride as usize + x as usize * 4;
+    let d = &plane.data;
+    [d[at], d[at + 1], d[at + 2], d[at + 3]]
 }
 
 fn close(a: [u8; 4], b: [u8; 4], tolerance: u8) -> bool {

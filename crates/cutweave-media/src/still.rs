@@ -230,7 +230,7 @@ fn tiff<R: Read + Seek>(r: &mut R, base: u64) -> io::Result<Option<u16>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::unnecessary_wraps)]
 mod tests {
     use super::*;
     use crate::testing::stills::{self, exif_orientation, png_color};

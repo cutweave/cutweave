@@ -761,3 +761,51 @@ fn informal_timings() {
         }
     }
 }
+
+/// WP-2F.05a: a large still (a 12-megapixel photo, transparent, taken with the camera turned)
+/// is uploaded and converted once; every later frame of its clip reuses the cached texture, so
+/// scrubbing or playing across a photo costs a draw, not a 48 MB upload.
+#[test]
+fn a_large_still_is_uploaded_once_and_reused_for_every_frame_of_its_clip() {
+    let _serial = serial();
+    let Some(mut c) = compositor() else { return };
+    let media = MediaId::from_u128(40);
+    let src = SyntheticSource::new().with(
+        media,
+        TestCard {
+            alpha: Alpha::RampX,
+            ..TestCard::new(
+                4000,
+                3000,
+                Pattern::ColorBars,
+                PixelFormat::Rgba8,
+                ColorTags::default(),
+            )
+        },
+    );
+    let mut photo = layer(1, 40, (4000, 3000));
+    photo.request.still = true;
+    photo.request.rotation = 90;
+    let at = |frame: i64| SceneDescription {
+        time: FrameRate::FPS_24.frame_to_time(frame).unwrap(),
+        ..scene(W, H, Color::rgb(30, 60, 90), vec![photo.clone()])
+    };
+    let target = Target::rgba8(W, H);
+    let first = c.render(&at(0), &src, target).unwrap();
+    assert_eq!(first.stats.decodes_run, 1, "{:?}", first.stats);
+    let first_image = first.into_image().unwrap();
+    // The picture is there, over the background (the left edge of the card is transparent,
+    // which the quarter turn puts at the top).
+    assert_ne!(first_image.pixel(W / 2, H - 4), [30, 60, 90, 255]);
+    for frame in [1, 2, 60, 119] {
+        let next = c.render(&at(frame), &src, target).unwrap();
+        assert_eq!(
+            (next.stats.decodes_run, next.stats.cache_hits),
+            (0, 1),
+            "frame {frame}: {:?}",
+            next.stats
+        );
+        assert_eq!(next.stats.textures_created, 0, "frame {frame}");
+        assert_eq!(next.into_image().unwrap(), first_image, "frame {frame}");
+    }
+}

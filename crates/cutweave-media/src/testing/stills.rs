@@ -346,7 +346,7 @@ struct LsbBits {
 impl LsbBits {
     fn put(&mut self, value: u32, len: u32) {
         for i in 0..len {
-            if self.n % 8 == 0 {
+            if self.n.is_multiple_of(8) {
                 self.out.push(0);
             }
             if (value >> i) & 1 == 1
@@ -363,7 +363,7 @@ fn riff_chunk(out: &mut Vec<u8>, kind: [u8; 4], data: &[u8]) {
     out.extend_from_slice(&kind);
     out.extend_from_slice(&le32(data.len()));
     out.extend_from_slice(data);
-    if data.len() % 2 == 1 {
+    if !data.len().is_multiple_of(2) {
         out.push(0);
     }
 }
@@ -406,18 +406,18 @@ pub fn webp(
     for &is_second in second.iter().take(width as usize * height as usize) {
         bits.put(u32::from(is_second), 1);
     }
-    let vp8l = bits.out;
+    let lossless = bits.out;
 
     let mut body = b"WEBP".to_vec();
     if let Some(tiff) = exif {
-        let mut vp8x = vec![0x08 | if alpha == 255 { 0 } else { 0x10 }, 0, 0, 0];
-        vp8x.extend_from_slice(&(width - 1).to_le_bytes()[..3]);
-        vp8x.extend_from_slice(&(height - 1).to_le_bytes()[..3]);
-        riff_chunk(&mut body, *b"VP8X", &vp8x);
-        riff_chunk(&mut body, *b"VP8L", &vp8l);
+        let mut extended = vec![0x08 | if alpha == 255 { 0 } else { 0x10 }, 0, 0, 0];
+        extended.extend_from_slice(&(width - 1).to_le_bytes()[..3]);
+        extended.extend_from_slice(&(height - 1).to_le_bytes()[..3]);
+        riff_chunk(&mut body, *b"VP8X", &extended);
+        riff_chunk(&mut body, *b"VP8L", &lossless);
         riff_chunk(&mut body, *b"EXIF", tiff);
     } else {
-        riff_chunk(&mut body, *b"VP8L", &vp8l);
+        riff_chunk(&mut body, *b"VP8L", &lossless);
     }
     let mut out = b"RIFF".to_vec();
     out.extend_from_slice(&le32(body.len()));
@@ -437,17 +437,17 @@ mod tests {
 
     #[test]
     fn files_start_with_their_signatures_and_have_the_expected_sizes() {
-        let p = png(2, 2, 8, png_color::RGBA, &[0; 16], &[]);
-        assert_eq!(&p[..4], &[0x89, b'P', b'N', b'G']);
-        assert_eq!(&p[p.len() - 8..p.len() - 4], b"IEND");
-        let j = jpeg(2, 1, &[[128, 128, 128]; 2], None);
-        assert_eq!(&j[..2], &[0xFF, 0xD8]);
-        assert_eq!(&j[j.len() - 2..], &[0xFF, 0xD9]);
-        let t = tiff(2, 2, 3, 8, &[0; 12], Some(6));
-        assert_eq!(&t[..4], b"II*\0");
-        let b = bmp(3, 2, &[0; 18]);
-        assert_eq!(b.len(), 54 + 12 * 2);
-        let w = webp(
+        let png_file = png(2, 2, 8, png_color::RGBA, &[0; 16], &[]);
+        assert_eq!(&png_file[..4], &[0x89, b'P', b'N', b'G']);
+        assert_eq!(&png_file[png_file.len() - 8..png_file.len() - 4], b"IEND");
+        let jpeg_file = jpeg(2, 1, &[[128, 128, 128]; 2], None);
+        assert_eq!(&jpeg_file[..2], &[0xFF, 0xD8]);
+        assert_eq!(&jpeg_file[jpeg_file.len() - 2..], &[0xFF, 0xD9]);
+        let tiff_file = tiff(2, 2, 3, 8, &[0; 12], Some(6));
+        assert_eq!(&tiff_file[..4], b"II*\0");
+        let bmp_file = bmp(3, 2, &[0; 18]);
+        assert_eq!(bmp_file.len(), 54 + 12 * 2);
+        let webp_file = webp(
             2,
             2,
             &[false, true, true, false],
@@ -455,7 +455,7 @@ mod tests {
             [10, 200],
             None,
         );
-        assert_eq!(&w[..4], b"RIFF");
-        assert_eq!(&w[8..16], b"WEBPVP8L");
+        assert_eq!(&webp_file[..4], b"RIFF");
+        assert_eq!(&webp_file[8..16], b"WEBPVP8L");
     }
 }
