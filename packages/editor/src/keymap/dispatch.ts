@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { i18n } from "../i18n/index.ts";
 import { runBinding } from "../palette/runBinding.ts";
 import { isTextEntry } from "../session/useProject.ts";
+import { forEveryWindow } from "../shell/windows.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { KEY_COMMANDS } from "./commands.ts";
 import type { KeyBinding } from "./model.ts";
@@ -84,11 +85,14 @@ export function useKeymapDispatcher(): void {
       run(binding);
     };
 
-    window.addEventListener("keydown", onSecond, true);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onSecond, true);
-      window.removeEventListener("keydown", onKey);
-    };
+    // Every editor window: a key pressed in a detached panel's window runs its binding too.
+    return forEveryWindow((win) => {
+      win.addEventListener("keydown", onSecond, true);
+      win.addEventListener("keydown", onKey);
+      return () => {
+        win.removeEventListener("keydown", onSecond, true);
+        win.removeEventListener("keydown", onKey);
+      };
+    });
   }, []);
 }

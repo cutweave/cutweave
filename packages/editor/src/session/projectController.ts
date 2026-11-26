@@ -17,6 +17,7 @@ import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
+import { activeDocument } from "../shell/windows.ts";
 import { applyNewProjectWorkspace } from "../workspace/newProject.ts";
 import { type DesktopBridge, isSessionCommand, type SessionMenuCommand } from "./desktop.ts";
 import { asRpcError, describeProjectError, isUnsavedChanges } from "./errors.ts";
@@ -39,11 +40,15 @@ export interface ProjectControllerDeps {
   readonly desktop: DesktopBridge | null;
 }
 
+/** The document the person works in (a detached panel's window has its own), outside tests. */
+function focusedDocument(): Document | null {
+  return typeof globalThis.document === "undefined" ? null : activeDocument();
+}
+
 /** Whether a text input, text area or editable element has the focus. */
 function textFieldFocused(): boolean {
-  if (typeof document === "undefined") return false;
-  const el = document.activeElement as HTMLElement | null;
-  if (el === null) return false;
+  const el = focusedDocument()?.activeElement as HTMLElement | null | undefined;
+  if (el === null || el === undefined) return false;
   return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA";
 }
 
@@ -105,7 +110,7 @@ export class ProjectController {
    */
   runMenuCommand(command: SessionMenuCommand): Promise<unknown> {
     if ((command === "undo" || command === "redo") && textFieldFocused()) {
-      document.execCommand(command);
+      focusedDocument()?.execCommand(command);
       return Promise.resolve(false);
     }
     return this.run(command);

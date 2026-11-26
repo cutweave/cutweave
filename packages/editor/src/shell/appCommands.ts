@@ -32,6 +32,7 @@ import {
   type MenuPlatform,
   menuPlatform,
 } from "./appMenu.ts";
+import { activeDocument, forEveryWindow, isMainWindow, windowOfEvent } from "./windows.ts";
 
 /** Help > About is showing. */
 export interface AboutState {
@@ -82,7 +83,7 @@ export function runAppCommand(command: AppCommand, deps: AppCommandDeps): void {
       // Main runs them on the focused element, as the native edit roles do; the page alone
       // (plain `vite` dev) can still cut, copy and select.
       if (desktop?.edit !== undefined) void desktop.edit.run(command).catch(ignore);
-      else document.execCommand(command);
+      else activeDocument().execCommand(command);
       return;
     case "toggleFullScreen":
       void desktop?.window?.toggleFullScreen?.().catch(ignore);
@@ -185,6 +186,14 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
   ]);
 }
 
+/** The text-editing commands main runs on the editor window's focused element. */
+const CLIPBOARD_COMMANDS: ReadonlySet<AppCommand> = new Set<AppCommand>([
+  "cut",
+  "copy",
+  "paste",
+  "selectAll",
+]);
+
 /** Project commands a shortcut may press while another project operation is still running. */
 const DEFERRABLE: ReadonlySet<AppCommand> = new Set<AppCommand>(["new", "open", "save", "saveAs"]);
 
@@ -216,6 +225,9 @@ export function useAppShortcuts(
       if (event.defaultPrevented) return;
       const command = commandForKey(event, platform, { typing: isTextEntry(event.target), dev });
       if (command === null) return;
+      // Main cuts, copies and pastes in the editor window; in a detached panel's window the
+      // browser does it there itself (the timeline hears it as a clipboard event).
+      if (CLIPBOARD_COMMANDS.has(command) && !isMainWindow(windowOfEvent(event))) return;
       event.preventDefault();
       cancelDeferred();
       const now = latest.current;
@@ -251,9 +263,13 @@ export function useAppShortcuts(
       timer = setTimeout(check, 25);
       return () => clearTimeout(timer);
     };
-    window.addEventListener("keydown", onKey);
+    // Every editor window: Ctrl+Z in a detached panel's window undoes as it does here.
+    const off = forEveryWindow((win) => {
+      win.addEventListener("keydown", onKey);
+      return () => win.removeEventListener("keydown", onKey);
+    });
     return () => {
-      window.removeEventListener("keydown", onKey);
+      off();
       cancelDeferred();
     };
   }, [dev]);

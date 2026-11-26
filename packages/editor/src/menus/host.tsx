@@ -4,11 +4,16 @@
 // DOM surfaces (a document-level `contextmenu` listener finds the surface under the pointer),
 // the timeline canvas (it calls `openContextMenu`), the keyboard (Shift+F10 and the Menu key) and
 // text fields. A right-click outside every surface shows nothing, and not the browser's menu.
-import { Menu } from "@cutweave/ui";
-import { type ReactNode, type RefCallback, useCallback, useEffect, useRef } from "react";
+//
+// Detached panels (WP-2H.15): the listeners are installed on every editor window's document, and
+// a menu opens in the window it was asked for in (its surface's), at that window's point.
+import { Menu, PortalContainerProvider } from "@cutweave/ui";
+import { type ReactNode, type RefCallback, useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { desktopFromWindow } from "../session/desktop.ts";
+import { isElement, isHTMLElement } from "../shell/realm.ts";
+import { forEveryWindow, isMainWindow } from "../shell/windows.ts";
 import { buildMenu, type ResolvedMenu } from "./build.ts";
 import { menuServices } from "./defaults.ts";
 import { type MenuServices, setDevBuild } from "./services.ts";
@@ -26,6 +31,11 @@ export interface OpenRequest {
   /** Where the focus returns when the menu closes: the surface element. */
   readonly element?: HTMLElement | null;
   readonly via?: OpenVia;
+  /**
+   * The document the point is in (a detached panel's window): the menu opens there. Default: the
+   * element's document, else the main one.
+   */
+  readonly document?: Document | null;
 }
 
 export interface OpenMenu {
@@ -35,6 +45,15 @@ export interface OpenMenu {
   readonly element: HTMLElement | null;
   readonly via: OpenVia;
   readonly openedAt: number;
+  /** Where the menu opens: a detached window's `<body>`, or `null` for the main window. */
+  readonly container: HTMLElement | null;
+}
+
+/** The `<body>` of the window a request is in, or `null` for the main window. */
+function containerFor(request: OpenRequest): HTMLElement | null {
+  const doc = request.document ?? request.element?.ownerDocument ?? null;
+  if (doc === null || isMainWindow(doc.defaultView)) return null;
+  return doc.body;
 }
 
 export const contextMenuStore = createStore<{ open: OpenMenu | null }>()(() => ({ open: null }));
@@ -75,6 +94,7 @@ export function openContextMenu(
       element: request.element ?? null,
       via: request.via ?? "pointer",
       openedAt: services.now(),
+      container: containerFor(request),
     },
   });
   return true;
@@ -194,7 +214,7 @@ const FOCUSABLE =
  */
 function focusReturn(doc: Document, surface: HTMLElement): HTMLElement {
   const active = doc.activeElement;
-  if (active instanceof HTMLElement && active !== doc.body && surface.contains(active)) {
+  if (isHTMLElement(active) && active !== doc.body && surface.contains(active)) {
     return active;
   }
   return surface.matches(FOCUSABLE)
@@ -234,7 +254,8 @@ export function installContextMenuHandlers(
   };
 
   const onContextMenu = (event: MouseEvent): void => {
-    const source = event.target instanceof Element ? event.target : null;
+    // Realm-safe: in a detached panel's window the target is that window's node.
+    const source = isElement(event.target) ? event.target : null;
     event.preventDefault(); // never the browser's menu, and nothing where no surface claims it
     if (source === null || source.closest(".cw-menu") !== null) return;
     const point = { x: event.clientX, y: event.clientY };
@@ -242,7 +263,7 @@ export function installContextMenuHandlers(
     const field = textFieldOf(source);
     if (field !== null) {
       if (duplicateOfKey(field)) return;
-      openContextMenu(fieldRequest(field, point, "pointer"), services);
+      openContextMenu({ ...fieldRequest(field, point, "pointer"), document: doc }, services);
       return;
     }
     const found = surfaceOf(source);
@@ -257,6 +278,7 @@ export function installContextMenuHandlers(
             point: hit.point ?? point,
             element: focusReturn(doc, found.element),
             via: "pointer",
+            document: doc,
           },
           services,
         );
@@ -266,7 +288,13 @@ export function installContextMenuHandlers(
     // Dead space: nothing, except a development build's Shift+right-click.
     if (event.shiftKey && services.isDev()) {
       openContextMenu(
-        { surface: "dev.inspect", point, target: { data: { point } }, via: "pointer" },
+        {
+          surface: "dev.inspect",
+          point,
+          target: { data: { point } },
+          via: "pointer",
+          document: doc,
+        },
         services,
       );
       return;
@@ -281,7 +309,10 @@ export function installContextMenuHandlers(
     const field = textFieldOf(active);
     if (field !== null) {
       event.preventDefault();
-      openContextMenu(fieldRequest(field, lowerLeft(field), "keyboard"), services);
+      openContextMenu(
+        { ...fieldRequest(field, lowerLeft(field), "keyboard"), document: doc },
+        services,
+      );
       return;
     }
     const found = surfaceOf(active);
@@ -291,7 +322,13 @@ export function installContextMenuHandlers(
     event.preventDefault();
     if (hit === null) return;
     openContextMenu(
-      { ...hit, point: hit.point ?? point, element: active as HTMLElement, via: "keyboard" },
+      {
+        ...hit,
+        point: hit.point ?? point,
+        element: active as HTMLElement,
+        via: "keyboard",
+        document: doc,
+      },
       services,
     );
   };
@@ -299,7 +336,7 @@ export function installContextMenuHandlers(
   // A menu closes when the page scrolls or resizes under it: its anchor has moved.
   const closeOnMove = (event: Event): void => {
     if (contextMenuStore.getState().open === null) return;
-    if (event.target instanceof Element && event.target.closest(".cw-menu") !== null) return;
+    if (isElement(event.target) && event.target.closest(".cw-menu") !== null) return;
     closeContextMenu();
   };
 
@@ -327,8 +364,24 @@ export function ContextMenuHost({ services = menuServices }: { services?: MenuSe
   const last = useRef<OpenMenu | null>(null);
   if (open !== null) last.current = open;
   const shown = open ?? last.current;
+  const [, setGone] = useState(0);
 
-  useEffect(() => installContextMenuHandlers(document, services), [services]);
+  // Every editor window's document: a detached panel's window has its menus too. A menu in a
+  // window that closes goes with it.
+  useEffect(() => {
+    const off = forEveryWindow((win) => {
+      const doc = win.document;
+      const uninstall = installContextMenuHandlers(doc, services);
+      return () => {
+        uninstall();
+        if (last.current?.container?.ownerDocument !== doc) return;
+        if (contextMenuStore.getState().open?.id === last.current.id) closeContextMenu();
+        last.current = null;
+        setGone((n) => n + 1);
+      };
+    });
+    return off;
+  }, [services]);
   // Development builds offer "Inspect element" on dead space (Shift+right-click).
   useEffect(() => {
     void desktopFromWindow()
@@ -359,18 +412,21 @@ export function ContextMenuHost({ services = menuServices }: { services?: MenuSe
 
   if (shown === null) return null;
   return (
-    <Menu
-      key={shown.id}
-      mode="point"
-      open={open !== null}
-      anchor={shown.point}
-      items={shown.menu.entries}
-      aria-label={shown.menu.name}
-      onOpenChange={(next) => {
-        // A replaced menu closing as it unmounts must not close its successor.
-        if (!next && contextMenuStore.getState().open?.id === shown.id) closeContextMenu();
-      }}
-      onCloseAutoFocus={onCloseAutoFocus}
-    />
+    // In the window it was asked for in: a detached panel's menu opens in that window.
+    <PortalContainerProvider container={shown.container}>
+      <Menu
+        key={shown.id}
+        mode="point"
+        open={open !== null}
+        anchor={shown.point}
+        items={shown.menu.entries}
+        aria-label={shown.menu.name}
+        onOpenChange={(next) => {
+          // A replaced menu closing as it unmounts must not close its successor.
+          if (!next && contextMenuStore.getState().open?.id === shown.id) closeContextMenu();
+        }}
+        onCloseAutoFocus={onCloseAutoFocus}
+      />
+    </PortalContainerProvider>
   );
 }

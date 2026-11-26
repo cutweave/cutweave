@@ -2,12 +2,7 @@
 // The dock's menus (WP-2H.13; the tab's menu moves here from dockview's own, WP-2H.01): a panel's
 // tab, and the empty dock.
 // TODO(WP-2H.01 follow-up): "Save layout as…" has no saved-layout feature behind it yet.
-import {
-  detachedPanels,
-  isPanelDetached,
-  isPanelMaximized,
-  openPanelsStore,
-} from "../../workspace/dockHost.ts";
+import { isPanelDetached, isPanelMaximized, openPanelsStore } from "../../workspace/dockHost.ts";
 import { registeredPanels } from "../../workspace/panelRegistry.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.ts";
 
@@ -36,14 +31,21 @@ const TAB_ROWS: readonly MenuRow[] = [
     }),
   },
   { command: "workspace.float_panel", group: "panel", order: 2, args: panelOf },
-  // Its own OS window (WP-2H.14, ADR-0031).
+  // Its own OS window (WP-2H.14, ADR-0031), and back: a docked tab offers the one, a detached tab
+  // the other (its menu opens in its own window, WP-2H.15).
   {
     command: "workspace.popout_panel",
     group: "panel",
     order: 3,
     args: panelOf,
-    enabledIf: (ctx) => !isPanelDetached(ctx.ids[0] ?? ""),
-    reason: "contextMenu.reason.inOwnWindow",
+    visible: "!panel.detached",
+  },
+  {
+    command: "workspace.dock_panel",
+    group: "panel",
+    order: 4,
+    args: panelOf,
+    visible: "panel.detached",
   },
   {
     id: "move",
@@ -61,26 +63,12 @@ const TAB_ROWS: readonly MenuRow[] = [
   { command: "workspace.reset_layout", group: "layout", order: 0 },
 ];
 
-/**
- * Back from its own window. Listed only while some panel is detached: a tab's menu opens in the
- * main window today, and in a detached window once WP-2H.15 lands, where this is the row.
- */
-const DOCK_BACK_ROW: MenuRow = {
-  command: "workspace.dock_panel",
-  group: "panel",
-  order: 4,
-  args: panelOf,
-  enabledIf: (ctx) => isPanelDetached(ctx.ids[0] ?? ""),
-  reason: "contextMenu.reason.inMainWindow",
-};
-
 export const DOCK_TAB: MenuSurfaceDef = {
   id: "dock.tab",
   name: (target) => ({ key: "contextMenu.name.dockTab", vars: { name: target.name ?? "" } }),
   groups: ["panel", "layout"],
-  get rows(): readonly MenuRow[] {
-    return detachedPanels().length > 0 ? [...TAB_ROWS, DOCK_BACK_ROW] : TAB_ROWS;
-  },
+  rows: TAB_ROWS,
+  keys: (target) => ({ "panel.detached": isPanelDetached(target.ids[0] ?? "") }),
 };
 
 /** The panels nobody has open, as one row each (read when the menu opens). */

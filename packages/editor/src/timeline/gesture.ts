@@ -20,6 +20,7 @@ import {
   RpcError,
   type TxId,
 } from "@cutweave/protocol";
+import { activeDocument, framesOf } from "../shell/windows.ts";
 
 export type GestureUpdate =
   | { readonly name: "item.move"; readonly input: ItemMove }
@@ -49,17 +50,13 @@ export interface FrameScheduler {
   cancel(handle: unknown): void;
 }
 
-/** `requestAnimationFrame`, or a 16 ms timer where there is none (Node tests). */
-export const animationFrames: FrameScheduler =
-  typeof requestAnimationFrame === "function"
-    ? {
-        request: (cb) => requestAnimationFrame(() => cb()),
-        cancel: (h) => cancelAnimationFrame(h as number),
-      }
-    : {
-        request: (cb) => setTimeout(cb, 16),
-        cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
-      };
+/**
+ * The frames of the window the person is dragging in (a detached panel's own, WP-2H.15), or a
+ * 16 ms timer where there are none (Node tests). The timeline passes its canvas's window instead.
+ */
+export const animationFrames: FrameScheduler = framesOf(() =>
+  typeof globalThis.document === "undefined" ? null : activeDocument(),
+);
 
 export interface GestureOptions {
   readonly rpc: RpcClient;
