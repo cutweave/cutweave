@@ -9,7 +9,7 @@
 //!  ─────────────────                       ───────────────────────────          ───────
 //!  open stream (device, rate, format) ──▶  callback: Mixer::render ──▶ device   AudioClock::position
 //!  watch: stream errors, default device,     publish clock anchor ───────────▶  (any thread)
-//!         callbacks still arriving           peak meter ──(rtrb)──────────────▶ drain_meters
+//!         callbacks still arriving           meters ──(rtrb)──────────────────▶ drain_meters
 //!  restart: drop stream ◀──(mpsc) the player (Mixer + clock writer) comes home
 //!           open again (≤ 2 s)
 //! ```
@@ -60,9 +60,11 @@ use std::time::{Duration as StdDuration, Instant};
 use cutweave_model::{SampleRate, Time};
 use rtrb::{Consumer, RingBuffer};
 
+use crate::bus::BusLevel;
 use crate::clock::{AudioClock, ClockShared, ClockState, ClockWriter};
 use crate::error::OutputError;
-use crate::rt::{BusPeak, Mixer};
+use crate::meter::Loudness;
+use crate::rt::Mixer;
 use callback::{Player, StreamCallback};
 
 /// Environment variable that picks the output: `null` (no device: a wall-clock-driven clock for
@@ -256,22 +258,31 @@ pub struct OutputStats {
 /// Track buses a [`MeterFrame`] carries (further buses are not metered).
 pub const MAX_METER_BUSES: usize = 32;
 
-/// A peak meter reading of the master and the track buses, published at [`METER_HZ`] while
-/// playing. Fixed size, so the real-time thread publishes it without allocating.
+/// A meter reading of the master and the track buses (WP-2E.02), published at [`METER_HZ`]
+/// while playing. Fixed size, so the real-time thread publishes it without allocating.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MeterFrame {
-    /// Timeline position of the end of the window.
+    /// Timeline position of the end of the window (of the audio heard, latency compensated).
     pub at: Time,
-    /// Master peak (linear, L and R) over the window, after the limiter.
+    /// Master sample peak (linear, L and R) over the window, after the limiter.
     pub peak: [f32; 2],
-    buses: [BusPeak; MAX_METER_BUSES],
-    bus_count: usize,
+    /// Master RMS (linear, L and R) over the window, after the limiter.
+    pub rms: [f32; 2],
+    /// Master true peak (linear, both channels) over the window, after the limiter.
+    pub true_peak: f32,
+    /// Master loudness at the end of the window (integrated: since the last seek).
+    pub loudness: Loudness,
+    /// The smallest master limiter gain in the window (1.0: no limiting). The bus meters read
+    /// the mix `latency` frames ahead of the master's.
+    pub limiter_gain: f32,
+    pub(crate) buses: [BusLevel; MAX_METER_BUSES],
+    pub(crate) bus_count: usize,
 }
 
 impl MeterFrame {
-    /// Peak of each track bus over the window (after the track gain), in mix order.
+    /// Level of each track bus over the window (post-fader), in mix order.
     #[must_use]
-    pub fn buses(&self) -> &[BusPeak] {
+    pub fn buses(&self) -> &[BusLevel] {
         &self.buses[..self.bus_count.min(MAX_METER_BUSES)]
     }
 }

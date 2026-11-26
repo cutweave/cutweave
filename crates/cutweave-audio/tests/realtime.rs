@@ -242,8 +242,9 @@ fn edits_during_playback_switch_at_their_sample() {
     assert_eq!(handle.stats().underrun_frames, 0);
 }
 
-/// Track gain changes ramp in at the next callback without re-rendering the lane; the master
-/// gain ramps too.
+/// Track gain changes ramp in at the next callback without re-rendering the lane (heard the
+/// limiter latency later: the lanes run that far ahead of the output); the master gain (after
+/// the limiter) ramps too, at once.
 #[test]
 fn gain_changes_ramp_without_rerendering() {
     let sources = factory(&[sine(250.0, 0.2, 0.0, RATE, 1)]);
@@ -259,9 +260,14 @@ fn gain_changes_ramp_without_rerendering() {
     let reference = offline(&sources, &at(0.0), Time::ZERO, secs(1.0));
     let g = db_to_gain(-6.0);
     let ramp = sample_of(secs(0.01)) as usize;
+    let latency = mixer.latency();
+    assert!(latency > 0 && latency < ramp);
     for (i, f) in tail.as_chunks::<2>().0.iter().enumerate() {
         let full = reference[(edit_at + i) * 2];
-        if i >= ramp {
+        if i < latency {
+            // Mixed before the change: the old gain, exactly.
+            assert_eq!(f[0], full, "frame {i} before the change is heard");
+        } else if i >= latency + ramp {
             assert!((f[0] - full * g).abs() <= 1e-6, "frame {i} after the ramp");
         } else {
             // Inside the ramp: between the old and the new gain.

@@ -11,9 +11,11 @@ use cutweave_model::{SampleRate, Time};
 use rtrb::Producer;
 
 use super::{MAX_METER_BUSES, METER_HZ, MeterFrame, OutputShared};
+use crate::bus::{BusLevel, LevelAccumulator};
 use crate::clock::{ClockShared, ClockState, ClockWriter};
-use crate::dsp::{CHANNELS, peak};
-use crate::rt::{BusPeak, Mixer};
+use crate::dsp::CHANNELS;
+use crate::meter::{Loudness, LoudnessMeter};
+use crate::rt::Mixer;
 
 /// Frames mixed per inner step of a callback (the scratch size). Larger device buffers are
 /// mixed in several steps; device periods are far smaller (480 frames on WASAPI at 48 kHz).
@@ -63,31 +65,53 @@ cpal_samples!(
     u64
 );
 
-/// The peak meter of the master output.
+/// The master meter (WP-2E.02): peak and RMS of the output, its loudness and true peak, the
+/// limiter's gain and the bus levels the mixer collected, one frame per window. A seek starts
+/// every measurement again (the integrated loudness covers what played since the last seek).
 struct MasterMeter {
-    peak: [f32; 2],
+    level: LevelAccumulator,
+    /// `None` only if the meter cannot run at this rate (no loudness then).
+    loudness: Option<LoudnessMeter>,
     frames: u32,
     window: u32,
     rate: SampleRate,
+    /// The mixer's seek count the measurements belong to.
+    seeks: u64,
     frames_out: Producer<MeterFrame>,
 }
 
 impl MasterMeter {
-    fn new(rate: SampleRate, frames_out: Producer<MeterFrame>) -> MasterMeter {
+    fn new(rate: SampleRate, frames_out: Producer<MeterFrame>, seeks: u64) -> MasterMeter {
         MasterMeter {
-            peak: [0.0; 2],
+            level: LevelAccumulator::default(),
+            loudness: LoudnessMeter::new(rate)
+                .map_err(|e| tracing::warn!(error = %e, "no loudness meter"))
+                .ok(),
             frames: 0,
             window: (rate.hz() / METER_HZ).max(1),
             rate,
+            seeks,
             frames_out,
         }
     }
 
     /// Adds mixed stereo audio that ends at output sample `end`; at the end of each window
-    /// publishes a frame with the master peak and the bus peaks the mixer collected.
+    /// publishes a frame. Allocation-free.
     fn add(&mut self, audio: &[f32], end: i64, mixer: &mut Mixer, shared: &OutputShared) {
-        let p = peak(audio);
-        self.peak = [self.peak[0].max(p[0]), self.peak[1].max(p[1])];
+        let seeks = mixer.seeks();
+        if seeks != self.seeks {
+            self.seeks = seeks;
+            self.level = LevelAccumulator::default();
+            self.frames = 0;
+            if let Some(l) = &mut self.loudness {
+                l.reset();
+            }
+            let _ = mixer.take_limiter_gain();
+        }
+        self.level.add(audio);
+        if let Some(l) = &mut self.loudness {
+            l.add(audio);
+        }
         let frames = audio.len() / CHANNELS;
         self.frames = self
             .frames
@@ -96,16 +120,24 @@ impl MasterMeter {
             return;
         }
         self.frames %= self.window;
-        let master = std::mem::take(&mut self.peak);
-        shared.peak[0].store(master[0].to_bits(), Ordering::Relaxed);
-        shared.peak[1].store(master[1].to_bits(), Ordering::Relaxed);
+        let (peak, rms) = self.level.take();
+        shared.peak[0].store(peak[0].to_bits(), Ordering::Relaxed);
+        shared.peak[1].store(peak[1].to_bits(), Ordering::Relaxed);
+        let (true_peak, loudness) = match &mut self.loudness {
+            Some(l) => (l.take_true_peak(), l.reading()),
+            None => (peak[0].max(peak[1]), Loudness::NONE),
+        };
         let mut frame = MeterFrame {
             at: self.rate.samples_to_time(end).unwrap_or(Time::MAX),
-            peak: master,
-            buses: [BusPeak::SILENT; MAX_METER_BUSES],
+            peak,
+            rms,
+            true_peak,
+            loudness,
+            limiter_gain: mixer.take_limiter_gain(),
+            buses: [BusLevel::SILENT; MAX_METER_BUSES],
             bus_count: 0,
         };
-        frame.bus_count = mixer.take_bus_peaks(&mut frame.buses);
+        frame.bus_count = mixer.take_bus_levels(&mut frame.buses);
         // A full queue (nobody drains it) drops the frame.
         let _ = self.frames_out.push(frame);
     }
@@ -139,12 +171,13 @@ impl Player {
         shared: Arc<OutputShared>,
     ) -> Player {
         let rate = mixer.rate();
+        let seeks = mixer.seeks();
         Player {
-            seeks: mixer.seeks(),
+            seeks,
             mixer,
             clock,
             scratch: vec![0.0; SCRATCH_FRAMES * CHANNELS].into_boxed_slice(),
-            meter: MasterMeter::new(rate, meter),
+            meter: MasterMeter::new(rate, meter, seeks),
             shared,
         }
     }
