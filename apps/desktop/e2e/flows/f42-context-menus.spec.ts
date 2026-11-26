@@ -344,7 +344,9 @@ test.describe("F42 context menus", () => {
         /^Close panel/,
         /^Maximize panel/,
         /^Float panel/,
-        /^Move to/,
+        // Its own window (WP-2H.14, F47), and the dock's edges (a submenu).
+        /^Move to new window/,
+        /^Move to$/,
         /^Reset layout/,
       ]) {
         await expect(item(tab, name)).toBeVisible();
