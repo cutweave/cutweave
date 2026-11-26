@@ -32,11 +32,6 @@
     { "cmd": "item.detach", "args": { "items": [{ "$ref": "steps[4].output.clips[0]" }] } },
     { "cmd": "item.unlink", "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }] } },
     { "cmd": "item.move", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "delta": "1s" } },
-    {
-      "cmd": "item.link",
-      "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }, { "$ref": "steps[2].output.clips[1]" }] },
-      "expect": { "error": "invalid" }
-    },
     { "cmd": "item.move", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "delta": "-1s" } },
     {
       "cmd": "item.link",
@@ -45,6 +40,11 @@
     { "cmd": "edit.undo" },
     { "cmd": "edit.redo" },
     { "cmd": "item.group_select", "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }] } },
-    { "cmd": "item.get", "args": { "item": { "$ref": "steps[4].output.clips[0]" } } }
+    { "cmd": "item.get", "args": { "item": { "$ref": "steps[4].output.clips[0]" } } },
+    {
+      "cmd": "item.link",
+      "args": { "items": [{ "$ref": "steps[4].output.clips[0]" }, { "$ref": "steps[2].output.clips[0]" }] },
+      "expect": { "error": "invalid" }
+    }
   ]
 }

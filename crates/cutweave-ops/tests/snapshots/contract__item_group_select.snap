@@ -1,0 +1,164 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.group_select",
+    "summary": "The items and every member of their linked groups (what a click selects)",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The items, in one sequence."
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "description": "The selection a click on these items makes: the items and every member of their linked\ngroups (timeline spec INV-341). Attached children are not included. A read-only query.",
+      "title": "ItemGroupSelect"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence of the items."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "description": "One selected item.",
+            "type": "object",
+            "properties": {
+              "item": {
+                "description": "The item.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "track": {
+                "description": "Its track.",
+                "type": "string",
+                "pattern": "^trk_[0-9a-f]{32}$"
+              },
+              "linked_group": {
+                "description": "Its linked group, if any.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^grp_[0-9a-f]{32}$"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "track",
+              "linked_group"
+            ]
+          },
+          "description": "The given items in order, each followed by the other members of its group (no repeats)."
+        }
+      },
+      "required": [
+        "sequence",
+        "items"
+      ],
+      "description": "Result of `item.group_select`.",
+      "title": "ItemGroupSelectOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The items, in one sequence."
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "description": "The selection a click on these items makes: the items and every member of their linked\ngroups (timeline spec INV-341). Attached children are not included. A read-only query.",
+    "title": "ItemGroupSelect"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence of the items."
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "description": "One selected item.",
+          "type": "object",
+          "properties": {
+            "item": {
+              "description": "The item.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "track": {
+              "description": "Its track.",
+              "type": "string",
+              "pattern": "^trk_[0-9a-f]{32}$"
+            },
+            "linked_group": {
+              "description": "Its linked group, if any.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^grp_[0-9a-f]{32}$"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "track",
+            "linked_group"
+          ]
+        },
+        "description": "The given items in order, each followed by the other members of its group (no repeats)."
+      }
+    },
+    "required": [
+      "sequence",
+      "items"
+    ],
+    "description": "Result of `item.group_select`.",
+    "title": "ItemGroupSelectOutput"
+  }
+}
