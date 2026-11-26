@@ -48,7 +48,7 @@ pub const COLLECT_JOB_LABEL: &str = "collect";
 /// The folder of a collected project that holds its media.
 pub const MEDIA_FOLDER: &str = "media";
 /// Bytes copied between two looks at the cancel token.
-const CHUNK: usize = 1 << 20;
+pub(super) const CHUNK: usize = 1 << 20;
 /// Bytes compared at each end of a file to tell that a copy from an earlier run is complete.
 const SAMPLE: u64 = 1 << 20;
 /// Free space kept beyond what the copy needs.
@@ -138,7 +138,7 @@ fn numbered(name: &str, n: u32) -> String {
 
 /// The path of `path` relative to `root`, when it lies inside it (compared ignoring ASCII case
 /// and the kind of separator, as paths on Windows are).
-fn inside(root: &str, path: &str) -> Option<Vec<String>> {
+pub(super) fn inside(root: &str, path: &str) -> Option<Vec<String>> {
     let norm = |s: &str| -> Vec<String> {
         s.split(['/', '\\'])
             .filter(|p| !p.is_empty())
@@ -297,6 +297,18 @@ pub trait CollectHost: Send + Sync {
 
     /// Writes `doc` as a new project in `folder` and returns the path of its document.
     fn write_project(&self, folder: &Path, doc: &Project) -> Result<PathBuf, String>;
+
+    /// A new hasher for the file list of an archive (`project.archive`, WP-2F.04b): SHA-256,
+    /// which is what `archive.json` says its hashes are.
+    fn hasher(&self) -> Box<dyn ContentHasher>;
+}
+
+/// Hashes the bytes of one file, piece by piece ([`CollectHost::hasher`]).
+pub trait ContentHasher: Send {
+    /// Takes the next bytes of the file.
+    fn update(&mut self, bytes: &[u8]);
+    /// The hash of everything taken, in lowercase hex.
+    fn finish(self: Box<Self>) -> String;
 }
 
 /// Progress and cancellation of a running collect (a [`JobCtx`], or a test's own).
@@ -323,7 +335,7 @@ impl CollectProgress for JobCtx {
     }
 }
 
-fn failed(what: &str, path: &Path, e: &io::Error) -> JobError {
+pub(super) fn failed(what: &str, path: &Path, e: &io::Error) -> JobError {
     JobError::failed(format!("could not {what} `{}`: {e}", path.display()))
 }
 
@@ -367,7 +379,7 @@ fn same_bytes(a: &Path, b: &Path, progress: &dyn CollectProgress) -> Result<bool
     }
 }
 
-fn read_full(file: &mut fs::File, buf: &mut [u8]) -> io::Result<usize> {
+pub(super) fn read_full(file: &mut fs::File, buf: &mut [u8]) -> io::Result<usize> {
     let mut filled = 0;
     while filled < buf.len() {
         match file.read(&mut buf[filled..])? {
@@ -378,7 +390,7 @@ fn read_full(file: &mut fs::File, buf: &mut [u8]) -> io::Result<usize> {
     Ok(filled)
 }
 
-fn part_path(to: &Path) -> PathBuf {
+pub(super) fn part_path(to: &Path) -> PathBuf {
     let mut name = to.file_name().map_or_default(std::ffi::OsStr::to_os_string);
     name.push(".part");
     to.with_file_name(name)
@@ -484,6 +496,15 @@ pub fn run_collect(
     host: &dyn CollectHost,
     progress: &dyn CollectProgress,
 ) -> Result<CollectReport, JobError> {
+    collect_into(plan, host, progress).map(|(report, _)| report)
+}
+
+/// [`run_collect`], also returning the path of the document it wrote.
+pub(super) fn collect_into(
+    plan: &CollectPlan,
+    host: &dyn CollectHost,
+    progress: &dyn CollectProgress,
+) -> Result<(CollectReport, PathBuf), JobError> {
     let sizes: Vec<u64> = plan
         .files
         .iter()
@@ -517,10 +538,11 @@ pub fn run_collect(
     if progress.cancelled() {
         return Err(JobError::Cancelled);
     }
-    host.write_project(&plan.dest, &plan.doc)
+    let document = host
+        .write_project(&plan.dest, &plan.doc)
         .map_err(JobError::failed)?;
     progress.report(total, total, "");
-    Ok(report)
+    Ok((report, document))
 }
 
 // ----- the commands --------------------------------------------------------------------------
@@ -581,35 +603,41 @@ pub struct CollectEstimate {
     pub trimmed: u32,
 }
 
-/// The plan and estimate of a request, after checking it.
-fn prepare(
-    options: &CollectOptions,
-    ctx: &CollectCtx,
-) -> Result<(CollectPlan, CollectEstimate), CmdError> {
-    check_abs_path("/dest", &options.dest)?;
+/// Checks where a copy may go: an absolute path, inside the folders the caller may write to,
+/// outside the project's own folder.
+pub(super) fn check_dest(dest: &str, ctx: &CollectCtx) -> Result<(), CmdError> {
+    check_abs_path("/dest", dest)?;
     if let Some(roots) = &ctx.allowed_roots
-        && !roots.allows(&options.dest)
+        && !roots.allows(dest)
     {
         return Err(CmdError::invalid(
             "/dest",
             format!(
-                "`{}` is outside the folders you may write to (the folders the user allowed); \
-                 {OUTSIDE_ROOTS_HINT}",
-                options.dest
+                "`{dest}` is outside the folders you may write to (the folders the user \
+                 allowed); {OUTSIDE_ROOTS_HINT}"
             ),
         ));
     }
-    let dest = Path::new(&options.dest);
     if let Some(root) = &ctx.project_root
-        && (inside(root, &options.dest).is_some()
-            || inside(&options.dest, root).is_some()
-            || Path::new(root) == dest)
+        && (inside(root, dest).is_some()
+            || inside(dest, root).is_some()
+            || Path::new(root) == Path::new(dest))
     {
         return Err(CmdError::invalid(
             "/dest",
             "choose a folder outside the project's own folder: the copy must stand on its own",
         ));
     }
+    Ok(())
+}
+
+/// The plan and estimate of a request, after checking it.
+pub(super) fn prepare(
+    options: &CollectOptions,
+    ctx: &CollectCtx,
+) -> Result<(CollectPlan, CollectEstimate), CmdError> {
+    check_dest(&options.dest, ctx)?;
+    let dest = Path::new(&options.dest);
     if dest.is_file() {
         return Err(CmdError::invalid("/dest", "that is a file, not a folder"));
     }
@@ -619,6 +647,15 @@ fn prepare(
             "that folder already holds a project; choose an empty folder",
         ));
     }
+    Ok(estimate(options, ctx))
+}
+
+/// The plan of a request and what it takes; only the files and the space are looked at.
+pub(super) fn estimate(
+    options: &CollectOptions,
+    ctx: &CollectCtx,
+) -> (CollectPlan, CollectEstimate) {
+    let dest = Path::new(&options.dest);
     let plan = plan_collect(&ctx.doc, ctx.project_root.as_deref(), options);
     let mut bytes = 0_u64;
     let mut missing = Vec::new();
@@ -646,7 +683,39 @@ fn prepare(
         missing,
         trimmed: u32::try_from(trimmed).unwrap_or(u32::MAX),
     };
-    Ok((plan, estimate))
+    (plan, estimate)
+}
+
+/// Refuses a copy its estimate says cannot be made: a media file is missing, or the files do
+/// not fit.
+pub(super) fn check_ready(estimate: &CollectEstimate) -> Result<(), CmdError> {
+    if let Some(first) = estimate.missing.first() {
+        let more = estimate.missing.len() - 1;
+        return Err(CmdError::invalid(
+            "/media",
+            format!(
+                "the file of `{}` is missing{}; relink it first (media.relink_folder), or \
+                 remove it from the project",
+                first.name,
+                if more == 0 {
+                    String::new()
+                } else {
+                    format!(" (and {more} more)")
+                }
+            ),
+        ));
+    }
+    if !estimate.enough_space {
+        return Err(CmdError::invalid(
+            "/dest",
+            format!(
+                "not enough space: the media take {} bytes and the drive has {} free",
+                estimate.bytes,
+                estimate.free_bytes.unwrap_or(0)
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Says what `project.collect` with the same params would copy: how many media files, how many
@@ -767,32 +836,7 @@ impl EngineCommand for ProjectCollect {
             },
             ctx,
         )?;
-        if let Some(first) = estimate.missing.first() {
-            let more = estimate.missing.len() - 1;
-            return Err(CmdError::invalid(
-                "/media",
-                format!(
-                    "the file of `{}` is missing{}; relink it first (media.relink_folder), or \
-                     remove it from the project",
-                    first.name,
-                    if more == 0 {
-                        String::new()
-                    } else {
-                        format!(" (and {more} more)")
-                    }
-                ),
-            ));
-        }
-        if !estimate.enough_space {
-            return Err(CmdError::invalid(
-                "/dest",
-                format!(
-                    "not enough space: the media take {} bytes and the drive has {} free",
-                    estimate.bytes,
-                    estimate.free_bytes.unwrap_or(0)
-                ),
-            ));
-        }
+        check_ready(&estimate)?;
         let host = Arc::clone(&ctx.host);
         let job = ctx.jobs.submit(
             JobSpec::new(JobKind::Collect, COLLECT_JOB_LABEL),

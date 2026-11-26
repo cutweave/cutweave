@@ -25,8 +25,8 @@ use cutweave_model::{MediaId, Project};
 use cutweave_ops::{
     media::AllowedRoots,
     project::collect::{
-        CollectCtx, CollectHost, CollectMode, CollectOptions, CollectProgress, plan_collect,
-        run_collect,
+        CollectCtx, CollectHost, CollectMode, CollectOptions, CollectProgress, ContentHasher,
+        plan_collect, run_collect,
     },
     testing::job_manager,
 };
@@ -102,6 +102,21 @@ impl CollectHost for Host {
             .unwrap()
             .push((folder.to_path_buf(), doc.clone()));
         Ok(path)
+    }
+
+    fn hasher(&self) -> Box<dyn ContentHasher> {
+        Box::new(NoHash)
+    }
+}
+
+/// A collect hashes nothing (the hasher is for `project.archive`).
+struct NoHash;
+
+impl ContentHasher for NoHash {
+    fn update(&mut self, _bytes: &[u8]) {}
+
+    fn finish(self: Box<Self>) -> String {
+        String::new()
     }
 }
 
