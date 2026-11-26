@@ -44,8 +44,8 @@ function setup() {
 
 describe("the collect form", () => {
   it("names the folder from the location and the name, with the location's separator", () => {
-    expect(destOf({ parent: "C:Work\\", name: " Promo collected ", trimUnused: false })).toBe(
-      "C:WorkPromo collected",
+    expect(destOf({ parent: "C:\\Work\\", name: " Promo collected ", trimUnused: false })).toBe(
+      "C:\\Work\\Promo collected",
     );
     expect(destOf({ parent: "/home/me/work", name: "Promo", trimUnused: false })).toBe(
       "/home/me/work/Promo",
