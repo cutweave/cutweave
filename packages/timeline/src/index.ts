@@ -78,6 +78,15 @@ export type { FrameInput, FrameStats } from "./renderer.ts";
 export { TimelineRenderer } from "./renderer.ts";
 export type { TickPlan } from "./ruler.ts";
 export { chooseTickPlan, tickCandidates } from "./ruler.ts";
+export type {
+  SharedSnapResult,
+  SnapCandidate,
+  SnapIndex,
+  SnapKindName,
+  SnapRequest,
+  SnapSources,
+} from "./snap/index.ts";
+export { createSnapIndex, SNAP_KINDS, snap, snapCandidates } from "./snap/index.ts";
 export type { SnapResult, SnapTargetOptions } from "./snap.ts";
 export { nearestTarget, SNAP_PX, snapSpan, snapTargets, snapTolerance } from "./snap.ts";
 export type { ClipColors, Theme } from "./theme.ts";
