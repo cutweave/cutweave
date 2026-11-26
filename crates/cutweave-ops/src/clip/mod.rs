@@ -14,6 +14,7 @@
 //! the right halves in member order (the clip, then its partners by track ID and item ID).
 
 pub mod attributes;
+pub mod replace;
 pub mod speed;
 pub mod trim;
 
@@ -26,6 +27,7 @@ use cutweave_model::{
 };
 
 pub use attributes::{Attribute, ClipPasteAttributes, ClipPasteAttributesOutput};
+pub use replace::{ClipReplace, ClipReplaceOutput, ReplaceMode};
 pub use speed::{
     ClipFreezeFrame, ClipFreezeFrameOutput, ClipResetSpeed, ClipReverse, ClipSetSpeed,
     ClipSpeedOutput, KeyframeTiming, SpeedClip, SpeedInput, SpeedKeep,
@@ -58,7 +60,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ClipReverse>()?
         .register::<ClipResetSpeed>()?
         .register::<ClipFreezeFrame>()?
-        .register::<ClipPasteAttributes>()?;
+        .register::<ClipPasteAttributes>()?
+        .register::<ClipReplace>()?;
     Ok(())
 }
 
