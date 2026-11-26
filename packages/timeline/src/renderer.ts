@@ -24,7 +24,7 @@ import {
   toggleRect,
 } from "./geometry.ts";
 import { FLAG_DISABLED, FLAG_PROPOSED, FLAG_SELECTED, type TimelineLayout } from "./layout.ts";
-import type { ItemKind, Rect, TimelineTrack, ViewState } from "./model.ts";
+import type { ItemKind, MediaSlice, Rect, TimelineTrack, ViewState } from "./model.ts";
 import { chooseTickPlan } from "./ruler.ts";
 import type { Theme } from "./theme.ts";
 import { FLICKS_PER_SECOND, type FrameRate, formatTimecode } from "./time.ts";
@@ -428,11 +428,11 @@ export class TimelineRenderer {
       const v0 = Math.max(x, rx0, vp.headerWidth);
       const v1 = Math.min(x + w, rx1);
       if (v1 <= v0) continue;
-      const j0 = Math.floor((slice.sourceIn + (v0 - x) / k) / dur);
-      const j1 = Math.floor((slice.sourceIn + (v1 - x) / k) / dur);
-      for (let j = j0; j <= j1 && j - j0 < 256; j++) {
-        const tx = x + (j * dur - slice.sourceIn) * k;
-        const tw = dur * k;
+      const len = (layout.end[i] ?? 0) - (layout.start[i] ?? 0);
+      const tiles = tileSpans(slice, len, dur, (v0 - x) / k, (v1 - x) / k);
+      for (const { j, at, span } of tiles) {
+        const tx = x + at * k;
+        const tw = span * k;
         const d0 = Math.max(tx, v0);
         const d1 = Math.min(tx + tw, v1);
         if (d1 <= d0) continue;
@@ -500,10 +500,18 @@ export class TimelineRenderer {
       const c1 = Math.min(x + w, rx1);
       const P = peaks.peaksPerSecond;
       const nPeaks = peaks.max.length;
+      // WP-2D.01: media time at a timeline offset follows the item's speed and direction.
+      const s = slice.speed ?? 1;
+      const len = (layout.end[i] ?? 0) - (layout.start[i] ?? 0);
+      const out = slice.sourceIn + len * s;
+      const stepSecs = (WAVE_STEP / vp.pxPerSec) * s;
       for (let c = c0; c < c1; c += WAVE_STEP) {
-        const srcA = (slice.sourceIn + (c - x) / pxPerFlick) / FLICKS_PER_SECOND;
-        const a = Math.floor(srcA * P);
-        const b = Math.max(a, Math.floor((srcA + WAVE_STEP / vp.pxPerSec) * P));
+        const u = (c - x) / pxPerFlick;
+        const srcA =
+          (slice.reverse === true ? out - u * s : slice.sourceIn + u * s) / FLICKS_PER_SECOND;
+        const from = slice.reverse === true ? srcA - stepSecs : srcA;
+        const a = Math.floor(from * P);
+        const b = Math.max(a, Math.floor((from + stepSecs) * P));
         if (b < 0 || a >= nPeaks) continue;
         const stride = Math.max(1, Math.floor((b - a) / 16));
         let lo = 0;
@@ -867,4 +875,45 @@ function intersect(a: Rect, b: Rect): Rect {
   const x1 = Math.min(a.x + a.w, b.x + b.w);
   const y1 = Math.min(a.y + a.h, b.y + b.h);
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+}
+
+/** One filmstrip tile on an item: tile `j` of the media, from item offset `at` for `span` flicks. */
+interface TileSpan {
+  readonly j: number;
+  readonly at: number;
+  readonly span: number;
+}
+
+/**
+ * The filmstrip tiles (media tiles of `dur` flicks) an item of `len` flicks shows over its offsets
+ * `[u0, u1)` (WP-2D.01): at speed `s` a tile spans `dur / s` timeline flicks, reversed the tiles run
+ * from the end of the range, and a freeze frame (`s` 0) repeats its frame's tile. At most 256.
+ */
+export function tileSpans(
+  slice: MediaSlice,
+  len: number,
+  dur: number,
+  u0: number,
+  u1: number,
+): TileSpan[] {
+  const s = slice.speed ?? 1;
+  const out: TileSpan[] = [];
+  if (s <= 0) {
+    const j = Math.floor(slice.sourceIn / dur);
+    for (let n = Math.floor(u0 / dur); n * dur < u1 && out.length < 256; n++) {
+      out.push({ j, at: n * dur, span: dur });
+    }
+    return out;
+  }
+  const end = slice.sourceIn + len * s;
+  const rev = slice.reverse === true;
+  const m0 = rev ? end - u1 * s : slice.sourceIn + u0 * s;
+  const m1 = rev ? end - u0 * s : slice.sourceIn + u1 * s;
+  const j0 = Math.floor(m0 / dur);
+  const j1 = Math.floor(m1 / dur);
+  for (let j = j0; j <= j1 && j - j0 < 256; j++) {
+    const at = rev ? (end - (j + 1) * dur) / s : (j * dur - slice.sourceIn) / s;
+    out.push({ j, at, span: dur / s });
+  }
+  return out;
 }

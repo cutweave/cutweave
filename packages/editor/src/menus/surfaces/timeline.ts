@@ -4,8 +4,8 @@
 // commands add their rows here; a row for a command nobody has registered is left out, so a
 // feature WP only adds its row.
 // TODO(WP-2A.03): Ripple delete, Delete gap. TODO(WP-2A.06): Cut, Copy, Paste, Paste attributes,
-// Duplicate. TODO(WP-2A.05): Link, Unlink, Group. TODO(WP-2A.11): Replace clip. TODO(WP-2D.01):
-// Speed, Reverse, Freeze frame. TODO(WP-2A.02): markers, in and out, Make magnetic, track
+// Duplicate. TODO(WP-2A.05): Link, Unlink, Group. TODO(WP-2A.11): Replace clip. WP-2D.01 adds
+// Speed ▸, Reverse and Freeze frame. TODO(WP-2A.02): markers, in and out, Make magnetic, track
 // height, Move up and down, Color label. TODO(WP-2A.09): Zoom to fit and Zoom to selection.
 // TODO(WP-2C.05): the keyframe menu. The edge menu (WP-2A.04) trims, ripple trims and rolls the
 // edge to the playhead, and extends it to the next clip.
@@ -13,18 +13,51 @@ import { formatTimecode } from "@cutweave/timeline";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
 import type { ContextValues } from "../when.ts";
-import { type ClipFact, clipFact, clipFacts, clipLabel, mediaPath, trackFact } from "./facts.ts";
+import {
+  type ClipFact,
+  clipFact,
+  clipFacts,
+  clipLabel,
+  mediaAsset,
+  mediaPath,
+  trackFact,
+} from "./facts.ts";
 import { sequenceRate } from "./shared.ts";
 
 const LOCKED = "contextMenu.reason.trackLocked" as const;
 
-/** What a clip menu knows about its target: the track's lock and the clips' enabled state. */
+/** A clip that plays moving pictures: video media on a video track, not a freeze frame. */
+const moving = (f: ClipFact): boolean =>
+  f.track.kind === "video" &&
+  mediaAsset(f.clip.media)?.kind === "video" &&
+  (f.clip.freeze ?? null) === null;
+
+/** A clip's speed as `num/den` text (`1/1` when the document has none). */
+const speedOf = (f: ClipFact): string => `${f.clip.speed?.num ?? 1}/${f.clip.speed?.den ?? 1}`;
+
+/**
+ * What a clip menu knows about its target: the track's lock, the clips' enabled state, and
+ * whether they all play moving pictures (WP-2D.01: Speed, Reverse and Freeze frame).
+ */
 export function clipKeys(target: MenuTarget): ContextValues {
   const facts = clipFacts(target.ids);
   return {
     "track.locked": facts.some((f) => f.track.locked),
     "item.enabled": facts.length > 0 && facts.every((f) => f.clip.enabled),
+    "item.movingPicture": facts.length > 0 && facts.every(moving),
   };
+}
+
+/** The clips' shared speed as `num/den` (`1/1` when the document has none), or `null`. */
+function sharedSpeed(ctx: MenuContext): string | null {
+  const speeds = new Set(clipFacts(ctx.ids).map(speedOf));
+  return speeds.size === 1 ? ([...speeds][0] ?? null) : null;
+}
+
+/** Whether every clip of the menu plays backwards. */
+function allReversed(ctx: MenuContext): boolean {
+  const facts = clipFacts(ctx.ids);
+  return facts.length > 0 && facts.every((f) => f.clip.reverse === true);
 }
 
 /** The playhead the menu acts on (Split cuts there, not where the pointer was). */
@@ -41,6 +74,73 @@ const splitReason = (ctx: MenuContext) =>
     : ctx.ids.length !== 1
       ? "contextMenu.reason.oneClip"
       : "contextMenu.reason.playheadOutside";
+
+/** One choice of the Speed submenu: `speed` as `num/den`, the label and its place. */
+const speedRow = (id: string, speed: string, label: LabelSpec, order: number): MenuRow => ({
+  id,
+  command: "clip.set_speed",
+  group: "speed",
+  order,
+  radio: true,
+  label,
+  when: "!track.locked",
+  reason: LOCKED,
+  checked: (ctx) => sharedSpeed(ctx) === speed,
+  args: (ctx) => ({ items: ctx.ids, speed }),
+});
+
+/** Freeze frame needs one clip and the playhead on one of its frames. */
+const playheadOnClip = (ctx: MenuContext): boolean =>
+  ctx.playhead !== null &&
+  clipFacts(ctx.ids).some(
+    (f) => playheadOf(ctx) >= f.clip.start && playheadOf(ctx) < f.clip.start + f.clip.duration,
+  );
+
+// WP-2D.01: Speed ▸, Reverse and Freeze frame, for clips with moving pictures only (sound-only
+// clips, stills and freeze frames leave them out).
+const speedRows: readonly MenuRow[] = [
+  {
+    id: "speed",
+    group: "speed",
+    order: 0,
+    visible: "item.movingPicture",
+    submenu: {
+      label: { key: "contextMenu.item.speed" },
+      rows: [
+        speedRow("speed-normal", "1/1", { key: "contextMenu.item.speedNormal" }, 0),
+        speedRow("speed-half", "1/2", { key: "contextMenu.item.speedHalf" }, 1),
+        speedRow("speed-double", "2/1", { key: "contextMenu.item.speedDouble" }, 2),
+        {
+          command: "timeline.custom_speed",
+          group: "custom",
+          order: 0,
+          when: "!track.locked",
+          reason: LOCKED,
+        },
+      ],
+    },
+  },
+  {
+    id: "reverse",
+    command: "clip.reverse",
+    group: "speed",
+    order: 1,
+    visible: "item.movingPicture",
+    when: "!track.locked",
+    reason: LOCKED,
+    checked: allReversed,
+    args: (ctx) => ({ items: ctx.ids, reverse: !allReversed(ctx) }),
+  },
+  {
+    command: "clip.freeze_frame",
+    group: "speed",
+    order: 2,
+    visible: "item.movingPicture",
+    enabledIf: (ctx) => oneClip(ctx) && ctx.keys["track.locked"] !== true && playheadOnClip(ctx),
+    reason: splitReason,
+    args: (ctx) => ({ item: ctx.ids[0], at: playheadOf(ctx) }),
+  },
+];
 
 const clipRows: readonly MenuRow[] = [
   {
@@ -117,6 +217,7 @@ const clipRows: readonly MenuRow[] = [
     reason: "contextMenu.reason.noFile",
     args: (ctx) => ({ text: pathOfClip(ctx) ?? "" }),
   },
+  ...speedRows,
 ];
 
 function pathOfClip(ctx: MenuContext): string | null {
@@ -135,7 +236,7 @@ const clipName = (target: MenuTarget) =>
 export const TIMELINE_CLIP: MenuSurfaceDef = {
   id: "timeline.clip",
   name: clipName,
-  groups: ["edit", "state", "reveal"],
+  groups: ["edit", "speed", "state", "reveal"],
   selection: itemSelection,
   keys: clipKeys,
   rows: clipRows,

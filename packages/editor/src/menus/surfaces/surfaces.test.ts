@@ -314,6 +314,52 @@ describe("the clip menu", () => {
     expect(viewStore.getState().assetTab).toBe("media");
   });
 
+  it("changes the speed from the Speed submenu, checks the current one, and asks for a custom one (WP-2D.01)", async () => {
+    viewStore.getState().setSelection([C1, C2].map((id) => ({ kind: "item", id }) as never));
+    const m = menuFor("timeline.clip", { ids: [C1] });
+    expect(m.item("Normal").checked).toBe(true);
+    expect(m.item("2x").checked).toBe(false);
+    await m.choose("2x");
+    expect(call).toHaveBeenCalledWith("clip.set_speed", { items: [C1, C2], speed: "2/1" });
+    await menuFor("timeline.clip", { ids: [C1] }).choose("Custom…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "custom-speed",
+      items: [C1, C2],
+      speed: "1",
+    });
+  });
+
+  it("reverses and freezes a video clip, and leaves them out for sound and stills (WP-2D.01)", async () => {
+    await menuFor("timeline.clip", { ids: [C1] }).choose("Reverse");
+    expect(call).toHaveBeenCalledWith("clip.reverse", { items: [C1], reverse: true });
+    await menuFor("timeline.clip", { ids: [C1] }).choose("Freeze frame");
+    expect(call).toHaveBeenCalledWith("clip.freeze_frame", { item: C1, at: 5 * F });
+    viewStore.setState({ playhead: 15 * F });
+    const outside = menuFor("timeline.clip", { ids: [C1] }).item("Freeze frame");
+    expect(outside.disabledReason).toBe("The playhead is not inside the clip");
+    // A reversed clip shows Reverse checked; choosing it plays forwards again.
+    const reversed = project();
+    const seq = reversed.sequences[SEQ as keyof typeof reversed.sequences] as unknown as {
+      tracks: Record<string, { items: Record<string, Record<string, unknown>> }>;
+    };
+    const c1 = seq.tracks[V1]?.items[C1];
+    if (c1 !== undefined) {
+      c1.reverse = true;
+      c1.speed = { num: 1, den: 2 };
+    }
+    const sound = { ...(c1 ?? {}), id: hex("itm", 9), media: MED_A, reverse: false };
+    const a1 = seq.tracks[A1];
+    if (a1 !== undefined) a1.items[hex("itm", 9)] = sound;
+    docStore.setState({ project: reversed });
+    const again = menuFor("timeline.clip", { ids: [C1] });
+    expect(again.item("Reverse").checked).toBe(true);
+    expect(again.item("0.5x").checked).toBe(true);
+    await again.choose("Reverse");
+    expect(call).toHaveBeenLastCalledWith("clip.reverse", { items: [C1], reverse: false });
+    const labels = menuFor("timeline.clip", { ids: [hex("itm", 9)] }).items.map((i) => i.label);
+    for (const left of ["Reverse", "Freeze frame", "2x"]) expect(labels).not.toContain(left);
+  });
+
   it("keeps the selection on an empty lane", () => {
     viewStore.getState().setSelection([{ kind: "item", id: C1 } as never]);
     menuFor("timeline.lane", { ids: [], place: { time: 3 * F, trackId: V1 } });

@@ -512,6 +512,21 @@ function pressItem(state: InteractionState, e: PointerInput): Transition {
  * media's last frame and the next clip's start. The engine checks all of this again (arch §4.3);
  * these limits only keep the edge from running into a refusal mid-drag.
  */
+/**
+ * Media left beyond each edge of an item, in timeline flicks (`null`: unbounded). At speed `s` a
+ * timeline flick plays `s` media flicks (WP-2D.01); forwards the start edge reaches back into
+ * earlier media, reversed into later media.
+ */
+function mediaRoom(item: TimelineItem): { before: number | null; after: number | null } {
+  const src = item.source;
+  if (src === undefined || src.still === true) return { before: null, after: null };
+  const s = src.speed ?? 1;
+  const out = src.sourceIn + item.duration * s;
+  const early = src.sourceIn / s;
+  const late = src.mediaDuration === null ? null : (src.mediaDuration - out) / s;
+  return src.reverse === true ? { before: late, after: early } : { before: early, after: late };
+}
+
 export function trimLimits(
   model: TimelineModel,
   item: TimelineItem,
@@ -528,16 +543,14 @@ export function trimLimits(
     if (oEnd <= start) prevEnd = Math.max(prevEnd, oEnd);
     if (other.start >= end) nextStart = Math.min(nextStart, other.start);
   }
-  const src = item.source;
+  const room = mediaRoom(item);
   if (edge === "start") {
     let min = prevEnd;
-    if (src !== undefined && !src.still) min = Math.max(min, start - src.sourceIn);
+    if (room.before !== null) min = Math.max(min, start - room.before);
     return { min: snapToFrame(min, model.fps, "ceil"), max: end - frame };
   }
   let max = nextStart;
-  if (src !== undefined && !src.still && src.mediaDuration !== null) {
-    max = Math.min(max, start - src.sourceIn + src.mediaDuration);
-  }
+  if (room.after !== null) max = Math.min(max, end + room.after);
   const maxAligned = Number.isFinite(max) ? snapToFrame(max, model.fps, "floor") : max;
   return { min: start + frame, max: maxAligned };
 }

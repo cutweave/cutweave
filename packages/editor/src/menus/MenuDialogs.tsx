@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The questions context-menu choices ask (WP-2H.13, `dialogs.ts`): rename a clip, confirm deleting
+// The questions context-menu choices ask (WP-2H.13, `dialogs.ts`): rename a clip, a custom speed
+// (WP-2D.01), confirm deleting
 // a track with clips on it, confirm removing a media asset clips use. Each sends exactly one
 // command when the person agrees, through the same call every menu choice uses.
 import type { FolderId, MediaId } from "@cutweave/protocol";
@@ -53,6 +54,59 @@ function RenameClip({ item, name }: { readonly item: string; readonly name: stri
       <div className="cw-row">
         <TextField
           aria-label={t("contextMenu.dialog.clipName")}
+          value={value}
+          onChange={setValue}
+          autoFocus
+          onFocus={(event) => event.currentTarget.select()}
+        />
+      </div>
+    </Dialog>
+  );
+}
+
+/** Speed ▸ Custom… (WP-2D.01): one `clip.set_speed` for the clips; the engine checks the text. */
+function CustomSpeed({
+  items,
+  speed,
+}: {
+  readonly items: readonly string[];
+  readonly speed: string;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState(speed);
+  useEffect(() => setValue(speed), [speed]);
+  const close = () => menuDialogStore.getState().close();
+  const submit = () => {
+    const text = value.trim();
+    close();
+    if (text === "" || text === speed) return;
+    void menuServices
+      .call("clip.set_speed", { items, speed: text })
+      .catch((error: unknown) => menuServices.report(error));
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+      title={t("contextMenu.dialog.customSpeedTitle")}
+      description={t("contextMenu.dialog.customSpeedBody")}
+      onSubmit={submit}
+      footer={
+        <>
+          <Button variant="ghost" size="lg" onClick={close}>
+            {t("contextMenu.dialog.cancel")}
+          </Button>
+          <Button variant="primary" size="lg" onClick={submit}>
+            {t("contextMenu.dialog.setSpeed")}
+          </Button>
+        </>
+      }
+    >
+      <div className="cw-row">
+        <TextField
+          aria-label={t("contextMenu.dialog.speed")}
           value={value}
           onChange={setValue}
           autoFocus
@@ -315,6 +369,8 @@ export function MenuDialogs() {
   switch (dialog.kind) {
     case "rename-clip":
       return <RenameClip key={dialog.item} item={dialog.item} name={dialog.name} />;
+    case "custom-speed":
+      return <CustomSpeed key={dialog.items.join()} items={dialog.items} speed={dialog.speed} />;
     case "delete-track":
       return (
         <DeleteTrack

@@ -63,6 +63,7 @@ describe("evaluateWhen", () => {
   it("names the published keys", () => {
     expect(CONTEXT_KEYS).toContain("selection.count");
     expect(CONTEXT_KEYS).toContain("project.readOnly");
-    expect(CONTEXT_KEYS).toHaveLength(12);
+    // WP-2D.01 added `item.movingPicture` (keys are added freely, renamed only by ADR).
+    expect(CONTEXT_KEYS).toHaveLength(13);
   });
 });

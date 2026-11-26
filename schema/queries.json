@@ -626,21 +626,77 @@
             "additionalProperties": false,
             "description": "Media and source position (unless `fields` leaves it out).",
             "properties": {
+              "freeze": {
+                "additionalProperties": false,
+                "description": "A freeze frame: the media position it shows for its whole length.",
+                "properties": {
+                  "at_source": {
+                    "description": "The media position of the frame shown.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "at_source"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "media": {
                 "description": "The media.",
                 "pattern": "^med_[0-9a-f]{32}$",
                 "type": "string"
               },
+              "reverse": {
+                "description": "Plays its range backwards.",
+                "type": "boolean"
+              },
               "source_in": {
-                "description": "Position in the media of the clip's first frame.",
+                "description": "Position in the media of the clip's first frame (of the last frame shown when reversed).",
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "source_out": {
+                "description": "End of the media range the clip plays: `source_in + duration × speed`.",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "speed": {
+                "additionalProperties": false,
+                "description": "Playback speed, an exact fraction (`{\"num\": 1, \"den\": 2}` is half speed).",
+                "properties": {
+                  "den": {
+                    "description": "Denominator.",
+                    "maximum": 100000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Numerator.",
+                    "maximum": 100000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
               }
             },
             "required": [
               "media",
-              "source_in"
+              "source_in",
+              "source_out",
+              "speed",
+              "reverse",
+              "freeze"
             ],
             "type": [
               "object",

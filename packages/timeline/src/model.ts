@@ -24,8 +24,15 @@ export interface TimelineTrack {
 /** A slice of a media asset an item shows (thumbnails, waveform), addressed by media id. */
 export interface MediaSlice {
   readonly mediaId: string;
-  /** Source time (flicks) at the item's left edge. */
+  /** Start of the media range the item plays, flicks (its left edge, unless `reverse`). */
   readonly sourceIn: number;
+  /**
+   * Media flicks per timeline flick (WP-2D.01; default 1, for display only: the engine's exact
+   * fraction decides). `0` shows the frame at `sourceIn` all along (a freeze frame).
+   */
+  readonly speed?: number;
+  /** The item plays its range backwards: its left edge shows the end of the range. */
+  readonly reverse?: boolean;
 }
 
 export interface ItemState {
@@ -43,6 +50,10 @@ export interface SourceRange {
   readonly mediaDuration: number | null;
   /** A still image: it has no source position, so its start edge is not bounded by the media. */
   readonly still?: boolean;
+  /** Media flicks per timeline flick (WP-2D.01; default 1). */
+  readonly speed?: number;
+  /** Played backwards: the start edge shows the end of the range (WP-2D.01). */
+  readonly reverse?: boolean;
 }
 
 export interface TimelineItem {

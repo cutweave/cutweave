@@ -339,7 +339,8 @@ export type ClearedKind = {
  *  A media clip: a range of a `MediaAsset` placed on a track.
  * 
  *  The clip occupies `[start, start + duration)` on the timeline and plays the source range
- *  `[source_in, source_in + duration)` (speed 1 in schema v1).
+ *  `[source_in, source_in + duration × speed)`, backwards when `reverse`, or one frame of it for
+ *  its whole length when it is a `freeze` frame (WP-2D.01; the mapping is `SourceMap`).
  */
 export type Clip = {
 	/**  The item ID (also its key in the track's `items`). */
@@ -363,8 +364,23 @@ export type Clip = {
 	markers: { [key in MarkerId]: Marker },
 	/**  The media this clip plays. */
 	media: MediaId,
-	/**  Source position (from the start of the media) of the first frame. */
+	/**
+	 *  Source position (from the start of the media) of the first frame (of the last frame
+	 *  shown, when reversed).
+	 */
 	source_in: Time,
+	/**
+	 *  Playback speed (WP-2D.01): a timeline span `d` plays `d × speed` of media (INV-47).
+	 *  Absent in documents written before it (the v2 fill-in adds it): normal speed.
+	 */
+	speed?: Speed,
+	/**  Plays its source range backwards (WP-2D.01). Absent in older documents: forwards. */
+	reverse?: boolean,
+	/**
+	 *  A freeze frame (WP-2D.01): shows the frame at `at_source` for its whole length, silent.
+	 *  Absent in older documents: not a freeze frame.
+	 */
+	freeze?: Freeze | null,
 	/**  Audio properties. */
 	audio: AudioProps,
 	/**  Visual properties. */
@@ -372,6 +388,78 @@ export type Clip = {
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
+
+/**
+ *  Freezes the frame a clip shows at timeline time `at` (frame-snapped, inside the clip): the clip
+ *  and its linked partners are split there, what follows on their tracks moves later by
+ *  `duration` (default 3 s, frame-snapped), and a still of that frame goes in between (a clip of
+ *  the same media with `freeze`, silent, unlinked, each animated property at its value at `at`).
+ *  On the main track it stays gapless. At the clip's first frame nothing is split. Clips without
+ *  a picture, stills and freeze frames are `Unsupported`; `Locked` if a track involved is locked.
+ */
+export type ClipFreezeFrame = {
+	/**  The clip. */
+	item: ItemId,
+	/**  Timeline time of the frame to freeze, inside the clip (frame-snapped). */
+	at: TimeInput,
+	/**  Length of the still (default 3 s; frame-snapped, at least one frame). */
+	duration?: TimeInput | null,
+};
+
+/**  Result of `clip.freeze_frame`. */
+export type ClipFreezeFrameOutput = {
+	/**  The new still. */
+	freeze: ItemId,
+	/**
+	 *  The part of the clip before the still (keeps the clip's ID); `None` when frozen at the
+	 *  clip's first frame.
+	 */
+	before: ItemId | null,
+	/**
+	 *  The part after the still: the right half of the split, or the whole clip when frozen at
+	 *  its first frame.
+	 */
+	after: ItemId,
+	/**  The timeline time frozen (frame-snapped), where the still starts. */
+	at: Time,
+	/**  The media position of the frozen frame. */
+	at_source: Time,
+	/**  The still's length. */
+	duration: Duration,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
+ *  Plays a clip (`item`), or several (`items`), and their linked partners forwards at normal speed
+ *  again, keeping the media they play (their length changes as in `clip.set_speed` with `keep:
+ *  "in_point"`; `ripple` and `keyframes` as there).
+ */
+export type ClipResetSpeed = {
+	/**  The clip (or `items`). */
+	item?: ItemId | null,
+	/**  Clips to reset at once. */
+	items?: ItemId[] | null,
+	/**  On a free track, move what follows instead of failing at the next item (default `false`). */
+	ripple?: boolean | null,
+	/**  `keep` (default): keys stay at their item times; `scale`: they stretch with the speed. */
+	keyframes?: KeyframeTiming | null,
+};
+
+/**
+ *  Plays a clip (`item`), or several (`items`), and their linked partners backwards over the same
+ *  media range, or forwards again: `reverse: true` or `false`, or omitted to toggle each clip.
+ *  Nothing moves and keyframes stay. Stills and freeze frames are `Unsupported`; `Locked` if a
+ *  track involved is locked. Reversed long-GOP video without a proxy scrubs slowly (WP-2D.01b).
+ */
+export type ClipReverse = {
+	/**  The clip (or `items`). */
+	item?: ItemId | null,
+	/**  Clips to change at once. */
+	items?: ItemId[] | null,
+	/**  `true` backwards, `false` forwards; omitted: toggle. */
+	reverse?: boolean | null,
+};
 
 /**
  *  Trims an edge and closes or opens the space after the clip: the clip's start stays, and
@@ -432,6 +520,34 @@ export type ClipRoll = {
 };
 
 /**
+ *  Plays a clip (`item`), or several (`items`), and their linked partners at `speed`: a number
+ *  (`2`, `0.5`), text (`"1/3"`, `"2x"`, `"50%"`) or `{num, den}`, from 0.1 to 100, exact. With
+ *  `keep: "in_point"` (default) the clip plays the same media and its length changes (snapped to
+ *  frames); with `keep: "duration"` its length stays and it plays more or less media. On the main
+ *  track what follows moves with the clip's end; on a free track the clip keeps its start and
+ *  may not grow into the next item (`Invalid` at `/speed`) unless `ripple: true`. `keyframes:
+ *  "scale"` stretches keys with the speed (default `"keep"`). Stills and freeze frames are
+ *  `Unsupported`; reading past the media is `Invalid`; `Locked` if a track involved is locked.
+ */
+export type ClipSetSpeed = {
+	/**  The clip (or `items`). */
+	item?: ItemId | null,
+	/**  Clips to change at once. */
+	items?: ItemId[] | null,
+	/**  The speed: `2`, `0.5`, `"1/3"`, `"2x"`, `"50%"` or `{num, den}` (0.1 to 100). */
+	speed: SpeedInput,
+	/**  `in_point` (default): same media, new length; `duration`: same length, more or less media. */
+	keep?: SpeedKeep | null,
+	/**
+	 *  On a free track, move what follows instead of failing at the next item (default `false`;
+	 *  the main track always ripples).
+	 */
+	ripple?: boolean | null,
+	/**  `keep` (default): keys stay at their item times; `scale`: they stretch with the speed. */
+	keyframes?: KeyframeTiming | null,
+};
+
+/**
  *  Moves a clip by `delta` between its neighbours, keeping what it shows: the clip and its
  *  linked partners move; the clip just before it (if it touches it) gets a later or earlier
  *  end and the clip just after it (if it touches it) a later or earlier start (its source
@@ -472,6 +588,20 @@ export type ClipSlip = {
 	clamp?: boolean | null,
 	/**  Snap to the audio sample grid (audio clips only). */
 	fine?: boolean | null,
+};
+
+/**  Result of `clip.set_speed`, `clip.reverse` and `clip.reset_speed`. */
+export type ClipSpeedOutput = {
+	/**
+	 *  The clips changed: each requested clip (in request order) followed by its linked
+	 *  partners.
+	 */
+	items: SpeedClip[],
+	/**
+	 *  What changed (timeline spec §3.1). A change of speed or direction alone (same length and
+	 *  source position) shows only in `items`.
+	 */
+	report: EditReport,
 };
 
 /**
@@ -1325,6 +1455,15 @@ export type FrameRate = {
 };
 
 /**
+ *  A freeze frame (WP-2D.01): the clip shows one frame of its media for its whole length, and is
+ *  silent.
+ */
+export type Freeze = {
+	/**  The media position of the frame shown. */
+	at_source: Time,
+};
+
+/**
  *  Lists committed transactions newest first (edits, undos, redos, restores; each batch,
  *  gesture or proposal is one entry), a page at a time, plus every actor's undo/redo stacks
  *  (what Undo/Redo buttons show) and the history's memory use.
@@ -1712,13 +1851,16 @@ media_kind: MediaKind } |
 item: ItemId; 
 /**  What is wrong. */
 reason: string } | 
-/**  A clip that reads past the end of its media (`source_in + duration > media duration`). */
+/**
+ *  A clip that reads past the end of its media (`source_in + duration × speed > media
+ *  duration`, or a freeze frame at or past the end).
+ */
 { invariant: "source_out_of_bounds"; 
 /**  The item. */
 item: ItemId; 
 /**  The media. */
 media: MediaId; 
-/**  `source_in + duration`. */
+/**  `source_in + duration × speed` (a freeze frame's position). */
 source_end: Time; 
 /**  The media duration. */
 media_duration: Duration } | 
@@ -2052,12 +2194,20 @@ export type ItemSetPropsOutput = {
 	keyed: KeyedProp[],
 };
 
-/**  Where a clip reads from. */
+/**  Where a clip reads from, and how (speed, reverse, freeze frame: WP-2D.01). */
 export type ItemSource = {
 	/**  The media. */
 	media: MediaId,
-	/**  Position in the media of the clip's first frame. */
+	/**  Position in the media of the clip's first frame (of the last frame shown when reversed). */
 	source_in: Time,
+	/**  End of the media range the clip plays: `source_in + duration × speed`. */
+	source_out: Time,
+	/**  Playback speed, an exact fraction (`{"num": 1, "den": 2}` is half speed). */
+	speed: Speed,
+	/**  Plays its range backwards. */
+	reverse: boolean,
+	/**  A freeze frame: the media position it shows for its whole length. */
+	freeze: Freeze | null,
 };
 
 /**  One item of a track (depth 2). */
@@ -2466,6 +2616,12 @@ export type KeyframeSetOutput = {
 	/**  The keys written, per item and key in request order. */
 	keys: SetKey[],
 };
+
+/**
+ *  What a speed change does to keyframes: `keep` (default) leaves them at their item times;
+ *  `scale` stretches them with the speed so they stay on the same media frames.
+ */
+export type KeyframeTiming = "keep" | "scale";
 
 export type Keyframes<T> = {
 	keyframes: Keyframe<T>[],
@@ -4442,6 +4598,50 @@ export type SetKey = {
 	/**  The key lies outside the item's `[0, duration)`. */
 	outside: boolean,
 };
+
+/**
+ *  A constant playback speed: `num/den` times normal, from 1/10 to 100, in lowest terms.
+ * 
+ *  Serialized as `{"num": 2, "den": 1}`; unreduced input is reduced on parse.
+ */
+export type Speed = {
+	num: number,
+	den: number,
+};
+
+/**  A clip after a speed change, a reverse or a reset. */
+export type SpeedClip = {
+	/**  The clip. */
+	item: ItemId,
+	/**  Its start. */
+	start: Time,
+	/**  Its length. */
+	duration: Duration,
+	/**  Its source position. */
+	source_in: Time,
+	/**  Its speed. */
+	speed: Speed,
+	/**  Whether it plays backwards. */
+	reverse: boolean,
+};
+
+/**
+ *  A speed: a number (`2`, `0.5`; exact as written), text (`"1/3"`, `"2x"`, `"50%"`) or an exact
+ *  fraction `{"num": 1, "den": 3}`. From 0.1 to 100.
+ */
+export type SpeedInput = 
+/**  A number, exact as written (`0.1` is 1/10). */
+number | 
+/**  `"1/3"`, `"2x"`, `"0.5"`, `"50%"`. */
+string | 
+/**  An exact fraction. */
+Speed;
+
+/**
+ *  What a speed change keeps: `in_point` (default) keeps the media the clip plays and changes
+ *  its length; `duration` keeps its length and plays more or less media.
+ */
+export type SpeedKeep = "in_point" | "duration";
 
 /**  One split item. */
 export type SplitPair = {
