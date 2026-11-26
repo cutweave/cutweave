@@ -263,7 +263,7 @@ impl FullProxies {
     #[allow(clippy::expect_used)]
     pub(crate) fn generate_now(&self, asset: &MediaAsset) -> ProxyRecord {
         let source = ProxySource {
-            path: PathBuf::from(asset.path_abs.as_deref().unwrap_or_default()),
+            path: PathBuf::from(asset.source_path().unwrap_or_default()),
             hash: hash_of(asset).expect("a content hash"),
             probe: asset.probe.clone(),
         };
@@ -370,7 +370,8 @@ impl FullProxies {
     /// Queues the generation of `asset`'s proxy after `after` unless one is queued or running.
     fn queue(&self, jobs: &JobManager, asset: &MediaAsset, after: &[JobId]) -> Option<JobId> {
         let (hash, profile) = (hash_of(asset)?, self.profile?);
-        let path = PathBuf::from(asset.path_abs.as_ref()?);
+        // The file, or the locator of an image sequence (ADR-0035).
+        let path = PathBuf::from(asset.source_path()?);
         let key = (hash, profile.key());
         let mut running = self.running();
         // A job asked to stop (a project swap cancels every job) is no longer the one making

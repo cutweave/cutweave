@@ -89,7 +89,7 @@ pub(crate) fn source_info(doc: &Project, media: MediaId) -> Result<SourceInfo, C
         .get(&media)
         .ok_or_else(|| CmdError::not_found(EntityKind::Media, media))?;
     let fps = match asset.kind {
-        MediaKind::Video => asset.probe.fps.unwrap_or(FrameRate::FPS_30),
+        MediaKind::Video | MediaKind::ImageSequence => asset.probe.fps.unwrap_or(FrameRate::FPS_30),
         MediaKind::Audio => FrameRate::FPS_30,
         MediaKind::Image => {
             return Err(CmdError::invalid(
@@ -151,7 +151,7 @@ pub(crate) fn source_timeline(doc: &Project, media: MediaId) -> Option<Project> 
     let mut sequence = Sequence::new(SOURCE_SEQUENCE, "Source", format);
     let clip = |id: ItemId| Clip::new(id, media, Time::ZERO, info.duration);
     let mut tracks = 0;
-    if asset.kind == MediaKind::Video {
+    if matches!(asset.kind, MediaKind::Video | MediaKind::ImageSequence) {
         sequence.insert_track(
             tracks,
             Track::new(SOURCE_VIDEO_TRACK, TrackKind::Video, "V1"),
