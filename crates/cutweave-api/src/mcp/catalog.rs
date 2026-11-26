@@ -355,7 +355,154 @@ pub fn lean_schema(schema: &Value) -> Value {
     }
     trim(&mut out);
     share_repeated(&mut out);
+    share_subschemas(&mut out);
     out
+}
+
+/// Descriptions of at most this many bytes that carry no code, number or quote only restate the
+/// property name ("Horizontal component.", "Frames."): the lean form drops them.
+const TRIVIAL_DESCRIPTION_BYTES: usize = 40;
+
+fn is_trivial_description(description: &str) -> bool {
+    description.len() <= TRIVIAL_DESCRIPTION_BYTES
+        && !description
+            .chars()
+            .any(|c| c.is_ascii_digit() || matches!(c, '`' | '"' | '{' | '(' | ':'))
+}
+
+/// Defines each subschema that occurs several times (ignoring its `description`) once under
+/// `$defs` and references it: an ID pattern, a 2D vector, an `interp`. Greedy, the biggest net
+/// saving first, until nothing saves bytes.
+fn share_subschemas(root: &mut Value) {
+    let mut taken: Vec<String> = root
+        .get("$defs")
+        .and_then(Value::as_object)
+        .map_or_else(Vec::new, |d| d.keys().cloned().collect());
+    loop {
+        let mut counts: Vec<(Value, usize)> = Vec::new();
+        collect_subschemas(root, true, &mut counts);
+        let best = counts
+            .into_iter()
+            .filter(|(_, n)| *n >= 2)
+            .map(|(schema, n)| {
+                let size = schema.to_string().len();
+                // Each use shrinks to `{"$ref":"#/$defs/NAME"}` (~24 bytes with a short name); the
+                // definition costs its size plus its key.
+                let saving = (n * size).saturating_sub(n * 24 + size + 8);
+                (saving, schema)
+            })
+            .filter(|(saving, _)| *saving > 0)
+            .max_by_key(|(saving, _)| *saving);
+        let Some((_, schema)) = best else {
+            return;
+        };
+        let name = subschema_name(&schema, &taken);
+        taken.push(name.clone());
+        replace_subschema(root, true, &schema, &name);
+        if let Value::Object(map) = root {
+            let defs = map
+                .entry("$defs")
+                .or_insert_with(|| Value::Object(JsonObject::new()));
+            if let Value::Object(defs) = defs {
+                defs.insert(name, schema);
+            }
+        }
+    }
+}
+
+fn subschema_name(schema: &Value, taken: &[String]) -> String {
+    let base = schema["pattern"]
+        .as_str()
+        .and_then(|p| p.strip_prefix('^'))
+        .and_then(|p| p.split_once("_[0-9a-f]{32}$"))
+        .map(|(prefix, _)| prefix.to_owned())
+        .or_else(|| {
+            let props = schema["properties"].as_object()?;
+            (props.len() == 2 && props.contains_key("x") && props.contains_key("y"))
+                .then(|| "vec2".to_owned())
+        })
+        .unwrap_or_else(|| "d".to_owned());
+    let mut name = base.clone();
+    let mut n = 1;
+    while taken.contains(&name) {
+        n += 1;
+        name = format!("{base}{n}");
+    }
+    name
+}
+
+/// A subschema without its `description`: the unit of sharing.
+fn without_description(map: &JsonObject) -> Value {
+    let mut copy = map.clone();
+    copy.remove("description");
+    Value::Object(copy)
+}
+
+fn is_candidate(map: &JsonObject) -> bool {
+    !map.contains_key("$ref") && !map.contains_key("$defs") && !map.is_empty()
+}
+
+/// The subschema positions: property values, `items`, `additionalProperties`, alternatives.
+fn for_each_child(map: &JsonObject, mut f: impl FnMut(&Value)) {
+    for (key, value) in map {
+        let key = key.as_str();
+        if key == "properties" {
+            if let Value::Object(children) = value {
+                children.values().for_each(&mut f);
+            }
+        } else if SCHEMA_VALUES.contains(&key) || SCHEMA_LISTS.contains(&key) {
+            match value {
+                Value::Array(list) => list.iter().for_each(&mut f),
+                other => f(other),
+            }
+        }
+    }
+}
+
+fn collect_subschemas(schema: &Value, is_root: bool, counts: &mut Vec<(Value, usize)>) {
+    let Value::Object(map) = schema else {
+        return;
+    };
+    if !is_root && is_candidate(map) {
+        let canonical = without_description(map);
+        match counts.iter_mut().find(|(c, _)| *c == canonical) {
+            Some((_, n)) => *n += 1,
+            None => counts.push((canonical, 1)),
+        }
+    }
+    for_each_child(map, |child| collect_subschemas(child, false, counts));
+}
+
+fn replace_subschema(schema: &mut Value, is_root: bool, target: &Value, name: &str) {
+    let Value::Object(map) = schema else {
+        return;
+    };
+    if !is_root && is_candidate(map) && without_description(map) == *target {
+        let mut reference = JsonObject::new();
+        reference.insert("$ref".into(), json!(format!("#/$defs/{name}")));
+        if let Some(description) = map.get("description") {
+            reference.insert("description".into(), description.clone());
+        }
+        *map = reference;
+        return;
+    }
+    for (key, value) in map.iter_mut() {
+        let key = key.as_str();
+        if key == "properties" {
+            if let Value::Object(children) = value {
+                children
+                    .values_mut()
+                    .for_each(|c| replace_subschema(c, false, target, name));
+            }
+        } else if SCHEMA_VALUES.contains(&key) || SCHEMA_LISTS.contains(&key) {
+            match value {
+                Value::Array(list) => list
+                    .iter_mut()
+                    .for_each(|c| replace_subschema(c, false, target, name)),
+                other => replace_subschema(other, false, target, name),
+            }
+        }
+    }
 }
 
 /// The shortest alternatives list worth sharing, in bytes of compact JSON (a `$ref` costs about
@@ -516,6 +663,13 @@ fn trim(schema: &mut Value) {
         map.remove("default");
     }
     flatten_nullable(map);
+    if map
+        .get("description")
+        .and_then(Value::as_str)
+        .is_some_and(is_trivial_description)
+    {
+        map.remove("description");
+    }
     for (key, value) in map.iter_mut() {
         let key = key.as_str();
         if SCHEMA_MAPS.contains(&key) {
@@ -544,6 +698,52 @@ fn trim(schema: &mut Value) {
                 }
             }
         }
+    }
+    flatten_const_enum(map);
+}
+
+/// `oneOf[{const: A, type: string}, {const: B, type: string}, ...]` (a Rust enum of unit
+/// variants) is `{type: string, enum: [A, B, ...]}`; `anyOf[that, {type: null}]` (optional) is
+/// `{type: [string, null], enum: [A, B, ..., null]}`.
+fn flatten_const_enum(map: &mut JsonObject) {
+    fn consts(list: &[Value]) -> Option<Vec<Value>> {
+        if list.len() < 2 {
+            return None;
+        }
+        list.iter()
+            .map(|v| {
+                let o = v.as_object()?;
+                (o.len() == 2 && o.get("type") == Some(&json!("string")))
+                    .then(|| o.get("const").cloned())
+                    .flatten()
+            })
+            .collect()
+    }
+    if !map.contains_key("type")
+        && !map.contains_key("enum")
+        && let Some(Value::Array(list)) = map.get("oneOf")
+        && let Some(values) = consts(list)
+    {
+        map.remove("oneOf");
+        map.insert("type".into(), json!("string"));
+        map.insert("enum".into(), Value::Array(values));
+        return;
+    }
+    if !map.contains_key("type")
+        && !map.contains_key("enum")
+        && let Some(Value::Array(list)) = map.get("anyOf")
+        && list.len() == 2
+        && list[1] == json!({ "type": "null" })
+        && let Some(inner) = list[0].as_object()
+        && inner.len() == 2
+        && inner.get("type") == Some(&json!("string"))
+        && let Some(Value::Array(values)) = inner.get("enum")
+    {
+        let mut values = values.clone();
+        values.push(Value::Null);
+        map.remove("anyOf");
+        map.insert("type".into(), json!(["string", "null"]));
+        map.insert("enum".into(), Value::Array(values));
     }
 }
 
@@ -734,11 +934,11 @@ mod tests {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-                "title": { "type": "string", "description": "A property named title." },
+                "title": { "type": "string", "description": "A property that is named title, not a keyword." },
                 "to": {
                     "anyOf": [time, { "type": "null" }],
                     "default": null,
-                    "description": "Where the edge goes."
+                    "description": "Where the edge goes after the trim, in flicks."
                 },
                 "edge": { "oneOf": [{ "const": "start", "type": "string" }] },
                 "flag": {
@@ -755,14 +955,14 @@ mod tests {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                    "title": { "type": "string", "description": "A property named title." },
+                    "title": { "type": "string", "description": "A property that is named title, not a keyword." },
                     "to": {
                         "anyOf": [
                             { "type": "integer", "maximum": 9, "minimum": -9 },
                             { "type": "string", "pattern": "^[0-9]+s$" },
                             { "type": "null" }
                         ],
-                        "description": "Where the edge goes."
+                        "description": "Where the edge goes after the trim, in flicks."
                     },
                     "edge": { "oneOf": [{ "const": "start", "type": "string" }] },
                     "flag": { "type": ["boolean", "null"], "default": false }
@@ -784,8 +984,8 @@ mod tests {
         let schema = json!({
             "type": "object",
             "properties": {
-                "at": { "anyOf": time["anyOf"].clone(), "description": "When." },
-                "delta": { "anyOf": [time.clone(), { "type": "null" }], "description": "How much." },
+                "at": { "anyOf": time["anyOf"].clone(), "description": "When the clip starts on the timeline, in flicks." },
+                "delta": { "anyOf": [time.clone(), { "type": "null" }], "description": "How much to move the clip by, in flicks, either direction." },
                 "items": {
                     "type": "array",
                     "items": { "type": "string", "pattern": "^itm_", "description": "An id." }
@@ -796,13 +996,13 @@ mod tests {
         assert_eq!(lean["$defs"]["time"]["anyOf"], time["anyOf"]);
         assert_eq!(
             lean["properties"]["at"],
-            json!({ "$ref": "#/$defs/time", "description": "When." })
+            json!({ "$ref": "#/$defs/time", "description": "When the clip starts on the timeline, in flicks." })
         );
         assert_eq!(
             lean["properties"]["delta"],
             json!({
                 "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }],
-                "description": "How much."
+                "description": "How much to move the clip by, in flicks, either direction."
             })
         );
         assert_eq!(
@@ -821,7 +1021,7 @@ mod tests {
             "properties": {
                 "overlap": {
                     "anyOf": [
-                        { "oneOf": [{ "const": "reject" }], "description": "What to do." },
+                        { "oneOf": [{ "const": "reject" }], "description": "What to do when the new clip overlaps another." },
                         { "type": "null" }
                     ]
                 }
@@ -831,7 +1031,7 @@ mod tests {
             lean_schema(&schema)["properties"]["overlap"],
             json!({
                 "anyOf": [{ "oneOf": [{ "const": "reject" }] }, { "type": "null" }],
-                "description": "What to do."
+                "description": "What to do when the new clip overlaps another."
             })
         );
     }
@@ -857,5 +1057,54 @@ mod tests {
         }));
         assert!(!Profile::Minimal.budget().fits(size));
         assert_eq!(Profile::Full.budget(), STANDARD_BUDGET);
+    }
+
+    #[test]
+    fn restated_names_go_and_repeated_subschemas_are_defined_once() {
+        let vec2 = |what: &str| {
+            json!({
+                "type": ["object", "null"],
+                "properties": {
+                    "x": { "type": "number", "description": "Horizontal component." },
+                    "y": { "type": "number", "description": "Vertical component." }
+                },
+                "required": ["x", "y"],
+                "description": what
+            })
+        };
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "position": vec2("Where the anchor sits, in canvas units."),
+                "scale": vec2("Size multiplier per axis, finite and not negative."),
+                "anchor": vec2("The item point the position places, in item units."),
+                "edge": { "oneOf": [
+                    { "type": "string", "const": "start", "description": "The start." },
+                    { "type": "string", "const": "end" }
+                ] },
+                "mode": { "anyOf": [
+                    { "oneOf": [{ "type": "string", "const": "a" }, { "type": "string", "const": "b" }] },
+                    { "type": "null" }
+                ] }
+            }
+        });
+        let lean = lean_schema(&schema);
+        let props = &lean["properties"];
+        assert_eq!(
+            props["scale"],
+            json!({ "$ref": "#/$defs/vec2", "description": "Size multiplier per axis, finite and not negative." })
+        );
+        assert_eq!(
+            lean["$defs"]["vec2"]["properties"]["x"],
+            json!({ "type": "number" })
+        );
+        assert_eq!(
+            props["edge"],
+            json!({ "type": "string", "enum": ["start", "end"] })
+        );
+        assert_eq!(
+            props["mode"],
+            json!({ "type": ["string", "null"], "enum": ["a", "b", null] })
+        );
     }
 }

@@ -45,8 +45,7 @@ expression: catalog.tools_json()
         "properties": {
           "job_id": {
             "type": "string",
-            "pattern": "^job_[0-9a-f]{32}$",
-            "description": "The job."
+            "pattern": "^job_[0-9a-f]{32}$"
           },
           "timeout_ms": {
             "type": [
@@ -111,26 +110,14 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "items": {
-                  "oneOf": [
-                    {
-                      "const": "video",
-                      "type": "string"
-                    },
-                    {
-                      "const": "audio",
-                      "type": "string"
-                    },
-                    {
-                      "const": "image",
-                      "type": "string"
-                    },
-                    {
-                      "const": "sequence_ref",
-                      "type": "string"
-                    }
+                  "type": "string",
+                  "enum": [
+                    "video",
+                    "audio",
+                    "image",
+                    "sequence_ref"
                   ]
-                },
-                "description": "Only these kinds."
+                }
               },
               "min_duration": {
                 "anyOf": [
@@ -173,8 +160,7 @@ expression: catalog.tools_json()
                   "string",
                   "null"
                 ],
-                "pattern": "^fld_[0-9a-f]{32}$",
-                "description": "Only this bin folder."
+                "pattern": "^fld_[0-9a-f]{32}$"
               },
               "recursive": {
                 "type": [
@@ -183,8 +169,7 @@ expression: catalog.tools_json()
                 ],
                 "description": "With subfolders (default: true without folder)."
               }
-            },
-            "description": "Keep only matching media."
+            }
           },
           "sort": {
             "type": [
@@ -200,8 +185,7 @@ expression: catalog.tools_json()
                   "name",
                   "duration",
                   "kind"
-                ],
-                "description": "What to order by."
+                ]
               },
               "order": {
                 "type": "string",
@@ -209,14 +193,12 @@ expression: catalog.tools_json()
                   "asc",
                   "desc"
                 ],
-                "description": "Direction.",
                 "default": "asc"
               }
             },
             "required": [
               "by"
-            ],
-            "description": "Order."
+            ]
           }
         },
         "$defs": {
@@ -265,8 +247,7 @@ expression: catalog.tools_json()
         "properties": {
           "sequence": {
             "type": "string",
-            "pattern": "^seq_[0-9a-f]{32}$",
-            "description": "The sequence."
+            "pattern": "^seq_[0-9a-f]{32}$"
           },
           "depth": {
             "type": [

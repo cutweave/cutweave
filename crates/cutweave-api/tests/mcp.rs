@@ -304,10 +304,46 @@ fn validation_only(schema: &Value) -> Value {
                 };
                 out.insert(key.clone(), value);
             }
+            enum_form(&mut out);
             Value::Object(out)
         }
         Value::Array(items) => Value::Array(items.iter().map(validation_only).collect()),
         other => other.clone(),
+    }
+}
+
+/// Writes a string enum one way: `oneOf` of string `const`s (the registry's form) and
+/// `anyOf[that, null]` become `{type: string, enum: [...]}` (the lean form), nullable or not.
+fn enum_form(out: &mut serde_json::Map<String, Value>) {
+    let consts = |list: &Value| -> Option<Vec<Value>> {
+        let list = list.as_array().filter(|l| l.len() >= 2)?;
+        list.iter()
+            .map(|v| {
+                let o = v.as_object()?;
+                (o.len() == 2 && o.get("type") == Some(&json!("string")))
+                    .then(|| o.get("const").cloned())
+                    .flatten()
+            })
+            .collect()
+    };
+    if let Some(values) = out.get("oneOf").and_then(consts) {
+        out.remove("oneOf");
+        out.insert("type".into(), json!("string"));
+        out.insert("enum".into(), Value::Array(values));
+    }
+    if let Some(Value::Array(list)) = out.get("anyOf")
+        && list.len() == 2
+        && list[1] == json!({ "type": "null" })
+        && let Some(inner) = list[0].as_object()
+        && inner.len() == 2
+        && inner.get("type") == Some(&json!("string"))
+        && let Some(Value::Array(values)) = inner.get("enum")
+    {
+        let mut values = values.clone();
+        values.push(Value::Null);
+        out.remove("anyOf");
+        out.insert("type".into(), json!(["string", "null"]));
+        out.insert("enum".into(), Value::Array(values));
     }
 }
 

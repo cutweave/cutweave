@@ -311,7 +311,43 @@ fn normalize(schema: &Value) -> Value {
         };
         out.insert(key.to_owned(), value);
     }
+    enum_form(&mut out);
     Value::Object(out)
+}
+
+/// A string enum has one written form: `oneOf` of string `const`s (the registry's) and
+/// `anyOf[enum, null]` become `{type: string | [string, null], enum: [...]}` (the lean schema's).
+fn enum_form(out: &mut Map<String, Value>) {
+    let consts = |list: &Value| -> Option<Vec<Value>> {
+        let list = list.as_array().filter(|l| l.len() >= 2)?;
+        list.iter()
+            .map(|v| {
+                let o = v.as_object()?;
+                (o.len() == 2 && o.get("type") == Some(&serde_json::json!("string")))
+                    .then(|| o.get("const").cloned())
+                    .flatten()
+            })
+            .collect()
+    };
+    if let Some(values) = out.get("oneOf").and_then(consts) {
+        out.remove("oneOf");
+        out.insert("type".into(), serde_json::json!("string"));
+        out.insert("enum".into(), Value::Array(values));
+    }
+    if let Some(Value::Array(list)) = out.get("anyOf")
+        && list.len() == 2
+        && list[1] == serde_json::json!({ "type": "null" })
+        && let Some(inner) = list[0].as_object()
+        && inner.len() == 2
+        && inner.get("type") == Some(&serde_json::json!("string"))
+        && let Some(Value::Array(values)) = inner.get("enum")
+    {
+        let mut values = values.clone();
+        values.push(Value::Null);
+        out.remove("anyOf");
+        out.insert("type".into(), serde_json::json!(["string", "null"]));
+        out.insert("enum".into(), Value::Array(values));
+    }
 }
 
 // ----- tests of the check itself -------------------------------------------------------------
@@ -426,7 +462,7 @@ fn the_validation_form_drops_annotations_only() {
         "/properties/item/pattern",
         "/required",
         "/additionalProperties",
-        "/properties/edge/oneOf",
+        "/properties/edge/enum",
     ] {
         let mut tampered = lean.clone();
         let (parent, key) = pointer.rsplit_once('/').unwrap();
