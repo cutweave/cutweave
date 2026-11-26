@@ -48,10 +48,10 @@ test.describe("content security policy", () => {
     const response = await page.reload();
     const csp = response?.headers()["content-security-policy"] ?? "";
     expect(csp).toContain("default-src 'none'");
-    expect(csp).toContain("script-src 'self';");
+    expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval';");
     expect(csp).toContain(`connect-src http://127.0.0.1:${port} ws://127.0.0.1:${port};`);
     expect(csp).toContain("frame-src cutweave-plugin:;");
-    expect(csp).not.toContain("unsafe");
+    expect(csp).not.toMatch(/'unsafe-(eval|inline)'/);
   });
 
   test("the editor loads without a single CSP violation", async ({ page, mainLog }) => {

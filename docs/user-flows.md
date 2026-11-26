@@ -15,7 +15,7 @@ Status: **covered** (in the suite), **planned** (possible today, not written yet
 
 | # | Flow | Steps | Expected | Status |
 |---|---|---|---|---|
-| F1 | First launch | Start the app | Editor layout (assets, preview, inspector, timeline), "Engine connected", empty untitled project, no errors in the main log | **covered** (`f01-first-launch.spec.ts`) |
+| F1 | First launch | Start the app | Editor layout (assets, preview, inspector, timeline), "Engine connected", empty untitled project, no errors in the main log; the editor's own wasm math module is loaded and agrees with the engine on a conversion (ADR-0033) | **covered** (`f01-first-launch.spec.ts`) |
 | F2 | New project | File > New Project (Ctrl+N), name it, pick a folder | Title shows the name; the `.cutweave` folder exists on disk; no unsaved dot | **covered** (`f02-new-project.spec.ts`; also the name checks and Cancel) |
 | F3 | Import media | Import in the media bin (picker returns the demo/corpus files); switch Grid/List; scroll overflowing tabs | Cards show name, kind, duration, size and fps; the files are listed in the project | **covered** (`f03-import-media.spec.ts`; also Ctrl+I, duplicates, a cancelled picker). Probes via the dev stub until WP-1I.05 |
 | F4 | Build a timeline | Drag clips from the bin to tracks; insert a clip with Enter; toggle snapping | Clips land where dropped; snapping aligns edges; tracks are created as needed | **covered** (`f04-build-timeline.spec.ts`) |

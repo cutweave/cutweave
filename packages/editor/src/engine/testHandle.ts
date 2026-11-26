@@ -6,6 +6,7 @@
 // already open its own engine socket with `getConnection()`).
 
 import { needsRequestId, RpcError } from "@cutweave/protocol";
+import { math } from "@cutweave/protocol/wasm";
 import { type EngineIndicator, engineIndicator } from "./engineStore.ts";
 import { editBlockedReason } from "./hooks.ts";
 import type { EngineRuntime, RuntimeStores } from "./runtime.ts";
@@ -29,6 +30,8 @@ export interface EditorTestHandle {
   /** A call over the editor's connection, as a command or query from the UI would make it. */
   call(method: string, params?: Record<string, unknown>): Promise<unknown>;
   state(): EditorTestState;
+  /** The shared math module in this page (ADR-0033), read only: its version and a conversion. */
+  math(): { readonly version: string; readonly frameToTime24: number };
 }
 
 declare global {
@@ -52,6 +55,11 @@ export function createTestHandle(runtime: EngineRuntime, stores: RuntimeStores):
       const blocked = needsRequestId(method) ? editBlockedReason() : null;
       if (blocked !== null) return Promise.reject(new RpcError("unsupported", blocked));
       return runtime.connection.request(method, params);
+    },
+    math() {
+      // Throws until `initMath()` resolved; the editor does not start before that.
+      const m = math();
+      return { version: m.version, frameToTime24: m.time.frameToTime(1, { num: 24, den: 1 }) };
     },
     state() {
       const engine = stores.engine.getState();

@@ -19,7 +19,7 @@ describe("buildCsp", () => {
   it("matches the WP-1L.02 policy for the engine port", () => {
     expect(d).toEqual({
       "default-src": ["'none'"],
-      "script-src": ["'self'"],
+      "script-src": ["'self'", "'wasm-unsafe-eval'"],
       "style-src": ["'self'"],
       "img-src": ["'self'", "data:", "blob:", "http://127.0.0.1:43117"],
       "font-src": ["'self'"],
@@ -34,8 +34,29 @@ describe("buildCsp", () => {
   });
 
   it("never allows eval, inline code or wildcards in production", () => {
-    expect(csp).not.toMatch(/unsafe-|\*|https?:\/\/(?!127\.0\.0\.1:43117)|localhost/);
-    expect(d["script-src"]).not.toContain("'wasm-unsafe-eval'");
+    expect(csp.replace("'wasm-unsafe-eval'", "")).not.toMatch(
+      /unsafe-|\*|https?:\/\/(?!127\.0\.0\.1:43117)|localhost/,
+    );
+    expect(csp).not.toMatch(/'unsafe-(eval|inline)'/);
+  });
+
+  it("allows 'wasm-unsafe-eval' in script-src and nowhere else (ADR-0033)", () => {
+    expect(d["script-src"]).toContain("'wasm-unsafe-eval'");
+    for (const [name, sources] of Object.entries(d)) {
+      if (name !== "script-src") expect(sources).not.toContain("'wasm-unsafe-eval'");
+    }
+    // The module comes from the app origin (bundled into a script): no data:/blob: in script-src.
+    expect(d["script-src"]).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+  });
+
+  it("keeps the strict policy for everything else", () => {
+    const strict = buildCsp(43_117, { wasm: false });
+    expect(strict).not.toContain("wasm-unsafe-eval");
+    expect(directives(strict)["script-src"]).toEqual(["'self'"]);
+    // Dev server relaxations never bring it back for a strict page.
+    expect(buildCsp(null, { wasm: false, devServerOrigin: "http://localhost:5173" })).not.toContain(
+      "wasm-unsafe-eval",
+    );
   });
 
   it("connects only to the engine origin", () => {
@@ -65,7 +86,12 @@ describe("buildCsp", () => {
 
   it("relaxes only for the dev server, and only when asked", () => {
     const dev = directives(buildCsp(43_117, { devServerOrigin: "http://localhost:5173" }));
-    expect(dev["script-src"]).toEqual(["'self'", "http://localhost:5173", "'unsafe-inline'"]);
+    expect(dev["script-src"]).toEqual([
+      "'self'",
+      "'wasm-unsafe-eval'",
+      "http://localhost:5173",
+      "'unsafe-inline'",
+    ]);
     expect(dev["connect-src"]).toContain("ws://localhost:5173");
     expect(dev["script-src"]).not.toContain("'unsafe-eval'");
     expect(dev["default-src"]).toEqual(["'none'"]);
