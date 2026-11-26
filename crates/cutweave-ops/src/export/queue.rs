@@ -30,8 +30,8 @@ use serde::{Deserialize, Serialize};
 
 use super::presets::{PlanRate, PresetWarning};
 use super::{
-    ExportCtx, ExportHw, ExportPlan, ExportPreset, ExportQuality, ExportRange, ExportStart,
-    ExportStartOutput,
+    Collision, ExportCtx, ExportHw, ExportPlan, ExportPreset, ExportQuality, ExportRange,
+    ExportRequest, ExportStartOutput, queue_request,
 };
 
 /// Registers the queue commands.
@@ -169,28 +169,18 @@ pub struct ExportEnqueue {
     pub sequence: Option<SequenceId>,
     /// Absolute path of the output file (`.mp4`).
     pub path: String,
-    /// Part of the sequence to export (default: all of it).
+    /// Part of the sequence to export (default: all of it): {kind: "sequence" | "in_out" |
+    /// "custom" | "markers", in, out, markers: [ids], pair_mode: "duration" | "pairs"}, as in
+    /// export.start.
     pub range: Option<ExportRange>,
     /// "h264-mp4-1080p" (default), a preset id or {"custom": {...}}, as in export.start.
     pub preset: Option<ExportPreset>,
     /// Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}.
     pub hw: Option<ExportHw>,
-    /// Replace an existing file at `path` (default false).
+    /// Replace an existing file at `path` (default false); same as `collision: "overwrite"`.
     pub overwrite: Option<bool>,
-}
-
-impl ExportEnqueue {
-    /// The same request as an `export.start`.
-    fn as_start(&self) -> ExportStart {
-        ExportStart {
-            sequence: self.sequence,
-            path: self.path.clone(),
-            range: self.range.clone(),
-            preset: self.preset.clone(),
-            hw: self.hw.clone(),
-            overwrite: self.overwrite,
-        }
-    }
+    /// An existing file: "fail" (default), "rename" or "overwrite".
+    pub collision: Option<Collision>,
 }
 
 impl EngineCommand for ExportEnqueue {
@@ -198,12 +188,16 @@ impl EngineCommand for ExportEnqueue {
     type Output = ExportStartOutput;
 
     fn run(&self, ctx: &mut ExportCtx) -> Result<ExportStartOutput, CmdError> {
-        let plan = self
-            .as_start()
-            .plan(&ctx.snapshot, ctx.allowed_roots.as_ref(), &ctx.presets)?;
-        let output = ExportStartOutput::of(&plan);
-        let job_id = ctx.starter.enqueue(plan)?;
-        Ok(ExportStartOutput { job_id, ..output })
+        let request = ExportRequest {
+            sequence: self.sequence,
+            path: &self.path,
+            range: self.range.as_ref(),
+            preset: self.preset.as_ref(),
+            hw: self.hw.as_ref(),
+            overwrite: self.overwrite,
+            collision: self.collision,
+        };
+        queue_request(&request, ctx, false)
     }
 }
 

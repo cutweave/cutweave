@@ -90,6 +90,14 @@ proptest.workspace = true
 reqwest = { version = "=0.13.5", default-features = false, features = ["json"] }
 zune-jpeg = "=0.5.15"
 
+# The free-space probe of the exports' disk check (WP-2G.03b, `export::disk`): the one FFI call
+# per OS. Same versions the graph already resolves to (cutweave-playback, cutweave-bridge).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
 [[bench]]
 name = "journal"
 harness = false

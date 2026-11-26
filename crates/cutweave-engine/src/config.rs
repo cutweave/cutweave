@@ -153,6 +153,10 @@ pub struct EngineConfig {
     /// The folder of the user's export presets (`export-presets.json`, WP-2G.01); `None` keeps
     /// them in memory for the engine's lifetime.
     pub presets_dir: Option<PathBuf>,
+    /// How the disk check of `export.start` / `export.enqueue` reads the free space of a
+    /// folder (WP-2G.03b); `None` asks the operating system. Tests inject a figure so no disk
+    /// has to be filled.
+    pub free_space: Option<crate::export::FreeSpaceProbe>,
 }
 
 /// Default number of async worker threads.
@@ -181,6 +185,7 @@ impl Default for EngineConfig {
             event_capacity: DEFAULT_EVENT_CAPACITY,
             subsystems: None,
             presets_dir: None,
+            free_space: None,
         }
     }
 }
