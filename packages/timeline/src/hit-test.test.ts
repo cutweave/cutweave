@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it } from "vitest";
+import { generateTimeline, mulberry32 } from "./fixtures.ts";
 import { nameRect, toggleRect } from "./geometry.ts";
 import { type HitContext, type HitZone, hitTest } from "./hit-test.ts";
 import { TimelineLayout } from "./layout.ts";
@@ -177,5 +178,48 @@ describe("hitTest", () => {
     const scratch: number[] = [];
     hitTest({ ...ctx(), scratch }, 450, 100);
     expect(scratch.length).toBeGreaterThan(0);
+  });
+});
+
+describe("hitTest performance (WP-2A.09)", () => {
+  // Timing on a loaded machine: retried, and the number measured is printed.
+  it("answers in p95 < 0.2 ms with 5,000 items", { retry: 2 }, () => {
+    const big = new TimelineLayout(generateTimeline(), {
+      sizes: { sm: th.trackSm, md: th.trackMd, lg: th.trackLg },
+      pad: th.space1,
+    });
+    const rnd = mulberry32(7);
+    const scratch: number[] = [];
+    const v: Viewport = { ...vp(), width: 1600, height: 900 };
+    const c: HitContext = {
+      layout: big,
+      vp: v,
+      playhead: 0,
+      theme: th,
+      flagHalfWidth: 40,
+      scratch,
+    };
+    const end = big.contentEnd;
+    const N = 20_000;
+    const times = new Float64Array(N);
+    let hits = 0;
+    // Warm the JIT first, as the editor's pointer handler would be.
+    for (let i = 0; i < 2_000; i++) hitTest(c, rnd() * 1600, rnd() * 900);
+    for (let i = 0; i < N; i++) {
+      v.pxPerSec = Math.exp(Math.log(0.5) + rnd() * (Math.log(300) - Math.log(0.5)));
+      v.scrollX = Math.round(rnd() * end);
+      v.scrollY = rnd() * Math.max(0, big.totalHeight - 800);
+      const px = rnd() * 1600;
+      const py = rnd() * 900;
+      const a = performance.now();
+      const h = hitTest(c, px, py);
+      times[i] = performance.now() - a;
+      if (h.itemId !== null) hits++;
+    }
+    times.sort();
+    const p95 = times[Math.ceil(0.95 * N) - 1] ?? 0;
+    console.info(`hit-test p95 ${(p95 * 1000).toFixed(1)} us over ${N} calls (${hits} hits)`);
+    expect(hits).toBeGreaterThan(N / 10);
+    expect(p95).toBeLessThan(0.2);
   });
 });

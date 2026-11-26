@@ -2,7 +2,14 @@
 // Deterministic synthetic projects and media for stories, tests and the benchmark. Seeded PRNG
 // only (AGENTS.md: determinism). Not a product API: nothing in the editor imports this.
 import type { MediaLoaders, WaveformPeaks } from "./cache.ts";
-import type { ItemKind, TimelineItem, TimelineModel, TimelineTrack, TrackSize } from "./model.ts";
+import type {
+  ItemKind,
+  TimelineItem,
+  TimelineMarker,
+  TimelineModel,
+  TimelineTrack,
+  TrackSize,
+} from "./model.ts";
 import { FLICKS_PER_SECOND, type FrameRate, frameToFlicks, snapToFrame } from "./time.ts";
 
 /** Small fast seeded PRNG (mulberry32). */
@@ -172,6 +179,38 @@ export function generateSmallTimeline(): TimelineModel {
     },
   ];
   return { fps, tracks, items };
+}
+
+/**
+ * `model` with seeded sequence markers across its length: `count` user markers (every fifth a
+ * range, every seventh a chapter) and a beat grid at `bpm` over the first minute. Markers keep
+ * the document's default color unless `colors` gives others to cycle through.
+ */
+export function withMarkers(
+  model: TimelineModel,
+  count = 60,
+  opts: { readonly seed?: number; readonly bpm?: number; readonly colors?: readonly string[] } = {},
+): TimelineModel {
+  const rnd = mulberry32(opts.seed ?? 3);
+  const end = model.items.reduce((m, i) => Math.max(m, i.start + i.duration), 0);
+  const markers: TimelineMarker[] = [];
+  for (let n = 0; n < count; n++) {
+    const t = snapToFrame(Math.floor(rnd() * end), model.fps, "floor");
+    const color = opts.colors?.[n % opts.colors.length];
+    markers.push({
+      id: `mrk_${n}`,
+      t,
+      ...(n % 5 === 0 && { duration: frameToFlicks(48 + Math.floor(rnd() * 96), model.fps) }),
+      label: `Marker ${n}`,
+      kind: n % 7 === 0 ? "chapter" : "user",
+      ...(color !== undefined && { color }),
+    });
+  }
+  const beat = Math.round((60 / (opts.bpm ?? 120)) * FLICKS_PER_SECOND);
+  for (let t = 0, n = 0; t < Math.min(end, 60 * FLICKS_PER_SECOND); t += beat, n++) {
+    markers.push({ id: `beat_${n}`, t, label: "", kind: "beat" });
+  }
+  return { ...model, markers };
 }
 
 /** Pixel size of a synthetic tile; real loaders return whatever the engine serves. */

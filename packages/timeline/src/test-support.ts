@@ -37,6 +37,7 @@ export function testTheme(): Theme {
     opacityDisabled: 0.5,
     borderThin: 1,
     clipStrip: 3,
+    radiusXs: 2,
     radiusSm: 4,
     controlSm: 24,
     controlMd: 28,
@@ -89,6 +90,64 @@ export function spyContext(): SpyContext {
     reset() {
       for (const k of Object.keys(calls)) delete calls[k];
     },
+  };
+}
+
+/** One recorded context call, with the drawing state it ran under. */
+export interface RecordedCall {
+  readonly name: string;
+  readonly args: readonly unknown[];
+  readonly fillStyle: unknown;
+  readonly strokeStyle: unknown;
+  readonly globalAlpha: number;
+}
+
+/**
+ * A no-op 2D context that records every method call with its arguments and the fill, stroke and
+ * alpha state at that moment (`measureText` is 6 px per character; `save`/`restore` keep state).
+ */
+export function recordingContext(): {
+  readonly ctx: CanvasRenderingContext2D;
+  readonly calls: RecordedCall[];
+  /** The calls named `name`. */
+  named(name: string): RecordedCall[];
+  /** Texts passed to `fillText`. */
+  texts(): string[];
+} {
+  const calls: RecordedCall[] = [];
+  let state: Record<string, unknown> = { fillStyle: "", strokeStyle: "", globalAlpha: 1 };
+  const stack: Record<string, unknown>[] = [];
+  const ctx = new Proxy(
+    {},
+    {
+      get(_t, prop) {
+        const name = String(prop);
+        if (name in state && name !== "save" && name !== "restore") return state[name];
+        return (...args: unknown[]) => {
+          calls.push({
+            name,
+            args,
+            fillStyle: state.fillStyle,
+            strokeStyle: state.strokeStyle,
+            globalAlpha: state.globalAlpha as number,
+          });
+          if (name === "save") stack.push({ ...state });
+          if (name === "restore") state = stack.pop() ?? state;
+          if (name === "measureText") return { width: String(args[0]).length * 6 };
+          return undefined;
+        };
+      },
+      set(_t, prop, value) {
+        state[String(prop)] = value;
+        return true;
+      },
+    },
+  ) as CanvasRenderingContext2D;
+  return {
+    ctx,
+    calls,
+    named: (name) => calls.filter((c) => c.name === name),
+    texts: () => calls.filter((c) => c.name === "fillText").map((c) => String(c.args[0])),
   };
 }
 

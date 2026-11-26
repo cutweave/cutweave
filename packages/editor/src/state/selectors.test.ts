@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   mediaName,
   selectActiveSequenceId,
+  selectInOut,
   selectMedia,
   selectSequenceSummary,
   selectTimelineItems,
@@ -93,6 +94,48 @@ const project = (): Project =>
 function fmt() {
   return { width: 1920, height: 1080, frame_rate: { num: 30000, den: 1001 } };
 }
+
+describe("markers, in/out and track heights (WP-2A.09)", () => {
+  /** The test project with markers, an in/out and a tall track on its main sequence. */
+  function marked(): Project {
+    const p = project();
+    const seq = (p.sequences as unknown as Record<string, Record<string, unknown>>).seq_1 as Record<
+      string,
+      unknown
+    >;
+    seq.markers = {
+      mrk_b: { id: "mrk_b", t: 300, duration: 50, label: "Range", color: "#f2b134", kind: "user" },
+      mrk_a: { id: "mrk_a", t: 100, duration: null, label: "Beat", color: "#ffffff", kind: "beat" },
+    };
+    seq.in_out = { start: 20, end: 200 };
+    const tracks = seq.tracks as Record<string, Record<string, unknown>>;
+    (tracks.v1 as Record<string, unknown>).height = 96;
+    return p;
+  }
+
+  it("projects sequence markers by time, with their color and kind", () => {
+    expect(selectTimelineModel(marked()).markers).toEqual([
+      { id: "mrk_a", t: 100, label: "Beat", color: "#ffffff", kind: "beat" },
+      { id: "mrk_b", t: 300, duration: 50, label: "Range", color: "#f2b134", kind: "user" },
+    ]);
+    expect(selectTimelineModel(project()).markers).toBeUndefined();
+  });
+
+  it("passes the height the user set, and none for the default", () => {
+    const tracks = selectTimelineModel(marked()).tracks;
+    expect(tracks.find((t) => t.id === "v1")?.height).toBe(96);
+    expect(tracks.find((t) => t.id === "a1")?.height).toBeUndefined();
+  });
+
+  it("shades the in/out range and keeps its identity while it is unchanged", () => {
+    const p = marked();
+    const range = selectInOut(p);
+    expect(range).toEqual({ in: 20, out: 200 });
+    expect(selectInOut(p)).toBe(range);
+    expect(selectInOut(project())).toBeNull();
+    expect(selectInOut(null)).toBeNull();
+  });
+});
 
 describe("selectSequenceSummary", () => {
   it("reads the active sequence's canvas and rate and ends at its last item", () => {

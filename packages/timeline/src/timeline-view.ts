@@ -9,18 +9,24 @@ import { nameRect } from "./geometry.ts";
 import { type HitResult, hitTest } from "./hit-test.ts";
 import { TimelineLayout } from "./layout.ts";
 import {
+  DEFAULT_DISPLAY,
   DEFAULT_VIEW_STATE,
   EMPTY_MODEL,
   type Rect,
+  type TimelineDisplay,
+  type TimelineMarker,
   type TimelineModel,
   type ViewState,
 } from "./model.ts";
-import { TimelineRenderer } from "./renderer.ts";
+import { TimelineRenderer } from "./render/renderer.ts";
+import { markerPinHeight } from "./render/ruler.ts";
+import type { FrameInput } from "./render/state.ts";
 import { readTheme, type Theme } from "./theme.ts";
 import { FLICKS_PER_SECOND } from "./time.ts";
 import {
   clampScroll,
   clampZoom,
+  fitRange,
   timeToX,
   type Viewport,
   visibleTimeRange,
@@ -32,6 +38,16 @@ import {
 export const LONG_PRESS_MS = 500;
 /** Moving further than this cancels the long-press. */
 export const LONG_PRESS_SLOP_PX = 8;
+
+/** Zoom factor per wheel pixel (Ctrl/Cmd+wheel and pinch). */
+export const WHEEL_ZOOM_PER_PX = 0.002;
+/**
+ * A Ctrl/Cmd+wheel step at least this large (CSS px) is a mouse-wheel notch and zooms smoothly
+ * over a few frames; smaller steps (trackpad pinch, precision wheels) apply at once.
+ */
+export const WHEEL_NOTCH_PX = 50;
+/** Time constant of the smooth zoom (ms): about 95% of the way after three of them. */
+export const ZOOM_EASE_MS = 40;
 
 export interface TimelinePointerEvent {
   /**
@@ -78,6 +94,13 @@ export interface TimelineViewOptions {
    */
   readonly requestFrame?: (cb: () => void) => number;
   readonly cancelFrame?: (id: number) => void;
+  /** Clock for the smooth zoom, ms (default `performance.now`); tests pass a fake one. */
+  readonly now?: () => number;
+  /**
+   * Smooth (animated) wheel zoom. Default: on unless the user prefers reduced motion, in which
+   * case every zoom step applies at once.
+   */
+  readonly smoothZoom?: boolean;
   /**
    * Middle-button drag: `builtin` (default) pans the view here; `host` reports it through
    * `onPointer` like any other button, for a host state machine that pans (WP-1M.06).
@@ -101,7 +124,18 @@ export class TimelineView {
   private caches: MediaCaches;
   private loaders: MediaLoaders;
   private state: ViewState = DEFAULT_VIEW_STATE;
+  private display: TimelineDisplay = DEFAULT_DISPLAY;
   private readonly vp: Viewport;
+  /** A smooth zoom in progress: eases `current` toward `target`, keeping `anchorT` at `anchorX`. */
+  private zoomAnim: {
+    target: number;
+    current: number;
+    anchorX: number;
+    anchorT: number;
+    last: number;
+  } | null = null;
+  private readonly now: () => number;
+  private readonly frameInput: { -readonly [K in keyof FrameInput]-?: FrameInput[K] };
   private dpr = 1;
   private hoverItem = -1;
   private frameId = 0;
@@ -146,6 +180,7 @@ export class TimelineView {
           // The window it was asked of has closed, and its frames with it.
         }
       });
+    this.now = options.now ?? (() => performance.now());
     this.fixedTheme = options.theme;
     this.headerOverride = options.headerWidth;
     this.theme = options.theme ?? readTheme(canvas.ownerDocument.documentElement);
@@ -161,6 +196,19 @@ export class TimelineView {
       rulerHeight: this.theme.controlMd,
     };
     this.layout = this.buildLayout();
+    this.frameInput = {
+      layout: this.layout,
+      vp: this.vp,
+      theme: this.theme,
+      fps: this.model.fps,
+      dropFrame: false,
+      view: this.state,
+      caches: this.caches,
+      dpr: this.dpr,
+      hoverItem: -1,
+      region: null,
+      display: this.display,
+    };
   }
 
   // ---- model and state --------------------------------------------------------------------
@@ -218,6 +266,18 @@ export class TimelineView {
 
   getModel(): TimelineModel {
     return this.model;
+  }
+
+  /** Apply display preferences (how time shows); redraws when one changed. */
+  setDisplay(patch: Partial<TimelineDisplay>): void {
+    const next: TimelineDisplay = { ...this.display, ...patch };
+    if (next.timeFormat === this.display.timeFormat) return;
+    this.display = next;
+    this.invalidate();
+  }
+
+  getDisplay(): TimelineDisplay {
+    return this.display;
   }
 
   /** Replace the media loaders (clears the caches). */
@@ -300,10 +360,41 @@ export class TimelineView {
     return ti >= 0 && t ? { id: t.id, index: ti } : null;
   }
 
+  /**
+   * The sequence marker drawn under canvas point `(x, y)` (its pin in the ruler, or the bar of a
+   * range marker), the nearest one when several are within reach; null elsewhere. For the
+   * interaction layer (WP-2A.10: double-click or right-click a marker).
+   */
+  markerAt(x: number, y: number): TimelineMarker | null {
+    const { vp, theme: th, layout } = this;
+    const baseY = vp.rulerHeight - th.borderThin;
+    if (x < vp.headerWidth || y < baseY - markerPinHeight(th) || y > vp.rulerHeight) return null;
+    const reach = th.space2 / 2 + 1;
+    const t = xToTime(vp, x);
+    const k = vp.pxPerSec / FLICKS_PER_SECOND;
+    let best: TimelineMarker | null = null;
+    let bestDx = Number.POSITIVE_INFINITY;
+    for (let n = layout.firstMarkerFrom(t - reach / k); n < layout.markers.length; n++) {
+      const m = layout.markers[n] as TimelineMarker;
+      const mx = timeToX(vp, m.t);
+      if (mx > x + reach) break;
+      const dx = Math.abs(mx - x);
+      const inBar = (m.duration ?? 0) > 0 && x >= mx && x <= timeToX(vp, m.t + (m.duration ?? 0));
+      if (dx <= reach && dx < bestDx) {
+        best = m;
+        bestDx = dx;
+      } else if (inBar && best === null) {
+        best = m;
+      }
+    }
+    return best;
+  }
+
   // ---- zoom and scroll --------------------------------------------------------------------
 
-  /** Zoom by `factor` keeping the time under `anchorX` fixed (default: lane center). */
+  /** Zoom by `factor` keeping the time under `anchorX` fixed (default: lane center). Instant. */
   zoomBy(factor: number, anchorX?: number): void {
+    this.zoomAnim = null;
     const ax = anchorX ?? this.vp.headerWidth + (this.vp.width - this.vp.headerWidth) / 2;
     const z = zoomAround(this.vp, factor, ax);
     this.userView({ pxPerSec: z.pxPerSec, scrollX: z.scrollX });
@@ -313,8 +404,41 @@ export class TimelineView {
     this.zoomBy(clampZoom(pxPerSec) / this.vp.pxPerSec, anchorX);
   }
 
+  /**
+   * Zoom smoothly toward `factor` times the current target (a wheel notch), keeping the time
+   * under `anchorX` fixed: the zoom eases there over a few frames, and further steps retarget it.
+   * Applies at once when smooth zoom is off (reduced motion).
+   */
+  zoomSmooth(factor: number, anchorX: number): void {
+    if (!this.smoothZoom()) {
+      this.zoomBy(factor, anchorX);
+      return;
+    }
+    const k = this.vp.pxPerSec / FLICKS_PER_SECOND;
+    const anchorT = this.vp.scrollX + (anchorX - this.vp.headerWidth) / k;
+    const a = this.zoomAnim;
+    const from = a?.current ?? this.vp.pxPerSec;
+    const target = clampZoom((a?.target ?? this.vp.pxPerSec) * factor);
+    this.zoomAnim = { target, current: from, anchorX, anchorT, last: this.now() };
+    this.invalidate();
+  }
+
+  /** Whether a smooth zoom is still easing toward its target. */
+  get zooming(): boolean {
+    return this.zoomAnim !== null;
+  }
+
+  /** Show `[t0, t1]` (flicks) across the lane with a small margin (zoom to selection). */
+  zoomToRange(t0: number, t1: number): void {
+    this.zoomAnim = null;
+    this.userView(fitRange(this.vp, Math.min(t0, t1), Math.max(t0, t1), this.theme.space4));
+  }
+
   /** Scroll by CSS pixels. */
   scrollBy(dx: number, dy = 0): void {
+    // A pan during a smooth zoom carries the zoom's anchor along, so both compose.
+    const a = this.zoomAnim;
+    if (a !== null) a.anchorT += dx * (FLICKS_PER_SECOND / this.vp.pxPerSec);
     this.userView({
       scrollX: this.vp.scrollX + dx * (FLICKS_PER_SECOND / this.vp.pxPerSec),
       scrollY: this.vp.scrollY + dy,
@@ -326,7 +450,34 @@ export class TimelineView {
     const end = this.layout.contentEnd;
     const lane = Math.max(1, this.vp.width - this.vp.headerWidth - 2 * this.theme.space4);
     if (end <= 0) return;
+    this.zoomAnim = null;
     this.userView({ pxPerSec: clampZoom((lane * FLICKS_PER_SECOND) / end), scrollX: 0 });
+  }
+
+  /** One step of the smooth zoom (called at the start of a frame, before drawing). */
+  private stepZoom(): void {
+    const a = this.zoomAnim;
+    if (a === null) return;
+    const now = this.now();
+    const dt = Math.min(64, Math.max(0, now - a.last));
+    a.last = now;
+    const ease = 1 - Math.exp(-dt / ZOOM_EASE_MS);
+    let next = a.current * (a.target / a.current) ** ease;
+    if (Math.abs(Math.log(a.target / next)) < 0.002) {
+      next = a.target;
+      this.zoomAnim = null;
+    }
+    a.current = next;
+    const scrollX = Math.round(
+      a.anchorT - (a.anchorX - this.vp.headerWidth) / (next / FLICKS_PER_SECOND),
+    );
+    this.userView({ pxPerSec: next, scrollX });
+  }
+
+  private smoothZoom(): boolean {
+    if (this.options.smoothZoom !== undefined) return this.options.smoothZoom;
+    const win = this.canvas.ownerDocument?.defaultView;
+    return !(win?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
   }
 
   private userView(patch: Partial<ViewState>): void {
@@ -418,13 +569,15 @@ export class TimelineView {
         this.frameId = 0;
       }
     }
-    if (this.frameId === 0) {
-      this.frameId = this.requestFrame(() => {
-        this.frameId = 0;
-        this.flush();
-      });
-    }
+    if (this.frameId === 0) this.frameId = this.requestFrame(this.onFrame);
   }
+
+  /** The scheduled frame: advance a smooth zoom (which asks for the next frame), then draw. */
+  private readonly onFrame = (): void => {
+    this.frameId = 0;
+    this.stepZoom();
+    this.flush();
+  };
 
   /** Draw now if anything is dirty (the scheduled frame calls this). Returns whether it drew. */
   flush(): boolean {
@@ -433,18 +586,20 @@ export class TimelineView {
     const region = this.dirtyFull ? null : this.dirty;
     this.dirtyFull = false;
     this.dirty = null;
-    this.renderer.draw(this.ctx, {
-      layout: this.layout,
-      vp: this.vp,
-      theme: this.theme,
-      fps: this.model.fps,
-      dropFrame: this.model.dropFrame ?? false,
-      view: this.state,
-      caches: this.caches,
-      dpr: this.dpr,
-      hoverItem: this.hoverItem,
-      region,
-    });
+    // One input object for every frame, refreshed in place (no allocation per frame).
+    const f = this.frameInput;
+    f.layout = this.layout;
+    f.vp = this.vp;
+    f.theme = this.theme;
+    f.fps = this.model.fps;
+    f.dropFrame = this.model.dropFrame ?? false;
+    f.view = this.state;
+    f.caches = this.caches;
+    f.dpr = this.dpr;
+    f.hoverItem = this.hoverItem;
+    f.region = region;
+    f.display = this.display;
+    this.renderer.draw(this.ctx, f);
     return true;
   }
 
@@ -591,6 +746,7 @@ export class TimelineView {
     });
     on("pointermove", (e) => {
       if (this.panning) {
+        this.zoomAnim = null;
         const k = FLICKS_PER_SECOND / this.vp.pxPerSec;
         this.userView({
           scrollX: this.panning.scrollX - (e.clientX - this.panning.x) * k,
@@ -639,7 +795,10 @@ export class TimelineView {
         const dx = e.deltaX * unit;
         const dy = e.deltaY * unit;
         if (e.ctrlKey || e.metaKey) {
-          this.zoomBy(Math.exp(-dy * 0.002), x);
+          // Zoom anchored at the pointer: a wheel notch eases there, a pinch follows the fingers.
+          const factor = Math.exp(-dy * WHEEL_ZOOM_PER_PX);
+          if (Math.abs(dy) >= WHEEL_NOTCH_PX) this.zoomSmooth(factor, x);
+          else this.zoomBy(factor, x);
         } else if (e.shiftKey || Math.abs(dx) > Math.abs(dy)) {
           this.scrollBy(dx || dy);
         } else if (this.layout.totalHeight > this.vp.height - this.vp.rulerHeight) {
@@ -711,6 +870,7 @@ export class TimelineView {
 
   destroy(): void {
     this.destroyed = true;
+    this.zoomAnim = null;
     this.themeRetry?.();
     if (this.frameId !== 0) this.cancelFrame(this.frameId);
     this.frameId = 0;

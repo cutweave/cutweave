@@ -7,7 +7,7 @@ import { useEngineStore } from "../engine/engineStore.ts";
 import { useMediaLoaders } from "../media/mediaWiring.ts";
 import { loadersForWindow } from "../media/timelineLoaders.ts";
 import { useDocStore } from "../state/docStore.ts";
-import { selectTimelineModel } from "../state/selectors.ts";
+import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { InUseMarks } from "../timeline/InUseMarks.tsx";
 import { TrackRenameInput } from "../timeline/TrackRenameInput.tsx";
@@ -24,7 +24,8 @@ const PLACEHOLDER_TRACKS = [
  * The engine's current sequence drawn by the `packages/timeline` renderer from `docStore`
  * selectors (it follows every `doc.patched`), with the interactions of WP-1M.06: pointer input
  * goes through the timeline state machine and comes back as engine commands. Video clips draw
- * filmstrips and audio clips waveforms through the engine's media endpoints (WP-1I.03).
+ * filmstrips and audio clips waveforms through the engine's media endpoints (WP-1I.03); the
+ * sequence's markers and in/out show in the ruler and over the lanes (WP-2A.09).
  */
 function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
   const { t } = useTranslation();
@@ -38,6 +39,8 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
     [mediaLoaders, ownerWindow],
   );
   const model = useMemo(() => selectTimelineModel(project), [project]);
+  // The sequence's in and out points shade the timeline (markers come with the model).
+  const range = selectInOut(project);
   const playhead = useViewStore((s) => s.playhead);
   const zoom = useViewStore((s) => s.zoom);
   const scroll = useViewStore((s) => s.scroll);
@@ -52,8 +55,9 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
       selection: new Set(selection.filter((ref) => ref.kind === "item").map((ref) => ref.id)),
       snapGuides,
       marquee,
+      range,
     }),
-    [zoom, scroll, playhead, selection, snapGuides, marquee],
+    [zoom, scroll, playhead, selection, snapGuides, marquee, range],
   );
   // Zoom and scroll the user caused (wheel, drag) are view state: `viewSync` mirrors them.
   const onViewChange = useCallback((v: ViewState) => {

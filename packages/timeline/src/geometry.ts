@@ -29,15 +29,31 @@ export function toggleRect(
   laneTop: number,
   laneHeight: number,
   i: number,
+  out: MutableRect = { x: 0, y: 0, w: 0, h: 0 },
 ): Rect {
-  const n = HEADER_TOGGLES.length;
   const size = theme.controlSm;
-  return {
-    x: vp.headerWidth - theme.space2 - (n - i) * size - (n - 1 - i) * theme.space1,
-    y: laneTop + (laneHeight - size) / 2,
-    w: size,
-    h: size,
-  };
+  out.x = toggleX(vp, theme, i);
+  out.y = laneTop + (laneHeight - size) / 2;
+  out.w = size;
+  out.h = size;
+  return out;
+}
+
+/** A rectangle the draw loop fills in place (no allocation per frame). */
+export interface MutableRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function toggleX(
+  vp: Viewport,
+  theme: Pick<Theme, "controlSm" | "space1" | "space2">,
+  i: number,
+): number {
+  const n = HEADER_TOGGLES.length;
+  return vp.headerWidth - theme.space2 - (n - i) * theme.controlSm - (n - 1 - i) * theme.space1;
 }
 
 /**
@@ -49,10 +65,14 @@ export function nameRect(
   theme: Pick<Theme, "controlSm" | "iconSm" | "space1" | "space2">,
   laneTop: number,
   laneHeight: number,
+  out: MutableRect = { x: 0, y: 0, w: 0, h: 0 },
 ): Rect {
   const x = theme.space2 + theme.iconSm + theme.space2;
-  const firstToggle = toggleRect(vp, theme, laneTop, laneHeight, 0);
-  return { x, y: laneTop, w: Math.max(0, firstToggle.x - theme.space2 - x), h: laneHeight };
+  out.x = x;
+  out.y = laneTop;
+  out.w = Math.max(0, toggleX(vp, theme, 0) - theme.space2 - x);
+  out.h = laneHeight;
+  return out;
 }
 
 /** Vertical center of the keyframe row of a clip whose top is `clipTop` and height `clipH`. */

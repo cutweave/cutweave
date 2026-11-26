@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // F5 Edit on the timeline (docs/user-flows.md): select, move by dragging, trim by an edge, split
 // at the playhead (key and button), delete, zoom in and out. Linked audio follows its video.
-// Not in the P1 UI, so not here: the razor and ripple tools and the zoom buttons are shown
-// disabled (WP-2A.10 wires the tools, WP-2A.03 and WP-2A.04 add ripple edits).
+// Ctrl+wheel zoom eases anchored at the pointer, and an agent's marker and in/out show on the
+// ruler (WP-2A.09). Not in the P1 UI, so not here: the razor and ripple tools and the zoom
+// buttons are shown disabled (WP-2A.10 wires the tools, WP-2A.03 and WP-2A.04 add ripple edits).
+import type { Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import {
   clipAt,
@@ -29,6 +31,49 @@ import {
   workspace,
   xAt,
 } from "./helpers.ts";
+
+/**
+ * How many pixels of `region` (page CSS px) the person sees in colour `rgb` (within a small
+ * tolerance for anti-aliasing): a screenshot of the window, decoded and counted.
+ */
+async function colourCount(
+  page: Page,
+  region: { x: number; y: number; width: number; height: number },
+  rgb: readonly [number, number, number],
+): Promise<number> {
+  const png = await page.screenshot({
+    clip: {
+      x: Math.round(region.x),
+      y: Math.round(region.y),
+      width: Math.max(1, Math.round(region.width)),
+      height: Math.max(1, Math.round(region.height)),
+    },
+    animations: "allow",
+    caret: "initial",
+  });
+  // Decoded in the page (the test has no PNG decoder); only reads the screenshot's bytes.
+  return page.evaluate(
+    async ({ base64, rgb }) => {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext("2d");
+      if (ctx === null) throw new Error("no 2D context");
+      ctx.drawImage(bitmap, 0, 0);
+      const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const d =
+          Math.abs((data[i] ?? 0) - rgb[0]) +
+          Math.abs((data[i + 1] ?? 0) - rgb[1]) +
+          Math.abs((data[i + 2] ?? 0) - rgb[2]);
+        if (d < 60) n++;
+      }
+      return n;
+    },
+    { base64: png.toString("base64"), rgb },
+  );
+}
 
 test.describe("F5 edit on the timeline", () => {
   test.skip(!hasRealEngine, "cutweave-engine-serve is not built");
@@ -209,12 +254,62 @@ test.describe("F5 edit on the timeline", () => {
       await page.keyboard.press("+");
       await expect.poll(zoom).toBeCloseTo(80, 6);
       g = await timelineGeometry(page);
-      await page.mouse.move(xAt(g, sec(5)), laneY(g, "V1"));
+      const pointerX = xAt(g, sec(5));
+      await page.mouse.move(pointerX, laneY(g, "V1"));
       await page.keyboard.down("Control");
       await page.mouse.wheel(0, -200);
       await page.keyboard.up("Control");
-      await expect.poll(zoom).toBeGreaterThan(100);
+      // A wheel notch eases to its zoom (e^0.4 more) over a few frames, anchored at the pointer:
+      // the moment under it stays under it.
+      await expect.poll(zoom).toBeCloseTo(80 * Math.exp(0.4), 6);
+      await expect
+        .poll(async () => Math.abs(xAt(await timelineGeometry(page), sec(5)) - pointerX))
+        .toBeLessThan(1.5);
       await snapshot(page, info, "zoomed in");
+
+      // An agent marks the cut: its marker (in the color it chose) and the in/out show on the
+      // ruler (WP-2A.09). Placed away from the playhead, whose line and flag are marigold too.
+      g = await timelineGeometry(page);
+      const { playhead } = await editorCall<{ playhead: number }>(page, "view.get");
+      const firstSec = g.scrollX / sec(1) + 0.5;
+      const spots = [1, 2, 3, 4, 5, 6].map((n) => firstSec + n);
+      const free = spots.filter((t) => Math.abs(sec(t) - playhead) > sec(1));
+      const [markAt, inAt] = free;
+      if (markAt === undefined || inAt === undefined) throw new Error("no room on the ruler");
+      const seqId = (await sequence(page)).id;
+      await editorCall(page, "timeline.add_marker", {
+        sequence: seqId,
+        t: sec(markAt),
+        label: "Cut here",
+        color: "#00e5ff",
+      });
+      await editorCall(page, "timeline.set_in_out", {
+        sequence: seqId,
+        start: sec(inAt),
+        end: sec(inAt + 0.5),
+      });
+      await editorCaughtUp(page);
+      const rulerBottom = g.box.y + g.rulerHeight;
+      await expect
+        .poll(() =>
+          colourCount(
+            page,
+            { x: xAt(g, sec(markAt)) - 5, y: rulerBottom - 14, width: 10, height: 12 },
+            [0x00, 0xe5, 0xff],
+          ),
+        )
+        .toBeGreaterThan(10);
+      // The in point's marigold edge.
+      await expect
+        .poll(() =>
+          colourCount(
+            page,
+            { x: xAt(g, sec(inAt)) - 2, y: g.box.y + 4, width: 5, height: g.rulerHeight - 8 },
+            [0xf2, 0xb3, 0x3d],
+          ),
+        )
+        .toBeGreaterThan(3);
+      await snapshot(page, info, "marker and in-out");
 
       // The P1 toolbar shows the later tools disabled.
       for (const tool of ["Razor", "Ripple", "Zoom in", "Zoom out"]) {

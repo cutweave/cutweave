@@ -6,6 +6,7 @@
 import type {
   TrackKind as EngineTrackKind,
   Item,
+  Marker,
   MediaAsset,
   MediaId,
   Project,
@@ -17,6 +18,7 @@ import {
   EMPTY_MODEL,
   type ItemKind,
   type TimelineItem,
+  type TimelineMarker,
   type TimelineModel,
   type TimelineTrack,
   type TrackKind,
@@ -85,6 +87,19 @@ function toTrack(track: Track): TimelineTrack {
     locked: track.locked,
     hidden: track.hidden,
     main: track.magnetic,
+    // The row height the user set (`track.set_height`); none is the default size.
+    ...(track.height != null && { height: track.height }),
+  };
+}
+
+function toMarker(marker: Marker): TimelineMarker {
+  return {
+    id: marker.id,
+    t: marker.t,
+    ...(marker.duration !== null && { duration: marker.duration }),
+    label: marker.label,
+    color: marker.color,
+    kind: marker.kind,
   };
 }
 
@@ -147,10 +162,15 @@ function build(sequence: Sequence, project: Project): TimelineModel {
       items.push(toItem(item, track, project));
     }
   }
+  // Sequence markers, drawn in the ruler (by time, then ID, so the order is stable).
+  const markers = Object.values(sequence.markers ?? {})
+    .sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map(toMarker);
   return {
     fps: { num: sequence.format.frame_rate.num, den: sequence.format.frame_rate.den },
     tracks,
     items,
+    ...(markers.length > 0 && { markers }),
   };
 }
 
@@ -183,6 +203,24 @@ export function selectTimelineModel(
     perSequence.set(sequenceId, model);
   }
   return model;
+}
+
+/** Range objects per engine `in_out` object, so an unchanged in/out keeps its identity. */
+const inOutCache = new WeakMap<object, { readonly in: number; readonly out: number }>();
+
+/** The active sequence's in and out points as the timeline's range shade, or `null`. */
+export function selectInOut(
+  project: Project | null,
+): { readonly in: number; readonly out: number } | null {
+  const id = selectActiveSequenceId(project);
+  const inOut = id === null ? null : (project?.sequences[id]?.in_out ?? null);
+  if (inOut === null) return null;
+  let range = inOutCache.get(inOut);
+  if (range === undefined) {
+    range = { in: inOut.start, out: inOut.end };
+    inOutCache.set(inOut, range);
+  }
+  return range;
 }
 
 /** The items of the active sequence, in timeline order per track. */

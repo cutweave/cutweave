@@ -11,7 +11,9 @@
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "bench": "node bench/run.mjs"
+    "bench": "node bench/run.mjs",
+    "demo": "vite demo",
+    "test:perf": "playwright test -c demo/playwright.config.ts"
   },
   "dependencies": {
     "@cutweave/protocol": "workspace:*",

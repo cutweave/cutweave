@@ -86,6 +86,7 @@ function theme(): Theme {
     opacityDisabled: 0.5,
     borderThin: 1,
     clipStrip: 3,
+    radiusXs: 2,
     radiusSm: 4,
     controlSm: 24,
     controlMd: 28,

@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Timeline demo</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--surface-0); }
+      body { display: flex; flex-direction: column; color: var(--text-primary); }
+      #probe {
+        flex: none;
+        padding: var(--space-1) var(--space-3);
+        background: var(--surface-1);
+        border-bottom: var(--border-thin) solid var(--border-subtle);
+        white-space: pre;
+      }
+      #stage { position: relative; flex: 1; min-height: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="probe" class="numeric" aria-live="off">fps: measuring</div>
+    <div id="stage"><canvas id="tl"></canvas></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
