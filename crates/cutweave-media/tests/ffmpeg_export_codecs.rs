@@ -9,7 +9,13 @@
 //! `ffprobe` / `ffmpeg` come from the bundle (`$FFMPEG_DIR/bin`, else `PATH`), as set up by
 //! `scripts/ffmpeg/env.sh` (docs/dev/ffmpeg.md).
 #![cfg(feature = "ffmpeg")]
-#![allow(clippy::expect_used, clippy::unwrap_used)] // test helpers
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::expect_used,
+    clippy::many_single_char_names,
+    clippy::unwrap_used
+)] // test helpers
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -528,10 +534,7 @@ fn a_forced_hardware_encoder_that_does_not_exist_fails_and_auto_still_encodes() 
         .filter(|c| c.codec == "hevc")
         .map(|c| c.implementation.clone())
         .collect();
-    assert!(
-        name == "libx265" && hw.is_empty() || hw.contains(&name) || name == "libx265",
-        "{name} vs {hw:?}"
-    );
+    assert!(name == "libx265" || hw.contains(&name), "{name} vs {hw:?}");
 }
 
 #[test]

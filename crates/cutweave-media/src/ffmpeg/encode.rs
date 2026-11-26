@@ -266,7 +266,71 @@ fn is_proxy_prores(spec: &VideoEncodeSpec) -> bool {
     spec.input_format == PixelFormat::Yuv422p10 && spec.profile.is_none() && !spec.alpha
 }
 
+/// The input and settings of a ProRes export: a known profile, RGBA frames (or 4:2:2 10-bit
+/// ones for the 4:2:2 profiles), alpha only in 4444.
+fn check_prores(spec: &VideoEncodeSpec, is_444: bool) -> Result<(), MediaError> {
+    if hwenc::prores_profile(spec.profile.as_deref()).is_none() {
+        return Err(unsupported(format!(
+            "ProRes profile `{}`: proxy, lt, standard, hq, 4444 or 4444xq",
+            spec.profile.as_deref().unwrap_or_default()
+        )));
+    }
+    let ok = spec.input_format == PixelFormat::Rgba8
+        || (spec.input_format == PixelFormat::Yuv422p10 && !is_444 && !spec.alpha);
+    if !ok {
+        return Err(unsupported(format!(
+            "{:?} input: ProRes takes Rgba8 frames (Yuv422p10 for the 4:2:2 profiles)",
+            spec.input_format
+        )));
+    }
+    if spec.alpha && !is_444 {
+        return Err(unsupported(
+            "alpha needs the ProRes 4444 or 4444xq profile".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// The input and settings of an H.264, HEVC or AV1 export: 8-bit input for 8-bit video, 10-bit
+/// for 10-bit, no alpha, HEVC's profile following the bit depth.
+fn check_coded(spec: &VideoEncodeSpec, codec: Codec) -> Result<(), MediaError> {
+    let ten = spec.bit_depth > 8;
+    let formats: [PixelFormat; 3] = if ten {
+        [
+            PixelFormat::Rgba8,
+            PixelFormat::P010,
+            PixelFormat::Yuv420p10,
+        ]
+    } else {
+        [PixelFormat::Rgba8, PixelFormat::Nv12, PixelFormat::Yuv420p]
+    };
+    if !formats.contains(&spec.input_format) {
+        return Err(unsupported(format!(
+            "{:?} input: {}-bit {} takes {:?} frames",
+            spec.input_format,
+            if ten { 10 } else { 8 },
+            codec.id(),
+            formats
+        )));
+    }
+    if spec.alpha {
+        return Err(unsupported(format!("{} has no alpha here", codec.id())));
+    }
+    let want = if ten { "main10" } else { "main" };
+    if codec == Codec::Hevc
+        && let Some(profile) = spec.profile.as_deref()
+        && profile != want
+    {
+        return Err(unsupported(format!(
+            "HEVC profile `{profile}` at {} bits: `{want}`",
+            if ten { 10 } else { 8 },
+        )));
+    }
+    Ok(())
+}
+
 impl VideoPlan {
+    #[allow(clippy::too_many_lines)] // one flat run of checks, before anything opens
     pub(super) fn new(spec: &VideoEncodeSpec) -> Result<VideoPlan, MediaError> {
         if let Some(intra) = Intra::of(&spec.codec)
             && (intra != Intra::ProRes || is_proxy_prores(spec))
@@ -292,61 +356,10 @@ impl VideoPlan {
         let prores_444 = codec == Codec::ProRes
             && hwenc::prores_profile(spec.profile.as_deref())
                 .is_some_and(hwenc::ProResProfile::is_444);
-        match codec {
-            Codec::ProRes => {
-                if hwenc::prores_profile(spec.profile.as_deref()).is_none() {
-                    return Err(unsupported(format!(
-                        "ProRes profile `{}`: proxy, lt, standard, hq, 4444 or 4444xq",
-                        spec.profile.as_deref().unwrap_or_default()
-                    )));
-                }
-                let ok = spec.input_format == PixelFormat::Rgba8
-                    || (spec.input_format == PixelFormat::Yuv422p10 && !prores_444 && !spec.alpha);
-                if !ok {
-                    return Err(unsupported(format!(
-                        "{:?} input: ProRes takes Rgba8 frames (Yuv422p10 for the 4:2:2 profiles)",
-                        spec.input_format
-                    )));
-                }
-                if spec.alpha && !prores_444 {
-                    return Err(unsupported(
-                        "alpha needs the ProRes 4444 or 4444xq profile".to_owned(),
-                    ));
-                }
-            }
-            _ => {
-                let formats: [PixelFormat; 3] = if ten {
-                    [
-                        PixelFormat::Rgba8,
-                        PixelFormat::P010,
-                        PixelFormat::Yuv420p10,
-                    ]
-                } else {
-                    [PixelFormat::Rgba8, PixelFormat::Nv12, PixelFormat::Yuv420p]
-                };
-                if !formats.contains(&spec.input_format) {
-                    return Err(unsupported(format!(
-                        "{:?} input: {}-bit {} takes {:?} frames",
-                        spec.input_format,
-                        if ten { 10 } else { 8 },
-                        codec.id(),
-                        formats
-                    )));
-                }
-                if spec.alpha {
-                    return Err(unsupported(format!("{} has no alpha here", codec.id())));
-                }
-                if codec == Codec::Hevc
-                    && let Some(profile) = spec.profile.as_deref()
-                    && profile != if ten { "main10" } else { "main" }
-                {
-                    return Err(unsupported(format!(
-                        "HEVC profile `{profile}` at {} bits: `{}`",
-                        if ten { 10 } else { 8 },
-                        if ten { "main10" } else { "main" }
-                    )));
-                }
-            }
+        if codec == Codec::ProRes {
+            check_prores(spec, prores_444)?;
+        } else {
+            check_coded(spec, codec)?;
         }
         let even_height = codec != Codec::ProRes;
         if !spec.width.is_multiple_of(2) && !prores_444

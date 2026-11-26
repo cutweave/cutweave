@@ -566,7 +566,7 @@ fn encode_spec(
     video.preset = services.speed;
     video.threads = services.encoder_threads;
     let mut audio = AudioEncodeSpec::aac(EXPORT_SAMPLE_RATE, EXPORT_CHANNELS);
-    audio.codec = audio_codec_name(out.audio_codec).to_owned();
+    audio_codec_name(out.audio_codec).clone_into(&mut audio.codec);
     if let Some(kbps) = out.audio_bitrate_kbps.filter(|k| *k > 0) {
         audio.bitrate = kbps.saturating_mul(1000);
     }

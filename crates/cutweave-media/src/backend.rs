@@ -222,7 +222,7 @@ impl VideoEncodeSpec {
     /// The same stream with codec `codec` (`hevc`, `av1`, `prores`).
     #[must_use]
     pub fn with_codec(mut self, codec: &str) -> VideoEncodeSpec {
-        self.codec = codec.to_owned();
+        codec.clone_into(&mut self.codec);
         self
     }
 }
