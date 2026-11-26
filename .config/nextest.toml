@@ -13,7 +13,7 @@ fail-fast = false
 # every attempt, and nextest reports retried tests as flaky. Budgets proper are enforced on the
 # reference machines (docs/reference-machines.md).
 [[profile.default.overrides]]
-filter = 'test(/under_a_second|within_500_ms|within_timeout_plus_100_ms|syncs_within_the_window|round_trip_p95|takes_under_|plays_its_sound|interrupted_proxy_resumes|restarts_on_device_removal/) | (package(cutweave-render) & test(/^gpu::/)) | binary_id(cutweave-engine::launch)'
+filter = 'test(/under_a_second|within_500_ms|within_timeout_plus_100_ms|syncs_within_the_window|round_trip_p95|takes_under_|plays_its_sound|interrupted_proxy_resumes|restarts_on_device_removal|plays_the_mix_in_real_time/) | (package(cutweave-render) & test(/^gpu::/)) | binary_id(cutweave-engine::launch)'
 retries = 2
 
 # Wall-clock budget tests also run alone within the run (no other test on the other threads), so

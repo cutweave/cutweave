@@ -1416,105 +1416,6 @@ expression: text
     {
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false
-      },
-      "input_schema": {
-        "additionalProperties": false,
-        "description": "Copies the chosen property groups (`transform`, `crop`, `flip`, `compositing`, `audio`) of\n`from` onto each clip of `to`, with their keyframes. Names, timing, media and links are not\ntouched. `Locked` if a target's track is locked; nothing changes then.",
-        "properties": {
-          "from": {
-            "description": "The clip to read the values from.",
-            "pattern": "^itm_[0-9a-f]{32}$",
-            "type": "string"
-          },
-          "to": {
-            "description": "The clips to change, at least one, of one sequence.",
-            "items": {
-              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-              "pattern": "^itm_[0-9a-f]{32}$",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "which": {
-            "description": "The groups to copy, at least one.",
-            "items": {
-              "description": "A group of properties, as `item.reset_props` and the Inspector name them.",
-              "oneOf": [
-                {
-                  "const": "transform",
-                  "description": "Position, scale, rotation and anchor.",
-                  "type": "string"
-                },
-                {
-                  "const": "crop",
-                  "description": "The four crop edges.",
-                  "type": "string"
-                },
-                {
-                  "const": "flip",
-                  "description": "Flip horizontal and vertical.",
-                  "type": "string"
-                },
-                {
-                  "const": "compositing",
-                  "description": "Opacity and blend mode.",
-                  "type": "string"
-                },
-                {
-                  "const": "audio",
-                  "description": "Clip gain, pan and fades.",
-                  "type": "string"
-                }
-              ]
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "from",
-          "to",
-          "which"
-        ],
-        "title": "ClipPasteAttributes",
-        "type": "object"
-      },
-      "kind": "command",
-      "mcp": "catalog",
-      "mcp_tool": "clip_paste_attributes",
-      "name": "clip.paste_attributes",
-      "namespace": "clip",
-      "output_schema": {
-        "additionalProperties": false,
-        "description": "Result of `clip.paste_attributes`.",
-        "properties": {
-          "changed": {
-            "description": "The clips whose properties changed (those that already matched are left out).",
-            "items": {
-              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-              "pattern": "^itm_[0-9a-f]{32}$",
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "changed"
-        ],
-        "title": "ClipPasteAttributesOutput",
-        "type": "object"
-      },
-      "scope": "any",
-      "secret_fields": [],
-      "summary": "Copy transform, crop, flip, compositing or audio settings of a clip onto other clips",
-      "undoable": true,
-      "view": false
-    },
-    {
-      "annotations": {
-        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -1869,6 +1770,105 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Freeze a clip's frame at a time: split there and insert a still of it (3 s by default)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Copies the chosen property groups (`transform`, `crop`, `flip`, `compositing`, `audio`) of\n`from` onto each clip of `to`, with their keyframes. Names, timing, media and links are not\ntouched. `Locked` if a target's track is locked; nothing changes then.",
+        "properties": {
+          "from": {
+            "description": "The clip to read the values from.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "to": {
+            "description": "The clips to change, at least one, of one sequence.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "which": {
+            "description": "The groups to copy, at least one.",
+            "items": {
+              "description": "A group of properties, as `item.reset_props` and the Inspector name them.",
+              "oneOf": [
+                {
+                  "const": "transform",
+                  "description": "Position, scale, rotation and anchor.",
+                  "type": "string"
+                },
+                {
+                  "const": "crop",
+                  "description": "The four crop edges.",
+                  "type": "string"
+                },
+                {
+                  "const": "flip",
+                  "description": "Flip horizontal and vertical.",
+                  "type": "string"
+                },
+                {
+                  "const": "compositing",
+                  "description": "Opacity and blend mode.",
+                  "type": "string"
+                },
+                {
+                  "const": "audio",
+                  "description": "Clip gain, pan and fades.",
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "which"
+        ],
+        "title": "ClipPasteAttributes",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "clip_paste_attributes",
+      "name": "clip.paste_attributes",
+      "namespace": "clip",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `clip.paste_attributes`.",
+        "properties": {
+          "changed": {
+            "description": "The clips whose properties changed (those that already matched are left out).",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "ClipPasteAttributesOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Copy transform, crop, flip, compositing or audio settings of a clip onto other clips",
       "undoable": true,
       "view": false
     },
@@ -24501,6 +24501,34 @@ expression: text
                               "description": "Disabled items are kept but neither rendered nor heard.",
                               "type": "boolean"
                             },
+                            "freeze": {
+                              "additionalProperties": false,
+                              "default": null,
+                              "description": "A freeze frame (WP-2D.01): shows the frame at `at_source` for its whole length, silent.\nAbsent in older documents: not a freeze frame.",
+                              "properties": {
+                                "at_source": {
+                                  "anyOf": [
+                                    {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                                      "type": "string"
+                                    }
+                                  ],
+                                  "description": "The media position of the frame shown."
+                                }
+                              },
+                              "required": [
+                                "at_source"
+                              ],
+                              "type": [
+                                "object",
+                                "null"
+                              ]
+                            },
                             "id": {
                               "description": "The item ID (also its key in the track's `items`).",
                               "pattern": "^itm_[0-9a-f]{32}$",
@@ -24620,6 +24648,11 @@ expression: text
                                 "null"
                               ]
                             },
+                            "reverse": {
+                              "default": false,
+                              "description": "Plays its source range backwards (WP-2D.01). Absent in older documents: forwards.",
+                              "type": "boolean"
+                            },
                             "source_in": {
                               "anyOf": [
                                 {
@@ -24632,7 +24665,34 @@ expression: text
                                   "type": "string"
                                 }
                               ],
-                              "description": "Source position (from the start of the media) of the first frame."
+                              "description": "Source position (from the start of the media) of the first frame (of the last frame\nshown, when reversed)."
+                            },
+                            "speed": {
+                              "additionalProperties": false,
+                              "default": {
+                                "den": 1,
+                                "num": 1
+                              },
+                              "description": "Playback speed (WP-2D.01): a timeline span `d` plays `d × speed` of media (INV-47).\nAbsent in documents written before it (the v2 fill-in adds it): normal speed.",
+                              "properties": {
+                                "den": {
+                                  "description": "Denominator.",
+                                  "maximum": 100000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "num": {
+                                  "description": "Numerator.",
+                                  "maximum": 100000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "num",
+                                "den"
+                              ],
+                              "type": "object"
                             },
                             "start": {
                               "anyOf": [
