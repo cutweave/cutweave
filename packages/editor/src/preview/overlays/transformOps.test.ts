@@ -16,7 +16,7 @@ import {
   valueAt,
   viewScale,
 } from "./geometry.ts";
-import { canvasTargets, snapBounds, snapPoint, targetsWith } from "./snapping.ts";
+import { canvasTargets, guideSegment, snapBounds, snapPoint, targetsWith } from "./snapping.ts";
 import {
   anchorDrag,
   cropDrag,
@@ -276,6 +276,24 @@ describe("fit, fill, center", () => {
     near((g.bounds[0] + g.bounds[2]) / 2, 960, 1e-6);
     near((g.bounds[1] + g.bounds[3]) / 2, 540, 1e-6);
     expect(out.scale).toEqual({ x: 1, y: 1 });
+  });
+});
+
+describe("snap guide extent", () => {
+  it("stops at the canvas edges", () => {
+    const canvas = { w: 1920, h: 1080 };
+    expect(guideSegment({ axis: "x", at: 960 }, canvas)).toEqual({
+      x1: 960,
+      x2: 960,
+      y1: 0,
+      y2: 1080,
+    });
+    expect(guideSegment({ axis: "y", at: 540 }, canvas)).toEqual({
+      x1: 0,
+      x2: 1920,
+      y1: 540,
+      y2: 540,
+    });
   });
 });
 

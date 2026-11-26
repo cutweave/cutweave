@@ -95,3 +95,13 @@ export function snapPoint(
   if (y !== null) guides.push({ axis: "y", at: y.at });
   return { point: { x: p.x + (x?.shift ?? 0), y: p.y + (y?.shift ?? 0) }, guides };
 }
+
+/** A guide's end points, clipped to the canvas (0..w, 0..h) so it never runs past the picture. */
+export function guideSegment(
+  g: Guide,
+  canvas: { readonly w: number; readonly h: number },
+): { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number } {
+  return g.axis === "x"
+    ? { x1: g.at, x2: g.at, y1: 0, y2: canvas.h }
+    : { y1: g.at, y2: g.at, x1: 0, x2: canvas.w };
+}

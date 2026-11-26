@@ -34,6 +34,7 @@ import { buildScene, type Scene, type SceneLayer, unionBounds } from "./scene.ts
 import {
   type Guide,
   SNAP_DISTANCE_PX,
+  guideSegment,
   type SnapTargets,
   snapBounds,
   snapPoint,
@@ -437,9 +438,7 @@ export function TransformOverlay() {
           <line
             key={`${g.axis}${g.at}`}
             className="cw-xform__guide"
-            {...(g.axis === "x"
-              ? { x1: g.at, x2: g.at, y1: -canvas.h, y2: canvas.h * 2 }
-              : { y1: g.at, y2: g.at, x1: -canvas.w, x2: canvas.w * 2 })}
+            {...guideSegment(g, canvas)}
           />
         ))}
         {single !== undefined && !cropMode ? <RotateStalk layer={single} zoom={zoom} /> : null}
