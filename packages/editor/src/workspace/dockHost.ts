@@ -95,7 +95,7 @@ export function attachDock(next: DockviewApi | null): void {
   refresh();
 }
 
-/** The panels in the window `win` (a detached window, or the main one), in tab order. */
+/** The panels in the detached window `win`, in tab order. */
 function panelsIn(dock: DockviewApi, win: Window): IDockviewPanel[] {
   return dock.panels.filter((p) => p.api.location.type === "popout" && safeWindow(p) === win);
 }
@@ -169,7 +169,7 @@ function watchDragOut(dock: DockviewApi, event: TabDragEvent): void {
       );
       if (point === null || api !== dock) return;
       // Alone in its own window already: dragging its tab out moves nothing.
-      if (isPanelDetached(id) && from !== null && panelsIn(dock, from).length === 1) return;
+      if (from !== null && isPanelDetached(id) && panelsIn(dock, from).length === 1) return;
       void popoutPanel(id, point);
     },
     { once: true },
@@ -386,8 +386,10 @@ export async function popoutPanel(id: PanelId, at?: { x: number; y: number }): P
   const dock = api;
   const panel = dock?.getPanel(id);
   if (dock === null || panel === undefined) return false;
-  if (panel.api.location.type === "popout") {
-    safeWindow(panel)?.focus();
+  // Alone in its own window already: that window comes to the front.
+  const current = panel.api.location.type === "popout" ? safeWindow(panel) : null;
+  if (current !== null && panelsIn(dock, current).length === 1) {
+    current.focus();
     return true;
   }
   const spot = spotInLayout(dock.toJSON(), id);
