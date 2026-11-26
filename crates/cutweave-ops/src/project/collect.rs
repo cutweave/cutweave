@@ -372,7 +372,7 @@ fn read_full(file: &mut fs::File, buf: &mut [u8]) -> io::Result<usize> {
 }
 
 fn part_path(to: &Path) -> PathBuf {
-    let mut name = to.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    let mut name = to.file_name().map_or_default(std::ffi::OsStr::to_os_string);
     name.push(".part");
     to.with_file_name(name)
 }

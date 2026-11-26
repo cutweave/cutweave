@@ -2,7 +2,11 @@
 //! WP-2F.04: `project.collect` and `project.collect_estimate`. The media are small files made at
 //! test time in a temp folder; the engine's part (free space, writing the project) is a stand-in.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::many_single_char_names
+)]
 
 mod common;
 
