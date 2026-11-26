@@ -375,6 +375,15 @@ function PresetForm({
     warningText(w, { spec, seq: facts, width, height, fps, seconds, estimate }),
   );
   const regions = range.kind === "markers" ? markerRegions(seq, range.pairMode) : [];
+  // Why a kind of range cannot be chosen ("Set in and out points first").
+  const unavailable = RANGE_KINDS.map((kind) => rangeAvailability(seq, kind)).filter(
+    (key): key is TKey => key !== null,
+  );
+  // The estimate is for the first file of a marker set; all of them weigh their lengths together.
+  const sizeScale =
+    regions.length > 1 && seconds > 0
+      ? regions.reduce((sum, r) => sum + flicksToSeconds(r.end - r.start), 0) / seconds
+      : 1;
 
   // ---- checks before asking the engine ----
   const single = range.kind !== "markers";
@@ -537,7 +546,7 @@ function PresetForm({
     estimate === null
       ? t("export.summary.noEstimate")
       : t(estimate.upTo ? "export.summary.upTo" : "export.summary.about", {
-          size: humanBytes(estimate.bytes * Math.max(1, regions.length)),
+          size: humanBytes(estimate.bytes * sizeScale),
         });
   const rateText =
     spec.video?.rate_control.mode === "vbr" || spec.video?.rate_control.mode === "cbr"
@@ -706,6 +715,12 @@ function PresetForm({
                   : t("export.range.makesMany", { count: String(regions.length) })}
             </DialogNote>
           </>
+        ) : null}
+        {unavailable.length > 0 ? (
+          <p className="caption cw-export__hint">{unavailable.map((key) => t(key)).join(" ")}</p>
+        ) : null}
+        {resolved?.ok === false && spotOf(resolved.pointer) === "range" ? (
+          <DialogNote icon="triangle-alert">{resolved.message}</DialogNote>
         ) : null}
         {shown("range")}
 

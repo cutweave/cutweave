@@ -1445,8 +1445,8 @@
       "makesMany": "Makes {{count}} files, one per marker.",
       "template": "Each file's name fills in {seq}, {marker_label} and {n}.",
       "folder": "A folder: the files are named {seq}_{marker_label}_{n}.",
-      "noInOut": "Set in and out points first",
-      "noMarkers": "Add markers first"
+      "noInOut": "To export in to out, set in and out points on the timeline first.",
+      "noMarkers": "To export by markers, add markers first."
     },
     "width": "Width",
     "height": "Height",
