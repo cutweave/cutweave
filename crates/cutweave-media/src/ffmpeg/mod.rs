@@ -26,6 +26,7 @@ mod hwenc;
 mod index;
 mod log;
 mod probe;
+mod sequence;
 // Justification: FFmpeg FFI that ffmpeg-next does not wrap (version getters, the C-variadic log
 // callback, codec enumeration), ADR-0003 and AGENTS.md ("no unsafe outside the crates that need
 // it for FFI"). The rest of the crate stays `unsafe`-free; every block in `sys` has a
@@ -44,7 +45,7 @@ use crate::backend::{
     VideoDecoder,
 };
 use crate::version::{self, LinkedLibrary, Release};
-use crate::{Capabilities, FrameIndex, MediaError};
+use crate::{Capabilities, FrameIndex, MediaError, SequenceSource};
 
 /// What FFmpeg the process loaded.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -194,10 +195,37 @@ impl FfmpegBackend {
 pub(crate) mod input {
     use std::path::Path;
 
+    use cutweave_model::FrameRate;
+    use ffmpeg_next::Dictionary;
     use ffmpeg_next::format::context::Input;
 
     use super::error::media_error;
     use crate::MediaError;
+
+    /// Opens the numbered pictures at `pattern` (`shot_%04d.png` in its directory) from number
+    /// `start` as one stream of `fps` pictures a second, with FFmpeg's `image2` demuxer
+    /// (ADR-0035). `first_file` is the file of `start`: it must exist. The stream ends at the
+    /// first number without a file; packet `n` has pts `n` in a time base of one frame.
+    pub(crate) fn open_sequence(
+        pattern: &Path,
+        first_file: &Path,
+        start: u32,
+        fps: FrameRate,
+    ) -> Result<Input, MediaError> {
+        crate::path::check_file(first_file)?;
+        let checked = crate::path::check_syntax(pattern)?;
+        let mut options = Dictionary::new();
+        // The counter is the only thing `%` means in the pattern: no glob characters.
+        options.set("pattern_type", "sequence");
+        options.set("start_number", &start.to_string());
+        // Exactly `start`: never a nearby number.
+        options.set("start_number_range", "1");
+        options.set("framerate", &format!("{}/{}", fps.num(), fps.den()));
+        // The rate is given: no packets are read to estimate it.
+        options.set("fpsprobesize", "0");
+        ffmpeg_next::format::input_with_dictionary(checked, options)
+            .map_err(|e| media_error(first_file, e))
+    }
 
     /// Opens `path` for demuxing (container header and stream info read).
     pub(crate) fn open(path: &Path) -> Result<Input, MediaError> {
@@ -208,10 +236,19 @@ pub(crate) mod input {
 
 impl MediaBackend for FfmpegBackend {
     fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError> {
+        if let Some(run) = SequenceSource::parse(path) {
+            // An image sequence (ADR-0035): the first file only.
+            return Ok(run.probe(probe::probe(&run.first_file())?));
+        }
         probe::probe(path)
     }
 
     fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError> {
+        if let Some(run) = SequenceSource::parse(path) {
+            // Computed (frame `n` is file `first + n`): nothing is scanned.
+            crate::path::check_file(&run.first_file())?;
+            return run.index();
+        }
         index::index_media(path)
     }
 
@@ -220,6 +257,9 @@ impl MediaBackend for FfmpegBackend {
         path: &Path,
         opts: &DecodeOpts,
     ) -> Result<Box<dyn VideoDecoder>, MediaError> {
+        if let Some(run) = SequenceSource::parse(path) {
+            return sequence::open(run, opts, Arc::clone(&self.hw));
+        }
         decode::open(path, opts, &self.hw)
     }
 
@@ -228,6 +268,14 @@ impl MediaBackend for FfmpegBackend {
         path: &Path,
         stream: Option<u32>,
     ) -> Result<Box<dyn AudioDecoder>, MediaError> {
+        if SequenceSource::parse(path).is_some() {
+            // An image sequence has no sound.
+            return Err(MediaError::NoStream {
+                path: crate::path::display(path),
+                kind: cutweave_model::StreamKind::Audio,
+                index: stream,
+            });
+        }
         audio::open(path, stream)
     }
 
