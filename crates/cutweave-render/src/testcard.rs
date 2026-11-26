@@ -52,6 +52,16 @@ pub enum Pattern {
     /// Hue across, value down, with fine diagonal detail: exercises chroma upsampling and
     /// resampling.
     Sweep,
+    /// A gradient chart: red rises left to right, green top to bottom and blue falls along the
+    /// diagonal, each over the full `[0, 1]` signal range, so every pixel mixes different
+    /// levels (blend-mode tests).
+    Gradient,
+    /// A 1 px grid: white lines one pixel wide every `period` pixels across and down, on black
+    /// (sub-pixel positioning tests).
+    Grid {
+        /// Distance between lines in pixels (at least 1).
+        period: u32,
+    },
 }
 
 /// Alpha of an RGBA8 card.
@@ -138,6 +148,19 @@ impl TestCard {
                 let detail = 0.08 * (f64::from(x + y) * 0.9).sin();
                 let value = (1.0 - v * 0.9 + detail).clamp(0.0, 1.0);
                 hsv(u + index as f64 * 0.01, 0.85, value)
+            }
+            Pattern::Gradient => {
+                let ramp = |i: u32, n: u32| f64::from(i) / f64::from(n.max(2) - 1);
+                let (r, g) = (ramp(x, self.width), ramp(y, self.height));
+                [r, g, 1.0 - f64::midpoint(r, g)]
+            }
+            Pattern::Grid { period } => {
+                let p = period.max(1);
+                if x.is_multiple_of(p) || y.is_multiple_of(p) {
+                    [1.0; 3]
+                } else {
+                    [0.0; 3]
+                }
             }
         }
     }

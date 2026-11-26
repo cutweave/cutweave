@@ -159,7 +159,7 @@ mod tests {
     use super::*;
     use crate::frame::PixelFormat;
     use crate::graph::{GraphOptions, Target, build};
-    use crate::scene::{BlendMode, Crop, FrameRequest, Layer, LayerTransform};
+    use crate::scene::{BlendMode, Crop, Flip, FrameRequest, Layer, LayerTransform};
     use crate::testcard::{Alpha, Pattern, SyntheticSource, TestCard};
 
     fn layer(n: u128, media: u128) -> Layer {
@@ -185,6 +185,7 @@ mod tests {
             opacity: 1.0,
             blend: BlendMode::Normal,
             crop: Crop::default(),
+            flip: Flip::default(),
             effects: Vec::new(),
         }
     }

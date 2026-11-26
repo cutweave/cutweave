@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Input transform: decoded planes -> premultiplied linear Rec.709 (Rgba16Float, mip 0).
 // codes -> range -> matrix -> clamp [0,1] -> transfer^-1 -> (HLG OOTF) -> primaries
-// -> (PQ/HLG: BT.2390 EETF on max RGB) -> clip negatives -> premultiply.
+// -> (PQ/HLG: BT.2390 EETF on max RGB) -> clip negatives -> premultiply -> round to the nearest half
+// float (common.wgsl round_half: the store is then exact on every adapter).
 // Planes are integer textures read with textureLoad; 4:2:0 chroma is upsampled with explicit
 // bilinear weights (a + (b - a) * f) at the frame's chroma siting, clamp-to-edge.
 
@@ -103,7 +104,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let sig = (vec3<f32>(c.rgb) - vec3<f32>(P.range.x)) / P.range.y;
     // Exactly 1 for opaque pixels, so opaque layers composite exactly.
     let a = select(f32(c.a) * (1.0 / 255.0), 1.0, c.a == 255u);
-    textureStore(dst, p, vec4<f32>(finish(sig) * a, a));
+    textureStore(dst, p, round_half4(vec4<f32>(finish(sig) * a, a)));
     return;
   }
   let yc = f32(textureLoad(plane0, p, 0).r >> P.mode.y);
@@ -116,5 +117,5 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let r = yn + 2.0 * (1.0 - kr) * cr;
   let b = yn + 2.0 * (1.0 - kb) * cb;
   let g = (yn - kr * r - kb * b) / P.coeffs.z;
-  textureStore(dst, p, vec4<f32>(finish(vec3<f32>(r, g, b)), 1.0));
+  textureStore(dst, p, round_half4(vec4<f32>(finish(vec3<f32>(r, g, b)), 1.0)));
 }

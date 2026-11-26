@@ -4,7 +4,9 @@
 // coverage, samples the decoded texture with exact-weight bilinear / trilinear filtering
 // (textureLoad, never a hardware sampler: S4 finding 1) and outputs premultiplied colour scaled
 // by coverage x opacity. Fixed-function blending does "over": dst = src + dst * (1 - src.a).
-// Zero coverage outputs 0, which leaves the canvas unchanged exactly.
+// Zero coverage outputs 0, which leaves the canvas unchanged exactly. This is the pipeline of
+// normal-blend, bilinear layers; composite_ext.wgsl adds bicubic sampling and the other blend
+// modes as a second pipeline (WP-2C.04). Display px below are item px (the flip applied).
 
 struct CompositeParams {
   rect: vec4<f32>,     // quad in output px: x0, y0, x1, y1
@@ -14,7 +16,7 @@ struct CompositeParams {
   tex0: vec4<f32>,     // display px -> level-0 texel, x row
   tex1: vec4<f32>,     // y row
   visible: vec4<f32>,  // visible rectangle in display px: x0, y0, x1, y1
-  flags: vec4<u32>,    // mip levels, full cover, blend mode, -
+  flags: vec4<u32>,    // mip levels, full cover, blend mode, filter (0 bilinear, 1 bicubic)
 }
 
 @group(0) @binding(0) var<uniform> P: CompositeParams;

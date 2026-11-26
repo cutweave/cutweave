@@ -66,8 +66,10 @@ pub struct Layer {
     pub opacity: f64,
     /// How the layer combines with what is below.
     pub blend: BlendMode,
-    /// Crop of the source picture.
+    /// Crop of the upright source picture, evaluated at `time`.
     pub crop: Crop,
+    /// Mirroring of the item about its centre, crop included, evaluated at `time`.
+    pub flip: Flip,
     /// Effects applied to the layer, in order (none in schema v1).
     pub effects: Vec<EffectRef>,
 }
@@ -112,27 +114,172 @@ pub struct LayerTransform {
     pub anchor: Vec2,
 }
 
-/// Layer blend modes. Only `Normal` exists in schema v1.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+/// Layer blend modes: arch §8's core set (the extended set arrives in P4 as L1 plugins).
+///
+/// Every mode blends in linear light on premultiplied colour (the compositor's `Rgba16Float`
+/// working space). With `cs`/`as` the layer's premultiplied colour and alpha after crop
+/// coverage and opacity, `cb`/`ab` the canvas below, and `Cs = cs / as`, `Cb = cb / ab` the
+/// straight colours, each channel is the W3C separable compositing formula
+///
+/// ```text
+/// co = cs·(1 − ab) + cb·(1 − as) + as·ab·B(Cb, Cs)        ao = as + ab·(1 − as)
+/// ```
+///
+/// with the mode's `B` ([`BlendMode::blend`]). `Normal` (`B = Cs`) reduces to "over",
+/// `co = cs + cb·(1 − as)`, and never reads the straight colours. Where either side is
+/// transparent the other shows unchanged, and opacity 0 leaves the canvas exactly as it was.
+/// The result is linear in the layer's coverage × opacity `k`: `co(k) = cb + k·(co(1) − cb)`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum BlendMode {
-    /// Straight-alpha "over".
+    /// `B = Cs`: premultiplied "over".
     #[default]
     Normal,
+    /// `B = Cb·Cs`: darkens; white is neutral.
+    Multiply,
+    /// `B = Cb + Cs − Cb·Cs`: lightens; black is neutral.
+    Screen,
+    /// `B = 2·Cb·Cs` where `Cb ≤ ½`, else `Cs + (2Cb − 1) − Cs·(2Cb − 1)` (hard light with the
+    /// layers swapped): multiply in the backdrop's shadows, screen in its highlights.
+    Overlay,
+    /// `B = min(Cb, Cs)`.
+    Darken,
+    /// `B = max(Cb, Cs)`.
+    Lighten,
+    /// `B = min(Cb + Cs, 1)`: linear dodge, the sum clipped to white.
+    Add,
+    /// The W3C soft light: `Cb − (1 − 2Cs)·Cb·(1 − Cb)` where `Cs ≤ ½`, else
+    /// `Cb + (2Cs − 1)·(D(Cb) − Cb)` with `D(Cb) = ((16Cb − 12)·Cb + 4)·Cb` where `Cb ≤ ¼`, else
+    /// `√Cb`.
+    SoftLight,
 }
 
 impl BlendMode {
+    /// Every mode, in the model's order.
+    pub const ALL: [BlendMode; 8] = [
+        BlendMode::Normal,
+        BlendMode::Multiply,
+        BlendMode::Screen,
+        BlendMode::Overlay,
+        BlendMode::Darken,
+        BlendMode::Lighten,
+        BlendMode::Add,
+        BlendMode::SoftLight,
+    ];
+
     /// The variant's name, as `Debug` prints it (hashed into cache keys without formatting).
     #[must_use]
     pub const fn debug_name(self) -> &'static str {
         match self {
             BlendMode::Normal => "Normal",
+            BlendMode::Multiply => "Multiply",
+            BlendMode::Screen => "Screen",
+            BlendMode::Overlay => "Overlay",
+            BlendMode::Darken => "Darken",
+            BlendMode::Lighten => "Lighten",
+            BlendMode::Add => "Add",
+            BlendMode::SoftLight => "SoftLight",
+        }
+    }
+
+    /// The mode's id in the composite shader (`blend_channel` in `composite.wgsl`).
+    #[must_use]
+    pub const fn shader_id(self) -> u32 {
+        match self {
+            BlendMode::Normal => 0,
+            BlendMode::Multiply => 1,
+            BlendMode::Screen => 2,
+            BlendMode::Overlay => 3,
+            BlendMode::Darken => 4,
+            BlendMode::Lighten => 5,
+            BlendMode::Add => 6,
+            BlendMode::SoftLight => 7,
+        }
+    }
+
+    /// The mode's `B(Cb, Cs)` on one straight linear channel. The non-normal modes take both
+    /// inputs clamped to `[0, 1]`, the SDR working range of v1 where their formulas are defined
+    /// (soft light's `√Cb` needs `Cb ≥ 0`); `Normal` returns `Cs` unchanged.
+    #[must_use]
+    pub fn blend(self, cb: f64, cs: f64) -> f64 {
+        let (b, s) = (cb.clamp(0.0, 1.0), cs.clamp(0.0, 1.0));
+        match self {
+            BlendMode::Normal => cs,
+            BlendMode::Multiply => b * s,
+            BlendMode::Screen => b + s - b * s,
+            BlendMode::Overlay => {
+                if b <= 0.5 {
+                    2.0 * b * s
+                } else {
+                    let t = 2.0 * b - 1.0;
+                    s + t - s * t
+                }
+            }
+            BlendMode::Darken => b.min(s),
+            BlendMode::Lighten => b.max(s),
+            BlendMode::Add => (b + s).min(1.0),
+            BlendMode::SoftLight => {
+                if s <= 0.5 {
+                    b - (1.0 - 2.0 * s) * b * (1.0 - b)
+                } else {
+                    let d = if b <= 0.25 {
+                        ((16.0 * b - 12.0) * b + 4.0) * b
+                    } else {
+                        b.sqrt()
+                    };
+                    b + (2.0 * s - 1.0) * (d - b)
+                }
+            }
+        }
+    }
+
+    /// Composites premultiplied `src` (coverage and opacity applied) onto premultiplied `dst`
+    /// with this mode: the formula in the type's docs, in `f64`.
+    #[must_use]
+    pub fn composite(self, src: [f64; 4], dst: [f64; 4]) -> [f64; 4] {
+        let (a_s, a_b) = (src[3], dst[3]);
+        if self == BlendMode::Normal || a_s <= 0.0 || a_b <= 0.0 {
+            return core::array::from_fn(|i| src[i] + dst[i] * (1.0 - a_s));
+        }
+        let mut out = [0.0; 4];
+        for i in 0..3 {
+            let b = self.blend(dst[i] / a_b, src[i] / a_s);
+            out[i] = src[i] * (1.0 - a_b) + dst[i] * (1.0 - a_s) + a_s * a_b * b;
+        }
+        out[3] = a_s + a_b * (1.0 - a_s);
+        out
+    }
+}
+
+impl From<cutweave_model::BlendMode> for BlendMode {
+    fn from(mode: cutweave_model::BlendMode) -> BlendMode {
+        use cutweave_model::BlendMode as M;
+        match mode {
+            M::Normal => BlendMode::Normal,
+            M::Multiply => BlendMode::Multiply,
+            M::Screen => BlendMode::Screen,
+            M::Overlay => BlendMode::Overlay,
+            M::Darken => BlendMode::Darken,
+            M::Lighten => BlendMode::Lighten,
+            M::Add => BlendMode::Add,
+            M::SoftLight => BlendMode::SoftLight,
         }
     }
 }
 
-/// Crop of the source picture as fractions of its size removed from each edge.
+/// Mirroring of a layer (keyframes §7): about the item's centre, after the crop and before the
+/// transform, so flipping a cropped picture mirrors what is visible.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Flip {
+    /// Mirror left-right.
+    pub horizontal: bool,
+    /// Mirror top-bottom.
+    pub vertical: bool,
+}
+
+/// Crop of the upright source picture (its display rotation applied) as fractions of its size
+/// removed from each edge, before any flip.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub struct Crop {
     /// Fraction removed from the left edge.
@@ -203,4 +350,169 @@ pub struct AudioSegment {
     pub speed: (u32, u32),
     /// Sample rate of the sequence the segment is mixed into.
     pub sample_rate: SampleRate,
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::float_cmp)]
+
+    use proptest::prelude::*;
+
+    use super::BlendMode;
+
+    const MODES: [BlendMode; 8] = BlendMode::ALL;
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-12
+    }
+
+    #[test]
+    fn each_formula_at_known_points() {
+        use BlendMode::{Add, Darken, Lighten, Multiply, Normal, Overlay, Screen, SoftLight};
+        // (mode, Cb, Cs, B) worked by hand from the formulas in the type's docs.
+        let rows = [
+            (Normal, 0.2, 0.7, 0.7),
+            (Normal, 0.2, 1.5, 1.5),
+            (Multiply, 0.5, 0.4, 0.2),
+            (Screen, 0.5, 0.4, 0.7),
+            (Overlay, 0.25, 0.6, 0.3),
+            (Overlay, 0.75, 0.6, 0.8),
+            (Overlay, 0.5, 0.6, 0.6),
+            (Darken, 0.3, 0.6, 0.3),
+            (Lighten, 0.3, 0.6, 0.6),
+            (Add, 0.3, 0.6, 0.9),
+            (Add, 0.7, 0.6, 1.0),
+            // Cs ≤ ½: Cb − (1 − 2Cs)·Cb·(1 − Cb) = 0.4 − 0.6·0.4·0.6.
+            (SoftLight, 0.4, 0.2, 0.256),
+            // Cs > ½, Cb ≤ ¼: D = ((16·0.2 − 12)·0.2 + 4)·0.2 = 0.448; 0.2 + 0.6·0.248.
+            (SoftLight, 0.2, 0.8, 0.3488),
+            // Cs > ½, Cb > ¼: D = √0.64 = 0.8; 0.64 + 0.6·0.16.
+            (SoftLight, 0.64, 0.8, 0.736),
+            // Out-of-range inputs are clamped for every mode but normal.
+            (Multiply, 1.5, -0.2, 0.0),
+            (Screen, 2.0, 0.5, 1.0),
+            (SoftLight, -0.1, 0.9, 0.0),
+        ];
+        for (mode, cb, cs, want) in rows {
+            let got = mode.blend(cb, cs);
+            assert!(
+                close(got, want),
+                "{mode:?}({cb}, {cs}) = {got}, want {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn neutral_sources_leave_the_backdrop_unchanged() {
+        for i in 0..=20 {
+            let cb = f64::from(i) / 20.0;
+            assert!(close(BlendMode::Multiply.blend(cb, 1.0), cb));
+            assert!(close(BlendMode::Screen.blend(cb, 0.0), cb));
+            assert!(close(BlendMode::Darken.blend(cb, 1.0), cb));
+            assert!(close(BlendMode::Lighten.blend(cb, 0.0), cb));
+            assert!(close(BlendMode::Add.blend(cb, 0.0), cb));
+            assert!(close(BlendMode::SoftLight.blend(cb, 0.5), cb));
+            // Overlay is hard light with the layers swapped: a mid-grey backdrop shows the
+            // source, and black and white backdrops stay.
+            assert!(close(BlendMode::Overlay.blend(0.5, cb), cb));
+            assert!(close(BlendMode::Overlay.blend(0.0, cb), 0.0));
+            assert!(close(BlendMode::Overlay.blend(1.0, cb), 1.0));
+        }
+    }
+
+    #[test]
+    fn soft_light_is_continuous_at_its_seams() {
+        let m = BlendMode::SoftLight;
+        for i in 0..=10 {
+            let cb = f64::from(i) / 10.0;
+            assert!((m.blend(cb, 0.5) - m.blend(cb, 0.5 + 1e-12)).abs() < 1e-9);
+        }
+        // D(Cb) meets √Cb at ¼.
+        assert!((m.blend(0.25, 1.0) - m.blend(0.25 + 1e-12, 1.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn opaque_layers_show_b_and_transparent_sides_pass_through() {
+        let dst = [0.3, 0.6, 0.9, 1.0];
+        let src = [0.5, 0.2, 0.8, 1.0];
+        for mode in MODES {
+            let out = mode.composite(src, dst);
+            for c in 0..3 {
+                assert!(close(out[c], mode.blend(dst[c], src[c])), "{mode:?}");
+            }
+            assert_eq!(out[3], 1.0);
+            // A transparent source changes nothing; a transparent backdrop shows the source.
+            assert_eq!(mode.composite([0.0; 4], dst), dst, "{mode:?}");
+            let clear = [0.0; 4];
+            assert_eq!(mode.composite(src, clear), src, "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn normal_is_premultiplied_over() {
+        let dst = [0.2, 0.3, 0.1, 0.8];
+        let src = [0.25, 0.1, 0.05, 0.5];
+        let out = BlendMode::Normal.composite(src, dst);
+        for c in 0..4 {
+            assert!(close(out[c], src[c] + dst[c] * 0.5));
+        }
+    }
+
+    #[test]
+    fn model_modes_map_one_to_one() {
+        use cutweave_model::BlendMode as M;
+        let model = [
+            M::Normal,
+            M::Multiply,
+            M::Screen,
+            M::Overlay,
+            M::Darken,
+            M::Lighten,
+            M::Add,
+            M::SoftLight,
+        ];
+        for (m, mode) in model.into_iter().zip(MODES) {
+            assert_eq!(BlendMode::from(m), mode);
+            // The same snake_case names on the wire.
+            assert_eq!(
+                serde_json::to_value(m).unwrap(),
+                serde_json::to_value(mode).unwrap()
+            );
+            assert_eq!(mode.debug_name(), format!("{mode:?}"));
+        }
+        let mut ids: Vec<u32> = MODES.iter().map(|m| m.shader_id()).collect();
+        ids.dedup();
+        assert_eq!(ids, (0..8).collect::<Vec<u32>>());
+    }
+
+    fn rgba() -> impl Strategy<Value = [f64; 4]> {
+        (0.0f64..=1.0, 0.0f64..=1.0, 0.0f64..=1.0, 0.0f64..=1.0)
+            .prop_map(|(r, g, b, a)| [r * a, g * a, b * a, a])
+    }
+
+    proptest! {
+        /// Coverage × opacity `k` scales the layer before blending; the result is the backdrop
+        /// plus `k` times the full blend's change (what the GPU's "over" stage relies on).
+        #[test]
+        fn blending_is_linear_in_coverage_times_opacity(
+            src in rgba(), dst in rgba(), k in 0.0f64..=1.0, m in 0usize..8,
+        ) {
+            let mode = MODES[m];
+            let full = mode.composite(src, dst);
+            let scaled = mode.composite(src.map(|c| c * k), dst);
+            for c in 0..4 {
+                prop_assert!((scaled[c] - (dst[c] + k * (full[c] - dst[c]))).abs() < 1e-12);
+            }
+        }
+
+        /// Premultiplied inputs give premultiplied outputs in range.
+        #[test]
+        fn results_stay_premultiplied_and_in_range(src in rgba(), dst in rgba(), m in 0usize..8) {
+            let out = MODES[m].composite(src, dst);
+            prop_assert!((0.0..=1.0 + 1e-12).contains(&out[3]));
+            for c in 0..3 {
+                prop_assert!(out[c] >= -1e-12 && out[c] <= out[3] + 1e-12, "{out:?}");
+            }
+        }
+    }
 }

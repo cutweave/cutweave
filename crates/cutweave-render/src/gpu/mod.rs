@@ -29,6 +29,8 @@
 //!   without putting a clock in the render path.
 
 mod backend;
+#[cfg(test)]
+mod composite_tests;
 mod compositor;
 #[cfg(test)]
 mod query_tests;

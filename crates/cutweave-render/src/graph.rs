@@ -21,8 +21,14 @@
 //! * **Order** is a deterministic Kahn topological sort; the executor derives texture lifetimes
 //!   (last readers) from it. Unreachable passes are pruned.
 //!
-//! Blend modes: only `Normal` exists in schema v1; the `Composite` op carries the mode so the P2
-//! core set (multiply, screen, …) slots in without changing the graph shape (arch §8).
+//! * **Blend modes** (arch §8's core set, WP-2C.04): the `Composite` op carries the layer's
+//!   [`BlendMode`] (formulas in its docs); a non-normal layer reads the canvas below, which the
+//!   executor copies before drawing it. Only normal layers occlude: every other mode lets the
+//!   backdrop through.
+//! * **Filtering**: [`GraphOptions::filter`] picks the resampling of every layer: exact-weight
+//!   bilinear, trilinear between mip levels when a layer is minified (the default: preview,
+//!   agent frames and export alike, so preview equals export), or bicubic (Catmull-Rom) for an
+//!   export that asks for it.
 //!
 //! **Per-frame rebuilds allocate nothing** (arch §10 "Threads"): [`build_into`] compiles into a
 //! graph and a [`BuildScratch`] kept across frames, pass inputs are stored inline
@@ -93,6 +99,36 @@ impl Target {
 pub struct GraphOptions {
     /// HDR → SDR tone map.
     pub tone_map: ToneMap,
+    /// How layers are resampled.
+    pub filter: Filter,
+}
+
+/// How a layer's picture is resampled onto the output (arch §8, WP-2C.04). Both filters work
+/// in premultiplied linear light, sample with clamp-to-edge, and blend trilinearly between the
+/// two nearest mip levels (2×2 box chain) when a layer is minified, so a downscale does not
+/// alias.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Filter {
+    /// Exact-weight bilinear (`a + (b − a)·f`, texel centres at +0.5). Every preview, agent
+    /// frame and default export uses it, so preview equals export bit for bit.
+    #[default]
+    Bilinear,
+    /// Catmull-Rom cubic convolution (`a = −½`) over 4×4 texels: sharper magnification, an
+    /// export option. Its negative lobes can ring at hard edges; the result is clamped to no
+    /// negative light and alpha in `[0, 1]`.
+    Bicubic,
+}
+
+impl Filter {
+    /// The filter's id in the composite shader (`flags.w`).
+    #[must_use]
+    pub const fn shader_id(self) -> u32 {
+        match self {
+            Filter::Bilinear => 0,
+            Filter::Bicubic => 1,
+        }
+    }
 }
 
 /// Why a graph could not be built or executed.
@@ -149,6 +185,8 @@ pub struct CompositeOp {
     pub opacity: f64,
     /// Blend mode.
     pub blend: BlendMode,
+    /// Resampling filter.
+    pub filter: Filter,
     /// Mip level of detail (0 = no minification).
     pub lod: f64,
     /// Output-pixel rectangle to rasterise `[x0, y0, x1, y1)`.
@@ -683,6 +721,7 @@ pub fn build_into(
             geometry: v.geometry,
             opacity: layer.opacity.min(1.0),
             blend: layer.blend,
+            filter: options.filter,
             lod: v.geometry.lod(),
             rect: v.geometry.pixel_rect(output),
             full_cover: v.geometry.covers(output),
@@ -837,7 +876,8 @@ fn push_pass(
                 .f64(c.opacity)
                 .f64(c.lod)
                 .u32(u32::from(c.full_cover))
-                .str(c.blend.debug_name());
+                .str(c.blend.debug_name())
+                .u32(c.filter.shader_id());
             for v in c.rect {
                 h.u32(v);
             }
@@ -905,7 +945,7 @@ mod tests {
 
     use super::*;
     use crate::frame::PixelFormat;
-    use crate::scene::{Crop, FrameRequest, Layer, LayerTransform};
+    use crate::scene::{Crop, Flip, FrameRequest, Layer, LayerTransform};
     use crate::testcard::{Alpha, Pattern, SyntheticSource, TestCard};
 
     fn layer(n: u128, media: u128, size: (u32, u32)) -> Layer {
@@ -931,6 +971,7 @@ mod tests {
             opacity: 1.0,
             blend: BlendMode::Normal,
             crop: Crop::default(),
+            flip: Flip::default(),
             effects: Vec::new(),
         }
     }
@@ -1083,6 +1124,94 @@ mod tests {
     }
 
     #[test]
+    fn cropped_away_transparent_and_offscreen_layers_are_culled_whatever_their_blend() {
+        let inner = source();
+        let counting = Counting(&inner, RefCell::new(Vec::new()));
+        let mut layers = Vec::new();
+        for (n, mode) in (10u128..).step_by(10).zip(BlendMode::ALL) {
+            let mut cropped = layer(n, 11, (64, 36));
+            cropped.crop.left = 0.5;
+            cropped.crop.right = 0.5;
+            cropped.flip.horizontal = true;
+            let mut faded = layer(n + 1, 11, (64, 36));
+            faded.opacity = 0.0;
+            let mut away = layer(n + 2, 11, (64, 36));
+            away.transform.position = Vec2::new(0.0, -1.2);
+            for mut l in [cropped, faded, away] {
+                l.blend = mode;
+                layers.push(l);
+            }
+        }
+        let g = build(
+            &scene(layers),
+            Target::rgba8(64, 36),
+            &counting,
+            &GraphOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(ops(&g), ["background", "output"]);
+        assert_eq!(g.stats.layers_culled, 24);
+        // Zero opacity is culled before its frame is even requested.
+        assert_eq!(counting.1.borrow().len(), 16);
+    }
+
+    #[test]
+    fn only_normal_layers_occlude() {
+        let bottom = layer(1, 11, (64, 36));
+        for mode in BlendMode::ALL {
+            let mut top = layer(2, 10, (64, 36));
+            top.blend = mode;
+            let g = build(
+                &scene(vec![bottom.clone(), top]),
+                Target::rgba8(64, 36),
+                &source(),
+                &GraphOptions::default(),
+            )
+            .unwrap();
+            let normal = mode == BlendMode::Normal;
+            assert_eq!(g.stats.layers_occluded, usize::from(normal), "{mode:?}");
+            assert_eq!(g.stats.layers_visible, if normal { 1 } else { 2 });
+            let blends: Vec<BlendMode> = g
+                .passes
+                .iter()
+                .filter_map(|p| match p.op {
+                    PassOp::Composite(c) => Some(c.blend),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(blends.last(), Some(&mode));
+        }
+    }
+
+    #[test]
+    fn flip_blend_and_filter_change_the_frame_key() {
+        let s = scene(vec![layer(1, 11, (64, 36))]);
+        let key = |s: &SceneDescription, filter| {
+            build(
+                s,
+                Target::rgba8(64, 36),
+                &source(),
+                &GraphOptions {
+                    filter,
+                    ..GraphOptions::default()
+                },
+            )
+            .unwrap()
+            .output_key()
+        };
+        let base = key(&s, Filter::Bilinear);
+        assert_eq!(GraphOptions::default().filter, Filter::Bilinear);
+        assert_ne!(base, key(&s, Filter::Bicubic));
+        let mut flipped = s.clone();
+        flipped.layers[0].flip.vertical = true;
+        assert_ne!(base, key(&flipped, Filter::Bilinear));
+        let mut screened = s.clone();
+        screened.layers[0].blend = BlendMode::Screen;
+        assert_ne!(base, key(&screened, Filter::Bilinear));
+        assert_eq!(base, key(&s.clone(), Filter::Bilinear));
+    }
+
+    #[test]
     fn opaque_full_frame_layers_occlude_everything_below() {
         let bottom = layer(1, 11, (64, 36));
         let middle = layer(2, 12, (64, 36));
@@ -1215,10 +1344,9 @@ mod tests {
         ] {
             assert_eq!(f.debug_name(), format!("{f:?}"));
         }
-        assert_eq!(
-            BlendMode::Normal.debug_name(),
-            format!("{:?}", BlendMode::Normal)
-        );
+        for mode in BlendMode::ALL {
+            assert_eq!(mode.debug_name(), format!("{mode:?}"));
+        }
     }
 
     #[test]

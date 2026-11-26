@@ -4,8 +4,8 @@ Reference frames for the render pipeline, stored per GPU adapter class and compa
 
 | Folder | Suite | Run |
 |---|---|---|
-| `expected/<adapter>/<project>/f<frame>.png` | **Golden projects** (WP-1O.01): six `.cutweave` projects rendered headless by `cutweave render`, 18 frames | `just golden` |
-| `render/<adapter>/*.png` | Compositor scenes of WP-1F.02 (`cutweave-render` tests) | `cargo nextest run -p cutweave-render` |
+| `expected/<adapter>/<project>/f<frame>.png` | **Golden projects** (WP-1O.01, WP-2C.04): eight `.cutweave` projects rendered headless by `cutweave render`, 24 frames | `just golden` |
+| `render/<adapter>/*.png` | Compositor scenes of WP-1F.02 and WP-2C.04 (`cutweave-render` tests; `CUTWEAVE_UPDATE_GOLDENS=1` rewrites the sets of every adapter present) | `cargo nextest run -p cutweave-render` |
 
 The PNGs are in Git LFS. Worktrees and LFS-less checkouts hold pointer files; `cargo xtask golden` runs `git lfs checkout` on the set it needs, and `git lfs pull --include "testdata/golden/**"` fetches objects that are not in the local store.
 
@@ -30,7 +30,7 @@ A frame is only ever compared with the reference of **the adapter it rendered on
 `cargo xtask golden-projects` builds them into `target/golden/` (never committed, rebuilt on every run because a saved project records the absolute path and content hash of its media):
 
 - **Sources:** FFmpeg `lavfi` test patterns (`smptehdbars`, `smptebars`, `testsrc2`), 640×360, 30 fps, 4 s, H.264 lossless 4:2:0 with explicit colour tags, generated into `target/golden/sources/` (never into `testdata/corpus`). Project-generated, so there is no licensing question.
-- **Projects:** built by one `cutweave mcp --headless` engine through `cutweave_execute` with real commands (`project.new`, `media.import` with the FFmpeg probe, `timeline.insert`, `track.add`, `item.set_props`, `clip.split`, `item.delete`, `project.save_as`), seeded ids. The recipes are in [`xtask/src/golden/projects.rs`](../../xtask/src/golden/projects.rs).
+- **Projects:** built by one `cutweave mcp --headless` engine through `cutweave_execute` with real commands (`project.new`, `media.import` with the FFmpeg probe, `timeline.insert`, `track.add`, `item.set_props`, `keyframe.set`, `clip.split`, `item.delete`, `project.save_as`), seeded ids. The recipes are in [`xtask/src/golden/projects.rs`](../../xtask/src/golden/projects.rs).
 
 | Project | What it covers | Frames |
 |---|---|---|
@@ -40,6 +40,8 @@ A frame is only ever compared with the reference of **the adapter it rendered on
 | `rotated_phone` | a 90° display-matrix rotation (portrait in a landscape canvas) | 0, 45, 110 |
 | `color_tags` | BT.601 limited range beside BT.709 full range, same samples | 0, 45, 110 |
 | `cut_at_45` | a split at frame 45, the right half replaced: frames 44 and 45 straddle the cut | 20, 44, 45 |
+| `flipped_phone` | the rotated phone clip cropped, flipped and turned another 90° by its transform (WP-2C.04) | 0, 45, 110 |
+| `screen_keyframed` | a half-size pattern in screen mode over bars, its position and rotation keyframed (WP-2C.04) | 0, 45, 110 |
 
 ## What a run checks
 

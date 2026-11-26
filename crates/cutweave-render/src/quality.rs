@@ -368,7 +368,7 @@ mod tests {
     use cutweave_model::{ColorTags, FrameRate, ItemId, MediaId, SequenceId, Time, TrackId, Vec2};
 
     use super::*;
-    use crate::scene::{BlendMode, Crop, FrameRequest, Layer, LayerTransform};
+    use crate::scene::{BlendMode, Crop, Flip, FrameRequest, Layer, LayerTransform};
 
     const FPS30: FrameRate = FrameRate::FPS_30;
 
@@ -552,6 +552,7 @@ mod tests {
             opacity: 1.0,
             blend: BlendMode::Normal,
             crop: Crop::default(),
+            flip: Flip::default(),
             effects: Vec::new(),
         };
         let mut scene = SceneDescription {

@@ -7,13 +7,15 @@
 )]
 
 use cutweave_model::{
-    Clip, Color, Duration, Extra, FrameRate, ItemId, MediaAsset, MediaId, MediaKind, ProbeInfo,
-    Project, SampleRate, Sequence, SequenceFormat, SequenceId, StreamInfo, StreamKind, Time, Track,
-    TrackId, TrackKind, Vec2,
+    Animatable, Clip, Color, Duration, Easing, Extra, FrameRate, Interp, Item, ItemId, Keyframe,
+    Keyframes, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, SampleRate, Sequence,
+    SequenceFormat, SequenceId, StreamInfo, StreamKind, Time, Track, TrackId, TrackKind, Vec2,
 };
 use proptest::prelude::*;
 
-use crate::{EvalError, SceneDescription, TimelineIndex, evaluate, evaluate_audio};
+use crate::{
+    BlendMode, Crop, EvalError, Flip, SceneDescription, TimelineIndex, evaluate, evaluate_audio,
+};
 
 const S: i64 = 705_600_000;
 
@@ -239,6 +241,24 @@ fn muting_a_video_track_does_not_hide_it() {
 }
 
 #[test]
+fn solo_does_not_affect_video() {
+    let mut f = Fixture::new();
+    let m = f.media(1, MediaKind::Video, 60);
+    let low = f.track(10, TrackKind::Video);
+    let high = f.track(11, TrackKind::Video);
+    let audio = f.track(12, TrackKind::Audio);
+    let a = f.clip(low, m, sec(0), Duration::from_secs(1).unwrap());
+    let b = f.clip(high, m, sec(0), Duration::from_secs(1).unwrap());
+    f.clip(audio, m, sec(0), Duration::from_secs(1).unwrap());
+    let before = f.at(sec(0)).layers;
+    for track in [audio, high] {
+        f.edit_track(track, |tr| tr.solo = true);
+        assert_eq!(f.items_at(sec(0)), vec![a, b]);
+        assert_eq!(f.at(sec(0)).layers, before);
+    }
+}
+
+#[test]
 fn audio_only_media_and_missing_media_have_no_picture() {
     let mut f = Fixture::new();
     let au = f.media(1, MediaKind::Audio, 60);
@@ -298,6 +318,129 @@ fn visual_properties_pass_through_and_are_sanitized() {
     assert_eq!(l.opacity, 1.0);
     assert_eq!(l.transform.rotation_deg, 0.0);
     assert_eq!(l.transform.position, Vec2::new(0.0, 0.0));
+}
+
+#[test]
+fn crop_flip_and_blend_mode_come_from_the_model() {
+    let mut f = Fixture::new();
+    let m = f.media(1, MediaKind::Video, 60);
+    let v = f.track(10, TrackKind::Video);
+    let a = f.clip(v, m, sec(0), Duration::from_secs(1).unwrap());
+    let l = &f.at(Time::ZERO).layers[0];
+    assert_eq!(l.crop, Crop::default());
+    assert_eq!(l.flip, Flip::default());
+    assert_eq!(l.blend, BlendMode::Normal);
+    f.edit_clip(v, a, |c| {
+        c.visual.crop.left.set(0.1);
+        c.visual.crop.top.set(0.2);
+        c.visual.crop.right.set(0.3);
+        c.visual.crop.bottom.set(0.4);
+        c.visual.flip.horizontal.set(true);
+        c.visual.blend_mode = cutweave_model::BlendMode::SoftLight;
+    });
+    let l = &f.at(Time::ZERO).layers[0];
+    assert_eq!(
+        l.crop,
+        Crop {
+            left: 0.1,
+            top: 0.2,
+            right: 0.3,
+            bottom: 0.4
+        }
+    );
+    assert_eq!(
+        l.flip,
+        Flip {
+            horizontal: true,
+            vertical: false
+        }
+    );
+    assert_eq!(l.blend, BlendMode::SoftLight);
+    // Out-of-range values (only an invalid document holds them) are clamped, never passed on.
+    f.edit_clip(v, a, |c| {
+        c.visual.crop.left.set(-0.5);
+        c.visual.crop.right.set(3.0);
+        c.visual.transform.scale.set(Vec2::new(-1.0, 2.0));
+    });
+    let l = &f.at(Time::ZERO).layers[0];
+    assert_eq!((l.crop.left, l.crop.right), (0.0, 1.0));
+    assert_eq!(l.transform.scale, Vec2::new(0.0, 2.0));
+}
+
+fn keys<T: cutweave_model::AnimValue>(list: Vec<(i64, T, Interp)>) -> Animatable<T> {
+    Animatable::Keyframes(
+        Keyframes::new(
+            list.into_iter()
+                .map(|(at, v, interp)| Keyframe::new(t(at), v, interp))
+                .collect(),
+        )
+        .unwrap(),
+    )
+}
+
+#[test]
+fn animated_properties_are_evaluated_at_item_time_and_clamped() {
+    let mut f = Fixture::new();
+    let m = f.media(1, MediaKind::Video, 60);
+    let v = f.track(10, TrackKind::Video);
+    // The clip starts at 10 s and shows its media from 30 s: keys are in item time, so
+    // neither moves them.
+    let a = f.clip(v, m, sec(10), Duration::from_secs(4).unwrap());
+    f.edit_clip(v, a, |c| {
+        c.source_in = sec(30);
+        c.visual.transform.position = keys(vec![
+            (0, Vec2::new(-0.5, 0.0), Interp::Linear),
+            (2 * S, Vec2::new(0.5, 0.25), Interp::Linear),
+        ]);
+        c.visual.transform.rotation = keys(vec![
+            (0, 0.0, Interp::Linear),
+            (4 * S, 720.0, Interp::Linear),
+        ]);
+        // An easing that overshoots: opacity is clamped to 1 after interpolation.
+        c.visual.opacity = keys(vec![
+            (0, 0.0, Easing::BackOut.interp()),
+            (2 * S, 1.0, Interp::Linear),
+        ]);
+        c.visual.crop.left = keys(vec![(0, 0.0, Interp::Linear), (2 * S, 0.5, Interp::Linear)]);
+        c.visual.flip.vertical = keys(vec![(0, false, Interp::Hold), (S, true, Interp::Hold)]);
+    });
+    let at = |time: Time| f.at(time).layers[0].clone();
+    let start = at(sec(10));
+    assert_eq!(start.transform.position, Vec2::new(-0.5, 0.0));
+    assert_eq!(start.opacity, 0.0);
+    assert!(!start.flip.vertical);
+    let mid = at(t(11 * S));
+    assert_eq!(mid.transform.position, Vec2::new(0.0, 0.125));
+    assert_eq!(mid.transform.rotation_deg, 180.0);
+    assert_eq!(mid.crop.left, 0.25);
+    assert!(mid.flip.vertical, "a hold key switches at its time");
+    assert_eq!(mid.request.source_time, sec(31));
+    // Past the last key the value holds.
+    assert_eq!(at(t(13 * S)).transform.position, Vec2::new(0.5, 0.25));
+    // The overshooting easing goes above 1 somewhere: never seen.
+    let mut overshoot = false;
+    for i in 0..=48 {
+        let l = at(t(10 * S + i * S / 24));
+        assert!((0.0..=1.0).contains(&l.opacity), "{}", l.opacity);
+        let raw = f.project.sequences[&f.seq]
+            .tracks
+            .get(&v)
+            .and_then(|tr| tr.items.get(&a))
+            .and_then(Item::as_clip)
+            .map(|c| c.visual.opacity.eval(t(i * S / 24)))
+            .unwrap();
+        overshoot |= raw > 1.0;
+        if raw > 1.0 {
+            assert_eq!(l.opacity, 1.0);
+        }
+    }
+    assert!(overshoot, "the test easing overshoots");
+    // The repeated-evaluation index agrees bit for bit.
+    let index = TimelineIndex::new(&f.project, f.seq).unwrap();
+    for i in 0..=96 {
+        let time = t(10 * S + i * S / 24);
+        assert_eq!(index.evaluate(time), f.at(time));
+    }
 }
 
 // ---- audio --------------------------------------------------------------------------------
