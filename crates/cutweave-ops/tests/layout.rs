@@ -40,7 +40,10 @@ fn setup(canvas: (u32, u32), sources: &[bool]) -> (H, P, Vec<ItemId>) {
     );
     let mut tracks = vec![p.video];
     for _ in 1..sources.len() {
-        let t = h.ok("track.add", json!({"sequence": p.sequence, "kind": "video"}));
+        let t = h.ok(
+            "track.add",
+            json!({"sequence": p.sequence, "kind": "video"}),
+        );
         tracks.push(id(&t["track"]));
     }
     let mut items = Vec::new();
@@ -279,7 +282,10 @@ fn audio_clips_in_the_selection_are_ignored_and_a_repeat_changes_nothing() {
     let (mut h, p) = H::project();
     let m = h.add_video("/m/v.mp4", 10, true);
     let a = common::insert_av(&mut h, p, m, "f:0");
-    let t = h.ok("track.add", json!({"sequence": p.sequence, "kind": "video"}));
+    let t = h.ok(
+        "track.add",
+        json!({"sequence": p.sequence, "kind": "video"}),
+    );
     let m2 = h.add_video("/m/w.mp4", 10, true);
     let b = h.ok(
         "timeline.insert",

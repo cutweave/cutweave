@@ -28,9 +28,7 @@ use cutweave_commands::{CmdError, Command, Query, QueryCtx, Tx, command, query, 
 use cutweave_model::{Clip, EntityKind, ItemId, Project, TimeInput, TrackKind, Vec2};
 use serde::Deserialize;
 
-use super::{
-    CropPatch, ItemChange, ItemProps, ItemSetProps, KeyedProp, SetPlan, TransformPatch,
-};
+use super::{CropPatch, ItemChange, ItemProps, ItemSetProps, KeyedProp, SetPlan, TransformPatch};
 use crate::{
     keyframe::{self, Target},
     sequence::reframe::{self, Canvas},
@@ -232,10 +230,7 @@ impl Query for ItemLayouts {
     type Output = ItemLayoutsOutput;
 
     fn run(&self, _ctx: &QueryCtx<'_>) -> Result<ItemLayoutsOutput, CmdError> {
-        let canvas = Canvas {
-            w: 1.0,
-            h: 1.0,
-        };
+        let canvas = Canvas { w: 1.0, h: 1.0 };
         let layouts = LAYOUTS
             .iter()
             .filter(|l| {
@@ -293,10 +288,7 @@ fn cells_of(layout: &LayoutDef, canvas: Canvas, gap: f64) -> Vec<[f64; 4]> {
                 let last = |spans: &[(f64, f64)], i: usize, n: usize| {
                     spans[(i + n.max(1) - 1).min(spans.len() - 1)].1
                 };
-                let (c, r) = (
-                    (*col).min(cols.len() - 1),
-                    (*row).min(rows.len() - 1),
-                );
+                let (c, r) = ((*col).min(cols.len() - 1), (*row).min(rows.len() - 1));
                 [
                     cols[c].0,
                     rows[r].0,
@@ -514,8 +506,7 @@ impl Command for ItemApplyLayout {
                 let Some(clip) = item.as_clip_mut() else {
                     return Err(CmdError::unsupported("only clips can be arranged"));
                 };
-                step.request
-                    .update_clip(clip, &step.plan, &step.target)
+                step.request.update_clip(clip, &step.plan, &step.target)
             })?;
             for c in done.changed {
                 if !changed.contains(&c) {
