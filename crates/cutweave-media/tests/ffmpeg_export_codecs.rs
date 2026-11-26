@@ -580,3 +580,62 @@ fn ntsc_rates_keep_their_frame_grid() {
     assert_eq!(get(&info, "streams_stream_0_nb_frames"), "30");
     assert_eq!(get(&info, "streams_stream_0_avg_frame_rate"), "30000/1001");
 }
+
+/// Hardware: every HEVC and AV1 encoder this machine passed the trial encode with writes a
+/// valid file at 8 bit (`ffprobe` codec and `hvc1`, a clean decode); 10 bit is tried too and
+/// reported (a GPU may not have it). Never part of the default run: no test requires a GPU.
+#[test]
+#[ignore = "hardware: CUTWEAVE_HW_TESTS=1, --run-ignored all"]
+fn every_hardware_hevc_and_av1_encoder_writes_a_valid_file() {
+    if std::env::var("CUTWEAVE_HW_TESTS").as_deref() != Ok("1") {
+        eprintln!("skipping: set CUTWEAVE_HW_TESTS=1 on a machine with a hardware encoder");
+        return;
+    }
+    let b = backend();
+    let found: Vec<_> = b
+        .capabilities()
+        .hw_encode
+        .into_iter()
+        .filter(|c| c.codec == "hevc" || c.codec == "av1")
+        .collect();
+    eprintln!("hardware HEVC/AV1 encoders here: {found:?}");
+    // Above every hardware encoder's minimum size.
+    let (w, h) = (320, 256);
+    for hw in found {
+        for bit_depth in [8_u8, 10] {
+            let dir = TempDir::new("hw-codec");
+            let path = dir.path().join("out.mp4");
+            let mut video =
+                VideoEncodeSpec::h264(w, h, RATE, PixelFormat::Rgba8).with_codec(&hw.codec);
+            video.bit_depth = bit_depth;
+            let spec = EncodeSpec::new(&path)
+                .with_video(video)
+                .with_hw(HwEncode::Force(hw.implementation.clone()));
+            let mut enc = match b.open_encoder(&spec) {
+                Ok(enc) => enc,
+                Err(e) if bit_depth == 10 => {
+                    eprintln!("{} at 10 bit: not available ({e})", hw.implementation);
+                    continue;
+                }
+                Err(e) => panic!("{} at 8 bit: {e}", hw.implementation),
+            };
+            let source = FakeVideo::new(w, h, RATE, FRAMES).with_format(PixelFormat::Rgba8);
+            for n in 0..FRAMES {
+                enc.push_video(&source.frame(n, PixelFormat::Rgba8).unwrap())
+                    .unwrap_or_else(|e| panic!("{} push {n}: {e}", hw.implementation));
+            }
+            let summary = enc
+                .finish()
+                .unwrap_or_else(|e| panic!("{} finish: {e}", hw.implementation));
+            assert_eq!(summary.video_frames, FRAMES);
+            let info = probe(&path);
+            assert_eq!(get(&info, "streams_stream_0_codec_name"), hw.codec);
+            assert_eq!(get(&info, "streams_stream_0_color_space"), "bt709");
+            if hw.codec == "hevc" {
+                assert_eq!(get(&info, "streams_stream_0_codec_tag_string"), "hvc1");
+            }
+            assert_decodes_cleanly(&path);
+            eprintln!("{} at {bit_depth} bit: ok", hw.implementation);
+        }
+    }
+}
