@@ -14981,6 +14981,11 @@ expression: text
                 "const": "proxy",
                 "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                 "type": "string"
+              },
+              {
+                "const": "collect",
+                "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
+                "type": "string"
               }
             ]
           },
@@ -15143,6 +15148,11 @@ expression: text
                     "const": "proxy",
                     "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                     "type": "string"
+                  },
+                  {
+                    "const": "collect",
+                    "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
+                    "type": "string"
                   }
                 ]
               },
@@ -15268,6 +15278,11 @@ expression: text
                     {
                       "const": "proxy",
                       "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "collect",
+                      "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
                       "type": "string"
                     }
                   ]
@@ -15475,6 +15490,11 @@ expression: text
                 "const": "proxy",
                 "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                 "type": "string"
+              },
+              {
+                "const": "collect",
+                "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
+                "type": "string"
               }
             ]
           },
@@ -15681,6 +15701,11 @@ expression: text
               {
                 "const": "proxy",
                 "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
+                "type": "string"
+              },
+              {
+                "const": "collect",
+                "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
                 "type": "string"
               }
             ]
@@ -21510,6 +21535,329 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Close the open project (saving first if asked or if autosave is on)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Makes a self-contained copy of the project in another folder: the project document and\nevery media file it uses (under `media/`), with the copy's document pointing at the copied\nfiles, so the folder opens on any computer. The open project and its files are not changed.\nReturns a background job; the copy is complete when the job succeeds (the document is\nwritten last). Each copied file is compared with its original. Calling it again with the\nsame folder after a cancel or a crash continues without copying finished files again.\nFails with `Invalid` at `/dest` when the files do not fit on the drive or the folder\nalready holds a project, and at `/media` when a media file is missing (relink it first).\nAgents and headless callers may only collect into folders the user approved.",
+        "properties": {
+          "dest": {
+            "description": "Absolute path of the folder to collect into: a new or empty folder, or the folder of\nan interrupted collect of this project.",
+            "type": "string"
+          },
+          "include_generated": {
+            "default": null,
+            "description": "Also copy the project's `generated/` folder (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "description": "Where collected media go.",
+                "oneOf": [
+                  {
+                    "const": "copy_all",
+                    "description": "Every media file goes under `media/` (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "copy_external_only",
+                    "description": "Files inside the project folder keep their place relative to it; only the others go\nunder `media/`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where media go: `copy_all` (default, everything under `media/`) or\n`copy_external_only` (files inside the project folder keep their place)."
+          },
+          "trim_unused": {
+            "default": null,
+            "description": "Leave out the media no timeline uses (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dest"
+        ],
+        "title": "ProjectCollect",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_collect",
+      "name": "project.collect",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.collect`.",
+        "properties": {
+          "estimate": {
+            "additionalProperties": false,
+            "description": "What it copies.",
+            "properties": {
+              "bytes": {
+                "description": "Their size in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "dest": {
+                "description": "The folder the copy goes into.",
+                "type": "string"
+              },
+              "enough_space": {
+                "description": "Whether the files fit (true when the free space cannot be told).",
+                "type": "boolean"
+              },
+              "files": {
+                "description": "The media files to copy.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "free_bytes": {
+                "description": "Free bytes on the destination drive, when it can be told.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "missing": {
+                "description": "Media whose file is missing: relink them first (`media.relink_folder`).",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A media file a collect cannot read.",
+                  "properties": {
+                    "media_id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "The name the bin shows.",
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Where the project says its file is.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "media_id",
+                    "name",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "trimmed": {
+                "description": "Media left out because no timeline uses them (`trim_unused`).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dest",
+              "files",
+              "bytes",
+              "free_bytes",
+              "enough_space",
+              "missing",
+              "trimmed"
+            ],
+            "type": "object"
+          },
+          "job_id": {
+            "description": "The copy job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "estimate"
+        ],
+        "title": "ProjectCollectOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Copy the project and all its media into one folder that opens anywhere (a job)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Says what `project.collect` with the same params would copy: how many media files, how many\nbytes, the free space on the destination drive and whether the files fit, and which media\ncannot be copied because their file is missing. Changes nothing.",
+        "properties": {
+          "dest": {
+            "description": "Absolute path of the folder to collect into: a new or empty folder, or the folder of\nan interrupted collect of this project.",
+            "type": "string"
+          },
+          "include_generated": {
+            "description": "Also copy the project's `generated/` folder (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "description": "Where collected media go.",
+                "oneOf": [
+                  {
+                    "const": "copy_all",
+                    "description": "Every media file goes under `media/` (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "copy_external_only",
+                    "description": "Files inside the project folder keep their place relative to it; only the others go\nunder `media/`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where media go: `copy_all` (default, everything under `media/`) or\n`copy_external_only` (files inside the project folder keep their place)."
+          },
+          "trim_unused": {
+            "description": "Leave out the media no timeline uses (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dest"
+        ],
+        "title": "ProjectCollectEstimate",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_collect_estimate",
+      "name": "project.collect_estimate",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.collect_estimate`.",
+        "properties": {
+          "bytes": {
+            "description": "Their size in bytes.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dest": {
+            "description": "The folder the copy goes into.",
+            "type": "string"
+          },
+          "enough_space": {
+            "description": "Whether the files fit (true when the free space cannot be told).",
+            "type": "boolean"
+          },
+          "files": {
+            "description": "The media files to copy.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "free_bytes": {
+            "description": "Free bytes on the destination drive, when it can be told.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "missing": {
+            "description": "Media whose file is missing: relink them first (`media.relink_folder`).",
+            "items": {
+              "additionalProperties": false,
+              "description": "A media file a collect cannot read.",
+              "properties": {
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "The name the bin shows.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Where the project says its file is.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "media_id",
+                "name",
+                "path"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "trimmed": {
+            "description": "Media left out because no timeline uses them (`trim_unused`).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dest",
+          "files",
+          "bytes",
+          "free_bytes",
+          "enough_space",
+          "missing",
+          "trimmed"
+        ],
+        "title": "CollectEstimate",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Say what collecting the project would copy and whether it fits on the drive",
       "undoable": false,
       "view": false
     },
