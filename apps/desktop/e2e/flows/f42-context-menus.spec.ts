@@ -13,7 +13,9 @@
 // the clip menu's Unlink clips (Link clips is disabled for a pair already linked), then Ctrl+Z.
 // WP-2D.01 adds the clip's Speed ▸ 2x and Custom…, Reverse and Freeze frame, each undone.
 // WP-2A.06 adds the clipboard flow: Ctrl+C and Ctrl+V, Ctrl+X, Ctrl+D, the clip menu's Copy and
-// Paste attributes… and the lane menu's Paste here, each one undo step. A further
+// Paste attributes… and the lane menu's Paste here, each one undo step. WP-2A.11 adds Replace
+// clip… (with a bin card picked, or by asking in a dialog) and the bin card's Replace selected
+// clip, each one undo step that keeps the clip, its place and its dimming. A further
 // flow right-clicks the Export chip and cancels the export (it needs
 // the FFmpeg engine and the corpus, like F14, and skips without them). Every choice is checked as
 // an undo step or as state the person sees. Only the OS file picker is stubbed.
@@ -21,6 +23,7 @@ import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   clickClip,
+  clipNames,
   clipAt,
   clipBox,
   createProject,
@@ -602,6 +605,101 @@ test.describe("F42 context menus", () => {
       await editorCaughtUp(page);
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await itemOf(page, copy)).visual.opacity).toBe(1);
+    } finally {
+      await close();
+      work.remove();
+    }
+  });
+
+  test("Replace clip… and Replace selected clip swap the media and keep the clip, each one undo step (WP-2A.11)", async () => {
+    test.setTimeout(240_000);
+    const work = workspace();
+    const { app, page, close } = await launchFlowApp(work);
+    try {
+      await createProject(app, page, "Replace", work.dir);
+      await importWithButton(app, page, [
+        work.file("interview.mp4"),
+        work.file("broll-city.mp4"),
+        work.file("music.wav"),
+      ]);
+      await dropCard(page, "interview.mp4", "V1", 1);
+      await expect.poll(() => clipNames(page, "V1")).toEqual(["interview.mp4"]);
+      await expect.poll(() => clipNames(page, "A1")).toEqual(["interview.mp4"]);
+      await editorCaughtUp(page);
+      const original = (await sequence(page)).tracks[0]?.items[0]?.id ?? "";
+      const item = (m: ReturnType<typeof page.getByRole>, name: string | RegExp) =>
+        m.getByRole("menuitem", { name });
+      const rightClickClip = async () => {
+        const g = await timelineGeometry(page);
+        const box = clipBox(g, original);
+        await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
+      };
+      const startsAt1 = async () => (await layout(page))[0]?.clips[0]?.[0];
+      // Dim the clip first: the replace must keep it.
+      await clickClip(page, original);
+      const opacity = inspector(page).opacity;
+      await opacity.focus();
+      await opacity.press("ArrowLeft");
+      await expect.poll(async () => (await itemOf(page, original)).visual.opacity).toBeLessThan(1);
+      await editorCaughtUp(page);
+      const dimmed = (await itemOf(page, original)).visual.opacity;
+
+      // Replace clip… with only sound picked in the bin: it asks which media, and a still or a
+      // video fits; the sound is not offered.
+      await mediaCard(page, "music.wav").click();
+      await rightClickClip();
+      const clipMenu = page.getByRole("menu", { name: "Clip actions for interview.mp4" });
+      await expect(clipMenu).toBeVisible();
+      await item(clipMenu, /^Replace clip…/).click();
+      const dialog = page.getByRole("dialog", { name: "Replace clip" });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("radio", { name: "music.wav" })).toHaveCount(0);
+      await dialog.getByRole("radio", { name: "broll-city.mp4" }).check();
+      await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await expect.poll(() => clipNames(page, "V1")).toEqual(["broll-city.mp4"]);
+      await expect.poll(() => clipNames(page, "A1")).toEqual(["broll-city.mp4"]);
+      await editorCaughtUp(page);
+      // Same clip, same place, same dimming.
+      expect((await sequence(page)).tracks[0]?.items[0]?.id).toBe(original);
+      expect(await startsAt1()).toBe(1);
+      expect((await itemOf(page, original)).visual.opacity).toBe(dimmed);
+      await shortcut(app, "Control+Z");
+      await expect.poll(() => clipNames(page, "V1")).toEqual(["interview.mp4"]);
+      await expect.poll(() => clipNames(page, "A1")).toEqual(["interview.mp4"]);
+      await editorCaughtUp(page);
+
+      // Pick the card, then the clip: Replace clip… swaps at once, with no question.
+      await mediaCard(page, "broll-city.mp4").click();
+      await rightClickClip();
+      await expect(clipMenu).toBeVisible();
+      await item(clipMenu, /^Replace clip…/).click();
+      await expect.poll(() => clipNames(page, "V1")).toEqual(["broll-city.mp4"]);
+      await expect(dialog).toHaveCount(0);
+      await editorCaughtUp(page);
+      expect((await itemOf(page, original)).visual.opacity).toBe(dimmed);
+      await shortcut(app, "Control+Z");
+      await expect.poll(() => clipNames(page, "V1")).toEqual(["interview.mp4"]);
+      await editorCaughtUp(page);
+
+      // Replace selected clip: pick the clip, then right-click the card.
+      await clickClip(page, original);
+      await mediaCard(page, "broll-city.mp4").click({ button: "right" });
+      const card = page.getByRole("menu", { name: "Media actions for broll-city.mp4" });
+      await expect(card).toBeVisible();
+      await item(card, /^Replace selected clip/).click();
+      await expect.poll(() => clipNames(page, "V1")).toEqual(["broll-city.mp4"]);
+      await expect.poll(() => clipNames(page, "A1")).toEqual(["broll-city.mp4"]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(() => clipNames(page, "V1")).toEqual(["interview.mp4"]);
+      await expect.poll(() => clipNames(page, "A1")).toEqual(["interview.mp4"]);
+      await editorCaughtUp(page);
+
+      // Sound cannot replace a picture: the card says why.
+      await mediaCard(page, "music.wav").click({ button: "right" });
+      const music = page.getByRole("menu", { name: "Media actions for music.wav" });
+      await expect(item(music, /^Replace selected clip/)).toBeDisabled();
     } finally {
       await close();
       work.remove();
