@@ -450,31 +450,6 @@
       "insert": "Add the clip to the timeline",
       "insertHelp": "Source view. Puts the clip on the timeline at the playhead."
     },
-    "relink": {
-      "title": {
-        "none": "All media found",
-        "one": "1 media file is missing",
-        "many": "{{count}} media files are missing"
-      },
-      "hint": "The files were moved, renamed or are on a drive that is not connected. Choose the folder they are in now: Cutweave recognizes them by content, even when they were renamed.",
-      "allFound": "Every file is where the project expects it. Undo puts the old locations back.",
-      "listLabel": "Missing media",
-      "searchFolder": "Search a folder…",
-      "searching": "Searching…",
-      "later": "Not now",
-      "done": "Done",
-      "locateFile": "Choose the file for {{name}}",
-      "result": {
-        "none": "None of the missing files are in that folder.",
-        "one": "Found 1 file.",
-        "many": "Found {{count}} files.",
-        "truncated": "The folder holds more files than one search reads. Search its subfolders one at a time."
-      },
-      "failed": {
-        "folder": "Could not search that folder",
-        "file": "Could not use that file"
-      }
-    },
     "timeline": {
       "cancel": "Cancel",
       "cancelHelp": "Timeline. Stops a drag, trim or marquee and puts everything back.",
@@ -1322,6 +1297,31 @@
       "opened": "{{agent}} opened {{name}}.",
       "refused": "{{agent}} tried to open {{name}}, but {{current}} has unsaved changes. Save them, then ask the agent again.",
       "failed": "{{agent}} could not open {{name}}. The engine said: {{message}}"
+    }
+  },
+  "relink": {
+    "title": {
+      "none": "All media found",
+      "one": "1 media file is missing",
+      "many": "{{count}} media files are missing"
+    },
+    "hint": "The files were moved, renamed or are on a drive that is not connected. Choose the folder they are in now: Cutweave recognizes them by content, even when they were renamed.",
+    "allFound": "Every file is where the project expects it. Undo puts the old locations back.",
+    "listLabel": "Missing media",
+    "searchFolder": "Search a folder…",
+    "searching": "Searching…",
+    "later": "Not now",
+    "done": "Done",
+    "locateFile": "Choose the file for {{name}}",
+    "result": {
+      "none": "None of the missing files are in that folder.",
+      "one": "Found 1 file.",
+      "many": "Found {{count}} files.",
+      "truncated": "The folder holds more files than one search reads. Search its subfolders one at a time."
+    },
+    "failed": {
+      "folder": "Could not search that folder",
+      "file": "Could not use that file"
     }
   },
   "timeline": {
