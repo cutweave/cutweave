@@ -49,6 +49,7 @@ use cutweave_ops::media::{
     AllowedRoots, AnalysisStages, Analyzer, DiskFiles, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
     RelinkCtx,
 };
+use cutweave_ops::project::collect::CollectCtx;
 use cutweave_ops::view::{UiState, ViewCtx};
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -56,6 +57,7 @@ use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
 
 use crate::agents::Connections;
 use crate::autosave::AutosavePreference;
+use crate::collect::EngineCollectHost;
 use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
@@ -351,6 +353,9 @@ impl Core {
         if context == TypeId::of::<RelinkCtx>() {
             return self.relink(ctx, name, params);
         }
+        if context == TypeId::of::<CollectCtx>() {
+            return self.collect(ctx, name, params);
+        }
         if context == TypeId::of::<ExportCtx>() {
             return self.export(ctx, name, params);
         }
@@ -572,6 +577,33 @@ impl Core {
         drop(relink);
         drop(guard);
         result.map(|output| self.reply(output))
+    }
+
+    /// The collect commands (WP-2F.04) against the committed document of the moment, with the
+    /// caller's write allowlist ([`path_roots`](Self::path_roots)), as for `export.start`.
+    fn collect(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let mut call = {
+            let guard = self.session()?;
+            let Some(session) = guard.as_ref() else {
+                return Err(stopped());
+            };
+            CollectCtx {
+                doc: session.handle().committed_snapshot().doc.clone(),
+                project_root: session
+                    .project_root()
+                    .map(|root| root.to_string_lossy().into_owned()),
+                allowed_roots: self.path_roots(ctx, session),
+                jobs: self.deps.jobs.clone(),
+                host: Arc::new(EngineCollectHost {
+                    free_space: Arc::clone(&self.free_space),
+                }),
+            }
+        };
+        let output =
+            self.deps
+                .registry
+                .invoke_engine_json(name, params, &mut call, ctx.access())?;
+        Ok(self.reply(output))
     }
 
     /// `export.start` against the committed document of the moment (later edits never change

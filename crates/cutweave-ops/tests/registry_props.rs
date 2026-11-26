@@ -562,6 +562,20 @@ impl<'s> Harness<'s> {
             .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
     }
 
+    /// Runs a collect command (WP-2F.04) against the committed document and a disk that
+    /// holds nothing: the open document never changes.
+    fn collect(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut call = cutweave_ops::project::collect::CollectCtx {
+            doc: self.lock().committed_snapshot().doc.clone(),
+            project_root: None,
+            allowed_roots: None,
+            jobs: self.jobs.clone(),
+            host: Arc::new(testing::NoDisk),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
     /// Runs a relink command (WP-2F.03) against a disk that holds the import files; what it
     /// finds is committed in one transaction on a connection of its own.
     fn relink(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
@@ -707,6 +721,12 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<ProxyCall>() => {
                 self.proxy(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<cutweave_ops::project::collect::CollectCtx>() => {
+                self.collect(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })

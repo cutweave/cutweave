@@ -2,8 +2,10 @@
 // The registry commands the editor carries out its own way when the palette runs them (see
 // `actions.ts`): the same paths the menus, the toolbar and the keys take, so the palette adds no
 // second behaviour for them.
+
 import { exportController } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
+import { openCollectDialog } from "../media/CollectDialog.tsx";
 import { projectController } from "../session/useProject.ts";
 import { activeTimelineController } from "../timeline/activeController.ts";
 import { registerPaletteAction } from "./actions.ts";
@@ -32,4 +34,5 @@ export function registerBuiltinPaletteActions(): void {
     async () => void (await projectController().run("saveAs")),
   );
   registerPaletteAction("export.start", () => exportController().open());
+  registerPaletteAction("project.collect", () => openCollectDialog());
 }

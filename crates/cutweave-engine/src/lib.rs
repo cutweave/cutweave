@@ -27,6 +27,7 @@
 
 pub mod agents;
 pub mod autosave;
+mod collect;
 pub mod config;
 #[cfg(feature = "testing")]
 pub mod determinism;

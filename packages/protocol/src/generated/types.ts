@@ -1062,6 +1062,44 @@ export type CodecInfo = {
 	encoders: string[],
 };
 
+/**  Result of `project.collect_estimate`. */
+export type CollectEstimate = {
+	/**  The folder the copy goes into. */
+	dest: string,
+	/**  The media files to copy. */
+	files: number,
+	/**  Their size in bytes. */
+	bytes: number,
+	/**  Free bytes on the destination drive, when it can be told. */
+	free_bytes: number | null,
+	/**  Whether the files fit (true when the free space cannot be told). */
+	enough_space: boolean,
+	/**  Media whose file is missing: relink them first (`media.relink_folder`). */
+	missing: CollectMissing[],
+	/**  Media left out because no timeline uses them (`trim_unused`). */
+	trimmed: number,
+};
+
+/**  A media file a collect cannot read. */
+export type CollectMissing = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  The name the bin shows. */
+	name: string,
+	/**  Where the project says its file is. */
+	path: string,
+};
+
+/**  Where collected media go. */
+export type CollectMode = 
+/**  Every media file goes under `media/` (the default). */
+"copy_all" | 
+/**
+ *  Files inside the project folder keep their place relative to it; only the others go
+ *  under `media/`.
+ */
+"copy_external_only";
+
 /**  What to do when the output file exists. */
 export type Collision = 
 /**  Pick a free name (`name (1).mp4`). */
@@ -3019,7 +3057,9 @@ export type JobKind =
  *  Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller
  *  intra-frame copy.
  */
-"proxy";
+"proxy" | 
+/**  Copying a project's files into another folder (WP-2F.04): disk work, no decoding. */
+"collect";
 
 /**
  *  Lists background jobs, newest first: unfinished ones and recently finished ones, optionally
@@ -4557,6 +4597,64 @@ export type ProjectCloseOutput = {
 export type ProjectClosed = {
 	/**  The document path of the project that was closed. */
 	path: string,
+};
+
+/**
+ *  Makes a self-contained copy of the project in another folder: the project document and
+ *  every media file it uses (under `media/`), with the copy's document pointing at the copied
+ *  files, so the folder opens on any computer. The open project and its files are not changed.
+ *  Returns a background job; the copy is complete when the job succeeds (the document is
+ *  written last). Each copied file is compared with its original. Calling it again with the
+ *  same folder after a cancel or a crash continues without copying finished files again.
+ *  Fails with `Invalid` at `/dest` when the files do not fit on the drive or the folder
+ *  already holds a project, and at `/media` when a media file is missing (relink it first).
+ *  Agents and headless callers may only collect into folders the user approved.
+ */
+export type ProjectCollect = {
+	/**
+	 *  Absolute path of the folder to collect into: a new or empty folder, or the folder of
+	 *  an interrupted collect of this project.
+	 */
+	dest: string,
+	/**
+	 *  Where media go: `copy_all` (default, everything under `media/`) or
+	 *  `copy_external_only` (files inside the project folder keep their place).
+	 */
+	mode?: CollectMode | null,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused?: boolean | null,
+	/**  Also copy the project's `generated/` folder (default true). */
+	include_generated?: boolean | null,
+};
+
+/**
+ *  Says what `project.collect` with the same params would copy: how many media files, how many
+ *  bytes, the free space on the destination drive and whether the files fit, and which media
+ *  cannot be copied because their file is missing. Changes nothing.
+ */
+export type ProjectCollectEstimate = {
+	/**
+	 *  Absolute path of the folder to collect into: a new or empty folder, or the folder of
+	 *  an interrupted collect of this project.
+	 */
+	dest: string,
+	/**
+	 *  Where media go: `copy_all` (default, everything under `media/`) or
+	 *  `copy_external_only` (files inside the project folder keep their place).
+	 */
+	mode: CollectMode | null,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused: boolean | null,
+	/**  Also copy the project's `generated/` folder (default true). */
+	include_generated: boolean | null,
+};
+
+/**  Result of `project.collect`. */
+export type ProjectCollectOutput = {
+	/**  The copy job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`. */
+	job_id: JobId,
+	/**  What it copies. */
+	estimate: CollectEstimate,
 };
 
 /**

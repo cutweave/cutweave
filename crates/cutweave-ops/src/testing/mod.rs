@@ -45,7 +45,7 @@ pub use invariants::{check_edit_report, check_invariants, check_linked_edit};
 pub use mirror::{JsonMirror, ReplayError, replay_events};
 pub use strategies::{
     AGENT_LABEL, BROKEN_IMPORT_PATH, CHECKPOINT_NAMES, EXPORT_FILE_NAME, EXPORT_JOB_ID,
-    IMPORT_PATHS, JOB_ID_SEED, NoProxies, analyzer, export_ctx, export_queue, fake_files,
+    IMPORT_PATHS, JOB_ID_SEED, NoDisk, NoProxies, analyzer, export_ctx, export_queue, fake_files,
     fake_probe, job_manager, preset_ctx, queue_ctx,
 };
 
