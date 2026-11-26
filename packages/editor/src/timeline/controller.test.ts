@@ -528,9 +528,7 @@ describe("refusal messages", () => {
         }),
         tr,
       ),
-    ).toBe(
-      "Someone else is editing this clip right now. Try again in a moment. (item_in_gesture)",
-    );
+    ).toBe("Someone else is editing this clip right now. Try again in a moment. (item_in_gesture)");
     expect(describeRefusal(new RpcError("conflict", "stale"), tr)).toBe(
       "The project changed while you were editing. Try again.",
     );
