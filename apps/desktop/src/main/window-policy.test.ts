@@ -38,8 +38,14 @@ describe("webPreferencesFor", () => {
     });
   });
 
+  it("popout (ADR-0031): the editor's process (sandbox: false) and no preload", () => {
+    const prefs = webPreferencesFor("popout", ctx);
+    expect(prefs).toEqual({ ...LOCKED, devTools: false, sandbox: false });
+    expect(prefs.preload).toBeUndefined();
+  });
+
   it("every other kind: sandboxed with no preload", () => {
-    for (const kind of WINDOW_KINDS.filter((k) => k !== "editor")) {
+    for (const kind of WINDOW_KINDS.filter((k) => k !== "editor" && k !== "popout")) {
       expect(webPreferencesFor(kind, ctx)).toEqual({ ...LOCKED, devTools: false, sandbox: true });
     }
   });
@@ -78,6 +84,28 @@ describe("resolveWebPreferences", () => {
     expect(() => resolveWebPreferences("editor", ctx, { preload: "/tmp/evil.js" })).toThrow(
       /preload/,
     );
+  });
+
+  it("accepts a popout only as sandbox: false with no preload (ADR-0031)", () => {
+    expect(resolveWebPreferences("popout", ctx, { sandbox: false })).toEqual(
+      webPreferencesFor("popout", ctx),
+    );
+    // A sandboxed popout lands in another process, where the editor cannot reach its document.
+    expect(() => resolveWebPreferences("popout", ctx, { sandbox: true })).toThrow(
+      /popout window: webPreferences.sandbox must be false/,
+    );
+    // No preload of its own: not the editor's, not any other.
+    for (const preload of [ctx.preloadPath, "/elsewhere/evil.js"]) {
+      expect(() => resolveWebPreferences("popout", ctx, { preload }), preload).toThrow(/preload/);
+    }
+    const policy = webPreferencesFor("popout", ctx);
+    expect(() => assertWindowPreferences("popout", { ...policy, sandbox: true }, ctx)).toThrow(
+      /sandbox: false/,
+    );
+    expect(() =>
+      assertWindowPreferences("popout", { ...policy, preload: ctx.preloadPath }, ctx),
+    ).toThrow(/must not have a preload/);
+    expect(() => assertWindowPreferences("popout", policy, ctx)).not.toThrow();
   });
 
   it("throws on a sandboxed editor (the addon preload needs Node)", () => {

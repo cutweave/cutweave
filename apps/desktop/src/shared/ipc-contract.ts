@@ -18,6 +18,7 @@ import {
   type MenuCommand,
   type PrefsExportResult,
   type PrefsImportResult,
+  type PopoutOnTopRequest,
   type PrefsSnapshot,
   type ThemeId,
 } from "./api.ts";
@@ -59,6 +60,11 @@ export interface InvokeChannels {
   "window:toggleDevTools": { args: []; result: undefined };
   /** Development builds only; refused when packaged. Page coordinates in CSS pixels. */
   "window:inspectElement": { args: [x: number, y: number]; result: undefined };
+  /**
+   * Keep on top for a detached panel's window (ADR-0031, WP-2H.14), named by dockview's window
+   * name (`<dock>-<group>`). Resolves to whether this editor has such a window open.
+   */
+  "window:setPopoutOnTop": { args: [request: PopoutOnTopRequest]; result: boolean };
   "edit:run": { args: [action: EditAction]; result: undefined };
   // The preferences store (WP-1M.11).
   "prefs:get": { args: []; result: PrefsSnapshot };

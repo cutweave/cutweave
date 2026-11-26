@@ -8,7 +8,7 @@ import type { BrowserWindow, WebPreferences } from "electron";
 import type { EngineStatus } from "../shared/api.ts";
 import type { EngineFailedChoice } from "./engine/failed-dialog.ts";
 import type { EngineSupervisor } from "./engine/supervisor.ts";
-import { isWindowKind } from "./window-policy.ts";
+import { isWindowKind, type WindowKind } from "./window-policy.ts";
 
 export function shouldInstallTestHooks(
   isPackaged: boolean,
@@ -18,9 +18,9 @@ export function shouldInstallTestHooks(
 }
 
 export interface TestHookDeps {
-  /** The factory, bound to main's context. */
+  /** The factory, bound to main's context (it refuses a `popout`: only `window.open` makes one). */
   createWindow(
-    kind: "editor" | "auxiliary",
+    kind: WindowKind,
     options: { url: string; show: boolean; webPreferences?: WebPreferences },
   ): BrowserWindow;
   appUrl: string;

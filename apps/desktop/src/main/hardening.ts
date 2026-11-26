@@ -3,7 +3,13 @@
 // webview guards, and per-session permission, device, download and request policies. The
 // decisions themselves are pure functions in origins.ts / csp.ts (unit-tested).
 
-import type { Session, WebContents } from "electron";
+import type {
+  BrowserWindow,
+  BrowserWindowConstructorOptions,
+  DidCreateWindowDetails,
+  Session,
+  WebContents,
+} from "electron";
 import { buildCsp } from "./csp.ts";
 import {
   isAllowedFrameNavigation,
@@ -13,6 +19,7 @@ import {
   type OriginPolicy,
   type RequestPolicy,
 } from "./origins.ts";
+import { isAllowedPopoutNavigation, popoutRefusal } from "./popout.ts";
 
 /**
  * Permissions the editor needs, granted to trusted origins only. Empty: nothing in Phase 1 needs
@@ -28,12 +35,29 @@ export function isPermissionAllowed(
   return ALLOWED_PERMISSIONS.includes(permission) && isTrustedOrigin(requestingUrl, policy);
 }
 
+/**
+ * Detached panels (ADR-0031): what the guards need to know about window kinds, which only exist
+ * once the factory or `did-create-window` recorded them, so they are asked at event time.
+ */
+export interface PopoutHooks {
+  /** `contents` belongs to a window the factory created as `editor`. */
+  isEditor(contents: WebContents): boolean;
+  /** `contents` belongs to a popout window. */
+  isPopout(contents: WebContents): boolean;
+  /** The window options of an allowed popout (popout.ts `popoutWindowOptions`). */
+  options(): BrowserWindowConstructorOptions;
+  /** Electron created an allowed popout for `opener`: check, register and place it (index.ts). */
+  created(child: BrowserWindow, details: DidCreateWindowDetails, opener: WebContents): void;
+}
+
 export interface HardeningContext extends OriginPolicy {
   readonly isDev: boolean;
   /** Current engine port (null when engine-less); read on every request. */
   enginePort(): number | null;
   /** Diagnostics sink for blocked actions (main's console by default). */
   log?(message: string): void;
+  /** Popout windows for detached panels; without it every `window.open` is denied. */
+  readonly popouts?: PopoutHooks;
 }
 
 const hardenedSessions = new WeakSet<Session>();
@@ -46,16 +70,37 @@ function logger(ctx: HardeningContext): (message: string) => void {
 export function hardenWebContents(contents: WebContents, ctx: HardeningContext): void {
   const log = logger(ctx);
 
-  // window.open / target=_blank: always denied (returns null in the page). External links go
-  // through the `shell:openExternal` IPC only.
-  contents.setWindowOpenHandler(({ url }) => {
+  // window.open / target=_blank: denied (returns null in the page), except an editor window's
+  // popout for a detached panel (ADR-0031, popout.ts). External links go through the
+  // `shell:openExternal` IPC only.
+  const popouts = ctx.popouts;
+  contents.setWindowOpenHandler(({ url, frameName }) => {
+    if (popouts !== undefined) {
+      const refusal = popoutRefusal(
+        { url, frameName, openerIsEditor: popouts.isEditor(contents) },
+        ctx,
+      );
+      if (refusal === null) {
+        return { action: "allow", overrideBrowserWindowOptions: popouts.options() };
+      }
+    }
     log(`window.open denied: ${url}`);
     return { action: "deny" };
   });
+  if (popouts !== undefined) {
+    // Fires only for a window the handler allowed; `created` checks it again before keeping it.
+    contents.on("did-create-window", (child, details) => popouts.created(child, details, contents));
+  }
+
+  /** Where this webContents' top frame may go: a popout only ever shows its own page. */
+  const topFrameAllowed = (url: string): boolean =>
+    popouts?.isPopout(contents) === true
+      ? isAllowedPopoutNavigation(url, ctx)
+      : isAllowedNavigation(url, ctx);
 
   contents.on("will-frame-navigate", (event) => {
     const allowed = event.isMainFrame
-      ? isAllowedNavigation(event.url, ctx)
+      ? topFrameAllowed(event.url)
       : isAllowedFrameNavigation(event.url, ctx);
     if (!allowed) {
       event.preventDefault();
@@ -64,11 +109,11 @@ export function hardenWebContents(contents: WebContents, ctx: HardeningContext):
   });
   // Older path for top-level navigations; same decision.
   contents.on("will-navigate", (event) => {
-    if (!isAllowedNavigation(event.url, ctx)) event.preventDefault();
+    if (!topFrameAllowed(event.url)) event.preventDefault();
   });
   contents.on("will-redirect", (event) => {
     const allowed = event.isMainFrame
-      ? isAllowedNavigation(event.url, ctx)
+      ? topFrameAllowed(event.url)
       : isAllowedFrameNavigation(event.url, ctx);
     if (!allowed) {
       event.preventDefault();

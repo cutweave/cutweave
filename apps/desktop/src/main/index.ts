@@ -11,14 +11,18 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  type DidCreateWindowDetails,
   dialog,
   ipcMain,
   Menu,
   nativeTheme,
   net,
   protocol,
+  screen,
   session,
   shell,
+  type WebContents,
+  type WebPreferences,
 } from "electron";
 import { type PreferenceKey, resolveTheme } from "../../../../packages/preferences/src/index.ts";
 import type { EditAction, EngineStatus, ThemeId } from "../shared/api.ts";
@@ -41,17 +45,28 @@ import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed
 import { devAllowRoots, preferenceEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
 import { pickFreePort } from "./engine/ports.ts";
 import { EngineSupervisor } from "./engine/supervisor.ts";
+import { FocusGroup } from "./focus-group.ts";
 import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { applicationMenuTemplate } from "./menu.ts";
+import { fitPopout, livePopoutProblem, popoutRefusal, popoutWindowOptions } from "./popout.ts";
 import { PreferencesStore } from "./preferences-store.ts";
 import { forcedPreviewPath } from "./preview-path.ts";
 import { RecentProjects } from "./recent-projects.ts";
 import { installTestHooks, shouldInstallTestHooks } from "./test-hooks.ts";
 import { hasThemedOverlay, titleBarOverlay } from "./title-bar.ts";
 import { createMainWindow } from "./window.ts";
-import { createWindow, type WindowFactoryContext, windowKindOf, windowsOfKind } from "./windows.ts";
+import { assertWindowPreferences, WindowPolicyError } from "./window-policy.ts";
+import {
+  createWindow,
+  popoutNamed,
+  popoutsOf,
+  registerPopout,
+  type WindowFactoryContext,
+  windowKindOf,
+  windowsOfKind,
+} from "./windows.ts";
 
 // Must run before `ready`. Deliberately no `bypassCSP` and no `allowServiceWorkers`.
 protocol.registerSchemesAsPrivileged([
@@ -82,12 +97,93 @@ let openExternal = (url: string): Promise<void> => shell.openExternal(url);
 let askEngineFailed = (status: EngineStatus): Promise<EngineFailedChoice> =>
   showEngineFailedDialog(dialog, mainWindow, status, supervisor?.project ?? null);
 
-const hardening: HardeningContext = { isDev, devServerOrigin, enginePort: () => enginePort };
 const factory: WindowFactoryContext = {
   isDev,
   devServerOrigin,
   preloadPath: path.join(bundleDir, "preload", "index.cjs"),
 };
+const hardening: HardeningContext = {
+  isDev,
+  devServerOrigin,
+  enginePort: () => enginePort,
+  // Detached panels (ADR-0031): an editor window's `window.open` of `popout.html` is the one
+  // window a page may open; it gets the popout policy (no preload) in the theme's frame color.
+  popouts: {
+    isEditor: (contents) => windowKindOf(contents) === "editor",
+    isPopout: (contents) => windowKindOf(contents) === "popout",
+    options: () => popoutWindowOptions(factory, titleBarOverlay(currentTheme()).color),
+    created: (child, details, opener) => adoptPopout(child, details, opener),
+  },
+};
+
+/**
+ * The engine's focus record counts the editor window and its detached panels' windows as one
+ * (ADR-0021, ADR-0031): the focus moving between them is not reported.
+ */
+const focusGroup = new FocusGroup({
+  report: (focused) => supervisor?.setWindowFocused(focused),
+  anyFocused: () => {
+    const focused = BrowserWindow.getFocusedWindow();
+    const editor = liveWindow();
+    if (focused === null || editor === null) return false;
+    return (
+      focused.id === editor.id || popoutsOf(editor.webContents).some((w) => w.id === focused.id)
+    );
+  },
+});
+
+/**
+ * A detached panel's window that Electron just created for an editor window (ADR-0031). It is
+ * checked again (the request, the options and the live webPreferences: no preload, the editor's
+ * process) and destroyed if anything differs; then it is registered as a `popout`, kept on a
+ * connected display, and its focus counts as the editor's.
+ */
+function adoptPopout(
+  child: BrowserWindow,
+  details: DidCreateWindowDetails,
+  opener: WebContents,
+): void {
+  try {
+    const refusal = popoutRefusal(
+      {
+        url: details.url,
+        frameName: details.frameName,
+        openerIsEditor: windowKindOf(opener) === "editor",
+      },
+      hardening,
+    );
+    if (refusal !== null) throw new WindowPolicyError(`popout window: ${refusal}`);
+    assertWindowPreferences("popout", details.options.webPreferences ?? {}, factory);
+    // What the window really got (an undocumented getter Electron keeps for its own popups;
+    // where it is missing, the options above are the check).
+    const lastPrefs = (
+      child.webContents as { getLastWebPreferences?: () => WebPreferences | null }
+    ).getLastWebPreferences?.();
+    const live = lastPrefs === undefined ? null : livePopoutProblem(lastPrefs);
+    if (live !== null) throw new WindowPolicyError(`popout window: ${live}`);
+  } catch (error) {
+    console.warn(
+      `[security] popout window refused: ${error instanceof Error ? error.message : error}`,
+    );
+    child.destroy();
+    return;
+  }
+  registerPopout(child, opener, details.frameName);
+  child.setMenuBarVisibility(false);
+  // Its saved bounds may be on a monitor that is gone, or larger than any left.
+  const outer = child.getBounds();
+  const content = child.getContentBounds();
+  const fitted = fitPopout(
+    { x: outer.x, y: outer.y, width: content.width, height: content.height },
+    screen.getAllDisplays().map((d) => d.workArea),
+  );
+  if (fitted.width !== content.width || fitted.height !== content.height) {
+    child.setContentSize(fitted.width, fitted.height);
+  }
+  if (fitted.x === undefined) child.center();
+  child.on("focus", () => focusGroup.focus());
+  child.on("blur", () => focusGroup.blur());
+}
 
 // Every webContents (windows, devtools, anything created later) gets the guards, and every
 // session the permission/request policy, before any content loads.
@@ -219,9 +315,10 @@ function openWindow(): void {
     }
   });
   // The engine records when its window last had the focus, so an agent that does not name an
-  // engine gets the one the person is looking at (WP-1J.04).
-  mainWindow.on("focus", () => supervisor?.setWindowFocused(true));
-  mainWindow.on("blur", () => supervisor?.setWindowFocused(false));
+  // engine gets the one the person is looking at (WP-1J.04). Its detached panels' windows count
+  // as the editor (ADR-0031): see `focusGroup`.
+  mainWindow.on("focus", () => focusGroup.focus());
+  mainWindow.on("blur", () => focusGroup.blur());
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -364,6 +461,20 @@ if (!app.requestSingleInstanceLock()) {
           if (hasThemedOverlay(process.platform)) {
             liveWindow()?.setTitleBarOverlay(titleBarOverlay(theme));
           }
+          // Detached panels' windows: their frame color, under the page, follows too.
+          const editor = liveWindow();
+          if (editor !== null) {
+            for (const popout of popoutsOf(editor.webContents)) {
+              popout.setBackgroundColor(titleBarOverlay(theme).color);
+            }
+          }
+        },
+        setPopoutOnTop: (frame, on) => {
+          const editor = liveWindow();
+          const popout = editor === null ? undefined : popoutNamed(editor.webContents, frame);
+          if (popout === undefined) return false;
+          popout.setAlwaysOnTop(on);
+          return true;
         },
         editCommand: runEditCommand,
         prefs: {

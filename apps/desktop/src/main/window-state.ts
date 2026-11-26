@@ -51,15 +51,17 @@ export function parseWindowState(raw: string): WindowState | null {
 }
 
 /**
- * Keep a restored window reachable: enforce the minimum size and require it to overlap one of the
- * current displays; otherwise drop the position (the OS centers the window) but keep the size.
+ * Keep a restored window reachable: enforce the minimum size (the editor's, unless `min` says
+ * otherwise: a detached panel's window is smaller) and require it to overlap one of the current
+ * displays; otherwise drop the position (the OS centers the window) but keep the size.
  */
 export function fitToDisplays(
   state: WindowState,
   displays: readonly Bounds[],
+  min: { readonly width: number; readonly height: number } = MIN_WINDOW,
 ): { bounds: Partial<Bounds> & Pick<Bounds, "width" | "height">; maximized: boolean } {
-  const width = Math.max(state.bounds.width, MIN_WINDOW.width);
-  const height = Math.max(state.bounds.height, MIN_WINDOW.height);
+  const width = Math.max(state.bounds.width, min.width);
+  const height = Math.max(state.bounds.height, min.height);
   const { x, y } = state.bounds;
   const visible = displays.some(
     (d) =>

@@ -18,6 +18,7 @@ import {
   type OriginPolicy,
   parseExternalUrl,
 } from "./origins.ts";
+import { POPOUT_FRAME_NAME } from "./popout.ts";
 
 export class IpcValidationError extends Error {
   constructor(channel: string, detail: string) {
@@ -91,6 +92,10 @@ export const invokeSchemas = {
   "window:inspectElement": z.tuple([
     z.number().int().min(0).max(100_000),
     z.number().int().min(0).max(100_000),
+  ]),
+  // A detached panel's window by dockview's name for it, and nothing else (ADR-0031).
+  "window:setPopoutOnTop": z.tuple([
+    z.strictObject({ frame: z.string().regex(POPOUT_FRAME_NAME), on: z.boolean() }),
   ]),
   "edit:run": z.tuple([z.enum(EDIT_ACTIONS)]),
   "prefs:get": noArgs,
