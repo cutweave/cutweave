@@ -260,6 +260,20 @@ fn meters_report_the_master_and_every_bus() {
         assert!(peak > 0.0 && peak < 0.1, "{track}: {peak}");
     }
     assert!(run.output.stats().master_peak[0] > 0.0);
+    // WP-2E.02: RMS under the peak, a quiet mix the limiter leaves alone, and loudness once
+    // 400 ms have played (integrated since the start; the mix is about −20 LUFS).
+    let last = frames.last().unwrap();
+    assert!(last.rms[0] > 0.0 && last.rms[0] <= last.peak[0], "{last:?}");
+    assert!(last.true_peak >= last.peak[0].max(last.peak[1]) * 0.99);
+    assert!(frames.iter().all(|f| f.limiter_gain >= 1.0), "no limiting");
+    assert!(
+        frames
+            .iter()
+            .all(|f| f.buses().iter().all(|b| b.rms[0] <= b.peak[0]))
+    );
+    let l = last.loudness;
+    assert!(l.momentary > -40.0 && l.momentary < -5.0, "{l:?}");
+    assert!(l.integrated > -40.0 && l.integrated < -5.0, "{l:?}");
     run.finish();
 }
 

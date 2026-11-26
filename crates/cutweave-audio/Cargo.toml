@@ -27,6 +27,13 @@ cpal = { version = "=0.18.2", optional = true, features = ["realtime"] }
 
 [dependencies]
 cutweave-model = { path = "../cutweave-model" }
+# EBU R 128 loudness (LUFS momentary, short-term, integrated) and true peak of the master meter
+# and `audio.get_levels` (arch §9 names it; WP-2E.02). MIT (Sebastian Dröge's pure-Rust port of
+# libebur128, no C code). Its histogram mode keeps the integrated measure in a fixed 1000-bin
+# table, so feeding it on the real-time thread never allocates (checked by the output's
+# allocation counter). Brings dasp_frame/dasp_sample (MIT OR Apache-2.0), bitflags 1 and
+# smallvec (MIT OR Apache-2.0).
+ebur128 = "=0.1.11"
 # `AudioSegment`, the output of `evaluate_audio` (WP-1F.01), is the mixer's input. Only the
 # wasm-safe core: the mixer needs no GPU.
 cutweave-render = { path = "../cutweave-render", default-features = false }

@@ -584,6 +584,7 @@ fn codec_presets_plan_their_container_codec_profile_bit_depth_and_audio() {
             alpha: false,
             audio_codec: AudioCodec::Aac,
             audio_bitrate_kbps: Some(320),
+            advanced: cutweave_ops::export::PlanAdvanced::default(),
         }
     );
     assert_eq!(

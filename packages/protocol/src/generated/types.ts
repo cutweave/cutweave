@@ -22,6 +22,111 @@ export type ActorStacks = {
 	next_redo: StackTop | null,
 };
 
+/**  Audio settings. */
+export type AdvancedAudio = {
+	/**  "aac", "mp3", "opus", "flac", "pcm_s16", "pcm_s24". */
+	codec?: AdvancedAudioCodec | null,
+	/**  Bitrate, kb/s (lossy codecs). */
+	bitrate_kbps?: number | null,
+	/**  44100, 48000 or 96000. */
+	sample_rate?: number | null,
+	/**  "mono" or "stereo". */
+	channels?: AudioChannels | null,
+	/**  The master's true-peak limiter (−1 dBTP): on unless false (WP-2E.02). */
+	limiter?: boolean | null,
+};
+
+/**  The audio codec of an export. */
+export type AdvancedAudioCodec = 
+/**  AAC-LC. */
+"aac" | 
+/**  MP3. */
+"mp3" | 
+/**  Opus (MP4). */
+"opus" | 
+/**  FLAC (MP4). */
+"flac" | 
+/**  16-bit PCM (MOV). */
+"pcm_s16" | 
+/**  24-bit PCM (MOV). */
+"pcm_s24";
+
+/**  Color tags written to the file (default BT.709 limited). */
+export type AdvancedColor = {
+	/**  Primaries (`bt709`, `bt470bg`, `smpte170m`, `bt2020`). */
+	primaries?: ColorPrimaries | null,
+	/**  Transfer (`bt709`, `smpte170m`, `iec61966-2-1`, `gamma22`); HDR is unsupported. */
+	transfer?: TransferCharacteristics | null,
+	/**  Matrix (`bt709`, `bt470bg`, `smpte170m`, `bt2020nc`). */
+	matrix?: MatrixCoefficients | null,
+	/**  "limited" or "full". */
+	range?: ColorRange | null,
+	/**  Write the tags without converting the picture to them. */
+	tag_only?: boolean | null,
+};
+
+/**  Fine control of the encode; every field is optional and absent ones keep the preset's value. */
+export type AdvancedExportOptions = {
+	/**  Video encoder. */
+	video?: AdvancedVideo | null,
+	/**  Color tags. */
+	color?: AdvancedColor | null,
+	/**  Audio. */
+	audio?: AdvancedAudio | null,
+};
+
+/**  Keyframes and the group of pictures. */
+export type AdvancedGop = {
+	/**  Keyframe interval in frames. */
+	keyint?: number | null,
+	/**  Keyframe interval in whole seconds (at the output frame rate); not with `keyint`. */
+	keyint_seconds?: number | null,
+	/**  Shortest distance between keyframes, frames. */
+	keyint_min?: number | null,
+	/**  Consecutive B-frames, 0 for none. */
+	bframes?: number | null,
+	/**  Every keyframe is an IDR frame and nothing refers across it. */
+	closed_gop?: boolean | null,
+	/**  Scene-cut keyframes (false: keyframes only on the interval). */
+	scenecut?: boolean | null,
+};
+
+/**  Rate control: `mode` and the numbers it needs. */
+export type AdvancedRate = {
+	/**  "crf", "cbr", "vbr" or "cq". */
+	mode: RateMode,
+	/**  Quality 0-51, lower is better (crf, cq). */
+	crf?: number | null,
+	/**  Target bitrate, kb/s (cbr, vbr). */
+	bitrate_kbps?: number | null,
+	/**  Peak bitrate, kb/s (vbr, cq). */
+	max_bitrate_kbps?: number | null,
+	/**  Rate-control buffer, kilobits (cbr, vbr, cq). */
+	buffer_kbit?: number | null,
+	/**  Two passes (not available yet). */
+	two_pass?: boolean | null,
+};
+
+/**  Video encoder settings. */
+export type AdvancedVideo = {
+	/**  Rate control. */
+	rate_control?: AdvancedRate | null,
+	/**  Keyframes and GOP. */
+	gop?: AdvancedGop | null,
+	/**  Encoder speed: ultrafast .. veryslow. */
+	preset?: string | null,
+	/**  Encoder tune (`film`, `grain`, `zerolatency`; AV1: `vq`, `psnr`, `ssim`). */
+	tune?: string | null,
+	/**  Codec profile (H.264 `high`, HEVC `main10`, ProRes `422hq`). */
+	profile?: string | null,
+	/**  Codec level (`4.1`). */
+	level?: string | null,
+	/**  Pixel format (`yuv420p`, `yuv420p10le`, ProRes `yuv422p10le`). */
+	pix_fmt?: string | null,
+	/**  Encoder threads, 0 = automatic. */
+	threads?: number | null,
+};
+
 /**
  *  One agent connection open on the engine (`project.connections`, and the payload of
  *  `project.connection_opened` and `project.connection_closed`).
@@ -75,6 +180,13 @@ db: number | null }) & { pan?: never } |
 ({ kind: "pan"; 
 /**  The position. */
 pan: number | null }) & { db?: never };
+
+/**  Audio channels. */
+export type AudioChannels = 
+/**  One channel (the stereo mix averaged). */
+"mono" | 
+/**  Two channels. */
+"stereo";
 
 /**  The audio codec. */
 export type AudioCodec = 
@@ -931,7 +1043,10 @@ export type CodecEncoders = {
 	containers: Container[],
 	/**  The bit depths of the coded video. */
 	bit_depths: number[],
-	/**  The profile names a preset's `video.profile` takes (empty when the codec has none). */
+	/**
+	 *  The profile names a preset's `video.profile` or `advanced.video.profile` takes (empty when
+	 *  the codec has none).
+	 */
 	profiles: string[],
 };
 
@@ -1140,6 +1255,33 @@ export type DeletedOutput = {
 	deleted: ItemId[],
 	/**  What changed (timeline spec §3.1). */
 	report: EditReport,
+};
+
+/**
+ *  Describes the advanced options of a codec as a JSON Schema: which rate-control modes, presets,
+ *  tunes, profiles, pixel formats and audio codecs its encoder takes, and what it cannot.
+ *  `encoder` names a hardware encoder from `export.list_encoders` (default: the software
+ *  encoder).
+ */
+export type DescribeOptions = {
+	/**  The codec: h264, hevc, av1 or prores. */
+	codec: VideoCodec,
+	/**  A hardware encoder name (`hevc_nvenc`); the software encoder when absent. */
+	encoder?: string | null,
+	/**  The container, for the audio codecs it holds (default: MP4, MOV for ProRes). */
+	container?: Container | null,
+};
+
+/**  Result of `export.describe_options`. */
+export type DescribeOptionsOutput = {
+	/**  The codec. */
+	codec: VideoCodec,
+	/**  The encoder the schema is for. */
+	encoder: string,
+	/**  Whether it is a hardware encoder. */
+	hardware: boolean,
+	/**  JSON Schema of `advanced` for this encoder. */
+	schema: unknown,
 };
 
 /**
@@ -1371,6 +1513,8 @@ export type ExportEnqueue = {
 	overwrite?: boolean | null,
 	/**  An existing file: "fail" (default), "rename" or "overwrite". */
 	collision?: Collision | null,
+	/**  Fine control (rate control, GOP, encoder, color tags, audio), as in export.start. */
+	advanced?: AdvancedExportOptions | null,
 };
 
 /**  Whether to use a hardware video encoder. */
@@ -1448,6 +1592,11 @@ export type ExportPresetSpec = {
 	platform?: PlatformInfo | null,
 	/**  The UI-safe zone to show in the preview: an id of WP-2H.06's `safe-areas.json`. */
 	safe_area?: string | null,
+	/**
+	 *  Advanced encoder settings (rate control, GOP, color tags, audio) the preset applies on top
+	 *  of the fields above; a request's own `advanced` overrides them.
+	 */
+	advanced?: AdvancedExportOptions | null,
 };
 
 /**  How hard the encoder works for picture quality (and file size). */
@@ -1571,7 +1720,8 @@ export type ExportRetry = {
  *  now; later edits do not change it. Agents and headless callers may only write inside the
  *  project folder and folders the user approved. `range.kind` picks the part: "sequence",
  *  "in_out" (the sequence's in/out points), "custom" (`in`, `out`) or "markers" (one file per
- *  marker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the
+ *  marker: `path` is a folder or a name template ending in the container's extension (.mp4;
+ *  .mov for ProRes) with {seq}, {marker_label}, {n}; the
  *  output lists every job). `collision` says what happens to an existing file: "fail"
  *  (default), "rename" (pick a free name) or "overwrite" (replace it when the export
  *  succeeds). Fails with `Invalid` when the drive has too little free space.
@@ -1597,6 +1747,15 @@ export type ExportStart = {
 	overwrite?: boolean | null,
 	/**  An existing file: "fail" (default), "rename" or "overwrite". */
 	collision?: Collision | null,
+	/**
+	 *  Fine control (export.describe_options{codec} gives a codec's options as a JSON Schema):
+	 *  video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
+	 *  gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,
+	 *  profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only},
+	 *  audio{codec, bitrate_kbps, sample_rate, channels}. Impossible combinations fail with
+	 *  Invalid and a hint.
+	 */
+	advanced?: AdvancedExportOptions | null,
 };
 
 /**  Result of `export.start`: the job and what it will write. */
@@ -1625,6 +1784,11 @@ export type ExportStartOutput = {
 	rev: Rev,
 	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
 	warnings: PresetWarning[],
+	/**
+	 *  Estimated file size in KiB when the rate control fixes a bitrate (`vbr`, `cbr`, a
+	 *  bitrate preset); absent for a quality (`crf`).
+	 */
+	estimated_kib?: number | null,
 	/**
 	 *  Every export of a marker set, in time order (empty for any other range). The fields
 	 *  above describe the first of them.
@@ -1844,6 +2008,54 @@ export type GetHistory = {
 	cursor?: string | null,
 	/**  Only this actor's entries. */
 	actor?: Actor | null,
+};
+
+/**
+ *  Measures the audio of a sequence over a range, mixed as an export would be (track gain,
+ *  mute and solo, the master limiter at −1 dBTP unless `limiter` is false): sample peak, true
+ *  peak (dBTP), RMS (dBFS, AES17: a sine reads its peak level), integrated loudness (LUFS),
+ *  the loudest momentary and short-term loudness and the loudness range of the master, and
+ *  the same levels (without momentary, short-term and range) for every audio track
+ *  (post-fader). Silent values are null. Read-only; it decodes and mixes the whole range before
+ *  it answers, so a long range takes a while.
+ */
+export type GetLevels = {
+	/**  Sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  Measure after the master limiter, as an export does (default true). */
+	limiter?: boolean | null,
+} & ({
+	/**  Start: flicks, "2.5s", "f:60" or a timecode (default: 0). */
+	in?: TimeInput | null,
+} & {
+	/**  Start: flicks, "2.5s", "f:60" or a timecode (default: 0). */
+	start?: TimeInput | null,
+}) & ({
+	/**  End, exclusive, at most the sequence end (default: the sequence end). */
+	out?: TimeInput | null,
+} & {
+	/**  End, exclusive, at most the sequence end (default: the sequence end). */
+	end?: TimeInput | null,
+});
+
+/**  Result of `audio.get_levels`. */
+export type GetLevelsOutput = {
+	/**  The measured sequence. */
+	sequence: SequenceId,
+	/**  Range start (sequence time, flicks). */
+	in: Time,
+	/**  Range end, exclusive. */
+	out: Time,
+	/**  Whether the master limiter was on (as in an export). */
+	limiter: boolean,
+	/**  The master output. */
+	master: LevelReading,
+	/**  The audio tracks with clips in the range, top to bottom (post-fader). */
+	tracks: TrackLevels[],
+	/**  The deepest gain reduction of the master limiter in dB (0: it never limited). */
+	limiter_reduction_db: number | null,
+	/**  Clips whose audio could not be decoded (measured as silence). */
+	source_errors: number,
 };
 
 /**  The graphics adapter the renderer runs on. */
@@ -3213,6 +3425,27 @@ export type LayoutInfo = {
 	cells: CellFraction[],
 };
 
+/**  What the engine measures for one signal. */
+export type LevelReading = {
+	/**  Sample peak in dBFS (the louder channel); null when silent. */
+	peak_db?: number | null,
+	/**  True peak in dBTP (4× oversampled; the louder channel); null when silent. */
+	true_peak_db?: number | null,
+	/**
+	 *  RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null
+	 *  when silent.
+	 */
+	rms_db?: number | null,
+	/**  Integrated loudness in LUFS; null when everything is below the −70 LUFS gate. */
+	lufs_integrated?: number | null,
+	/**  The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only). */
+	lufs_momentary_max?: number | null,
+	/**  The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only). */
+	lufs_short_term_max?: number | null,
+	/**  Loudness range in LU (master only). */
+	loudness_range_lu?: number | null,
+};
+
 /**  Every checkpoint, oldest first. */
 export type ListCheckpoints = Record<string, never>;
 
@@ -4238,7 +4471,9 @@ export type PresetWarningCode =
 /**  The estimated file is larger than the platform accepts. */
 "SizeOverLimit" | 
 /**  The sequence's frame rate is above the platform's maximum, so the file uses a lower one. */
-"FrameRateCapped";
+"FrameRateCapped" | 
+/**  An advanced setting needs the software encoder, so the export does not use the hardware one. */
+"SoftwareEncoder";
 
 /**  Preview resolution (arch §8 quality ladder). */
 export type PreviewQuality = 
@@ -4774,6 +5009,17 @@ bitrate_kbps: number } |
 bitrate_kbps: number } | 
 /**  Set by the codec profile (ProRes, GIF). */
 { mode: "profile" };
+
+/**  How the video encoder spends bits. */
+export type RateMode = 
+/**  Constant quality (`crf`). */
+"crf" | 
+/**  Constant bitrate (`bitrate_kbps`). */
+"cbr" | 
+/**  Average bitrate, optionally capped (`bitrate_kbps`, `max_bitrate_kbps`). */
+"vbr" | 
+/**  Constant quality capped at `max_bitrate_kbps` (`crf`). */
+"cq";
 
 /**  Unsaved work from a previous session (what a restore would bring back). */
 export type RecoveryInfo = {
@@ -5963,6 +6209,14 @@ export type TrackKind =
 "caption" | 
 /**  Adjustment layers (later versions). */
 "adjustment";
+
+/**  One track bus's levels (post-fader). */
+export type TrackLevels = {
+	/**  The audio track. */
+	track: TrackId,
+	/**  Its levels after its gain, pan, mute and solo. */
+	levels: LevelReading,
+};
 
 /**  Lists a sequence's tracks in display order with their flags, height and item counts. */
 export type TrackList = {

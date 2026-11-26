@@ -41,6 +41,7 @@ use cutweave_commands::{
 use cutweave_jobs::queue::Attach;
 use cutweave_jobs::{JobKind, JobManager};
 use cutweave_model::{SeededGen, Time};
+use cutweave_ops::audio::{LevelsAnalyzer, LevelsCtx};
 use cutweave_ops::export::ExportCtx;
 use cutweave_ops::export::presets::{PresetCtx, PresetStore};
 use cutweave_ops::media::proxy::ProxyCall;
@@ -62,6 +63,7 @@ use crate::export::{ExportJobs, Starter, export_queue, queue_store};
 use crate::full::MediaState;
 use crate::import::{BusAnalysisSink, ImportSink, NoMediaBackend, ctx_for};
 use crate::journal::{IdState, StopReason};
+use crate::levels::EngineLevels;
 use crate::logging::{self, LogGuard};
 use crate::media_cache::CacheCall;
 use crate::media_caps::CapabilitiesCall;
@@ -351,6 +353,18 @@ impl Core {
         }
         if context == TypeId::of::<ExportCtx>() {
             return self.export(ctx, name, params);
+        }
+        if context == TypeId::of::<LevelsCtx>() {
+            // `audio.get_levels` decodes and mixes the range on this (non-async) thread, like
+            // `job.wait` blocks it; the document of the moment is measured.
+            let mut call = LevelsCtx {
+                snapshot: self.doc()?.snapshot(),
+                analyzer: self.deps.subsystems.export_services().map(|services| {
+                    Arc::new(EngineLevels::new(services.sources)) as Arc<dyn LevelsAnalyzer>
+                }),
+            };
+            let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+            return Ok(self.reply(output));
         }
         if context == TypeId::of::<PresetCtx>() {
             let mut call = PresetCtx {

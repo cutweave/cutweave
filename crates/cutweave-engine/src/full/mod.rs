@@ -24,7 +24,9 @@
 //! - **Audio** ([`audio`]): the mixer over the current document's clips, on the output
 //!   `EngineConfig::audio` names (`CUTWEAVE_AUDIO` picks the device); when the device fails the
 //!   mixer plays on the null clock and `engine.degraded{subsystem: "audio"}` is sent.
-//!   `view.set{master_gain}` sets the master volume.
+//!   `view.set{master_gain}` sets the master volume. The mixer gets every audio track with its
+//!   bus (gain, mute, exclusive solo) and limits the master at −1 dBTP; `playback.meters` sends
+//!   the meters 30 times a second while playing (WP-2E.02).
 //! - **Playback**: per open document a `PlaybackEngine` (transport, render and status threads)
 //!   rendering through [`preview::PreviewSource`] into the preview ring (`Gui` mode: an RGBA8
 //!   ring announced in `rpc.hello`'s `shm` and the run-file, with its clock pump) or a null sink
@@ -60,6 +62,8 @@ pub mod preview;
 #[cfg(test)]
 mod preview_alloc;
 pub mod proxy;
+#[cfg(all(test, feature = "ffmpeg"))]
+mod reverse_ffmpeg;
 mod watch;
 
 use std::any::TypeId;
@@ -536,7 +540,7 @@ impl FullSubsystems {
             Box::new(NullSink::new(w, h))
         });
         let (audio, host): (Box<dyn AudioControl>, Arc<dyn HostClock>) = match &started.audio {
-            Audio::Output { output, mixer } => (
+            Audio::Output { output, mixer, .. } => (
                 Box::new(OutputAudio::new(Arc::clone(output), Arc::clone(mixer))),
                 Arc::new(SystemClock),
             ),
@@ -587,6 +591,7 @@ impl FullSubsystems {
             pcm: Arc::clone(&self.inner.pcm),
             frames: Arc::clone(&started.frames),
             thumbs: started.caches.thumbs.clone(),
+            proxies: started.proxies.clone(),
         };
         let watcher = match DocWatcher::spawn(doc.clone(), targets) {
             Ok(w) => w,
@@ -665,13 +670,16 @@ impl FullSubsystems {
     /// The proxy service (WP-2F.01), when there is a media backend and a cache to keep proxies in.
     fn proxies(&self, caches: &Caches, host: &SubsystemHost) -> Option<Arc<FullProxies>> {
         match (&self.inner.config.media, &caches.db, &caches.root) {
-            (Some(backend), Some(db), Some(root)) => Some(Arc::new(FullProxies::new(
-                backend,
-                Arc::clone(db),
-                root.join("proxies"),
-                self.inner.doc.clone(),
-                host.link.clone(),
-            ))),
+            (Some(backend), Some(db), Some(root)) => Some(Arc::new(
+                FullProxies::new(
+                    backend,
+                    Arc::clone(db),
+                    root.join("proxies"),
+                    self.inner.doc.clone(),
+                    host.link.clone(),
+                )
+                .with_events(host.events.clone()),
+            )),
             _ => None,
         }
     }
@@ -733,7 +741,8 @@ impl FullSubsystems {
         };
         phases.mark("caches");
         // Audio.
-        let (audio, degraded) = audio::start(&config.audio, host.audio, &self.inner.pcm)?;
+        let (audio, degraded) =
+            audio::start(&config.audio, host.audio, &self.inner.pcm, &host.events)?;
         if let Some(reason) = degraded {
             self.degrade(&host.events, "audio", &reason);
         }

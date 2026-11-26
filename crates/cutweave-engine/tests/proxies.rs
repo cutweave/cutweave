@@ -9,6 +9,10 @@
 //!   `media.generate_proxy` makes it again; `media.clear_cache{proxies}` and a lower
 //!   `limits.proxies` evict too. Agents may read and make proxies; clearing is the UI's.
 //! - An interrupted generation (cancelled) resumes when the project is opened again.
+//! - WP-2D.01b: reversing a clip of a 1080p long-GOP file (which `auto` gives no proxy) queues
+//!   one, announced by `media.reverse_slow` and reported with its reason by
+//!   `media.proxy_status`. (A file whose GOPs fit the preview's read-back gets none: the unit
+//!   tests of `full::proxy`.)
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -27,7 +31,7 @@ use cutweave_media::{Capabilities, CodecSupport};
 use cutweave_model::{Duration, FrameRate, SampleRate, StreamKind};
 use cutweave_ops::media::{MediaProbe, ProbeError, Probed};
 use engine_support::TempDir;
-use full_support::{Clocks, call, engine_config, eventually, full_config};
+use full_support::{Clocks, call, drain, engine_config, eventually, full_config};
 use serde_json::{Value, json};
 
 /// Probes with the fake backend and reports the picture stream as H.264 (the fake's own codec
@@ -57,7 +61,7 @@ fn codec(name: &str, kind: StreamKind) -> CodecSupport {
 
 struct Rig {
     dir: TempDir,
-    _engine: Engine,
+    engine: Engine,
     ui: Connection,
     agent: Connection,
     clip: PathBuf,
@@ -66,10 +70,20 @@ struct Rig {
 /// An engine whose backend makes proxies, with a 2560×1440 clip of `secs` seconds (frames cost
 /// `cost` each to decode).
 fn rig(tag: &str, secs: i64, cost: StdDuration) -> Rig {
+    let d = Duration::from_secs(secs).unwrap();
+    rig_with(
+        tag,
+        FakeVideo::lasting(2560, 1440, FrameRate::FPS_30, d),
+        cost,
+    )
+}
+
+/// An engine whose backend makes proxies, with a clip of `video` (frames cost `cost` each).
+fn rig_with(tag: &str, video: FakeVideo, cost: StdDuration) -> Rig {
     let dir = TempDir::new(tag);
     let clip = dir.path().join("wide.mp4");
     std::fs::write(&clip, format!("fake media {tag}")).unwrap();
-    let d = Duration::from_secs(secs).unwrap();
+    let d = video.duration().unwrap();
     let fake = FakeBackend::new()
         .with_capabilities(Capabilities::with_codecs([
             codec("rawvideo", StreamKind::Video),
@@ -82,7 +96,7 @@ fn rig(tag: &str, secs: i64, cost: StdDuration) -> Rig {
         .with_media(
             &clip,
             FakeMedia {
-                video: Some(FakeVideo::lasting(2560, 1440, FrameRate::FPS_30, d)),
+                video: Some(video),
                 audio: Some(FakeAudio::tone(SampleRate::HZ_48_000, 2, d)),
             },
         );
@@ -101,7 +115,7 @@ fn rig(tag: &str, secs: i64, cost: StdDuration) -> Rig {
         .unwrap();
     Rig {
         dir,
-        _engine: engine,
+        engine,
         ui,
         agent,
         clip,
@@ -303,4 +317,80 @@ fn an_interrupted_proxy_resumes_when_the_project_opens_again() {
     .unwrap();
     assert_eq!(done["state"], "succeeded", "{done}");
     assert_eq!(r.status(&media)["status"], "ready");
+}
+
+#[test]
+fn reversing_a_long_gop_clip_queues_its_proxy_and_warns_while_it_builds() {
+    // 1080p30 H.264 (to the probe) with a keyframe every 4 s: `auto` makes no proxy, and the
+    // preview's read-back holds 64 frames of 1080p, fewer than a GOP.
+    let video = FakeVideo::lasting(
+        1920,
+        1080,
+        FrameRate::FPS_30,
+        Duration::from_secs(6).unwrap(),
+    )
+    .with_gop(120);
+    let r = rig_with("proxies-reverse", video, StdDuration::ZERO);
+    let mut rx = r.engine.handle().subscribe();
+    let project = call(&r.ui, "project.new", json!({ "name": "Reverse" })).unwrap();
+    let imported = call(
+        &r.ui,
+        "media.import",
+        json!({ "paths": [path_str(&r.clip)] }),
+    )
+    .unwrap();
+    assert_eq!(imported["failed"], json!([]), "{imported}");
+    assert_eq!(imported["media"][0]["proxy"], "none", "{imported}");
+    for job in imported["job_ids"].as_array().unwrap() {
+        call(
+            &r.ui,
+            "job.wait",
+            json!({ "job_id": job, "timeout_ms": 30_000 }),
+        )
+        .unwrap();
+    }
+    let media = imported["media_ids"][0].clone();
+    let inserted = call(
+        &r.agent,
+        "timeline.insert",
+        json!({
+            "sequence": project["sequence"], "track": project["video_track"],
+            "media": media, "at": 0, "duration": "2s",
+        }),
+    )
+    .unwrap();
+    assert_eq!(r.status(&media)["wanted"], false);
+    let item = inserted["clips"][0].clone();
+    call(&r.agent, "clip.reverse", json!({ "item": item })).unwrap();
+
+    let warned = eventually("media.reverse_slow", || {
+        drain(&mut rx)
+            .into_iter()
+            .find(|e| e.name() == "media.reverse_slow")
+            .map(|e| e.payload())
+    });
+    assert_eq!(warned["media_id"], media, "{warned}");
+    assert!(
+        warned["reason"]
+            .as_str()
+            .unwrap()
+            .contains("up to 120 frames apart"),
+        "{warned}"
+    );
+    let job = warned["job_id"].clone();
+    assert!(job.is_string(), "a proxy job was queued: {warned}");
+    let done = call(
+        &r.ui,
+        "job.wait",
+        json!({ "job_id": job, "timeout_ms": 30_000 }),
+    )
+    .unwrap();
+    assert_eq!(done["state"], "succeeded", "{done}");
+    let ready = r.status(&media);
+    assert_eq!(ready["status"], "ready", "{ready}");
+    assert_eq!(ready["wanted"], true, "{ready}");
+    assert!(
+        ready["reason"].as_str().unwrap().contains("reverse"),
+        "{ready}"
+    );
 }

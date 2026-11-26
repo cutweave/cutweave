@@ -5,7 +5,7 @@
 // TODO: Reveal file after an export (the export store keeps no path once it is done), Copy error
 // code on a toast (a notice carries no code), Reconnect now (the supervisor has no such call).
 import { engineStore } from "../../engine/engineStore.ts";
-import { exportStore } from "../../export/exportStore.ts";
+import { exportStore, runningExportJob } from "../../export/exportStore.ts";
 import { exportController } from "../../export/useExport.ts";
 import { i18n } from "../../i18n/index.ts";
 import { sessionStore } from "../../session/sessionStore.ts";
@@ -51,7 +51,7 @@ export const CHROME_EXPORT: MenuSurfaceDef = {
         return state.active !== null && !state.cancelling;
       },
       reason: "contextMenu.reason.noExportRunning",
-      args: () => ({ id: exportStore.getState().active?.jobId }),
+      args: () => ({ id: runningExportJob() }),
     },
   ],
 };

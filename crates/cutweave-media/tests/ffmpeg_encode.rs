@@ -28,6 +28,7 @@ use cutweave_media::{
 };
 use cutweave_model::{
     ColorRange, ColorTags, Duration, FrameRate, MatrixCoefficients, SampleRate, Time,
+    TransferCharacteristics,
 };
 
 fn backend() -> FfmpegBackend {
@@ -561,20 +562,11 @@ fn unsupported_specs(dir: &Path) -> Vec<(&'static str, EncodeSpec)> {
             }),
         ),
         (
-            "BT.601 output",
+            // Other SDR tags are written since WP-2G.05; HDR is not.
+            "PQ (HDR) output",
             at("out.mp4").with_video(VideoEncodeSpec {
                 color: ColorTags {
-                    matrix: Some(MatrixCoefficients::Smpte170M),
-                    ..ColorTags::default()
-                },
-                ..h264.clone()
-            }),
-        ),
-        (
-            "full-range output",
-            at("out.mp4").with_video(VideoEncodeSpec {
-                color: ColorTags {
-                    range: Some(ColorRange::Full),
+                    transfer: Some(TransferCharacteristics::Pq),
                     ..ColorTags::default()
                 },
                 ..h264.clone()
@@ -595,9 +587,10 @@ fn unsupported_specs(dir: &Path) -> Vec<(&'static str, EncodeSpec)> {
             }),
         ),
         (
-            "MP3",
-            at("out.mp4").with_audio(AudioEncodeSpec {
-                codec: "mp3".into(),
+            // MP3 is written since WP-2G.05; Opus goes into MP4 only.
+            "Opus in MOV",
+            at("out.mov").with_audio(AudioEncodeSpec {
+                codec: "opus".into(),
                 ..aac
             }),
         ),

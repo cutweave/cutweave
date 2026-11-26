@@ -43,7 +43,9 @@
 //!   (`422proxy`, `422lt`, `422`, `422hq`, `4444`, `4444xq`; `yuva444p10le` keeps alpha) and
 //!   HEVC's (`main`, `main10`). GIF and audio-only presets resolve and list, but `export.start`
 //!   fails with `Unsupported` until they are built (WP-2G.02b). The preset's `preset` field
-//!   (encoder speed) is carried and not applied yet (WP-2G.05).
+//!   (encoder speed) is carried and not applied (it would change what the built-in presets
+//!   export); a preset's `advanced` block (WP-2G.05, [`super::advanced`]) is, under the
+//!   request's own `advanced`.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -314,6 +316,10 @@ pub struct ExportPresetSpec {
     /// The UI-safe zone to show in the preview: an id of WP-2H.06's `safe-areas.json`.
     #[serde(default)]
     pub safe_area: Option<String>,
+    /// Advanced encoder settings (rate control, GOP, color tags, audio) the preset applies on top
+    /// of the fields above; a request's own `advanced` overrides them.
+    #[serde(default)]
+    pub advanced: Option<super::AdvancedExportOptions>,
 }
 
 // ----- validation ------------------------------------------------------------------------------
@@ -397,6 +403,7 @@ impl ExportPresetSpec {
             ));
         }
         self.check_codecs()?;
+        self.check_advanced()?;
         if let Some(v) = &self.video {
             Self::check_rate_control(v)?;
             Self::check_video(v)?;
@@ -600,6 +607,24 @@ impl ExportPresetSpec {
         }
     }
 
+    /// Checks the preset's `advanced` block against its own codec and container.
+    fn check_advanced(&self) -> Result<(), CmdError> {
+        let Some(adv) = &self.advanced else {
+            return Ok(());
+        };
+        // Only video presets in a container this build exports are checked; the others cannot
+        // be exported yet and say so when listed.
+        let Ok(output) = self.plan_output() else {
+            return Ok(());
+        };
+        let hw = if self.video.as_ref().is_some_and(|v| v.hw_preferred) {
+            ExportHw::Auto
+        } else {
+            ExportHw::Off
+        };
+        super::advanced::check(adv, &output, &hw)
+    }
+
     fn check_platform(p: &PlatformInfo) -> Result<(), CmdError> {
         if !is_slug(&p.id) {
             return Err(bad("/platform/id", "not a platform id"));
@@ -667,6 +692,7 @@ impl ExportPresetSpec {
             alpha: v.codec == VideoCodec::Prores && pix.starts_with("yuva"),
             audio_codec,
             audio_bitrate_kbps: self.audio.as_ref().and_then(|a| a.bitrate_kbps),
+            advanced: super::PlanAdvanced::default(),
         })
     }
 }
@@ -930,6 +956,8 @@ pub enum PresetWarningCode {
     SizeOverLimit,
     /// The sequence's frame rate is above the platform's maximum, so the file uses a lower one.
     FrameRateCapped,
+    /// An advanced setting needs the software encoder, so the export does not use the hardware one.
+    SoftwareEncoder,
 }
 
 /// One warning about a preset on a sequence.
@@ -949,6 +977,8 @@ pub enum PlanRate {
     Crf(u8),
     /// Average video bitrate, kilobits per second.
     BitrateKbps(u32),
+    /// Constant video bitrate, kilobits per second (WP-2G.05).
+    Cbr(u32),
 }
 
 /// A preset resolved against one sequence and range.
@@ -1149,7 +1179,7 @@ pub fn plan_preset(
         });
     }
     let estimated_bytes = match rate {
-        Some(PlanRate::BitrateKbps(v)) => {
+        Some(PlanRate::BitrateKbps(v) | PlanRate::Cbr(v)) => {
             let audio = spec
                 .audio
                 .as_ref()

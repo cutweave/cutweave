@@ -44,6 +44,9 @@ pub enum MixError {
     /// The mixer configuration is invalid.
     #[error("invalid mixer configuration: {0}")]
     Config(&'static str),
+    /// The loudness meter failed (WP-2E.02).
+    #[error("loudness meter: {0}")]
+    Meter(&'static str),
     /// A time or range could not be represented.
     #[error(transparent)]
     Time(#[from] TimeError),

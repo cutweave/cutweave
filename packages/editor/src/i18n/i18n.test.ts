@@ -70,6 +70,13 @@ const MENU_IDS: ReadonlySet<string> = new Set([
   "history.copy_label",
   "history.open",
   "menu.commandPalette",
+  // The export queue's engine methods (WP-2G.03a) and its row menu (WP-2G.04).
+  "export.enqueue",
+  "export.queue",
+  "export.remove",
+  "export.reorder",
+  "export.retry",
+  "export.row",
 ]);
 const referenced = new Set([...code.matchAll(KEY_LIKE)].map((m) => m[1] as string));
 

@@ -210,7 +210,10 @@ impl Starter {
         })?;
         let caps = services.encoder.capabilities();
         let video = video_codec_id(plan.output.video_codec);
-        for codec in [video, audio_codec_name(plan.output.audio_codec)] {
+        for codec in [
+            video,
+            audio_codec_name(plan.output.audio_codec, plan.output.advanced.pcm_bits),
+        ] {
             if !caps.can_encode(codec) {
                 return Err(CmdError::unsupported(format!(
                     "this engine's media backend has no `{codec}` encoder"

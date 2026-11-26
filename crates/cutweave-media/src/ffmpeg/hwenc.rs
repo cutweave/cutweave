@@ -409,6 +409,7 @@ impl Choice {
     }
 
     /// The encoder options (`avcodec_open2` dictionary: private and generic options) for `spec`.
+    #[allow(clippy::too_many_lines)] // one arm per hardware family
     pub(super) fn settings(self, spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
         let hw = match self {
             Choice::Software => return x264_settings(spec),
@@ -441,6 +442,10 @@ impl Choice {
                         set("b", "0".to_owned());
                     }
                     RateControl::Bitrate(b) => set("b", b.to_string()),
+                    RateControl::Cbr(b) => {
+                        set("rc", "cbr".to_owned());
+                        set("b", b.to_string());
+                    }
                 }
             }
             (Family::Amf, rc) => {
@@ -461,6 +466,10 @@ impl Choice {
                         set("b", b.to_string());
                         set("maxrate", (u64::from(b) * 2).to_string());
                     }
+                    RateControl::Cbr(b) => {
+                        set("rc", "cbr".to_owned());
+                        set("b", b.to_string());
+                    }
                 }
             }
             (Family::Qsv, rc) => {
@@ -471,6 +480,11 @@ impl Choice {
                         set("global_quality", shifted(c, QSV_ICQ_OFFSET).to_string());
                     }
                     RateControl::Bitrate(b) => set("b", b.to_string()),
+                    // QSV runs constant bitrate when the peak equals the average.
+                    RateControl::Cbr(b) => {
+                        set("b", b.to_string());
+                        set("maxrate", b.to_string());
+                    }
                 }
             }
             (Family::VideoToolbox, rc) => {
@@ -484,7 +498,8 @@ impl Choice {
                         let q = u32::from(videotoolbox_quality(c));
                         set("global_quality", (q * QP2LAMBDA).to_string());
                     }
-                    RateControl::Bitrate(b) => set("b", b.to_string()),
+                    // The plan refuses constant bitrate here before this.
+                    RateControl::Bitrate(b) | RateControl::Cbr(b) => set("b", b.to_string()),
                 }
             }
             (Family::Vaapi, rc) => {
@@ -496,46 +511,143 @@ impl Choice {
             #[cfg(test)]
             (Family::Pseudo(_), _) => return x264_settings(spec),
         }
+        let adv = &spec.advanced;
+        if let Some(max) = adv.max_bitrate {
+            set("maxrate", max.to_string());
+        }
+        if let Some(buffer) = adv.buffer_size {
+            set("bufsize", buffer.to_string());
+        }
+        generic_advanced(spec, &mut out);
         out
     }
 }
 
-/// x264: preset, CRF or average bitrate, threads.
-fn x264_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
-    let rate = match spec.rate_control {
-        RateControl::Crf(q) => ("crf", q.to_string()),
-        RateControl::Bitrate(bps) => ("b", bps.to_string()),
-    };
-    let threads = if spec.threads == 0 {
+/// The `threads` option value.
+fn threads(spec: &VideoEncodeSpec) -> String {
+    if spec.threads == 0 {
         "auto".to_owned()
     } else {
         spec.threads.to_string()
-    };
-    vec![
-        ("preset", spec.preset.name().to_owned()),
-        rate,
-        ("threads", threads),
-    ]
+    }
 }
 
-/// x265: preset, CRF or average bitrate, threads, quiet log. 10-bit follows the pixel format.
+/// The generic options every software encoder takes (`g`, `keyint_min`, `bf`), set from the
+/// advanced settings.
+fn generic_advanced(spec: &VideoEncodeSpec, out: &mut Vec<(&'static str, String)>) {
+    let adv = &spec.advanced;
+    if let Some(v) = adv.keyint {
+        out.push(("g", v.to_string()));
+    }
+    if let Some(v) = adv.keyint_min {
+        out.push(("keyint_min", v.to_string()));
+    }
+    if let Some(v) = adv.bframes {
+        out.push(("bf", v.to_string()));
+    }
+}
+
+/// The rate-control options of x264 and x265: `crf` or `b`, the peak (`maxrate`) and the buffer
+/// (`bufsize`); constant bitrate pins the peak and the buffer to the bitrate.
+fn vbv(spec: &VideoEncodeSpec, out: &mut Vec<(&'static str, String)>) {
+    let adv = &spec.advanced;
+    let (max, buffer) = match spec.rate_control {
+        RateControl::Crf(q) => {
+            out.push(("crf", q.to_string()));
+            (adv.max_bitrate, adv.buffer_size)
+        }
+        RateControl::Bitrate(bps) => {
+            out.push(("b", bps.to_string()));
+            (adv.max_bitrate, adv.buffer_size)
+        }
+        RateControl::Cbr(bps) => {
+            out.push(("b", bps.to_string()));
+            // A tight buffer unless one is given: 200 ms of the bitrate keeps any second of
+            // the file within 1.2 times the bitrate.
+            (Some(bps), Some(adv.buffer_size.unwrap_or(bps / 5)))
+        }
+    };
+    if let Some(max) = max {
+        out.push(("maxrate", max.to_string()));
+        // A peak without a buffer is ignored: one second of it.
+        out.push(("bufsize", buffer.unwrap_or(max).to_string()));
+    } else if let Some(buffer) = buffer {
+        out.push(("bufsize", buffer.to_string()));
+    }
+}
+
+/// x264: preset, rate control, the GOP and the other advanced settings, threads.
+fn x264_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
+    let adv = &spec.advanced;
+    let mut out = vec![("preset", spec.preset.name().to_owned())];
+    vbv(spec, &mut out);
+    out.push(("threads", threads(spec)));
+    generic_advanced(spec, &mut out);
+    if adv.scenecut == Some(false) {
+        out.push(("sc_threshold", "0".to_owned()));
+    }
+    if let Some(tune) = &adv.tune {
+        out.push(("tune", tune.clone()));
+    }
+    if let Some(level) = &adv.level {
+        out.push(("level", level.clone()));
+    }
+    if let Some(profile) = &spec.profile {
+        out.push(("profile", profile.clone()));
+    }
+    let mut params: Vec<&str> = Vec::new();
+    if matches!(spec.rate_control, RateControl::Cbr(_)) {
+        // Real CBR: x264 pads the stream up to the bitrate.
+        params.push("nal-hrd=cbr");
+    }
+    match adv.closed_gop {
+        Some(true) => params.push("open-gop=0"),
+        Some(false) => params.push("open-gop=1"),
+        None => {}
+    }
+    if !params.is_empty() {
+        out.push(("x264-params", params.join(":")));
+    }
+    out
+}
+
+/// x265: preset, rate control, the GOP and the other advanced settings, threads, quiet log.
+/// 10-bit follows the pixel format.
 fn x265_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
-    let rate = match spec.rate_control {
-        RateControl::Crf(q) => ("crf", q.to_string()),
-        RateControl::Bitrate(bps) => ("b", bps.to_string()),
-    };
-    let threads = if spec.threads == 0 {
-        "auto".to_owned()
-    } else {
-        spec.threads.to_string()
-    };
-    vec![
-        ("preset", spec.preset.name().to_owned()),
-        rate,
-        ("threads", threads),
-        // x265 logs to stderr by itself; FFmpeg's log callback gets the warnings that matter.
-        ("x265-params", "log-level=error".to_owned()),
-    ]
+    let adv = &spec.advanced;
+    let mut out = vec![("preset", spec.preset.name().to_owned())];
+    vbv(spec, &mut out);
+    out.push(("threads", threads(spec)));
+    // x265 logs to stderr by itself; FFmpeg's log callback gets the warnings that matter.
+    let mut params: Vec<String> = vec!["log-level=error".to_owned()];
+    if let Some(v) = adv.keyint {
+        params.push(format!("keyint={v}"));
+    }
+    if let Some(v) = adv.keyint_min {
+        params.push(format!("min-keyint={v}"));
+    }
+    if let Some(v) = adv.bframes {
+        params.push(format!("bframes={v}"));
+    }
+    if adv.scenecut == Some(false) {
+        params.push("scenecut=0".to_owned());
+    }
+    match adv.closed_gop {
+        Some(true) => params.push("open-gop=0".to_owned()),
+        Some(false) => params.push("open-gop=1".to_owned()),
+        None => {}
+    }
+    if matches!(spec.rate_control, RateControl::Cbr(_)) {
+        params.push("strict-cbr=1".to_owned());
+    }
+    if let Some(level) = &adv.level {
+        params.push(format!("level-idc={level}"));
+    }
+    if let Some(tune) = &adv.tune {
+        out.push(("tune", tune.clone()));
+    }
+    out.push(("x265-params", params.join(":")));
+    out
 }
 
 /// SVT-AV1's numeric preset (0 slowest to 13 fastest) for a speed preset: `medium` is 6.
@@ -553,18 +665,46 @@ pub(super) fn svtav1_preset(preset: SpeedPreset) -> u8 {
     }
 }
 
-/// SVT-AV1: numeric preset, CRF (shifted onto AV1's scale) or average bitrate.
+/// SVT-AV1: numeric preset, CRF (shifted onto AV1's scale) or average bitrate, the GOP.
 fn svtav1_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
-    let rate = match spec.rate_control {
-        RateControl::Crf(q) => (
+    let adv = &spec.advanced;
+    let mut out = vec![("preset", svtav1_preset(spec.preset).to_string())];
+    match spec.rate_control {
+        RateControl::Crf(q) => out.push((
             "crf",
             q.saturating_add(SVTAV1_CRF_OFFSET)
                 .min(SVTAV1_MAX_CRF)
                 .to_string(),
-        ),
-        RateControl::Bitrate(bps) => ("b", bps.to_string()),
-    };
-    vec![("preset", svtav1_preset(spec.preset).to_string()), rate]
+        )),
+        // SVT-AV1 has no constant-bitrate mode here: the plan refuses it before this.
+        RateControl::Bitrate(bps) | RateControl::Cbr(bps) => out.push(("b", bps.to_string())),
+    }
+    if let Some(max) = adv.max_bitrate {
+        out.push(("maxrate", max.to_string()));
+    }
+    generic_advanced(spec, &mut out);
+    let mut params: Vec<String> = Vec::new();
+    if adv.scenecut == Some(false) {
+        params.push("scd=0".to_owned());
+    }
+    match adv.closed_gop {
+        // Key frames are IDR frames (`irefresh-type` 2) or open-GOP CRA frames (1).
+        Some(true) => params.push("irefresh-type=2".to_owned()),
+        Some(false) => params.push("irefresh-type=1".to_owned()),
+        None => {}
+    }
+    if let Some(tune) = &adv.tune {
+        let n = match tune.as_str() {
+            "vq" => 0,
+            "psnr" => 1,
+            _ => 2,
+        };
+        params.push(format!("tune={n}"));
+    }
+    if !params.is_empty() {
+        out.push(("svtav1-params", params.join(":")));
+    }
+    out
 }
 
 /// A ProRes profile (`prores_ks`).
@@ -600,11 +740,7 @@ pub(super) fn prores_profile(name: Option<&str>) -> Option<ProResProfile> {
 
 /// `prores_ks` with Apple's vendor tag; the profile sets the quality.
 fn prores_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
-    let threads = if spec.threads == 0 {
-        "auto".to_owned()
-    } else {
-        spec.threads.to_string()
-    };
+    let threads = threads(spec);
     let profile = prores_profile(spec.profile.as_deref()).map_or("hq", ProResProfile::option);
     vec![
         ("profile", profile.to_owned()),
@@ -624,6 +760,11 @@ fn hw_base_rate_control(rc: RateControl, set: &mut impl FnMut(&'static str, Stri
             set("rc_mode", "VBR".to_owned());
             set("b", b.to_string());
             set("maxrate", (u64::from(b) * 2).to_string());
+        }
+        RateControl::Cbr(b) => {
+            set("rc_mode", "CBR".to_owned());
+            set("b", b.to_string());
+            set("maxrate", b.to_string());
         }
     }
 }

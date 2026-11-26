@@ -29,7 +29,8 @@ fields describe the first. If one of the jobs cannot be queued none of them is.
 ## File names for a marker set
 
 `path` is an existing folder (files are named `{seq}_{marker_label}_{n}.mp4`) or an `.mp4` path
-whose file name is the template. Tokens: `{seq}` (the sequence's name), `{marker_label}` (the
+whose file name is the template. The extension is the preset's container: `.mov` for the ProRes
+preset (a folder then gets `{seq}_{marker_label}_{n}.mov`). Tokens: `{seq}` (the sequence's name), `{marker_label}` (the
 marker's label; `marker` when empty) and `{n}` (1, 2, … in time order). Characters a file name
 cannot hold become `_`. With more than one file the template needs `{n}` or `{marker_label}`.
 

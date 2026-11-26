@@ -6,11 +6,11 @@
 //! ```text
 //!  control thread(s)                 worker threads (N)                   real-time thread
 //!  ─────────────────                 ──────────────────                   ────────────────
-//!  MixerHandle::set_segments ─┐      LaneRenderer per lane job:           Mixer::render
+//!  MixerHandle::set_mix ──────┐      LaneRenderer per lane job:           Mixer::render
 //!  MixerHandle::seek ─────────┼─▶    source → downmix → rubato →          ├ pop queued plans (rtrb)
 //!    build plan, new rings    │      clip gain → Σ clips → ring ───────▶  ├ hand-offs at their sample
-//!    jobs ──(mpsc)──────────▶ │      (emptiest ring first, ≥ prefetch)    ├ lanes × track gain (ramped)
-//!    plan ──(rtrb SPSC)─────────────────────────────────────────────────▶ ├ master gain, soft limiter
+//!    jobs ──(mpsc)──────────▶ │      (emptiest ring first, ≥ prefetch)    ├ lanes × bus gains (ramped)
+//!    plan ──(rtrb SPSC)─────────────────────────────────────────────────▶ ├ master gain, limiter
 //!  set_master_gain ──(atomic)───────────────────────────────────────────▶ └ publish position/stats
 //!                                    worker 0 frees replaced plans  ◀──(rtrb SPSC garbage)──┘
 //! ```
@@ -19,7 +19,8 @@
 //!   (each through its own source chain) into a lock-free SPSC ring of output-rate stereo
 //!   samples, from a known output sample on. The rings hold `prefetch` (≥ 500 ms) of audio; the
 //!   worker keeps them full, emptiest first.
-//! * **Plans.** Every graph change (segments, seek) becomes an immutable plan sent through an
+//! * **Plans.** Every graph change (segments, bus settings, seek) becomes an immutable plan sent
+//!   through an
 //!   SPSC queue; the real-time thread applies queued plans at the start of `render`. A plan
 //!   names, per bus, the reader it plays now and the reader that takes over at a given sample.
 //!   Unchanged lanes keep their ring; a changed lane gets a new ring that the workers fill from
@@ -43,9 +44,11 @@ use cutweave_model::{FLICKS_PER_SECOND, Rounding, SampleRate, Time, TrackId};
 use cutweave_render::AudioSegment;
 use rtrb::{Producer, RingBuffer};
 
+use crate::bus::BusGraph;
 use crate::dsp::{CHANNELS, db_to_gain};
 use crate::error::MixError;
 use crate::lane::LaneRenderer;
+use crate::limiter::{Limiter, LimiterConfig};
 use crate::plan::{BusPlan, ClipPlan, plan_buses};
 use crate::rt::{LaneReader, Mixer, RtBus, RtConfig, RtPlan, SILENT, Shared};
 use crate::source::SourceFactory;
@@ -60,7 +63,7 @@ const PLAN_QUEUE: usize = 8;
 const GARBAGE_QUEUE: usize = 64;
 
 /// Mixer construction parameters.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MixerConfig {
     /// Output (device) rate. The output is always 2-channel interleaved `f32`.
     pub rate: SampleRate,
@@ -84,11 +87,14 @@ pub struct MixerConfig {
     /// Frames the real-time thread mixes per inner step (its scratch size; larger callbacks
     /// are processed in several steps).
     pub max_render_frames: usize,
+    /// The master limiter (its look-ahead must be shorter than `edit_latency_ms`).
+    pub limiter: LimiterConfig,
 }
 
 impl MixerConfig {
     /// The defaults at `rate`: 500 ms prefetch, 100 ms prime (1 s timeout), 100 ms edit latency,
-    /// 10 ms ramps, 2 high-priority workers, 2048-frame steps.
+    /// 10 ms ramps, 2 high-priority workers, 2048-frame steps, the default limiter (−1 dBTP,
+    /// 5 ms look-ahead, 100 ms release).
     #[must_use]
     pub const fn new(rate: SampleRate) -> MixerConfig {
         MixerConfig {
@@ -101,6 +107,7 @@ impl MixerConfig {
             workers: 2,
             high_priority_workers: true,
             max_render_frames: 2048,
+            limiter: LimiterConfig::DEFAULT,
         }
     }
 }
@@ -169,7 +176,7 @@ impl LaneModel {
 #[derive(Clone, Debug)]
 struct BusModel {
     track: TrackId,
-    gain: f32,
+    gains: [f32; CHANNELS],
     current: LaneModel,
     next: Option<LaneModel>,
 }
@@ -189,6 +196,9 @@ pub(crate) struct Control {
     plans: Producer<Box<RtPlan>>,
     workers: Vec<(Sender<WorkerMsg>, Option<Thread>)>,
     slots: HashMap<TrackId, usize>,
+    /// The segments and bus settings of the last `set_mix` (plans are rebuilt from them).
+    segments: Vec<AudioSegment>,
+    graph: BusGraph,
     desired: Vec<BusPlan>,
     desired_seek: Option<i64>,
     dirty: bool,
@@ -221,13 +231,18 @@ impl Control {
         self.flush_pending.store(false, Ordering::Release);
     }
 
-    /// The position plans are built against: the pending seek target until the real-time thread
-    /// applied it, the published playhead otherwise.
-    fn playhead(&self) -> i64 {
+    /// The positions plans are built against, `(heard, mixed)`: the pending seek target until
+    /// the real-time thread applied it; otherwise the published output position (the playhead
+    /// heard, which edits hand off `edit_latency` after) and mix position (where the lanes are,
+    /// which tells the hand-offs that already happened; the limiter latency ahead).
+    fn playhead(&self) -> (i64, i64) {
         let applied = self.shared.applied_seq.load(Ordering::Acquire);
         match self.last_seek {
-            Some((seq, target)) if applied < seq => target,
-            _ => self.shared.position.load(Ordering::Acquire),
+            Some((seq, target)) if applied < seq => (target, target),
+            _ => (
+                self.shared.position.load(Ordering::Acquire),
+                self.shared.mix_position.load(Ordering::Acquire),
+            ),
         }
     }
 
@@ -238,7 +253,7 @@ impl Control {
         self.seq += 1;
         let seq = self.seq;
         let seek = self.desired_seek.take();
-        let pos = self.playhead();
+        let (heard, pos) = self.playhead();
         let desired = self.desired.clone();
         let mut deliver = Vec::new();
         let mut model = Vec::with_capacity(desired.len() + self.model.len());
@@ -249,7 +264,7 @@ impl Control {
                 let lane = self.open_lane(bus, target, true, &mut deliver);
                 model.push(BusModel {
                     track: bus.track,
-                    gain: bus.gain,
+                    gains: bus.gains,
                     current: lane,
                     next: None,
                 });
@@ -262,7 +277,8 @@ impl Control {
                     m.current = n;
                 }
             }
-            let soon = pos.saturating_add(self.edit_latency);
+            // Never before the mix position (the edit latency exceeds the limiter's).
+            let soon = heard.saturating_add(self.edit_latency).max(pos);
             let switch_at = |m: &BusModel| match &m.next {
                 Some(n) if n.from > pos => n.from,
                 _ => soon,
@@ -271,21 +287,21 @@ impl Control {
             for bus in &desired {
                 let entry = match old.iter().find(|m| m.track == bus.track) {
                     Some(m) if m.effective().plays(bus) => BusModel {
-                        gain: bus.gain,
+                        gains: bus.gains,
                         ..m.clone()
                     },
                     Some(m) => {
                         let at = switch_at(m);
                         BusModel {
                             track: bus.track,
-                            gain: bus.gain,
+                            gains: bus.gains,
                             current: m.current.clone(),
                             next: Some(self.open_lane(bus, at, false, &mut deliver)),
                         }
                     }
                     None => BusModel {
                         track: bus.track,
-                        gain: bus.gain,
+                        gains: bus.gains,
                         current: LaneModel::none(pos),
                         next: Some(self.open_lane(bus, soon, false, &mut deliver)),
                     },
@@ -315,7 +331,7 @@ impl Control {
             .map(|m| {
                 RtBus::new(
                     m.track,
-                    m.gain,
+                    m.gains,
                     (m.current.id, m.current.from),
                     m.next.as_ref().map(|n| (n.id, n.from)),
                 )
@@ -416,6 +432,7 @@ impl std::fmt::Debug for MixerHandle {
 impl Mixer {
     /// A mixer at `config.rate` reading clips through `sources`, with its control handle.
     /// Starts `config.workers` worker threads (they stop when the handle is dropped).
+    #[allow(clippy::too_many_lines)] // validation, threads and wiring in one place
     pub fn new(
         config: MixerConfig,
         sources: Arc<dyn SourceFactory>,
@@ -432,6 +449,12 @@ impl Mixer {
         if config.max_render_frames < 64 {
             return Err(MixError::Config("max_render_frames must be at least 64"));
         }
+        if config.limiter.lookahead_ms >= config.edit_latency_ms {
+            return Err(MixError::Config(
+                "the limiter look-ahead must be shorter than edit_latency_ms",
+            ));
+        }
+        config.limiter.validate()?;
         let rate = config.rate;
         let frames = |ms| ms_to_frames(rate, ms);
         let ring_frames = usize::try_from(frames(config.prefetch_ms)?)
@@ -457,6 +480,8 @@ impl Mixer {
             plans: plan_tx,
             workers,
             slots: HashMap::new(),
+            segments: Vec::new(),
+            graph: BusGraph::new(),
             desired: Vec::new(),
             desired_seek: None,
             dirty: false,
@@ -507,7 +532,8 @@ impl Mixer {
             ramp_frames: u32::try_from(frames(config.ramp_ms)?).unwrap_or(u32::MAX),
             max_frames: config.max_render_frames,
         };
-        let mixer = Mixer::from_parts(rt, plan_rx, garbage_tx, shared.clone());
+        let limiter = Limiter::new(config.limiter, rate)?;
+        let mixer = Mixer::from_parts(rt, limiter, plan_rx, garbage_tx, shared.clone());
         let handle = MixerHandle {
             control,
             shared,
@@ -547,20 +573,51 @@ impl MixerHandle {
         self.rate
     }
 
-    /// Replaces the mixed segments (the output of `evaluate_audio` over the whole sequence).
-    ///
-    /// Tracks whose clips did not change keep their prefetched audio; track gain changes ramp in
-    /// at the next callback; changed tracks switch to their new content `edit_latency` after the
-    /// playhead. Fails without changing anything if a segment is unsupported.
+    /// Replaces the mixed segments (the output of `evaluate_audio` over the whole sequence),
+    /// every track at its segments' track gain: [`set_mix`](Self::set_mix) with
+    /// [`BusGraph::from_segments`].
     pub fn set_segments(&self, segments: &[AudioSegment]) -> Result<(), MixError> {
-        let buses = plan_buses(segments, self.rate)?;
+        self.set_mix(segments, &BusGraph::from_segments(segments))
+    }
+
+    /// Replaces the mixed segments and the track buses' settings (gain, pan, mute, solo).
+    ///
+    /// Tracks whose clips did not change keep their prefetched audio; bus changes (gain, pan,
+    /// mute, solo) ramp in at the next callback; changed tracks switch to their new content
+    /// `edit_latency` after the playhead. Pass the segments of muted and unsoloed tracks too
+    /// (`evaluate_mix`), so muting and soloing never re-render a lane. Fails without changing
+    /// anything if a segment is unsupported.
+    pub fn set_mix(&self, segments: &[AudioSegment], buses: &BusGraph) -> Result<(), MixError> {
+        let plan = plan_buses(segments, self.rate, buses)?;
         let mut c = self.control();
-        if c.desired != buses {
-            c.desired = buses;
+        c.segments = segments.to_vec();
+        c.graph = buses.clone();
+        if c.desired != plan {
+            c.desired = plan;
             c.dirty = true;
         }
         c.flush();
         Ok(())
+    }
+
+    /// Replaces only the bus settings (gain, pan, mute, solo) of the current segments: ramps in
+    /// at the next callback, no lane is re-rendered.
+    pub fn set_buses(&self, buses: &BusGraph) -> Result<(), MixError> {
+        let mut c = self.control();
+        let plan = plan_buses(&c.segments, self.rate, buses)?;
+        c.graph = buses.clone();
+        if c.desired != plan {
+            c.desired = plan;
+            c.dirty = true;
+        }
+        c.flush();
+        Ok(())
+    }
+
+    /// The bus settings in effect (as last set).
+    #[must_use]
+    pub fn buses(&self) -> BusGraph {
+        self.control().graph.clone()
     }
 
     /// Moves the playhead to `t` (nearest output sample): every lane is flushed and refilled
@@ -649,6 +706,20 @@ mod tests {
         fn send_sync<T: Send + Sync>() {}
         send::<Mixer>();
         send_sync::<MixerHandle>();
+    }
+
+    #[test]
+    fn limiter_settings_are_validated() {
+        let sources: Arc<dyn SourceFactory> = Arc::new(crate::ToneFactory::new());
+        let mut c = MixerConfig::new(SampleRate::HZ_48_000);
+        c.limiter.lookahead_ms = 100;
+        assert!(
+            Mixer::new(c, sources.clone()).is_err(),
+            "look-ahead >= edit latency"
+        );
+        let mut c = MixerConfig::new(SampleRate::HZ_48_000);
+        c.limiter.ceiling_dbtp = 3.0;
+        assert!(Mixer::new(c, sources).is_err());
     }
 
     #[test]

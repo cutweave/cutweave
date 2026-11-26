@@ -39,6 +39,7 @@ pub mod full;
 mod import;
 pub mod journal;
 pub mod launch;
+pub mod levels;
 pub mod logging;
 pub mod mcp_backend;
 pub mod media_cache;
@@ -68,8 +69,8 @@ pub use media_http::media_mounts;
 pub use rpc_backend::rpc_mounts;
 pub use session::{ProjectStatus, RecoveryInfo, SessionState};
 pub use subsystems::{
-    CoreOnly, DEGRADED_EVENT, EngineLink, SUBSYSTEM_EVENTS, SubsystemCall, SubsystemError,
-    SubsystemEvents, SubsystemHost, SubsystemKind, Subsystems,
+    CoreOnly, DEGRADED_EVENT, EngineLink, METERS_EVENT, REVERSE_SLOW_EVENT, SUBSYSTEM_EVENTS,
+    SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost, SubsystemKind, Subsystems,
 };
 
 /// Returns the crate name.

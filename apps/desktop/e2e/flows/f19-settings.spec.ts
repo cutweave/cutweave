@@ -281,6 +281,7 @@ test.describe("F19 settings", () => {
         await chooseMenu(page, app, "File", "Export…");
         const dialog = page.getByRole("dialog", { name: "Export video" });
         await expect(dialog).toBeVisible();
+        await dialog.getByRole("button", { name: "Advanced" }).click();
         await expect(
           radio(dialog.getByRole("radiogroup", { name: "Export quality" }), "High"),
         ).toHaveAttribute("aria-checked", "true");

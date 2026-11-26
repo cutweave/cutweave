@@ -9,6 +9,311 @@ expression: text
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Measures the audio of a sequence over a range, mixed as an export would be (track gain,\nmute and solo, the master limiter at −1 dBTP unless `limiter` is false): sample peak, true\npeak (dBTP), RMS (dBFS, AES17: a sine reads its peak level), integrated loudness (LUFS),\nthe loudest momentary and short-term loudness and the loudness range of the master, and\nthe same levels (without momentary, short-term and range) for every audio track\n(post-fader). Silent values are null. Read-only; it decodes and mixes the whole range before\nit answers, so a long range takes a while.",
+        "properties": {
+          "in": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode (default: 0)."
+          },
+          "limiter": {
+            "default": null,
+            "description": "Measure after the master limiter, as an export does (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "out": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "End, exclusive, at most the sequence end (default: the sequence end)."
+          },
+          "sequence": {
+            "default": null,
+            "description": "Sequence; optional when the project has one.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "GetLevels",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "audio_get_levels",
+      "name": "audio.get_levels",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `audio.get_levels`.",
+        "properties": {
+          "in": {
+            "description": "Range start (sequence time, flicks).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "limiter": {
+            "description": "Whether the master limiter was on (as in an export).",
+            "type": "boolean"
+          },
+          "limiter_reduction_db": {
+            "description": "The deepest gain reduction of the master limiter in dB (0: it never limited).",
+            "format": "double",
+            "type": "number"
+          },
+          "master": {
+            "additionalProperties": false,
+            "description": "The master output.",
+            "properties": {
+              "loudness_range_lu": {
+                "description": "Loudness range in LU (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_integrated": {
+                "default": null,
+                "description": "Integrated loudness in LUFS; null when everything is below the −70 LUFS gate.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_momentary_max": {
+                "description": "The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_short_term_max": {
+                "description": "The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "peak_db": {
+                "default": null,
+                "description": "Sample peak in dBFS (the louder channel); null when silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "rms_db": {
+                "default": null,
+                "description": "RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null\nwhen silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "true_peak_db": {
+                "default": null,
+                "description": "True peak in dBTP (4× oversampled; the louder channel); null when silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "peak_db",
+              "true_peak_db",
+              "rms_db",
+              "lufs_integrated"
+            ],
+            "type": "object"
+          },
+          "out": {
+            "description": "Range end, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The measured sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "source_errors": {
+            "description": "Clips whose audio could not be decoded (measured as silence).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tracks": {
+            "description": "The audio tracks with clips in the range, top to bottom (post-fader).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One track bus's levels (post-fader).",
+              "properties": {
+                "levels": {
+                  "additionalProperties": false,
+                  "description": "Its levels after its gain, pan, mute and solo.",
+                  "properties": {
+                    "loudness_range_lu": {
+                      "description": "Loudness range in LU (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_integrated": {
+                      "default": null,
+                      "description": "Integrated loudness in LUFS; null when everything is below the −70 LUFS gate.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_momentary_max": {
+                      "description": "The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_short_term_max": {
+                      "description": "The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "peak_db": {
+                      "default": null,
+                      "description": "Sample peak in dBFS (the louder channel); null when silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "rms_db": {
+                      "default": null,
+                      "description": "RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null\nwhen silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "true_peak_db": {
+                      "default": null,
+                      "description": "True peak in dBTP (4× oversampled; the louder channel); null when silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "peak_db",
+                    "true_peak_db",
+                    "rms_db",
+                    "lufs_integrated"
+                  ],
+                  "type": "object"
+                },
+                "track": {
+                  "description": "The audio track.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "track",
+                "levels"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sequence",
+          "in",
+          "out",
+          "limiter",
+          "master",
+          "tracks",
+          "limiter_reduction_db",
+          "source_errors"
+        ],
+        "title": "GetLevelsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Measure peak, true peak, RMS and LUFS loudness of a sequence's mix (and each track) over a range",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {
@@ -7412,6 +7717,182 @@ expression: text
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Describes the advanced options of a codec as a JSON Schema: which rate-control modes, presets,\ntunes, profiles, pixel formats and audio codecs its encoder takes, and what it cannot.\n`encoder` names a hardware encoder from `export.list_encoders` (default: the software\nencoder).",
+        "properties": {
+          "codec": {
+            "description": "The codec: h264, hevc, av1 or prores.",
+            "oneOf": [
+              {
+                "const": "h264",
+                "description": "H.264 / AVC.",
+                "type": "string"
+              },
+              {
+                "const": "hevc",
+                "description": "H.265 / HEVC.",
+                "type": "string"
+              },
+              {
+                "const": "av1",
+                "description": "AV1.",
+                "type": "string"
+              },
+              {
+                "const": "prores",
+                "description": "Apple ProRes.",
+                "type": "string"
+              },
+              {
+                "const": "gif",
+                "description": "GIF (palette).",
+                "type": "string"
+              }
+            ]
+          },
+          "container": {
+            "anyOf": [
+              {
+                "description": "The file format of the output.",
+                "oneOf": [
+                  {
+                    "const": "mp4",
+                    "description": "MP4.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "mov",
+                    "description": "QuickTime MOV.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "gif",
+                    "description": "Animated GIF.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "wav",
+                    "description": "WAV (audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "mp3",
+                    "description": "MP3 (audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "m4a",
+                    "description": "M4A (AAC audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "flac",
+                    "description": "FLAC (audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ogg",
+                    "description": "Ogg (Opus audio only).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The container, for the audio codecs it holds (default: MP4, MOV for ProRes)."
+          },
+          "encoder": {
+            "default": null,
+            "description": "A hardware encoder name (`hevc_nvenc`); the software encoder when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "codec"
+        ],
+        "title": "DescribeOptions",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_describe_options",
+      "name": "export.describe_options",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `export.describe_options`.",
+        "properties": {
+          "codec": {
+            "description": "The codec.",
+            "oneOf": [
+              {
+                "const": "h264",
+                "description": "H.264 / AVC.",
+                "type": "string"
+              },
+              {
+                "const": "hevc",
+                "description": "H.265 / HEVC.",
+                "type": "string"
+              },
+              {
+                "const": "av1",
+                "description": "AV1.",
+                "type": "string"
+              },
+              {
+                "const": "prores",
+                "description": "Apple ProRes.",
+                "type": "string"
+              },
+              {
+                "const": "gif",
+                "description": "GIF (palette).",
+                "type": "string"
+              }
+            ]
+          },
+          "encoder": {
+            "description": "The encoder the schema is for.",
+            "type": "string"
+          },
+          "hardware": {
+            "description": "Whether it is a hardware encoder.",
+            "type": "boolean"
+          },
+          "schema": {
+            "description": "JSON Schema of `advanced` for this encoder."
+          }
+        },
+        "required": [
+          "codec",
+          "encoder",
+          "hardware",
+          "schema"
+        ],
+        "title": "DescribeOptionsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Describe the advanced export options of a codec or encoder as a JSON Schema",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
@@ -7421,6 +7902,25 @@ expression: text
         "additionalProperties": false,
         "description": "Adds an export of a sequence (or a range of it) to an MP4 file (H.264 + AAC) to the end of\nthe export queue and returns its job. It runs when its turn comes; while the queue is paused\nit waits (`export.start` adds and resumes). It renders the project as it is now; later edits\ndo not change it. The same params and path rules as `export.start`.",
         "properties": {
+          "advanced": {
+            "default": null,
+            "description": "Fine control (rate control, GOP, encoder, color tags, audio), as in export.start.",
+            "properties": {
+              "audio": {
+                "type": "object"
+              },
+              "color": {
+                "type": "object"
+              },
+              "video": {
+                "type": "object"
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "collision": {
             "anyOf": [
               {
@@ -7783,6 +8283,15 @@ expression: text
             "minimum": 0,
             "type": "integer"
           },
+          "estimated_kib": {
+            "description": "Estimated file size in KiB when the rate control fixes a bitrate (`vbr`, `cbr`, a\nbitrate preset); absent for a quality (`crf`).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "frame_rate": {
             "additionalProperties": false,
             "description": "Frame rate of the file.",
@@ -7934,6 +8443,11 @@ expression: text
                     {
                       "const": "FrameRateCapped",
                       "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SoftwareEncoder",
+                      "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
                       "type": "string"
                     }
                   ]
@@ -8126,7 +8640,7 @@ expression: text
                   "type": "array"
                 },
                 "profiles": {
-                  "description": "The profile names a preset's `video.profile` takes (empty when the codec has none).",
+                  "description": "The profile names a preset's `video.profile` or `advanced.video.profile` takes (empty when\nthe codec has none).",
                   "items": {
                     "type": "string"
                   },
@@ -8209,6 +8723,25 @@ expression: text
                   "additionalProperties": false,
                   "description": "The preset.",
                   "properties": {
+                    "advanced": {
+                      "default": null,
+                      "description": "Advanced encoder settings (rate control, GOP, color tags, audio) the preset applies on top\nof the fields above; a request's own `advanced` overrides them.",
+                      "properties": {
+                        "audio": {
+                          "type": "object"
+                        },
+                        "color": {
+                          "type": "object"
+                        },
+                        "video": {
+                          "type": "object"
+                        }
+                      },
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
                     "audio": {
                       "additionalProperties": false,
                       "default": null,
@@ -8783,7 +9316,8 @@ expression: text
                     "loop",
                     "limits",
                     "platform",
-                    "safe_area"
+                    "safe_area",
+                    "advanced"
                   ],
                   "type": "object"
                 },
@@ -10284,6 +10818,11 @@ expression: text
                       "const": "FrameRateCapped",
                       "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
                       "type": "string"
+                    },
+                    {
+                      "const": "SoftwareEncoder",
+                      "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
+                      "type": "string"
                     }
                   ]
                 },
@@ -10589,6 +11128,25 @@ expression: text
             "additionalProperties": false,
             "description": "The preset (see export.list_presets for examples).",
             "properties": {
+              "advanced": {
+                "default": null,
+                "description": "Advanced encoder settings (rate control, GOP, color tags, audio) the preset applies on top\nof the fields above; a request's own `advanced` overrides them.",
+                "properties": {
+                  "audio": {
+                    "type": "object"
+                  },
+                  "color": {
+                    "type": "object"
+                  },
+                  "video": {
+                    "type": "object"
+                  }
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "audio": {
                 "additionalProperties": false,
                 "default": null,
@@ -11197,8 +11755,27 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
+        "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or a name template ending in the container's extension (.mp4;\n.mov for ProRes) with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
         "properties": {
+          "advanced": {
+            "default": null,
+            "description": "Fine control (export.describe_options{codec} gives a codec's options as a JSON Schema):\nvideo{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},\ngop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,\nprofile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only},\naudio{codec, bitrate_kbps, sample_rate, channels}. Impossible combinations fail with\nInvalid and a hint.",
+            "properties": {
+              "audio": {
+                "type": "object"
+              },
+              "color": {
+                "type": "object"
+              },
+              "video": {
+                "type": "object"
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "collision": {
             "anyOf": [
               {
@@ -11561,6 +12138,15 @@ expression: text
             "minimum": 0,
             "type": "integer"
           },
+          "estimated_kib": {
+            "description": "Estimated file size in KiB when the rate control fixes a bitrate (`vbr`, `cbr`, a\nbitrate preset); absent for a quality (`crf`).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "frame_rate": {
             "additionalProperties": false,
             "description": "Frame rate of the file.",
@@ -11712,6 +12298,11 @@ expression: text
                     {
                       "const": "FrameRateCapped",
                       "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SoftwareEncoder",
+                      "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
                       "type": "string"
                     }
                   ]

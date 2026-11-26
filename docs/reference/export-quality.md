@@ -65,6 +65,63 @@ are estimates. The renderer still produces 8-bit RGBA, so a 10-bit export conver
 10-bit YUV (more headroom for the encoder, not more picture information); a 16-bit pipeline arrives
 with ADR-0032's follow-up.
 
+## Advanced controls (WP-2G.05)
+
+`export.start{advanced}` (also `export.enqueue`, and the `advanced` field of a preset) sets what a
+preset leaves to the encoder. Leaving it out changes nothing: every preset exports as before,
+picture for picture. A request's `advanced` overrides the preset's, field by field (rate control and
+GOP as a block). `export.describe_options{codec, encoder?, container?}` returns the JSON Schema of
+what an encoder takes; the checks that refuse the rest run before anything is queued
+(`Invalid{path, msg}`, the message ending in what to do instead).
+
+| Block | Fields |
+|---|---|
+| `video.rate_control` | `mode`: `crf` (`crf`), `cq` (`crf` and `max_bitrate_kbps`), `vbr` (`bitrate_kbps`, optional `max_bitrate_kbps`), `cbr` (`bitrate_kbps`); optional `buffer_kbit`. `two_pass: true` is `Unsupported` (use `vbr` with a cap). |
+| `video.gop` | `keyint` (frames) or `keyint_seconds` (whole seconds, turned into frames at the output frame rate, rounded), `keyint_min`, `bframes`, `closed_gop`, `scenecut`. |
+| `video` | `preset` (ultrafast to veryslow), `tune`, `profile`, `level`, `pix_fmt`, `threads`. |
+| `color` | `primaries`, `transfer`, `matrix`, `range` (`limited` or `full`), `tag_only`. |
+| `audio` | `codec` (`aac`, `mp3`, `opus`, `flac`, `pcm_s16`, `pcm_s24`), `bitrate_kbps` (lossy codecs), `sample_rate` (44100, 48000, 96000), `channels` (`mono`, `stereo`), `limiter` (the master's true-peak limiter at −1 dBTP; default `true`, WP-2E.02). |
+
+What each encoder takes:
+
+| | x264 | x265 | SVT-AV1 | ProRes | Hardware encoders |
+|---|---|---|---|---|---|
+| Modes | crf, cbr, vbr, cq | crf, cbr, vbr, cq | crf, vbr, cq | none (the profile sets it) | crf, vbr, cbr (not VideoToolbox) |
+| Peak and buffer | yes | yes | peak only | no | yes (not VideoToolbox) |
+| `keyint`, `bframes` | yes | yes | `keyint` only | no | yes |
+| `keyint_min`, `closed_gop`, `scenecut`, `tune`, `level` | yes | yes | no `keyint_min`, no `level` | no | no |
+| `profile` | baseline, main, high | main, main10 | none | the six ProRes profiles | fixed by the encoder |
+| `pix_fmt` | yuv420p | yuv420p, yuv420p10le | the same | yuv422p10le, yuv444p10le, yuva444p10le (by profile) | by codec |
+
+- **Hardware.** A setting only software takes makes a `hw: "auto"` export use the software encoder,
+  with a `SoftwareEncoder` warning in the answer; with `hw: {"force": ...}` it is refused. The
+  hardware mappings of `cbr` and the peak (NVENC `rc=cbr`, AMF `rc=cbr`, QSV `maxrate = b`, VA-API
+  `rc_mode=CBR`) are not measured here; the software encoders are.
+- **Constant bitrate.** x264 pads (`nal-hrd=cbr`), x265 runs `strict-cbr`. Without `buffer_kbit` the
+  buffer is 200 ms of the bitrate, which keeps any second of the file within 1.2 times the bitrate
+  (1 s of buffer allows up to twice that); a bigger buffer smooths quality and loosens the peak. On
+  the test clip (4 s of noise at 480 x 270) 8 Mb/s H.264 averages within 5 %.
+- **Keyframes.** `keyint` with `scenecut: false` puts keyframes exactly on the interval; with scene
+  cuts on (the default) a cut adds one. SVT-AV1's own keyframes are not sync points (they are
+  forward key frames, open GOP): set `closed_gop: true` to get IDR frames a player can seek to.
+  `closed_gop` sets x264/x265 `open-gop` off and SVT-AV1 `irefresh-type` 2.
+- **Color.** The tags default to BT.709 limited. They are written to the bitstream and the container.
+  The matrix and range also drive the RGB to YUV conversion (swscale supports `bt709`, `fcc`,
+  `bt470bg`, `smpte170m`, `smpte240m`, `bt2020nc`), unless `tag_only` is set, which converts as BT.709
+  limited and only labels the file. Primaries and transfer are only ever tags: the renderer's picture
+  is not gamut-mapped (the pixel transfer is ADR-0032's follow-up). PQ and HLG are `Unsupported`.
+- **Audio.** The mix is made at the requested rate; mono averages the stereo mix. Opus runs at 48 kHz
+  only, MP3 up to 48 kHz, PCM needs MOV, Opus and FLAC need MP4. A preset's own `audio.sample_rate`
+  and `audio.channels` are still not applied (the mixer's 48 kHz stereo): only `advanced.audio` is,
+  so a preset without `advanced` exports as before. The mix goes through the track buses (gain, mute,
+  solo) and the master's true-peak limiter (−1 dBTP, as playback; WP-2E.02); `limiter: false` exports
+  the unlimited mix, which the encoder clips at full scale.
+- **Preset speed.** A preset's `video.preset` is still not applied (it would change the output of the
+  built-in presets); `advanced.video.preset` is. SVT-AV1 maps the names to its numeric presets 12 to
+  2 (medium 6).
+- **Estimate.** `export.start` answers `estimated_kib` when the rate control fixes a bitrate (`vbr`,
+  `cbr`, a bitrate preset): the bitrates times the length; a quality (`crf`) has none.
+
 ## The quality mapping
 
 One setting, `RateControl::Crf(c)` (default 20, lower is better), becomes each encoder's

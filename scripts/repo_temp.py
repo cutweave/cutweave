@@ -10,10 +10,14 @@ before starting its command, so a gate run through it (every step) inherits it.
 * Windows only: the cost is Defender's, and on Unix a deep temp path could break socket paths.
 * `CUTWEAVE_KEEP_TEMP=1` keeps the system temp dir.
 * Entries untouched for two days are deleted when a run starts.
+* The shared sccache server is started first, under the system temp dir: it outlives the run and
+  keeps the temp dir it started with, so started under a worktree's `.tmp` it would fail every
+  uncached compile once that worktree is deleted.
 """
 
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -35,11 +39,33 @@ def use_repo_temp(checkout: Path) -> str | None:
     except OSError:
         return None
     prune(tmp)
+    start_build_cache()
     for key in ("TMP", "TEMP", "TMPDIR"):
         os.environ[key] = str(tmp)
     os.environ[ENV] = str(tmp)
     tempfile.tempdir = None  # this process's own temp files follow too
     return str(tmp)
+
+
+def start_build_cache() -> None:
+    """Starts the shared sccache server, unless one runs, while TMP is still the system's.
+
+    `sccache --show-stats` connects to the running server or starts one; a failure is left to
+    the build, which reports it.
+    """
+    exe = shutil.which("sccache")
+    if not exe:
+        return
+    try:
+        subprocess.run(
+            [exe, "--show-stats"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def prune(tmp: Path, days: float = KEEP_DAYS) -> None:

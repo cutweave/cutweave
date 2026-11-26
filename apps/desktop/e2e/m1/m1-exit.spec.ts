@@ -211,6 +211,7 @@ test.describe("M1 exit 1 and 2 (UI)", () => {
       const file = path.join(projectDir, `${M1_PROJECT}.mp4`);
       const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
       expect(norm(await dialog.getByLabel("Save to").inputValue())).toBe(norm(file));
+      await dialog.getByRole("button", { name: "Advanced" }).click();
       await expect(dialog.getByLabel("Width")).toHaveValue("1920");
       await expect(dialog.getByLabel("Height")).toHaveValue("1080");
       await expect(dialog.getByLabel("Frame rate")).toHaveValue("30");
