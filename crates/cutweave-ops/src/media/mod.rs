@@ -3,7 +3,7 @@
 //! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
 //! `media.analysis_failed` events of background analysis (which never mutates the document);
 //! the proxy commands of WP-2F.01 ([`proxy`]); the folders of the bin (WP-2F.07, ADR-0020:
-//! [`folders`]).
+//! [`folders`]); relinking missing media (WP-2F.03: [`relink`]).
 //!
 //! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
 //! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
@@ -20,6 +20,7 @@ pub mod folders;
 mod policy;
 mod probe;
 pub mod proxy;
+pub mod relink;
 mod tree;
 mod walk;
 
@@ -54,6 +55,12 @@ pub use policy::{
 };
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
 pub use proxy::{ImportProxy, ProxyService};
+pub use relink::{
+    DiskFiles, FolderFiles, MAX_RELINK_FILES, MAX_RELINK_MEDIA, MediaFindMissing,
+    MediaFindMissingOutput, MediaLocationSet, MediaRelink, MediaRelinkFolder,
+    MediaRelinkFolderOutput, MediaSetLocation, MediaStatus, MemoryFiles, MissingMedia, RelinkCtx,
+    RelinkFiles, RelinkMatch, RelinkSink, Relinked, relocate_batch,
+};
 pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
 pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
 
@@ -77,6 +84,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<MediaList>()?
         .register::<MediaRemove>()?;
     folders::register(registry)?;
+    relink::register(registry)?;
     proxy::register(registry)
 }
 
