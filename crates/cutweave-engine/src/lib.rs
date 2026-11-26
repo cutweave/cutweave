@@ -27,6 +27,7 @@
 
 pub mod agents;
 pub mod autosave;
+mod collect;
 pub mod config;
 #[cfg(feature = "testing")]
 pub mod determinism;
@@ -36,7 +37,6 @@ mod engine;
 pub mod events;
 pub mod export;
 pub mod full;
-mod collect;
 mod import;
 pub mod journal;
 pub mod launch;

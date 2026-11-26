@@ -331,6 +331,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
+        "project.collect" | "project.collect_estimate" => (1, project_collect()),
         "media.set_location" => (1, media_set_location(p)),
         "media.relink" => (1, media_relink(p)),
         "media.relink_folder" => (1, media_relink_folder(p)),
@@ -917,6 +918,50 @@ fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
         prop_oneof![8 => mix(valid, invalid), 2 => Just(json!({}))].boxed()
     } else {
         mix(valid, invalid)
+    }
+}
+
+/// `project.collect` and its estimate: a destination no test writes media into (the
+/// harness's documents name files that do not exist, so a collect with media is refused).
+fn project_collect() -> BoxedStrategy<Value> {
+    let valid = (
+        option::of(select(vec!["copy_all", "copy_external_only"])),
+        option::of(any::<bool>()),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|(mode, trim, generated)| {
+            json!({"dest": "/collect/out", "mode": mode, "trim_unused": trim,
+                   "include_generated": generated})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"dest": "collect/relative"})),
+        Just(json!({"dest": "/collect/out", "mode": "everything"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// The engine's part of a collect in a harness: an unknown amount of free space, no project
+/// anywhere, and a project write that writes nothing.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoDisk;
+
+impl crate::project::collect::CollectHost for NoDisk {
+    fn free_space(&self, _folder: &std::path::Path) -> Option<u64> {
+        None
+    }
+
+    fn holds_project(&self, _folder: &std::path::Path) -> bool {
+        false
+    }
+
+    fn write_project(
+        &self,
+        folder: &std::path::Path,
+        _doc: &Project,
+    ) -> Result<std::path::PathBuf, String> {
+        Ok(folder.join("copy.cutweave"))
     }
 }
 

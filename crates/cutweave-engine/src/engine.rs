@@ -44,11 +44,11 @@ use cutweave_model::{SeededGen, Time};
 use cutweave_ops::export::ExportCtx;
 use cutweave_ops::export::presets::{PresetCtx, PresetStore};
 use cutweave_ops::media::proxy::ProxyCall;
-use cutweave_ops::project::collect::CollectCtx;
 use cutweave_ops::media::{
     AllowedRoots, AnalysisStages, Analyzer, DiskFiles, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
     RelinkCtx,
 };
+use cutweave_ops::project::collect::CollectCtx;
 use cutweave_ops::view::{UiState, ViewCtx};
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -56,6 +56,7 @@ use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
 
 use crate::agents::Connections;
 use crate::autosave::AutosavePreference;
+use crate::collect::EngineCollectHost;
 use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
@@ -67,7 +68,6 @@ use crate::logging::{self, LogGuard};
 use crate::media_cache::CacheCall;
 use crate::media_caps::CapabilitiesCall;
 use crate::project_io::{LockInfo, ProjectIoError, ProjectStore};
-use crate::collect::EngineCollectHost;
 use crate::relink::RelinkTx;
 use crate::session::{
     self, Deps, ProjectCloseOutput, ProjectOpenOutput, ProjectRecoverOutput, ProjectSaveOutput,
@@ -585,10 +585,10 @@ impl Core {
                 }),
             }
         };
-        let output = self
-            .deps
-            .registry
-            .invoke_engine_json(name, params, &mut call, ctx.access())?;
+        let output =
+            self.deps
+                .registry
+                .invoke_engine_json(name, params, &mut call, ctx.access())?;
         Ok(self.reply(output))
     }
 

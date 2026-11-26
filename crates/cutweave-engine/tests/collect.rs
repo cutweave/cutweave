@@ -49,7 +49,9 @@ fn mtimes(dir: &Path) -> Vec<(PathBuf, SystemTime)> {
 fn project(t: &TempDir, conn: &Connection) -> PathBuf {
     let mut paths = Vec::new();
     for (dir, n) in [("Footage/day1", 3), ("Footage/day2", 3)] {
-        let folder = dir.split('/').fold(t.path().to_path_buf(), |p, part| p.join(part));
+        let folder = dir
+            .split('/')
+            .fold(t.path().to_path_buf(), |p, part| p.join(part));
         std::fs::create_dir_all(&folder).unwrap();
         for i in 0..n {
             let file = folder.join(format!("clip{i}.mp4"));
@@ -59,7 +61,11 @@ fn project(t: &TempDir, conn: &Connection) -> PathBuf {
     }
     new_document(conn, "Promo");
     let folder = t.path().join("Promo");
-    must(conn, "project.save_as", json!({ "path": path_str(&folder) }));
+    must(
+        conn,
+        "project.save_as",
+        json!({ "path": path_str(&folder) }),
+    );
     let inside = folder.join("assets");
     std::fs::create_dir_all(&inside).unwrap();
     std::fs::write(inside.join("logo.png"), "logo").unwrap();
@@ -71,7 +77,11 @@ fn project(t: &TempDir, conn: &Connection) -> PathBuf {
 }
 
 fn wait(conn: &Connection, job: &Value) -> Value {
-    must(conn, "job.wait", json!({ "job_id": job, "timeout_ms": 30_000 }))
+    must(
+        conn,
+        "job.wait",
+        json!({ "job_id": job, "timeout_ms": 30_000 }),
+    )
 }
 
 #[test]

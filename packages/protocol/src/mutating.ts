@@ -29,6 +29,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "media.list",
   "media.list_folders",
   "media.proxy_status",
+  "project.collect_estimate",
   "project.connections",
   "project.info",
   "project.snapshot",
