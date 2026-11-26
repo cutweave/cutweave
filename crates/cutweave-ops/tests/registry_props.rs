@@ -66,8 +66,7 @@ use cutweave_ops::{
     },
     media::{
         FakeProbe, ImportCtx, ImportPolicy, MediaRegister, MediaRegisterTree, MediaRegistered,
-        MediaSetLocation, MediaSink, MediaTreeRegistered, RelinkCtx, RelinkSink,
-        proxy::ProxyCall,
+        MediaSetLocation, MediaSink, MediaTreeRegistered, RelinkCtx, RelinkSink, proxy::ProxyCall,
     },
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
