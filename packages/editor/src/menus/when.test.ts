@@ -63,6 +63,6 @@ describe("evaluateWhen", () => {
   it("names the published keys", () => {
     expect(CONTEXT_KEYS).toContain("selection.count");
     expect(CONTEXT_KEYS).toContain("project.readOnly");
-    expect(CONTEXT_KEYS).toHaveLength(12);
+    expect(CONTEXT_KEYS).toHaveLength(13);
   });
 });

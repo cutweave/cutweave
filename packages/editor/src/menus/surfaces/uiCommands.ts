@@ -8,6 +8,7 @@ import type { FolderId, MediaId, PreviewQuality, SelectionRef } from "@cutweave/
 import { engineStore } from "../../engine/engineStore.ts";
 import { exportController } from "../../export/useExport.ts";
 import { i18n } from "../../i18n/index.ts";
+import { applyLayout, placeAssets, swapLayout } from "../../layout/actions.ts";
 import { sectionsStore } from "../../inspector/sections.ts";
 import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
@@ -210,6 +211,29 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     icon: "trash-2",
     danger: true,
     run: async (args) => requestMediaDelete(arg<{ ids: MediaId[] }>(args).ids),
+  },
+  {
+    id: "layout.apply",
+    label: "contextMenu.item.layout",
+    run: async (args) => {
+      const { ids, layout } = arg<{ ids: string[]; layout: string }>(args);
+      await applyLayout(engineStore, ids, layout);
+    },
+  },
+  {
+    id: "layout.swap",
+    label: "contextMenu.item.swapLayout",
+    run: async (args) => {
+      await swapLayout(engineStore, arg<{ ids: string[] }>(args).ids);
+    },
+  },
+  {
+    id: "bin.place_layout",
+    label: "contextMenu.item.placeSideBySide",
+    run: async (args) => {
+      const { media, layout } = arg<{ media: string[]; layout?: string }>(args);
+      await placeAssets(engineStore, media, layout);
+    },
   },
   {
     id: "bin.select_all",

@@ -20,6 +20,7 @@ import {
   type TimeField,
 } from "../inspector/fields.ts";
 import { PROXY_STATES } from "../inspector/labels.ts";
+import { LayoutSection } from "../inspector/LayoutSection.tsx";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { Section } from "../inspector/Section.tsx";
 import { TrackSection } from "../inspector/TrackSection.tsx";
@@ -376,7 +377,10 @@ function ClipInspector({
             </div>
           </Section>
           {section.id === "timing" ? (
-            <VideoSections clips={clips} editor={editor} locked={locked} />
+            <>
+              <VideoSections clips={clips} editor={editor} locked={locked} />
+              <LayoutSection clips={clips} locked={locked} />
+            </>
           ) : null}
         </Fragment>
       ))}

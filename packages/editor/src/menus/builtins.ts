@@ -31,6 +31,7 @@ export const COMMAND_INFO: readonly CommandInfo[] = [
     when: "selection.count > 0",
   },
   { name: "item.reset_props", label: "contextMenu.command.itemResetProps", undoable: true },
+  { name: "item.apply_layout", label: "contextMenu.command.itemApplyLayout", undoable: true },
   { name: "keyframe.set", label: "contextMenu.command.keyframeSet", undoable: true },
   {
     name: "keyframe.delete",

@@ -20,6 +20,8 @@ export const CONTEXT_KEYS = [
   "selection.count",
   /** `video`, `audio`, `image`, `text`, `compound` or `mixed`. */
   "selection.kind",
+  /** How many of the selected clips or assets are pictures (video clips, videos, images). */
+  "selection.videoCount",
   "item.linked",
   "item.hasAudio",
   "item.enabled",

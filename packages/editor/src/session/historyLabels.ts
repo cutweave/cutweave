@@ -17,6 +17,7 @@ const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
   "item.delete": "history.delete",
   "item.set_props": "history.setProps",
   "item.reset_props": "history.resetProps",
+  "item.apply_layout": "history.applyLayout",
   [`${"audio"}.set`]: "history.audioSet",
   [`${"audio"}.set_fade`]: "history.audioFade",
   [`${"audio"}.set_volume`]: "history.audioVolume",

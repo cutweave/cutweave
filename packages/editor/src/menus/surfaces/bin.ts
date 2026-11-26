@@ -18,6 +18,9 @@ import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.t
 import type { ContextValues } from "../when.ts";
 import { activeSequence, mediaAsset, mediaPath, sequenceEnd } from "./facts.ts";
 import { revealLabel } from "./shared.ts";
+import { placeable } from "../../layout/actions.ts";
+import { LAYOUT_NAMES } from "../../layout/names.ts";
+import { LAYOUTS } from "../../layout/table.ts";
 
 type Placement = "playhead" | "end";
 
@@ -37,10 +40,9 @@ function trackFor(kind: string): string | null {
   );
 }
 
-/** `timeline.insert` for the card: at the playhead, or after the last clip of the sequence. */
-function insertArgs(ctx: MenuContext, at: Placement) {
+/** `timeline.insert` for the asset: at the playhead, or after the last clip of the sequence. */
+export function insertArgsFor(id: string | undefined, at: Placement) {
   const found = activeSequence();
-  const id = ctx.ids[0];
   const asset = id === undefined ? null : mediaAsset(id);
   const trackId = asset === null ? null : trackFor(asset.kind);
   const track = trackId === null ? undefined : found?.sequence.tracks[trackId as never];
@@ -60,6 +62,8 @@ function insertArgs(ctx: MenuContext, at: Placement) {
     overlap: "new_track",
   };
 }
+
+const insertArgs = (ctx: MenuContext, at: Placement) => insertArgsFor(ctx.ids[0], at);
 
 const canInsert = (ctx: MenuContext): boolean => {
   const id = ctx.ids[0];
@@ -104,8 +108,29 @@ export function binCardKeys(target: { ids: readonly string[] }): ContextValues {
   return {
     "media.used": cards.some((c) => (usage.get(c.id) ?? 0) > 0),
     "selection.kind": kinds.size === 1 ? [...kinds][0] : "mixed",
+    "selection.videoCount": cards.filter((c) => c.kind === "video" || c.kind === "image").length,
   };
 }
+
+/** "Place as" rows (WP-2C.08): one per layout, shown for the number of pictures selected. */
+const placeAsRows: readonly MenuRow[] = LAYOUTS.flatMap((layout, order) => {
+  const name = LAYOUT_NAMES[layout.id];
+  return name === undefined
+    ? []
+    : [
+        {
+          id: `place-${layout.id}`,
+          command: "bin.place_layout",
+          group: "place",
+          order,
+          visible: `selection.videoCount == ${layout.count}`,
+          label: { key: name },
+          enabledIf: (ctx: MenuContext) => placeable(ctx.ids),
+          reason: "contextMenu.reason.layoutAssets" as const,
+          args: (ctx: MenuContext) => ({ media: ctx.ids, layout: layout.id }),
+        } satisfies MenuRow,
+      ];
+});
 
 export const BIN_CARD: MenuSurfaceDef = {
   id: "bin.card",
@@ -135,6 +160,23 @@ export const BIN_CARD: MenuSurfaceDef = {
       enabledIf: canInsert,
       reason: insertReason,
       args: (ctx) => insertArgs(ctx, "end"),
+    },
+    {
+      id: "place-layout",
+      command: "bin.place_layout",
+      group: "place",
+      order: 2,
+      visible: "selection.videoCount >= 2",
+      label: { key: "contextMenu.item.placeSideBySide" },
+      enabledIf: (ctx) => placeable(ctx.ids),
+      reason: "contextMenu.reason.layoutAssets",
+      args: (ctx) => ({ media: ctx.ids }),
+    },
+    {
+      id: "place-as",
+      group: "place",
+      order: 3,
+      submenu: { label: { key: "contextMenu.item.placeAs" }, rows: placeAsRows },
     },
     {
       command: "bin.play_in_source",

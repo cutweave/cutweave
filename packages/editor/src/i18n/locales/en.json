@@ -1131,7 +1131,9 @@
       "goTo": "Go to this step",
       "copyLabel": "Copy label",
       "open": "Open History…"
-    }
+    },
+    "applyLayout": "Apply layout",
+    "placeLayout": "Place side by side"
   },
   "projectUi": {
     "untitled": "Untitled project",
@@ -1455,7 +1457,9 @@
       "noExportRunning": "No export is running",
       "nothingToUndo": "Nothing to undo",
       "nothingToRedo": "Nothing to redo",
-      "onlyOneToast": "No other notices"
+      "onlyOneToast": "No other notices",
+      "layoutAssets": "Select 2 to 4 videos or images",
+      "layoutSwap": "Apply a layout to the two clips first"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -1481,7 +1485,8 @@
       "editUndo": "Undo",
       "editRedo": "Redo",
       "viewSelect": "Select",
-      "viewSetPlayhead": "Move playhead here"
+      "viewSetPlayhead": "Move playhead here",
+      "itemApplyLayout": "Apply layout"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -1599,7 +1604,11 @@
       "cancelExport": "Cancel export",
       "resetThisWorkspace": "Reset this workspace",
       "dismiss": "Dismiss",
-      "dismissAll": "Dismiss all"
+      "dismissAll": "Dismiss all",
+      "layout": "Layout",
+      "swapLayout": "Swap",
+      "placeSideBySide": "Place side by side",
+      "placeAs": "Place as"
     },
     "dialog": {
       "cancel": "Cancel",
@@ -1630,6 +1639,27 @@
       "remove": "Remove binding",
       "notChanged": "Already the preset's keys",
       "noKeys": "No keys to remove"
+    }
+  },
+  "layout": {
+    "title": "Layout",
+    "failed": "Could not arrange the clips",
+    "group": "Choose a layout",
+    "fill": "Fill",
+    "fillCrop": "Fill cells",
+    "fillFit": "Fit inside",
+    "swap": "Swap",
+    "swapReason": "Choose a layout first",
+    "names": {
+      "sideBySide": "Side by side",
+      "topBottom": "Top and bottom",
+      "pipTopLeft": "Picture in picture, top left",
+      "pipTopRight": "Picture in picture, top right",
+      "pipBottomLeft": "Picture in picture, bottom left",
+      "pipBottomRight": "Picture in picture, bottom right",
+      "columns3": "Three columns",
+      "oneLargeTwoSmall": "One large, two small",
+      "grid2x2": "2 × 2 grid"
     }
   }
 }
