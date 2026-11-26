@@ -2,7 +2,12 @@
 // The pages of features that already exist (WP-1M.13): Export, which the Export dialog starts
 // from, and Media and import. Keyboard shortcuts (WP-2H.05) is `shortcuts.tsx`.
 
-import { EXPORT_FOLDER_CHOICES, EXPORT_HW_CHOICES, EXPORT_QUALITIES } from "@cutweave/preferences";
+import {
+  EXPORT_FOLDER_CHOICES,
+  EXPORT_HW_CHOICES,
+  EXPORT_QUALITIES,
+  STILL_DURATION_MAX,
+} from "@cutweave/preferences";
 import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
 import { type ChoiceOption, registerSettingsPage, type SettingsPageDef } from "./registry.ts";
 import { registerShortcutsPage } from "./shortcuts.tsx";
@@ -128,6 +133,31 @@ const exportPage: SettingsPageDef = {
   ],
 };
 
+// ---- Editing (WP-2F.05b; more rows come with WP-2A.13) ------------------------------------------
+
+const editingPage: SettingsPageDef = {
+  id: "editing",
+  title: "settings.pages.editing",
+  icon: "scissors",
+  group: "preferences",
+  order: 30,
+  rows: [
+    {
+      id: "editing.still_duration",
+      key: "editing.still_duration",
+      label: "settings.rows.stillDuration.label",
+      description: "settings.rows.stillDuration.description",
+      keywords: "settings.rows.stillDuration.keywords",
+      control: {
+        kind: "number",
+        min: 1,
+        max: STILL_DURATION_MAX,
+        unit: "settings.rows.stillDuration.unit",
+      },
+    },
+  ],
+};
+
 // ---- Media and import (WP-1M.14) --------------------------------------------------------------
 
 const mediaPage: SettingsPageDef = {
@@ -157,7 +187,7 @@ const mediaPage: SettingsPageDef = {
 };
 
 /** The pages of this work package. */
-export const FEATURE_PAGES: readonly SettingsPageDef[] = [mediaPage, exportPage];
+export const FEATURE_PAGES: readonly SettingsPageDef[] = [editingPage, mediaPage, exportPage];
 
 /** Registers them (idempotent). */
 export function registerFeaturePages(): void {

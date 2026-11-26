@@ -78,6 +78,7 @@ test.describe("F19 settings", () => {
       await expect(pages.getByRole("tab")).toHaveText([
         "General",
         "Appearance",
+        "Editing",
         "Media and import",
         "Export",
         "Saving and backups",
