@@ -154,8 +154,10 @@ function adoptPopout(
     );
     if (refusal !== null) throw new WindowPolicyError(`popout window: ${refusal}`);
     assertWindowPreferences("popout", details.options.webPreferences ?? {}, factory);
-    // What the window really got (an undocumented getter Electron keeps for its own popups;
-    // where it is missing, the options above are the check).
+    // What the window really got: Electron's record of the applied webPreferences (an
+    // undocumented getter it keeps for its own popups). It holds the sandbox, Node and isolation
+    // but not the preload, which the options check above covers; where it is missing, the
+    // options are the check.
     const lastPrefs = (
       child.webContents as { getLastWebPreferences?: () => WebPreferences | null }
     ).getLastWebPreferences?.();

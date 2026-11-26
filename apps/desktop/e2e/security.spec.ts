@@ -343,19 +343,21 @@ async function openPopout(app: ElectronApplication, page: Page, name = "1-99"): 
   return child;
 }
 
-/** What main knows of each window: its URL, renderer process, preload and sandbox. */
+/**
+ * What main knows of each window: its URL, renderer process, sandbox (Electron's record of the
+ * webPreferences it applied; it does not keep the preload) and Keep on top.
+ */
 const windowsInMain = (app: ElectronApplication) =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows().map((w) => {
       const prefs = (
         w.webContents as unknown as {
-          getLastWebPreferences?: () => { preload?: string; sandbox?: boolean } | null;
+          getLastWebPreferences?: () => { sandbox?: boolean } | null;
         }
       ).getLastWebPreferences?.();
       return {
         url: w.webContents.getURL(),
         pid: w.webContents.getOSProcessId(),
-        preload: prefs?.preload ?? "",
         sandbox: prefs?.sandbox ?? null,
         onTop: w.isAlwaysOnTop(),
       };
@@ -368,6 +370,7 @@ test.describe("detached panels' windows (ADR-0031)", () => {
     page,
   }) => {
     const child = await openPopout(app, page);
+    // No preload ran in it: every run of the editor's (the only one there is) exposes `cutweave`.
     expect(
       await child.evaluate(() => ({
         cutweave: typeof (window as { cutweave?: unknown }).cutweave,
@@ -375,6 +378,16 @@ test.describe("detached panels' windows (ADR-0031)", () => {
         process: typeof (window as { process?: unknown }).process,
       })),
     ).toEqual({ cutweave: "undefined", require: "undefined", process: "undefined" });
+    // Nor could one: the editor's preload is its own window's setting (main refuses a popout
+    // whose options name one), and no preload is registered for the whole session.
+    expect(
+      await app.evaluate(
+        ({ session }) =>
+          (
+            session.defaultSession as unknown as { getPreloadScripts?: () => unknown[] }
+          ).getPreloadScripts?.().length ?? 0,
+      ),
+    ).toBe(0);
     // The editor reaches its document: it is the same agent, which is what the dock needs.
     expect(
       await page.evaluate(
@@ -382,12 +395,12 @@ test.describe("detached panels' windows (ADR-0031)", () => {
       ),
     ).toBe("app://cutweave/popout.html");
 
+    // It runs in the editor's renderer process, unsandboxed like it (Electron 45 requires it).
     const windows = await windowsInMain(app);
     const editor = windows.find((w) => w.url === "app://cutweave/");
     const popout = windows.find((w) => w.url === "app://cutweave/popout.html");
-    expect(popout).toMatchObject({ preload: "", sandbox: false, pid: editor?.pid });
-    // So the addon is loaded once, by the editor's preload: the only window with one.
-    expect(windows.filter((w) => w.preload !== "").map((w) => w.url)).toEqual(["app://cutweave/"]);
+    expect(popout).toMatchObject({ sandbox: false, pid: editor?.pid });
+    // So the addon is loaded once, by the editor's preload in that process, and still answers.
     expect(await page.evaluate(() => window.cutweave.preview.isAvailable())).toBe(true);
   });
 

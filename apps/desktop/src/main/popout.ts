@@ -54,8 +54,9 @@ export function popoutRefusal(request: PopoutRequest, policy: OriginPolicy): str
 
 /**
  * What is wrong with a created popout's live webPreferences (`getLastWebPreferences()`), or
- * `null`: it must run in the editor's process (`sandbox: false`) with no preload and no Node. The
- * second check after the options main gave it; a window that fails it is destroyed.
+ * `null`: it must run in the editor's process (`sandbox: false`) with no Node and context
+ * isolation (and no preload, where the record has one; Electron 45's does not). The second check
+ * after the options main gave it; a window that fails it is destroyed.
  */
 export function livePopoutProblem(
   prefs: {
