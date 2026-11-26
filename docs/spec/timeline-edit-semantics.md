@@ -181,7 +181,7 @@ Trims, rolls, slips, slides and ripple trims change an edge or a source position
 | `NotFound{kind, id}` | An item, track, media or sequence that does not exist. |
 | `Locked{kind:"track", id}` | INV-27. |
 | `Unsupported` | Item or track kinds that are not editable yet; the P2 limitations of §8 that a request can hit. |
-| `Conflict{reason:"item_in_gesture", retry_after_ms}` | Another actor's open gesture or proposal holds an item the command would change (§5). |
+| `Conflict{reason:"item_in_gesture", holder, retry_after_ms}` | Another actor's open gesture or proposal holds an item the command would change (§5); `holder` names that actor. |
 
 When several apply, the order is: parameter shape, `NotFound`, `Unsupported`, `Locked`, then the semantic `Invalid` checks. Fixtures exercise one failure at a time.
 
