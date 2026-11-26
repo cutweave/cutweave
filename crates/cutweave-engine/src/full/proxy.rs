@@ -258,6 +258,22 @@ impl FullProxies {
         }
     }
 
+    /// Makes `asset`'s proxy now, on this thread (tests); its record.
+    #[cfg(all(test, feature = "ffmpeg"))]
+    #[allow(clippy::expect_used)]
+    pub(crate) fn generate_now(&self, asset: &MediaAsset) -> ProxyRecord {
+        let source = ProxySource {
+            path: PathBuf::from(asset.path_abs.as_deref().unwrap_or_default()),
+            hash: hash_of(asset).expect("a content hash"),
+            probe: asset.probe.clone(),
+        };
+        let profile = self.profile.expect("a proxy codec");
+        self.generator
+            .generate(&source, &profile, &CancelToken::new(), &mut |_| {})
+            .expect("the proxy is made")
+            .proxy
+    }
+
     /// The same proxies, sending `media.reverse_slow` to `events`.
     pub(crate) fn with_events(mut self, events: SubsystemEvents) -> FullProxies {
         self.events = Some(events);
@@ -422,22 +438,20 @@ impl FullProxies {
             .find(|s| s.kind == StreamKind::Video)?;
         let (width, height) = (video.width?, video.height?);
         let window = readback_frames(width, height, video.pixel_format.as_deref());
-        match self.db.get_main_frame_index(hash) {
-            Ok(Some(index)) => {
-                let (_, _, longest, _) = index.gop_stats();
-                (index.max_decode_distance() > 1 && longest > window).then(|| {
-                    format!(
-                        "played in reverse: its keyframes are up to {longest} frames apart, more \
-                         than reverse playback keeps decoded at {width}x{height} ({window} frames)"
-                    )
-                })
-            }
-            Ok(None) | Err(_) => {
-                let codec = video.codec.as_deref()?;
-                LONG_GOP_CODECS.contains(&codec).then(|| {
-                    format!("played in reverse: {codec} keeps its keyframes far apart (long GOP)")
-                })
-            }
+        if let Ok(Some(index)) = self.db.get_main_frame_index(hash) {
+            let (_, _, longest, _) = index.gop_stats();
+            (index.max_decode_distance() > 1 && longest > window).then(|| {
+                format!(
+                    "played in reverse: its keyframes are up to {longest} frames apart, more than \
+                     reverse playback keeps decoded at {width}x{height} ({window} frames)"
+                )
+            })
+        } else {
+            // Not indexed yet: by codec.
+            let codec = video.codec.as_deref()?;
+            LONG_GOP_CODECS.contains(&codec).then(|| {
+                format!("played in reverse: {codec} keeps its keyframes far apart (long GOP)")
+            })
         }
     }
 
@@ -914,12 +928,13 @@ mod tests {
                     .unwrap();
             }
             backend = backend.with_media(&path, media);
-            let id = MediaId::from_u128(100 + i as u128);
+            let i = u8::try_from(i).unwrap();
+            let id = MediaId::from_u128(100 + u128::from(i));
             let mut asset = MediaAsset::file(id, MediaKind::Video, path.to_string_lossy(), probe);
             asset.content_hash = Some(hash.to_string());
             project.media.insert(id, asset);
-            let mut clip = Clip::new(ItemId::from_u128(200 + i as u128), id, Time::ZERO, six);
-            clip.start = Time::from_secs(6 * i as i64).unwrap();
+            let mut clip = Clip::new(ItemId::from_u128(200 + u128::from(i)), id, Time::ZERO, six);
+            clip.start = Time::from_secs(6 * i64::from(i)).unwrap();
             clip.reverse = reversed;
             sequence.track_mut(&v1).unwrap().items.insert(clip.into());
             ids.push(id);

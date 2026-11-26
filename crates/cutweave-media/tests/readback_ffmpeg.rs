@@ -77,9 +77,7 @@ fn reverse_equals_seeks(path: &Path, capacity: usize, check: impl Fn(usize, &Vid
     let playback = DecodeOpts::default()
         .with_hw(HwMode::Off)
         .with_mode(DecodeMode::Sequential);
-    let mut lease = pool
-        .checkout(&playback, None, &CancelToken::new())
-        .unwrap();
+    let mut lease = pool.checkout(&playback, None, &CancelToken::new()).unwrap();
     let mut seeker = backend
         .open_decoder(
             path,

@@ -58,12 +58,13 @@
 //! - **Playback prefers the proxy.** A playback frame read backwards is served from the asset's
 //!   ready proxy, like a scrub frame (intra-frame: every frame costs one decode). The paused
 //!   frame, a step and the refine after a scrub show the original.
-//! - **The original is read back.** Read backwards, a long-GOP original (one whose frames do not
-//!   all decode on their own) is decoded forward in windows ([`ReadBack`]: from the GOP's
-//!   keyframe, at most [`READBACK_BYTES`] of pictures), converted for the compositor once, and
-//!   served from the window until it is used up: a hit takes no lock and allocates nothing. A
-//!   frame the RAM frame cache holds (a stretch played forwards before) comes from there
-//!   instead. At most [`READBACK_MEDIA`] media items keep a window (the least recently used one
+//! - **The original is read back.** Read backwards in small steps (at most a quarter of a
+//!   window: playback, a step, a drag), a long-GOP original (one whose frames do not all decode
+//!   on their own) is decoded forward in windows ([`ReadBack`]: from the GOP's keyframe, at
+//!   most [`READBACK_BYTES`] of pictures), converted for the compositor once, and served from
+//!   the window until it is used up: a hit takes no lock and allocates nothing. A frame the RAM
+//!   frame cache holds (a stretch played forwards before) comes from there instead, and a jump
+//!   back decodes the one frame as before. At most [`READBACK_MEDIA`] media items keep a window (the least recently used one
 //!   is let go), and a window unused for [`READBACK_IDLE_RENDERS`] renders is let go.
 //! - **Proxies are asked for.** The engine requests a proxy for long-GOP media that a reversed
 //!   clip plays and warns while it builds ([`FullProxies::reversed`](super::proxy::FullProxies)).
@@ -647,14 +648,14 @@ impl PreviewFrames {
     }
 
     /// The same front with read-backs of `bytes` per media item (tests).
-    #[cfg(test)]
+    #[cfg(all(test, feature = "ffmpeg"))]
     pub(crate) fn with_readback_budget(mut self, bytes: usize) -> PreviewFrames {
         self.readback_budget = bytes;
         self
     }
 
     /// Windows the read-back of `media` decoded so far (tests).
-    #[cfg(test)]
+    #[cfg(all(test, feature = "ffmpeg"))]
     pub(crate) fn readback_fills(&self, media: MediaId) -> u64 {
         self.held
             .borrow()
@@ -840,15 +841,28 @@ impl PreviewRequest<'_> {
         Ok(converted)
     }
 
-    /// Frame `n` of `held`'s original read backwards (see the module docs): from the RAM frame
-    /// cache when it is there, else from a new read-back window. `None`: not read back (the
-    /// media layer could not; the caller decodes it the ordinary way).
+    /// Frames of `held`'s original a read-back window holds: the budget over the size of its
+    /// last picture (else of a 4:2:0 picture of `size`, else of 1080p).
+    fn readback_capacity(&self, held: &Held, size: Option<(u32, u32)>) -> usize {
+        let bytes = match held.frame_bytes {
+            0 => size.map_or(1920 * 1080 * 3 / 2, |(w, h)| {
+                usize::try_from(u64::from(w) * u64::from(h) * 3 / 2).unwrap_or(usize::MAX)
+            }),
+            b => b,
+        };
+        ReadBack::<()>::capacity_for(self.frames.readback_budget, bytes)
+    }
+
+    /// Frame `n` of `held`'s original read backwards (see the module docs) into windows of
+    /// `capacity` frames: from the RAM frame cache when it is there, else from a new read-back
+    /// window. `None`: not read back (the media layer could not; the caller decodes it the
+    /// ordinary way).
     fn read_back(
         &self,
         held: &mut Held,
         stream: u32,
         n: usize,
-        size: Option<(u32, u32)>,
+        capacity: usize,
     ) -> Result<Option<Arc<VideoFrame>>, FrameError> {
         let Some(index) = held.index.clone() else {
             return Ok(None);
@@ -863,13 +877,6 @@ impl PreviewRequest<'_> {
             held.last = Some((stream, frame.pts, Arc::clone(&converted)));
             return Ok(Some(converted));
         }
-        let bytes = match held.frame_bytes {
-            0 => size.map_or(1920 * 1080 * 3 / 2, |(w, h)| {
-                usize::try_from(u64::from(w) * u64::from(h) * 3 / 2).unwrap_or(usize::MAX)
-            }),
-            b => b,
-        };
-        let capacity = ReadBack::<()>::capacity_for(self.frames.readback_budget, bytes);
         let rb = held.readback.get_or_insert_with(|| ReadBack::new(capacity));
         rb.set_capacity(capacity);
         held.readback_stream = stream;
@@ -927,7 +934,8 @@ impl FrameSource for PreviewRequest<'_> {
         let stream = request.stream.unwrap_or(0);
         let t = request_time(request);
         // Read backwards: a reversed clip, or the transport playing or scrubbing back.
-        let backward = !request.still && held.requested.is_some_and(|p| t < p);
+        let previous = held.requested;
+        let backward = !request.still && previous.is_some_and(|p| t < p);
         held.requested = Some(t);
         // Scrub frames try the proxy first, and so do playback frames read backwards
         // (WP-2D.01b).
@@ -957,12 +965,17 @@ impl FrameSource for PreviewRequest<'_> {
                 held.readback_used = self.frames.renders.get();
                 return Ok(frame);
             }
-            if backward && held.long_gop() {
-                let size = request.source_size;
+            // Read back when the step back is small enough for a window to serve the next few
+            // (playback, a step, a drag); a jump back decodes the one frame.
+            let capacity = self.readback_capacity(held, request.source_size);
+            let step = previous
+                .and_then(|p| held.index.as_ref().and_then(|index| shown_frame(index, p)))
+                .map_or(usize::MAX, |(m, _)| m.saturating_sub(n));
+            if backward && step <= (capacity / 4).max(1) && held.long_gop() {
                 let read = alloc_scope::within(Scope::Media, || {
                     make_room(&mut map, request.media);
                     match map.get_mut(&request.media) {
-                        Some(held) => self.read_back(held, stream, n, size),
+                        Some(held) => self.read_back(held, stream, n, capacity),
                         None => Ok(None),
                     }
                 })?;

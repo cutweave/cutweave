@@ -286,7 +286,7 @@ mod tests {
         let mut rb = ReadBack::new(7);
         for n in (0..40).rev() {
             if rb.get(n).is_none() {
-                rb.fill(decoder.as_mut(), &index, n, |f| Ok::<_, MediaError>(f))
+                rb.fill(decoder.as_mut(), &index, n, Ok::<_, MediaError>)
                     .unwrap();
             }
             let sought = seeker.seek_exact(index.time_of(n).unwrap()).unwrap();

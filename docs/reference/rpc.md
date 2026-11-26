@@ -124,6 +124,7 @@ Events are notifications named after the event, with the event's payload as `par
 | `job.progress`, `media.indexed`, `media.analysis_failed`, `media.import_progress` | Jobs and media analysis |
 | `view.changed` | View state; not sent back to the connection that made the change |
 | `playback.state`, `engine.degraded` | Subsystems (WP-1I.05) |
+| `media.reverse_slow` | Proxies (WP-2D.01b): a clip plays a long-GOP file backwards and the file has no proxy, so reverse playback is slower until the proxy queued for it is ready; `{media_id, reason, job_id}` (`job_id` is null when none was queued: the proxy was evicted or failed before, and `media.generate_proxy` makes it again). Sent once per file per engine session |
 
 `schema/events.json` has the payload schemas. Events of one source arrive in order (document events in revision order); there is no order across sources, nor between a response and the events its call caused.
 

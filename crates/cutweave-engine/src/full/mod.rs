@@ -60,6 +60,8 @@ pub mod preview;
 #[cfg(test)]
 mod preview_alloc;
 pub mod proxy;
+#[cfg(all(test, feature = "ffmpeg"))]
+mod reverse_ffmpeg;
 mod watch;
 
 use std::any::TypeId;
