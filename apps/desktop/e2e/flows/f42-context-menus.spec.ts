@@ -16,7 +16,7 @@
 // flow right-clicks the Export chip and cancels the export (it needs
 // the FFmpeg engine and the corpus, like F14, and skips without them). Every choice is checked as
 // an undo step or as state the person sees. Only the OS file picker is stubbed.
-import { expect, test } from "../fixtures.ts";
+import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   clickClip,
@@ -45,6 +45,7 @@ import {
   shortcut,
   snapshot,
   timecode,
+  timelineCanvas,
   timelineGeometry,
   timelineTools,
   toast,
@@ -397,6 +398,12 @@ test.describe("F42 context menus", () => {
         m.getByRole("menuitem", { name });
       const clipsOnV1 = async () => (await layout(page))[0]?.clips;
       const original = (await sequence(page)).tracks[0]?.items[0]?.id ?? "";
+      // Zoom out (- on the focused timeline) so the playhead can go well past the clip.
+      await timelineCanvas(page).locator("canvas").focus();
+      for (let n = 0; n < 5; n += 1) await page.keyboard.press("-");
+      await expect
+        .poll(async () => (await editorCall<{ zoom: number | null }>(page, "view.get")).zoom)
+        .toBeLessThan(35);
       const moveTo = async (s: number) => {
         const g = await timelineGeometry(page);
         await page.mouse.click(xAt(g, sec(s)) + 1, rulerY(g));
@@ -476,7 +483,7 @@ test.describe("F42 context menus", () => {
       await item(clipMenu, /^Copy/).click();
       await expect(menu).toHaveCount(0);
       g = await timelineGeometry(page);
-      await page.mouse.click(xAt(g, sec(30)), laneY(g, "V1"), { button: "right" });
+      await page.mouse.click(xAt(g, sec(22)), laneY(g, "V1"), { button: "right" });
       const laneMenu = page.getByRole("menu", { name: "Timeline actions" });
       await expect(laneMenu).toBeVisible();
       await item(laneMenu, /^Paste here/).click();

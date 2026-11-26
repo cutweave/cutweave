@@ -859,10 +859,7 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("item.duplicate"), ["items"]);
     assert_eq!(required("timeline.copy"), ["items"]);
     assert_eq!(required("timeline.paste"), ["payload", "at"]);
-    assert_eq!(
-        required("clip.paste_attributes"),
-        ["from", "to", "which"]
-    );
+    assert_eq!(required("clip.paste_attributes"), ["from", "to", "which"]);
     assert_eq!(required("item.delete"), ["items"]);
     assert_eq!(required("item.link"), ["items"]);
     assert_eq!(required("item.unlink"), ["items"]);
