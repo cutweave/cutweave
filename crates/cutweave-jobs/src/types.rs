@@ -22,6 +22,8 @@ pub enum JobKind {
     /// Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller
     /// intra-frame copy.
     Proxy,
+    /// Copying a project's files into another folder (WP-2F.04): disk work, no decoding.
+    Collect,
 }
 
 impl JobKind {
@@ -32,6 +34,8 @@ impl JobKind {
             JobKind::Analysis => Budget::Decode,
             JobKind::Export => Budget::Export,
             JobKind::Proxy => Budget::Proxy,
+            // File copies share the slots of the other disk-heavy background work.
+            JobKind::Collect => Budget::Decode,
         }
     }
 }

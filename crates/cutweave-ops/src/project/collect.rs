@@ -67,7 +67,7 @@ pub enum CollectMode {
 }
 
 /// What both collect commands take.
-#[wire]
+#[derive(Clone, Debug)]
 pub struct CollectOptions {
     /// Absolute path of the folder to collect into: a new or empty folder, or the folder of
     /// an interrupted collect of this project.
@@ -614,9 +614,16 @@ fn prepare(options: &CollectOptions, ctx: &CollectCtx) -> Result<(CollectPlan, C
 /// cannot be copied because their file is missing. Changes nothing.
 #[wire]
 pub struct ProjectCollectEstimate {
-    /// What to collect and where.
-    #[serde(flatten)]
-    pub options: CollectOptions,
+    /// Absolute path of the folder to collect into: a new or empty folder, or the folder of
+    /// an interrupted collect of this project.
+    pub dest: String,
+    /// Where media go: `copy_all` (default, everything under `media/`) or
+    /// `copy_external_only` (files inside the project folder keep their place).
+    pub mode: Option<CollectMode>,
+    /// Leave out the media no timeline uses (default false).
+    pub trim_unused: Option<bool>,
+    /// Also copy the project's `generated/` folder (default true).
+    pub include_generated: Option<bool>,
 }
 
 impl Described for ProjectCollectEstimate {
@@ -653,7 +660,12 @@ impl EngineCommand for ProjectCollectEstimate {
     type Output = CollectEstimate;
 
     fn run(&self, ctx: &mut CollectCtx) -> Result<CollectEstimate, CmdError> {
-        prepare(&self.options, ctx).map(|(_, estimate)| estimate)
+        prepare(&CollectOptions {
+            dest: self.dest.clone(),
+            mode: self.mode,
+            trim_unused: self.trim_unused,
+            include_generated: self.include_generated,
+        }, ctx).map(|(_, estimate)| estimate)
     }
 }
 
@@ -685,9 +697,16 @@ pub struct ProjectCollectOutput {
     annotations(destructive = false, idempotent = true)
 )]
 pub struct ProjectCollect {
-    /// What to collect and where.
-    #[serde(flatten)]
-    pub options: CollectOptions,
+    /// Absolute path of the folder to collect into: a new or empty folder, or the folder of
+    /// an interrupted collect of this project.
+    pub dest: String,
+    /// Where media go: `copy_all` (default, everything under `media/`) or
+    /// `copy_external_only` (files inside the project folder keep their place).
+    pub mode: Option<CollectMode>,
+    /// Leave out the media no timeline uses (default false).
+    pub trim_unused: Option<bool>,
+    /// Also copy the project's `generated/` folder (default true).
+    pub include_generated: Option<bool>,
 }
 
 impl EngineCommand for ProjectCollect {
@@ -695,7 +714,12 @@ impl EngineCommand for ProjectCollect {
     type Output = ProjectCollectOutput;
 
     fn run(&self, ctx: &mut CollectCtx) -> Result<ProjectCollectOutput, CmdError> {
-        let (plan, estimate) = prepare(&self.options, ctx)?;
+        let (plan, estimate) = prepare(&CollectOptions {
+            dest: self.dest.clone(),
+            mode: self.mode,
+            trim_unused: self.trim_unused,
+            include_generated: self.include_generated,
+        }, ctx)?;
         if let Some(first) = estimate.missing.first() {
             let more = estimate.missing.len() - 1;
             return Err(CmdError::invalid(
