@@ -300,3 +300,35 @@ describe("snapping", () => {
     expect(out.point).toEqual({ x: 960, y: 100 });
   });
 });
+
+describe("two 16:9 clips side by side on a 16:9 canvas (WP-2H.06 task)", () => {
+  // Per clip: Shift-drag the left crop edge a quarter in (crops both sides), then drag the clip
+  // to its half, where the edge snaps to the canvas edge or the centre line. Each clip ends up
+  // filling its half within 1 px, in two drags.
+  const half = (side: "left" | "right") => {
+    let s = state();
+    const cropped = cropDrag(s, geomOf(s), ["left"], { x: 480, y: 540 }, true);
+    s = { ...s, crop: cropped };
+    expect(cropped).toEqual({ left: 0.25, top: 0, right: 0.25, bottom: 0 });
+    const g = geomOf(s);
+    // The visible part is 480..1440; the pointer stops 10 px short of the half it belongs to.
+    const want = side === "left" ? -480 : 480;
+    const delta = { x: want + (side === "left" ? 10 : -10), y: 0 };
+    const snap = snapBounds(
+      [g.bounds[0] + delta.x, g.bounds[1], g.bounds[2] + delta.x, g.bounds[3]],
+      canvasTargets(canvas),
+      12,
+    );
+    const position = moveBy(s, { x: delta.x + snap.dx, y: 0 }, canvas);
+    return geomOf({ ...s, position }).bounds;
+  };
+  it("fills the left and the right half exactly", () => {
+    const left = half("left");
+    near(left[0], 0, 1e-6);
+    near(left[2], 960, 1e-6);
+    const right = half("right");
+    near(right[0], 960, 1e-6);
+    near(right[2], 1920, 1e-6);
+    near(left[3] - left[1], 1080, 1e-6);
+  });
+});
