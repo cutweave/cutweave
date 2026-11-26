@@ -84,7 +84,7 @@ test.describe("F8 save, close, reopen", () => {
         // The clip is on the timeline where it was, with its opacity.
         await clickClip(second.page, id);
         await expect(inspector(second.page).start).toHaveValue("00:00:01:00");
-        await expect(inspector(second.page).opacity).toHaveAttribute("aria-valuetext", "90 %");
+        await expect(inspector(second.page).opacity).toHaveAttribute("aria-valuetext", "90%");
         await snapshot(second.page, info, "reopened");
       } finally {
         await second.close();

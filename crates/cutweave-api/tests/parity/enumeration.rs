@@ -169,6 +169,8 @@ const ANNOTATIONS: &[&str] = &[
     "readOnly",
     "writeOnly",
     "$comment",
+    // Render hints for the Inspector (WP-2H.02): the listed MCP schemas leave them out.
+    "x-ui",
 ];
 /// Keywords whose value maps names (not keywords) to subschemas.
 const SCHEMA_MAPS: &[&str] = &[

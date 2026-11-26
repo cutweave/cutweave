@@ -931,7 +931,6 @@
     "duration": "Duration",
     "clip": "Clip",
     "timing": "Timing",
-    "transform": "Transform",
     "audio": "Audio",
     "mixed": "Mixed",
     "multiple": "{{count}} clips selected. Mixed values stay as they are until you change them.",
@@ -940,23 +939,18 @@
       "name": "Name",
       "start": "Start",
       "duration": "Duration",
-      "opacity": "Opacity",
-      "positionX": "Position X",
-      "positionY": "Position Y",
-      "scale": "Scale",
-      "rotation": "Rotation",
       "gain": "Gain"
     },
     "history": {
       "name": "Rename clip",
-      "opacity": "Change opacity",
-      "positionX": "Change position",
-      "positionY": "Change position",
-      "scale": "Change scale",
-      "rotation": "Change rotation",
       "gain": "Change gain",
       "start": "Move clip",
-      "duration": "Trim clip"
+      "duration": "Trim clip",
+      "change": "Change {{name}}",
+      "reset": "Reset {{name}}",
+      "addKey": "Add keyframe for {{name}}",
+      "removeKey": "Remove keyframe for {{name}}",
+      "track": "Change track {{name}}"
     },
     "time": {
       "invalid": "Not a time. Try 00:00:02:00, 2.5s or f:60.",
@@ -988,6 +982,64 @@
         "pause": "Pause {{name}}"
       },
       "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up."
+    },
+    "groups": {
+      "transform": "Transform",
+      "crop": "Crop",
+      "flip": "Flip",
+      "compositing": "Compositing",
+      "video": "Video"
+    },
+    "props": {
+      "transformPosition": "position",
+      "transformScale": "scale",
+      "transformRotation": "rotation",
+      "transformAnchor": "anchor",
+      "opacity": "opacity",
+      "blendMode": "blend mode",
+      "cropLeft": "crop left",
+      "cropTop": "crop top",
+      "cropRight": "crop right",
+      "cropBottom": "crop bottom",
+      "flipHorizontal": "flip horizontal",
+      "flipVertical": "flip vertical"
+    },
+    "labels": {
+      "transformPosition": "Position",
+      "transformScale": "Scale",
+      "transformRotation": "Rotation",
+      "transformAnchor": "Anchor",
+      "opacity": "Opacity",
+      "blendMode": "Blend mode",
+      "cropLeft": "Left",
+      "cropTop": "Top",
+      "cropRight": "Right",
+      "cropBottom": "Bottom",
+      "flipHorizontal": "Horizontal",
+      "flipVertical": "Vertical"
+    },
+    "clipInfo": {
+      "source": "Source",
+      "proxy": "Proxy",
+      "proxyStates": {
+        "none": "None",
+        "queued": "Waiting",
+        "generating": "Making",
+        "ready": "Ready",
+        "incomplete": "Stopped",
+        "evicted": "Removed",
+        "failed": "Failed"
+      },
+      "unknownSource": "Unknown file"
+    },
+    "track": {
+      "title": "Track",
+      "name": "Track name",
+      "gain": "Track gain",
+      "muted": "Mute",
+      "hidden": "Hide",
+      "locked": "Lock",
+      "several": "The selected clips sit on different tracks. Select clips of one track to change it."
     }
   },
   "history": {

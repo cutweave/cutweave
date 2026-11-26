@@ -12,7 +12,11 @@ export interface RecordedCall {
   readonly meta: unknown;
 }
 
+/** Reads the panels make on their own (they change nothing); `calls` leaves them out. */
+const READS: ReadonlySet<string> = new Set(["media.proxy_status", "keyframe.eval"]);
+
 export interface FakeEngine {
+  /** The commands called, in order (reads such as `keyframe.eval` are not listed). */
   readonly calls: RecordedCall[];
   /** Names of the calls, in order. */
   names(): string[];
@@ -36,7 +40,7 @@ export function createFakeEngine(): FakeEngine {
   const rejections = new Map<string, Error>();
   const rpc = {
     call(name: string, input: unknown, meta?: unknown): Promise<unknown> {
-      calls.push({ name, input, meta });
+      if (!READS.has(name)) calls.push({ name, input, meta });
       const error = rejections.get(name);
       if (error !== undefined) {
         rejections.delete(name);

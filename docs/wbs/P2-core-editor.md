@@ -35,7 +35,7 @@ Parallel tracks that must land before the dogfood edits:
 - Audio: `2E.01` → `2E.02` → `2E.05`.
 - Media: `2F.01` → `2F.02`.
 - Export: `2G.01` → `2G.03` → `2G.04`.
-- UI shell: `2H.01` → `2H.02` → `2H.03`.
+- UI shell: `2H.01` → `2H.02` → `2H.03a` → `2H.03b`.
 - Gates: `2J.01` → `2J.04` (benchmarks) and `2J.05` (crash harness) run in parallel with the dogfood prep.
 
 Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-days. This fits only with 6–8 agents running in parallel across the tracks above and 1–2 human reviewers acting as the merge bottleneck. Staff the 2A opus WPs first.
@@ -595,7 +595,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2C.08 — Layouts for several clips: side by side, top and bottom, picture in picture, grids
 - **Area:** crates/cutweave-ops/src/item/ (`item.apply_layout`, the layout table as data), generated schema and TS types, packages/editor (a Layout menu in the Inspector, the timeline's clip menu and the bin), apps/desktop/e2e/flows, docs/user-flows.md
-- **Depends on:** WP-2C.03, WP-2C.04, WP-2H.03, WP-2A.10, WP-2B.01
+- **Depends on:** WP-2C.03, WP-2C.04, WP-2H.03a, WP-2A.10, WP-2B.01
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** (product owner request, 2026-11-24: "if I want to place 2 videos side by side on the timeline, will it be possible?") Today this is possible by hand. A second clip dropped at the same time goes to a new track, then Scale 50 % and Position X ±480 in the Inspector. The clips are letterboxed, though, because P1 has no crop. Crop arrives with WP-2C.03, WP-2C.04 and WP-2H.03, and transform handles and snapping with WP-2H.06. This WP makes the arrangement one action.
@@ -760,7 +760,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Scope:**
   - Waveform rendering in audio items (peak pyramid, LOD by zoom, dB-scale option), volume line overlay with draggable keyframe points (rubber band) and fade handles at item corners (drag = `audio.set_fade` under `gesture` tx). Shows normalization/limited badges.
   - Mixer panel: per-track fader, pan knob, mute/solo, live peak meters from `playback.meters`, master fader plus limiter toggle and LUFS readout. Double-click resets.
-  - Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03). Its "Fade in" and "Fade out" buttons add a fade of the length set in Settings > Editing ("Length of a fade added with one click", `editing.audio_fade`, 0.5 s; catalog `docs/reference/settings.md`).
+  - Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03b). Its "Fade in" and "Fade out" buttons add a fade of the length set in Settings > Editing ("Length of a fade added with one click", `editing.audio_fade`, 0.5 s; catalog `docs/reference/settings.md`).
   - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus for the fade handle (Linear, Logarithmic and other fade curves, Remove fade), the volume line (Reset to 0 dB, Add point here, Delete point) and the mixer fader (Reset, Mute, Solo, Bus ▸).
 - **Interfaces:** consumes 2E commands; `<Mixer/>` panel registered in the dock registry (2H.01).
 - **Acceptance criteria:**
@@ -1186,21 +1186,34 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Tests:** Vitest, insta, axe.
 - **Out of scope:** effect/composition params (P3/P4 reuse it), AI model forms (P5).
 
-### WP-2H.03 — Inspector wiring: clip, track, sequence, audio, export panels
-- **Area:** packages/editor/src/inspector/
-- **Depends on:** WP-2H.02, WP-2C.03, WP-2E.01, WP-2B.01, WP-2D.01
+### WP-2H.03a — Inspector wiring: video, clip info, track, keyframes
+- **Area:** packages/editor/src/inspector/ (and the editor wiring it needs), `#[ui]` hints on the `item.set_props` params in crates/cutweave-ops (with the regenerated schema and TS types), apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2H.02, WP-2C.03
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
-  - Context inspector: shows sections by selection: Video (transform, crop, opacity, flip, blend), Speed (rate, reverse, freeze button), Audio (volume, pan, fades, preserve-pitch, normalize), Clip info (name, color label, source, proxy status), Track (name, flags, gain), Sequence (format, background, frame rate) when nothing is selected. Multi-selection edits apply to all (`items[]`).
-  - Sections are data-driven from `item.get`/schema; no hand-coded property lists: adding a property to the schema adds a control (tested).
-  - Keyframe navigation (prev/next keyframe), "add keyframe at playhead", "reset" buttons.
-  - Numeric entry supports expressions (`+10`, `*2`, `50%`).
-- **Interfaces:** consumes the schemas of `item.set_props`, `clip.set_speed`, `audio.*`, `sequence.set_format`.
+  - Context inspector sections by selection: Video (transform, crop, opacity, flip, blend), Clip info (name, source, proxy status), Track (name, flags, gain). Multi-selection edits apply to all (`items[]`) in one undo step; fields where the clips differ show "Mixed".
+  - The Video section is data-driven from the `item.set_props` input schema (`x-ui` hints, WP-2H.02): adding a property to the schema adds a control with no UI code change (tested).
+  - Keyframe navigation (previous and next key), "add or remove keyframe at playhead" and "reset" per property, and a section reset; animated properties show their value at the playhead and edits key at the playhead.
+  - Numeric entry supports expressions (`+10`, `*2`, `/2`, `50%`).
+- **Interfaces:** consumes `item.set_props`, `item.reset_props`, `keyframe.*`, `track.set`; the `item.set_props` schema's `x-ui` hints.
 - **Acceptance criteria:**
-  - Playwright: select two clips, set opacity 50% for both in one undo step; keyframe a position animation and verify with `timeline.get`.
+  - Playwright: select two clips, set opacity 50% for both in one undo step; keyframe a position animation and verify with `item.get`.
   - Adding a dummy optional prop in a test build schema adds a control without UI code changes (test).
   - Inspector update latency (typing a value → preview shows change) p95 < 100 ms (probe).
+- **Tests:** Playwright, Vitest.
+- **Out of scope:** Audio, Speed and Sequence sections (WP-2H.03b); effects, text, masks sections; color label (no model field).
+
+### WP-2H.03b — Inspector wiring: audio, speed and sequence
+- **Area:** packages/editor/src/inspector/, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2H.03a, WP-2E.01, WP-2D.01, WP-2B.01
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Speed (rate, reverse, freeze button), Audio (volume, pan, fades, preserve-pitch, normalize) and Sequence (format, background, frame rate, shown when nothing is selected) sections, on the data-driven sections and keyframe wiring of WP-2H.03a. The Audio section replaces the hand-coded Gain row.
+- **Interfaces:** consumes the schemas of `clip.set_speed`, `audio.*`, `sequence.set_format`.
+- **Acceptance criteria:**
+  - Playwright: set a clip's volume and pan for two clips at once; change the sequence format with nothing selected.
 - **Tests:** Playwright, Vitest.
 - **Out of scope:** effects, text, masks sections.
 
@@ -1281,7 +1294,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2H.07 — UX design review gate (human)
 - **Area:** docs/reviews/p2-ux-review.md
-- **Depends on:** WP-2A.10, WP-2H.01, WP-2H.03, WP-2H.05, WP-2H.06
+- **Depends on:** WP-2A.10, WP-2H.01, WP-2H.03a, WP-2H.05, WP-2H.06
 - **Size:** S
 - **Executor:** human
 - **Scope:** structured review of the editor against research/01-capcut-features.md behaviours worth matching (magnetic track, snapping feel, aspect switch, inspector structure, keyframe workflow). Also review the context menus: every surface in [09-context-menus.md](../research/09-context-menus.md) sections 2 and 6 has a menu or a stated reason for none, no menu shows more than about 12 rows, and the order follows frequency. Output a prioritized defect list (P0 blockers for dogfood, P1, P2), each filed as an issue with `phase:P2` label.
@@ -1803,8 +1816,8 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | Sequences: multiple per project | 2B.01, 2B.03 |
 | Sequences: settings with aspect presets | 2B.01, 2B.03 |
 | Sequences: background fill (color, blur, image) | 2B.02, 2B.03 |
-| Clip properties: transform, crop, opacity, flip, core blend modes (§8) | 2C.03 (model fields), 2C.04, 2H.03, 2H.06 |
-| (product owner request, 2026-11-24) Two or more videos side by side, top and bottom, picture in picture, grids | 2C.08 (with 2C.03, 2C.04, 2H.03, 2H.06) |
+| Clip properties: transform, crop, opacity, flip, core blend modes (§8) | 2C.03 (model fields), 2C.04, 2H.03a, 2H.06 |
+| (product owner request, 2026-11-24) Two or more videos side by side, top and bottom, picture in picture, grids | 2C.08 (with 2C.03, 2C.04, 2H.03a, 2H.06) |
 | Keyframes for all animatable props with easing | 2C.01, 2C.02, 2C.03 |
 | Keyframe lanes in the timeline | 2C.05 |
 | Bezier graph editor | 2C.07 |
@@ -1832,7 +1845,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | Export: range or marker set | 2G.03, 2G.04 |
 | UI: dockable workspace, Short-form/Long-form | 2H.01 |
 | (product owner requests, 2026-11-24) UI: close and reopen panels (View > Panels); History panel | 2H.01, 2H.11 |
-| UI: schema-driven inspector | 2H.02, 2H.03 |
+| UI: schema-driven inspector | 2H.02, 2H.03a, 2H.03b |
 | (product owner request, 2026-11-25) UI: context menus on every surface | 2H.12, 2H.13, plus a menu bullet in 39 WPs (research [09-context-menus.md](../research/09-context-menus.md)) |
 | UI: command palette | 2H.04 |
 | UI: shortcut editor (NLE + CapCut presets) | 2H.05 |

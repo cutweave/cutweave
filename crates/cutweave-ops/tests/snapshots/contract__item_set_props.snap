@@ -53,14 +53,22 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "string",
                 "null"
               ],
-              "description": "Display name; an empty string clears it (the media name is shown again)."
+              "description": "Display name; an empty string clears it (the media name is shown again).",
+              "x-ui": {
+                "group": "clip",
+                "order": 0
+              }
             },
             "enabled": {
               "type": [
                 "boolean",
                 "null"
               ],
-              "description": "Rendered and heard (`true`) or kept but skipped (`false`)."
+              "description": "Rendered and heard (`true`) or kept but skipped (`false`).",
+              "x-ui": {
+                "group": "clip",
+                "order": 1
+              }
             },
             "opacity": {
               "type": [
@@ -70,7 +78,16 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "format": "double",
               "description": "Opacity `0.0..=1.0`.",
               "minimum": 0.0,
-              "maximum": 1.0
+              "maximum": 1.0,
+              "x-ui": {
+                "widget": "slider",
+                "step": 0.01,
+                "unit": "%",
+                "scale": 100.0,
+                "keyframeable": true,
+                "group": "compositing",
+                "order": 0
+              }
             },
             "audio_gain": {
               "type": [
@@ -80,7 +97,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "format": "double",
               "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
               "minimum": -144.0,
-              "maximum": 48.0
+              "maximum": 48.0,
+              "x-ui": {
+                "unit": "dB",
+                "step": 0.5,
+                "precision": 1,
+                "keyframeable": true,
+                "group": "audio",
+                "order": 0
+              }
             },
             "audio_pan": {
               "type": [
@@ -90,7 +115,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "format": "double",
               "description": "Stereo position, `-1` (left) to `1` (right).",
               "minimum": -1.0,
-              "maximum": 1.0
+              "maximum": 1.0,
+              "x-ui": {
+                "step": 0.05,
+                "keyframeable": true,
+                "group": "audio",
+                "order": 1
+              }
             },
             "transform": {
               "type": [
@@ -121,7 +152,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "x",
                     "y"
                   ],
-                  "description": "Offset of the anchor from the canvas center, in canvas units (+y is down)."
+                  "description": "Offset of the anchor from the canvas center, in canvas units (+y is down).",
+                  "x-ui": {
+                    "widget": "vec2",
+                    "unit": "px",
+                    "step": 1.0,
+                    "keyframeable": true
+                  }
                 },
                 "scale": {
                   "type": [
@@ -145,7 +182,16 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "x",
                     "y"
                   ],
-                  "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`."
+                  "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`.",
+                  "x-ui": {
+                    "widget": "vec2",
+                    "unit": "%",
+                    "scale": 100.0,
+                    "step": 0.01,
+                    "min": 0.0,
+                    "linked": true,
+                    "keyframeable": true
+                  }
                 },
                 "rotation": {
                   "type": [
@@ -153,7 +199,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "null"
                   ],
                   "format": "double",
-                  "description": "Clockwise rotation in degrees."
+                  "description": "Clockwise rotation in degrees.",
+                  "x-ui": {
+                    "widget": "number",
+                    "unit": "°",
+                    "step": 1.0,
+                    "keyframeable": true
+                  }
                 },
                 "anchor": {
                   "type": [
@@ -177,10 +229,20 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "x",
                     "y"
                   ],
-                  "description": "The item point `position` places and rotation turns around, in item units."
+                  "description": "The item point `position` places and rotation turns around, in item units.",
+                  "x-ui": {
+                    "widget": "vec2",
+                    "step": 1.0,
+                    "keyframeable": true,
+                    "advanced": true
+                  }
                 }
               },
-              "description": "Placement on the canvas (partial)."
+              "description": "Placement on the canvas (partial).",
+              "x-ui": {
+                "group": "transform",
+                "order": 1
+              }
             },
             "crop": {
               "type": [
@@ -197,7 +259,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "format": "double",
                   "description": "Fraction removed from the left edge.",
                   "minimum": 0.0,
-                  "maximum": 1.0
+                  "maximum": 1.0,
+                  "x-ui": {
+                    "widget": "number",
+                    "unit": "%",
+                    "scale": 100.0,
+                    "step": 0.01,
+                    "keyframeable": true
+                  }
                 },
                 "top": {
                   "type": [
@@ -207,7 +276,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "format": "double",
                   "description": "Fraction removed from the top edge.",
                   "minimum": 0.0,
-                  "maximum": 1.0
+                  "maximum": 1.0,
+                  "x-ui": {
+                    "widget": "number",
+                    "unit": "%",
+                    "scale": 100.0,
+                    "step": 0.01,
+                    "keyframeable": true
+                  }
                 },
                 "right": {
                   "type": [
@@ -217,7 +293,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "format": "double",
                   "description": "Fraction removed from the right edge.",
                   "minimum": 0.0,
-                  "maximum": 1.0
+                  "maximum": 1.0,
+                  "x-ui": {
+                    "widget": "number",
+                    "unit": "%",
+                    "scale": 100.0,
+                    "step": 0.01,
+                    "keyframeable": true
+                  }
                 },
                 "bottom": {
                   "type": [
@@ -227,10 +310,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "format": "double",
                   "description": "Fraction removed from the bottom edge.",
                   "minimum": 0.0,
-                  "maximum": 1.0
+                  "maximum": 1.0,
+                  "x-ui": {
+                    "widget": "number",
+                    "unit": "%",
+                    "scale": 100.0,
+                    "step": 0.01,
+                    "keyframeable": true
+                  }
                 }
               },
-              "description": "Edges of the source picture cut away (partial)."
+              "description": "Edges of the source picture cut away (partial).",
+              "x-ui": {
+                "group": "crop",
+                "order": 2
+              }
             },
             "flip": {
               "type": [
@@ -244,17 +338,27 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "boolean",
                     "null"
                   ],
-                  "description": "Mirror left-right."
+                  "description": "Mirror left-right.",
+                  "x-ui": {
+                    "keyframeable": true
+                  }
                 },
                 "vertical": {
                   "type": [
                     "boolean",
                     "null"
                   ],
-                  "description": "Mirror top-bottom."
+                  "description": "Mirror top-bottom.",
+                  "x-ui": {
+                    "keyframeable": true
+                  }
                 }
               },
-              "description": "Mirroring (partial)."
+              "description": "Mirroring (partial).",
+              "x-ui": {
+                "group": "flip",
+                "order": 3
+              }
             },
             "blend_mode": {
               "description": "How the item combines with what is below.",
@@ -272,7 +376,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "add",
                 "soft_light",
                 null
-              ]
+              ],
+              "x-ui": {
+                "group": "compositing",
+                "order": 1
+              }
             }
           },
           "description": "The properties to change; at least one."
@@ -429,14 +537,22 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "string",
               "null"
             ],
-            "description": "Display name; an empty string clears it (the media name is shown again)."
+            "description": "Display name; an empty string clears it (the media name is shown again).",
+            "x-ui": {
+              "group": "clip",
+              "order": 0
+            }
           },
           "enabled": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Rendered and heard (`true`) or kept but skipped (`false`)."
+            "description": "Rendered and heard (`true`) or kept but skipped (`false`).",
+            "x-ui": {
+              "group": "clip",
+              "order": 1
+            }
           },
           "opacity": {
             "type": [
@@ -446,7 +562,16 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "format": "double",
             "description": "Opacity `0.0..=1.0`.",
             "minimum": 0.0,
-            "maximum": 1.0
+            "maximum": 1.0,
+            "x-ui": {
+              "widget": "slider",
+              "step": 0.01,
+              "unit": "%",
+              "scale": 100.0,
+              "keyframeable": true,
+              "group": "compositing",
+              "order": 0
+            }
           },
           "audio_gain": {
             "type": [
@@ -456,7 +581,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "format": "double",
             "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
             "minimum": -144.0,
-            "maximum": 48.0
+            "maximum": 48.0,
+            "x-ui": {
+              "unit": "dB",
+              "step": 0.5,
+              "precision": 1,
+              "keyframeable": true,
+              "group": "audio",
+              "order": 0
+            }
           },
           "audio_pan": {
             "type": [
@@ -466,7 +599,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "format": "double",
             "description": "Stereo position, `-1` (left) to `1` (right).",
             "minimum": -1.0,
-            "maximum": 1.0
+            "maximum": 1.0,
+            "x-ui": {
+              "step": 0.05,
+              "keyframeable": true,
+              "group": "audio",
+              "order": 1
+            }
           },
           "transform": {
             "type": [
@@ -497,7 +636,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "x",
                   "y"
                 ],
-                "description": "Offset of the anchor from the canvas center, in canvas units (+y is down)."
+                "description": "Offset of the anchor from the canvas center, in canvas units (+y is down).",
+                "x-ui": {
+                  "widget": "vec2",
+                  "unit": "px",
+                  "step": 1.0,
+                  "keyframeable": true
+                }
               },
               "scale": {
                 "type": [
@@ -521,7 +666,16 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "x",
                   "y"
                 ],
-                "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`."
+                "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`.",
+                "x-ui": {
+                  "widget": "vec2",
+                  "unit": "%",
+                  "scale": 100.0,
+                  "step": 0.01,
+                  "min": 0.0,
+                  "linked": true,
+                  "keyframeable": true
+                }
               },
               "rotation": {
                 "type": [
@@ -529,7 +683,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "null"
                 ],
                 "format": "double",
-                "description": "Clockwise rotation in degrees."
+                "description": "Clockwise rotation in degrees.",
+                "x-ui": {
+                  "widget": "number",
+                  "unit": "°",
+                  "step": 1.0,
+                  "keyframeable": true
+                }
               },
               "anchor": {
                 "type": [
@@ -553,10 +713,20 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "x",
                   "y"
                 ],
-                "description": "The item point `position` places and rotation turns around, in item units."
+                "description": "The item point `position` places and rotation turns around, in item units.",
+                "x-ui": {
+                  "widget": "vec2",
+                  "step": 1.0,
+                  "keyframeable": true,
+                  "advanced": true
+                }
               }
             },
-            "description": "Placement on the canvas (partial)."
+            "description": "Placement on the canvas (partial).",
+            "x-ui": {
+              "group": "transform",
+              "order": 1
+            }
           },
           "crop": {
             "type": [
@@ -573,7 +743,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "format": "double",
                 "description": "Fraction removed from the left edge.",
                 "minimum": 0.0,
-                "maximum": 1.0
+                "maximum": 1.0,
+                "x-ui": {
+                  "widget": "number",
+                  "unit": "%",
+                  "scale": 100.0,
+                  "step": 0.01,
+                  "keyframeable": true
+                }
               },
               "top": {
                 "type": [
@@ -583,7 +760,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "format": "double",
                 "description": "Fraction removed from the top edge.",
                 "minimum": 0.0,
-                "maximum": 1.0
+                "maximum": 1.0,
+                "x-ui": {
+                  "widget": "number",
+                  "unit": "%",
+                  "scale": 100.0,
+                  "step": 0.01,
+                  "keyframeable": true
+                }
               },
               "right": {
                 "type": [
@@ -593,7 +777,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "format": "double",
                 "description": "Fraction removed from the right edge.",
                 "minimum": 0.0,
-                "maximum": 1.0
+                "maximum": 1.0,
+                "x-ui": {
+                  "widget": "number",
+                  "unit": "%",
+                  "scale": 100.0,
+                  "step": 0.01,
+                  "keyframeable": true
+                }
               },
               "bottom": {
                 "type": [
@@ -603,10 +794,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "format": "double",
                 "description": "Fraction removed from the bottom edge.",
                 "minimum": 0.0,
-                "maximum": 1.0
+                "maximum": 1.0,
+                "x-ui": {
+                  "widget": "number",
+                  "unit": "%",
+                  "scale": 100.0,
+                  "step": 0.01,
+                  "keyframeable": true
+                }
               }
             },
-            "description": "Edges of the source picture cut away (partial)."
+            "description": "Edges of the source picture cut away (partial).",
+            "x-ui": {
+              "group": "crop",
+              "order": 2
+            }
           },
           "flip": {
             "type": [
@@ -620,17 +822,27 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "boolean",
                   "null"
                 ],
-                "description": "Mirror left-right."
+                "description": "Mirror left-right.",
+                "x-ui": {
+                  "keyframeable": true
+                }
               },
               "vertical": {
                 "type": [
                   "boolean",
                   "null"
                 ],
-                "description": "Mirror top-bottom."
+                "description": "Mirror top-bottom.",
+                "x-ui": {
+                  "keyframeable": true
+                }
               }
             },
-            "description": "Mirroring (partial)."
+            "description": "Mirroring (partial).",
+            "x-ui": {
+              "group": "flip",
+              "order": 3
+            }
           },
           "blend_mode": {
             "description": "How the item combines with what is below.",
@@ -648,7 +860,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "add",
               "soft_light",
               null
-            ]
+            ],
+            "x-ui": {
+              "group": "compositing",
+              "order": 1
+            }
           }
         },
         "description": "The properties to change; at least one."

@@ -5,16 +5,26 @@
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 
-/** The sections the Inspector has: a clip's four, a media asset's, the project's. */
+/**
+ * The sections the Inspector has: a clip's (the Video ones are named by the engine's `x-ui.group`
+ * of the property, so `transform` to `video` here are the groups it knows), a media asset's and
+ * the project's. "Collapse all" closes these.
+ */
 export const INSPECTOR_SECTIONS = [
   "clip",
   "timing",
+  "track",
   "transform",
+  "crop",
+  "flip",
+  "compositing",
+  "video",
   "audio",
   "media",
   "project",
 ] as const;
-export type InspectorSectionId = (typeof INSPECTOR_SECTIONS)[number];
+/** A section id: one of the above, or a group a newer schema brings. */
+export type InspectorSectionId = string;
 
 export interface SectionsStore {
   /** Sections the person closed; everything else is open. */

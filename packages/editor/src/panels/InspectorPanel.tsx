@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MediaAsset } from "@cutweave/protocol";
+import type { MediaAsset, ProxyStatus } from "@cutweave/protocol";
 import { formatTimecode } from "@cutweave/timeline";
-import { InspectorRow, InspectorSection, NumberScrubber, Slider, TextField } from "@cutweave/ui";
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { InspectorRow, NumberScrubber, Slider, TextField } from "@cutweave/ui";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { selectSelectedClips, selectSelectedMedia } from "../inspector/clips.ts";
@@ -18,8 +19,11 @@ import {
   type TextField as TextFieldDef,
   type TimeField,
 } from "../inspector/fields.ts";
+import { PROXY_STATES } from "../inspector/labels.ts";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
-import { type InspectorSectionId, useSection } from "../inspector/sections.ts";
+import { Section } from "../inspector/Section.tsx";
+import { TrackSection } from "../inspector/TrackSection.tsx";
+import { VideoSections } from "../inspector/VideoSections.tsx";
 import { ContextSurface } from "../menus/host.tsx";
 import { useDocStore } from "../state/docStore.ts";
 import { selectSequenceSummary } from "../state/selectors.ts";
@@ -289,27 +293,45 @@ function FieldRow({ field, ...rest }: RowProps<FieldDef>) {
   );
 }
 
-/** A collapsible section whose header menu collapses or expands them all (WP-2H.13). */
-function Section({
-  id,
-  label,
-  children,
-}: {
-  readonly id: InspectorSectionId;
-  readonly label: string;
-  readonly children: ReactNode;
-}) {
-  const [expanded, setExpanded] = useSection(id);
+/** Where the clip's picture comes from, and whether a proxy stands in for it. */
+function SourceRows({ clip }: { readonly clip: SelectedClip }) {
+  const { t } = useTranslation();
+  const project = useDocStore((s) => s.project);
+  const rpc = useStore(engineStore, (s) => (s.blocked === null ? s.rpc : null));
+  const media = project?.media[clip.item.media as keyof typeof project.media];
+  const [proxy, setProxy] = useState<ProxyStatus | null>(null);
+  const mediaId = clip.item.media;
+  const isVideo = media?.kind === "video";
+  useEffect(() => {
+    setProxy(null);
+    if (rpc === null || !isVideo) return;
+    let live = true;
+    rpc
+      .call("media.proxy_status", { media: [mediaId] })
+      .then((out) => {
+        if (live) setProxy(out.proxies[0]?.status ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [rpc, mediaId, isVideo]);
+  const name = fileName(media?.path_abs ?? media?.path_rel ?? null);
   return (
-    <ContextSurface
-      surface="inspector.section"
-      className="cw-context-surface"
-      target={() => ({ name: label })}
-    >
-      <InspectorSection label={label} expanded={expanded} onExpandedChange={setExpanded}>
-        {children}
-      </InspectorSection>
-    </ContextSurface>
+    <>
+      <InspectorRow label={t("inspector.clipInfo.source")}>
+        <span className="numeric" data-testid="clip-source">
+          {name ?? t("inspector.clipInfo.unknownSource")}
+        </span>
+      </InspectorRow>
+      {proxy === null ? null : (
+        <InspectorRow label={t("inspector.clipInfo.proxy")}>
+          <span className="body" data-testid="clip-proxy">
+            {t(PROXY_STATES[proxy])}
+          </span>
+        </InspectorRow>
+      )}
+    </>
   );
 }
 
@@ -322,7 +344,10 @@ function ClipInspector({
   readonly editor: InspectorEditor;
 }) {
   const { t } = useTranslation();
+  const project = useDocStore((s) => s.project);
   const locked = clips.some((c) => c.locked);
+  const ids = clips.map((c) => c.item.id);
+  const only = clips.length === 1 ? clips[0] : undefined;
   return (
     <div className="cw-inspector" data-testid="clip-inspector">
       {clips.length > 1 ? (
@@ -331,12 +356,11 @@ function ClipInspector({
         </p>
       ) : null}
       {locked ? <p className="cw-inspector__note body">{t("timeline.reason.locked")}</p> : null}
-      {SECTIONS.map((section) => {
-        const fields = FIELDS.filter((f) => f.section === section.id);
-        return (
-          <Section key={section.id} id={section.id} label={t(section.label)}>
+      {SECTIONS.map((section) => (
+        <Fragment key={section.id}>
+          <Section id={section.id} label={t(section.label)} ids={ids}>
             <div className="cw-inspector__rows">
-              {fields.map((field) => (
+              {FIELDS.filter((f) => f.section === section.id).map((field) => (
                 <FieldRow
                   key={field.id}
                   field={field}
@@ -345,13 +369,18 @@ function ClipInspector({
                   disabled={locked}
                 />
               ))}
+              {section.id === "clip" && only !== undefined ? <SourceRows clip={only} /> : null}
               {section.id === "timing" && clips.length > 1 ? (
                 <p className="cw-inspector__note label">{t("inspector.multipleTime")}</p>
               ) : null}
             </div>
           </Section>
-        );
-      })}
+          {section.id === "timing" ? (
+            <VideoSections clips={clips} editor={editor} locked={locked} />
+          ) : null}
+        </Fragment>
+      ))}
+      <TrackSection project={project} clips={clips} editor={editor} />
     </div>
   );
 }

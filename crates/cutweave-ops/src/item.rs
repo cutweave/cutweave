@@ -175,12 +175,24 @@ pub(crate) fn unlink_orphans(
 #[wire]
 pub struct TransformPatch {
     /// Offset of the anchor from the canvas center, in canvas units (+y is down).
+    #[ui(widget = "vec2", unit = "px", step = 1.0, keyframeable = true)]
     pub position: Option<Vec2>,
     /// Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`.
+    #[ui(
+        widget = "vec2",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        min = 0.0,
+        linked = true,
+        keyframeable = true
+    )]
     pub scale: Option<Vec2>,
     /// Clockwise rotation in degrees.
+    #[ui(widget = "number", unit = "°", step = 1.0, keyframeable = true)]
     pub rotation: Option<f64>,
     /// The item point `position` places and rotation turns around, in item units.
+    #[ui(widget = "vec2", step = 1.0, keyframeable = true, advanced = true)]
     pub anchor: Option<Vec2>,
 }
 
@@ -189,15 +201,43 @@ pub struct TransformPatch {
 pub struct CropPatch {
     /// Fraction removed from the left edge.
     #[schemars(range(min = 0.0, max = 1.0))]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub left: Option<f64>,
     /// Fraction removed from the top edge.
     #[schemars(range(min = 0.0, max = 1.0))]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub top: Option<f64>,
     /// Fraction removed from the right edge.
     #[schemars(range(min = 0.0, max = 1.0))]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub right: Option<f64>,
     /// Fraction removed from the bottom edge.
     #[schemars(range(min = 0.0, max = 1.0))]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub bottom: Option<f64>,
 }
 
@@ -205,8 +245,10 @@ pub struct CropPatch {
 #[wire]
 pub struct FlipPatch {
     /// Mirror left-right.
+    #[ui(keyframeable = true)]
     pub horizontal: Option<bool>,
     /// Mirror top-bottom.
+    #[ui(keyframeable = true)]
     pub vertical: Option<bool>,
 }
 
@@ -214,25 +256,49 @@ pub struct FlipPatch {
 #[wire]
 pub struct ItemProps {
     /// Display name; an empty string clears it (the media name is shown again).
+    #[ui(group = "clip", order = 0)]
     pub name: Option<String>,
     /// Rendered and heard (`true`) or kept but skipped (`false`).
+    #[ui(group = "clip", order = 1)]
     pub enabled: Option<bool>,
     /// Opacity `0.0..=1.0`.
     #[schemars(range(min = 0.0, max = 1.0))]
+    #[ui(
+        widget = "slider",
+        step = 0.01,
+        unit = "%",
+        scale = 100.0,
+        keyframeable = true,
+        group = "compositing",
+        order = 0
+    )]
     pub opacity: Option<f64>,
     /// Clip gain in dB, `-144..=48` (0 = unchanged).
     #[schemars(range(min = -144.0, max = 48.0))]
+    #[ui(
+        unit = "dB",
+        step = 0.5,
+        precision = 1,
+        keyframeable = true,
+        group = "audio",
+        order = 0
+    )]
     pub audio_gain: Option<f64>,
     /// Stereo position, `-1` (left) to `1` (right).
     #[schemars(range(min = -1.0, max = 1.0))]
+    #[ui(step = 0.05, keyframeable = true, group = "audio", order = 1)]
     pub audio_pan: Option<f64>,
     /// Placement on the canvas (partial).
+    #[ui(group = "transform", order = 1)]
     pub transform: Option<TransformPatch>,
     /// Edges of the source picture cut away (partial).
+    #[ui(group = "crop", order = 2)]
     pub crop: Option<CropPatch>,
     /// Mirroring (partial).
+    #[ui(group = "flip", order = 3)]
     pub flip: Option<FlipPatch>,
     /// How the item combines with what is below.
+    #[ui(group = "compositing", order = 1)]
     pub blend_mode: Option<BlendMode>,
 }
 
