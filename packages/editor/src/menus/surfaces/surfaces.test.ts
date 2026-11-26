@@ -7,7 +7,7 @@
 // walk over every table; axe on every opened menu.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Project } from "@cutweave/protocol";
+import type { MediaId, Project } from "@cutweave/protocol";
 import type { MenuEntry, MenuItem, MenuSubmenu } from "@cutweave/ui";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -21,6 +21,7 @@ import { sectionsStore } from "../../inspector/sections.ts";
 import { forgetAppliedLayouts } from "../../layout/actions.ts";
 import { binStore } from "../../media/binStore.ts";
 import { currentOpenFolder, folderUiStore } from "../../media/folderUi.ts";
+import { healthStore } from "../../media/health.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
@@ -620,6 +621,27 @@ describe("the bin menus", () => {
     expect(args).toMatchObject({ sequence: SEQ, track: V2, media: MED_V, overlap: "new_track" });
     expect(args.at).toBe(4 * F);
     expect(viewStore.getState().selection).toEqual([{ kind: "media", id: MED_V }]);
+  });
+
+  it("offers Relink… only on a card whose file is missing, and it opens the relink dialog", async () => {
+    expect(menuFor("bin.card", { ids: [MED_V] }).items.map((i) => i.label)).not.toContain(
+      "Relink…",
+    );
+    healthStore.getState().setMissing([
+      {
+        media_id: MED_V as MediaId,
+        name: "interview.mp4",
+        path: "/old/interview.mp4",
+        status: "missing",
+      },
+    ]);
+    try {
+      await menuFor("bin.card", { ids: [MED_V] }).choose("Relink…");
+      expect(healthStore.getState().dialogOpen).toBe(true);
+    } finally {
+      healthStore.getState().closeDialog();
+      healthStore.getState().setMissing([]);
+    }
   });
 
   it("appends after the last clip of the sequence", async () => {

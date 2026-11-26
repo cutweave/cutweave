@@ -331,6 +331,13 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
+        "media.set_location" => (1, media_set_location(p)),
+        "media.relink" => (1, media_relink(p)),
+        "media.relink_folder" => (1, media_relink_folder(p)),
+        "media.find_missing" => (
+            1,
+            prop_oneof![Just(json!({})), Just(json!({"verify": true}))].boxed(),
+        ),
         "media.create_folder" => (
             if p.folders.is_empty() { 4 } else { 2 },
             media_create_folder(p),
@@ -913,6 +920,79 @@ fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
     } else {
         mix(valid, invalid)
     }
+}
+
+/// `media.set_location`: an asset at a new path, sometimes with the content of another file.
+fn media_set_location(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.media_ids()),
+        0..40_u32,
+        option::weighted(0.3, 0..3_u8),
+    )
+        .prop_map(|(media, n, other)| match other {
+            None => json!({"media": media, "path": format!("/media/moved/{n}.mp4")}),
+            Some(kind) => {
+                let (path, probed) = probed_file(n, kind, 90, true);
+                json!({"media": media, "path": path, "probe": probed.probe,
+                       "content_hash": probed.content_hash})
+            }
+        })
+        .boxed();
+    let invalid = one_of(p.media_ids())
+        .prop_flat_map(|media| {
+            prop_oneof![
+                Just(json!({"media": media.clone(), "path": "moved/relative.mp4"})),
+                Just(json!({"media": media, "path": "/media/moved/a.mp4",
+                            "content_hash": "has space"})),
+            ]
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `media.relink`: an asset and one of the files the harness's disk holds, or one it does not.
+fn media_relink(p: &Pools) -> BoxedStrategy<Value> {
+    let path = prop_oneof![
+        8 => select(IMPORT_PATHS.to_vec()),
+        1 => Just(BROKEN_IMPORT_PATH),
+        1 => Just("/import/missing.mp4"),
+    ];
+    let valid = (one_of(p.media_ids()), path)
+        .prop_map(|(media, path)| json!({"media": media, "path": path}))
+        .boxed();
+    let invalid = one_of(p.media_ids())
+        .prop_map(|media| json!({"media": media, "path": "import/relative.mp4"}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `media.relink_folder`: the folder of [`IMPORT_PATHS`], for every missing asset or a few.
+fn media_relink_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let media = option::weighted(0.3, vec(one_of(p.media_ids()), 1..=3));
+    let valid = (media, option::of(any::<bool>()))
+        .prop_map(|(media, recursive)| match media {
+            None => json!({"folder": "/import", "recursive": recursive}),
+            Some(media) => json!({"folder": "/import", "recursive": recursive, "media": media}),
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"folder": "import"})),
+        Just(json!({"folder": "/not-a-folder"})),
+        Just(json!({"folder": "/import", "media": []})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// The disk a harness gives the relink commands: the files [`fake_probe`] knows.
+#[must_use]
+pub fn fake_files() -> crate::media::MemoryFiles {
+    IMPORT_PATHS
+        .iter()
+        .filter(|p| p.starts_with('/'))
+        .fold(crate::media::MemoryFiles::new(), |files, path| {
+            files.with_file(path)
+        })
 }
 
 // ----- sequences -----------------------------------------------------------------------------

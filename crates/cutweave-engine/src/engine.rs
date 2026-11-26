@@ -46,7 +46,8 @@ use cutweave_ops::export::ExportCtx;
 use cutweave_ops::export::presets::{PresetCtx, PresetStore};
 use cutweave_ops::media::proxy::ProxyCall;
 use cutweave_ops::media::{
-    AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
+    AllowedRoots, AnalysisStages, Analyzer, DiskFiles, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
+    RelinkCtx,
 };
 use cutweave_ops::view::{UiState, ViewCtx};
 use serde_json::Value;
@@ -67,6 +68,7 @@ use crate::logging::{self, LogGuard};
 use crate::media_cache::CacheCall;
 use crate::media_caps::CapabilitiesCall;
 use crate::project_io::{LockInfo, ProjectIoError, ProjectStore};
+use crate::relink::RelinkTx;
 use crate::session::{
     self, Deps, ProjectCloseOutput, ProjectOpenOutput, ProjectRecoverOutput, ProjectSaveOutput,
     ProjectStatus, Session, SessionCall, SessionState,
@@ -346,6 +348,9 @@ impl Core {
         if context == TypeId::of::<ImportCtx>() {
             return self.import(ctx, name, params);
         }
+        if context == TypeId::of::<RelinkCtx>() {
+            return self.relink(ctx, name, params);
+        }
         if context == TypeId::of::<ExportCtx>() {
             return self.export(ctx, name, params);
         }
@@ -529,6 +534,42 @@ impl Core {
             .invoke_engine_json(name, params, &mut import, ctx.access());
         // Closes the sink's connection before the session can change.
         drop(import);
+        drop(guard);
+        result.map(|output| self.reply(output))
+    }
+
+    /// The relink commands (WP-2F.03) with a per-call [`RelinkCtx`]: the real disk, the media
+    /// prober and the caller's read allowlist ([`path_roots`](Self::path_roots)), as for
+    /// `media.import`.
+    fn relink(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        let handle = session.handle().clone();
+        let policy = match self.path_roots(ctx, session) {
+            None => ImportPolicy::default(),
+            Some(roots) => ImportPolicy::restricted(roots),
+        };
+        let prober = self
+            .deps
+            .subsystems
+            .media_probe()
+            .unwrap_or_else(|| Arc::new(NoMediaBackend));
+        let sink = RelinkTx::new(handle.clone(), ctx_for(ctx.actor(), self.next_conn()));
+        let mut relink = RelinkCtx {
+            doc: handle.snapshot().doc.clone(),
+            prober,
+            files: Arc::new(DiskFiles),
+            sink: Some(Box::new(sink)),
+            policy,
+        };
+        let result = self
+            .deps
+            .registry
+            .invoke_engine_json(name, params, &mut relink, ctx.access());
+        // Closes the sink's connection before the session can change.
+        drop(relink);
         drop(guard);
         result.map(|output| self.reply(output))
     }

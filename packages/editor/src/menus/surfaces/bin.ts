@@ -3,8 +3,8 @@
 // bin, and a filter chip. Rows name commands that exist today; what later work packages add is
 // listed in the TODO below, not stubbed.
 // TODO(WP-2A.14): Overwrite at playhead. TODO(WP-2B.01): New timeline from selection.
-// TODO(WP-2F.06, WP-2F.03): Add tag, Relink, Regenerate proxies. Each work package adds its row
-// to these tables. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
+// TODO(WP-2F.06, WP-2F.03b): Add tag, Regenerate proxies. Each work package adds its row
+// to these tables. Relink… (WP-2F.03) shows on a card whose file is missing. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
 import type { MediaId } from "@cutweave/protocol";
 import { snapToFrame } from "@cutweave/timeline";
 import { placeable } from "../../layout/actions.ts";
@@ -12,6 +12,7 @@ import { LAYOUT_NAMES } from "../../layout/names.ts";
 import { LAYOUTS } from "../../layout/table.ts";
 import { binStore, SORT_CHOICES } from "../../media/binStore.ts";
 import { selectMediaCards, selectMediaUsage } from "../../media/cards.ts";
+import { healthStore } from "../../media/health.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
@@ -127,8 +128,10 @@ export function binCardKeys(target: { ids: readonly string[] }): ContextValues {
   const usage = selectMediaUsage(project);
   const cards = selectMediaCards(project).filter((c) => target.ids.includes(c.id));
   const kinds = new Set(cards.map((c) => c.kind));
+  const missing = healthStore.getState().missing;
   return {
     "media.used": cards.some((c) => (usage.get(c.id) ?? 0) > 0),
+    "media.offline": cards.some((c) => missing.has(c.id)),
     "selection.kind": kinds.size === 1 ? [...kinds][0] : "mixed",
     "selection.videoCount": cards.filter((c) => c.kind === "video" || c.kind === "image").length,
   };
@@ -226,6 +229,14 @@ export const BIN_CARD: MenuSurfaceDef = {
       enabledIf: hasFile,
       reason: fileReason,
       args: (ctx) => ({ path: mediaPath(ctx.ids[0] ?? "") }),
+    },
+    {
+      command: "bin.relink",
+      group: "file",
+      order: -1,
+      visible: "media.offline",
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
     },
     {
       id: "copy-path",

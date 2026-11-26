@@ -46,6 +46,7 @@ pub mod media_cache;
 pub mod media_caps;
 pub mod media_http;
 pub mod project_io;
+mod relink;
 pub mod rpc_backend;
 pub mod session;
 mod startup;
