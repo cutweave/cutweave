@@ -47,6 +47,9 @@ fn intra_spec(path: &Path, codec: &str, format: PixelFormat, (w, h): (u32, u32))
             preset: SpeedPreset::default(),
             color: hdr_tags(),
             threads: 2,
+            bit_depth: 8,
+            profile: None,
+            alpha: false,
         })
         .with_audio(AudioEncodeSpec {
             codec: "pcm_s16le".to_owned(),
