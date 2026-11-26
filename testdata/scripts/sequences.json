@@ -1,0 +1,34 @@
+{
+  "description": "Sequences (WP-2B.01): create from a preset, duplicate and rename, change the format of one (reframe by fit; frame rate re-snap), build one from media, list them with the presets, delete one, and the failing cases (unknown preset, unknown sequence, the last sequence).",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Sequences" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.png" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0,
+        "duration": "2s"
+      }
+    },
+    { "cmd": "sequence.create", "args": { "name": "Reel", "preset": "9:16" } },
+    { "cmd": "sequence.duplicate", "args": { "sequence": { "$ref": "steps[0].output.sequence" } } },
+    { "cmd": "sequence.rename", "args": { "sequence": { "$ref": "steps[4].output.sequence" }, "name": "Square cut" } },
+    {
+      "cmd": "sequence.set_format",
+      "args": { "sequence": { "$ref": "steps[4].output.sequence" }, "width": 1080, "height": 1080, "reframe": "fill", "background": "#102030" }
+    },
+    {
+      "cmd": "sequence.set_format",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "width": 1080, "height": 1920, "frame_rate": { "num": 24, "den": 1 } }
+    },
+    { "cmd": "sequence.create_from_media", "args": { "media": [{ "$ref": "steps[1].output.media_ids[0]" }, { "$ref": "steps[1].output.media_ids[1]" }], "name": "From the bin" } },
+    { "cmd": "sequence.list", "args": { "presets": true } },
+    { "cmd": "sequence.delete", "args": { "sequence": { "$ref": "steps[3].output.sequence" } } },
+    { "cmd": "sequence.create", "args": { "name": "Odd", "preset": "2:3" }, "expect": { "error": "invalid" } },
+    { "cmd": "sequence.rename", "args": { "sequence": "seq_0000000000000000000000000000beef", "name": "Nope" }, "expect": { "error": "not_found" } },
+    { "cmd": "sequence.list" }
+  ]
+}

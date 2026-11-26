@@ -353,7 +353,7 @@ fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         // 17 core tools (`render_frame` comes with the full engine's renderer, WP-1I.05) and the
         // 4 generic ones: within the standard budget (R36, `cutweave_api::mcp::STANDARD_BUDGET`).
-        assert_eq!(names.len(), 22, "{names:?}");
+        assert_eq!(names.len(), 24, "{names:?}");
         for name in [
             "clip_split",
             "timeline_get",

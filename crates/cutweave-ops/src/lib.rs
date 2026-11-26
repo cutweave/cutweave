@@ -20,6 +20,7 @@ pub mod keyframe;
 pub mod media;
 pub mod project;
 pub mod report;
+pub mod sequence;
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod timeline;
@@ -34,6 +35,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     project::register(registry)?;
     media::register(registry)?;
     track::register(registry)?;
+    sequence::register(registry)?;
     timeline::register(registry)?;
     clip::register(registry)?;
     item::register(registry)?;

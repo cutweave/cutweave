@@ -333,6 +333,13 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.rename" => (1, media_rename(p)),
         "media.move" => (if p.folders.is_empty() { 1 } else { 3 }, media_move(p)),
         "media.delete_folder" => (1, media_delete_folder(p)),
+        "sequence.create" => (if p.seqs.is_empty() { 1 } else { 2 }, sequence_create()),
+        "sequence.create_from_media" => (1, sequence_create_from_media(p)),
+        "sequence.duplicate" => (1, sequence_duplicate(p)),
+        "sequence.rename" => (1, sequence_rename(p)),
+        "sequence.delete" => (1, sequence_delete(p)),
+        "sequence.set_format" => (2, sequence_set_format(p)),
+        "sequence.list" => (1, sequence_list()),
         "track.add" => (2, track_add(p)),
         "track.remove" => (1, track_remove(p)),
         "track.set" => (2, track_set(p)),
@@ -880,6 +887,128 @@ fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
     } else {
         mix(valid, invalid)
     }
+}
+
+// ----- sequences -----------------------------------------------------------------------------
+
+const PRESET_IDS: [&str; 6] = ["16:9", "16:9-4k", "9:16", "1:1", "4:5", "21:9"];
+
+fn sequence_create() -> BoxedStrategy<Value> {
+    let format = (
+        option::of(16..=2000_u32),
+        option::of(16..=2000_u32),
+        option::of(select(FrameRate::COMMON.to_vec())),
+        option::of(select(vec!["#000000", "#ff8800", "#1a2b3c80"])),
+    )
+        .prop_map(|(width, height, frame_rate, background)| {
+            json!({"width": width, "height": height, "frame_rate": frame_rate,
+                   "background": background})
+        });
+    let valid = (
+        name(),
+        option::weighted(0.6, select(PRESET_IDS.to_vec())),
+        option::weighted(0.3, format),
+    )
+        .prop_map(
+            |(name, preset, format)| json!({"name": name, "preset": preset, "format": format}),
+        )
+        .boxed();
+    let invalid = prop_oneof![
+        bad_name().prop_map(|name| json!({"name": name})),
+        Just(json!({"name": "S", "preset": "2:3"})),
+        Just(json!({"name": "S", "format": {"width": 0}})),
+        Just(json!({"name": "S", "format": {"background": "red"}})),
+        Just(json!({"name": "S", "format": {"frame_rate": {"num": 1001, "den": 7}}})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn sequence_create_from_media(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        proptest::collection::vec(one_of(p.media_ids()), 1..4),
+        option::weighted(0.3, name()),
+    )
+        .prop_map(|(media, name)| json!({"media": media, "name": name}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"media": []})),
+        bad_name().prop_map(|name| json!({"media": [], "name": name})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn sequence_duplicate(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.seqs.clone()), option::weighted(0.3, name()))
+        .prop_map(|(sequence, name)| json!({"sequence": sequence, "name": name}))
+        .boxed();
+    let invalid = (one_of(p.seqs.clone()), bad_name())
+        .prop_map(|(sequence, name)| json!({"sequence": sequence, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn sequence_rename(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.seqs.clone()), name())
+        .prop_map(|(sequence, name)| json!({"sequence": sequence, "name": name}))
+        .boxed();
+    let invalid = (one_of(p.seqs.clone()), bad_name())
+        .prop_map(|(sequence, name)| json!({"sequence": sequence, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn sequence_delete(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = one_of(p.seqs.clone())
+        .prop_map(|sequence| json!({"sequence": sequence}))
+        .boxed();
+    mix(valid.clone(), valid)
+}
+
+fn sequence_set_format(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.seqs.clone()),
+        option::weighted(0.6, 16..=2000_u32),
+        option::weighted(0.6, 16..=2000_u32),
+        option::weighted(0.5, select(FrameRate::COMMON.to_vec())),
+        option::weighted(0.2, select(SampleRate::COMMON.to_vec())),
+        option::weighted(0.3, select(vec!["#000000", "#336699"])),
+        option::weighted(0.7, select(vec!["fit", "fill", "keep_scale", "none"])),
+    )
+        .prop_map(
+            |(sequence, width, height, frame_rate, sample_rate, background, reframe)| {
+                json!({"sequence": sequence, "width": width, "height": height,
+                       "frame_rate": frame_rate, "sample_rate": sample_rate,
+                       "background": background, "reframe": reframe})
+            },
+        )
+        .boxed();
+    let invalid = (
+        one_of(p.seqs.clone()),
+        prop_oneof![
+            Just(json!({"width": 0})),
+            Just(json!({"height": 20_000})),
+            Just(json!({"frame_rate": {"num": 1001, "den": 7}})),
+            Just(json!({"sample_rate": 1234})),
+            Just(json!({"reframe": "stretch"})),
+        ],
+    )
+        .prop_map(|(sequence, mut params)| {
+            params["sequence"] = json!(sequence);
+            params
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn sequence_list() -> BoxedStrategy<Value> {
+    prop_oneof![
+        3 => Just(json!({})),
+        1 => Just(json!({"presets": true})),
+        1 => Just(json!({"unexpected": 1})),
+    ]
+    .boxed()
 }
 
 // ----- tracks, timeline ----------------------------------------------------------------------

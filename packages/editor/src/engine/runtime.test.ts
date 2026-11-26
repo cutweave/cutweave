@@ -56,6 +56,7 @@ function setup() {
           panel_layout: null,
           preview_quality: "full",
           master_gain: null,
+          active_sequence: null,
         };
       case "job.list":
         return { jobs: [], active: 0 };
@@ -290,6 +291,7 @@ function supervised() {
           panel_layout: null,
           preview_quality: "full",
           master_gain: null,
+          active_sequence: null,
         };
       case "job.list":
         return { jobs: [], active: 0 };

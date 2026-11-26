@@ -367,7 +367,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
-  - Commands: `sequence.create{name, preset|format}`, `sequence.duplicate`, `sequence.delete` (not the last one; not while referenced as a compound clip, see 2B.04), `sequence.rename`, `sequence.set_format{width,height,frame_rate,sample_rate,background}`, `sequence.set_active` (`view`), `sequence.list` query.
+  - Commands: `sequence.create{name, preset|format}`, `sequence.duplicate`, `sequence.delete` (not the last one; not while referenced as a compound clip, see 2B.04), `sequence.rename`, `sequence.set_format{width,height,frame_rate,sample_rate,background}`, `sequence.set_active` (`view`; registered as `view.set_active_sequence`, since the registry reserves the `view` flag for `view.*` names), `sequence.list` query (`presets: true` adds the preset tables).
   - Aspect presets as L0 data (`16:9 1920x1080 & 3840x2160`, `9:16 1080x1920`, `1:1 1080x1080`, `4:5 1080x1350`, `21:9 2560x1080`), frame-rate presets 24/25/30/50/60.
   - Changing resolution or aspect: a `reframe` policy (`keep_scale | fit | fill | none`) applied to clip transforms. Default `fit`: preserve each clip's relative framing so it fits the new canvas; documented algorithm. Text/overlay items positions scale proportionally.
   - Changing frame rate re-snaps all item times to the new grid (rounding to nearest frame, no overlap introduced; INV tested).

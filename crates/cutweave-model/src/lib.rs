@@ -29,6 +29,7 @@ mod item;
 mod marker;
 mod media;
 mod migrate;
+mod presets;
 mod project;
 #[cfg(test)]
 mod proptests;
@@ -73,6 +74,7 @@ pub use migrate::{
     Migrator, OLDEST_SCHEMA_VERSION, OpenOutcome, migrate_to_current, migrate_value, open,
     open_str, schema_version_of, to_document_string,
 };
+pub use presets::{ASPECT_PRESETS, AspectPreset, FRAME_RATE_PRESETS, aspect_preset};
 pub use project::{ItemRef, Project, ProjectMeta, ProjectSettings};
 pub use rate::{FrameRate, Rounding, SampleRate};
 pub use sequence::{

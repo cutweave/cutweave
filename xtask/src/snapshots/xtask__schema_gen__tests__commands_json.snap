@@ -15557,6 +15557,792 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Adds a sequence with an empty `V1` over an empty `A1`. The format starts from the project's\ndefault; `preset` (an aspect preset ID such as `9:16`) sets the canvas size and `format`\noverrides single fields.",
+        "properties": {
+          "format": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Format fields; they win over the preset.",
+            "properties": {
+              "background": {
+                "description": "The canvas color behind all tracks, `#rrggbb`.",
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "frame_rate": {
+                "additionalProperties": false,
+                "description": "The edit grid, `1..=1000` fps and a whole number of flicks per frame.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "height": {
+                "description": "Canvas height in pixels, `1..=16384`.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "sample_rate": {
+                "description": "The mix rate in Hz, `8000..=384000`.",
+                "maximum": 352800000,
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "width": {
+                "description": "Canvas width in pixels, `1..=16384`.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Name (1..=200 characters).",
+            "type": "string"
+          },
+          "preset": {
+            "default": null,
+            "description": "Aspect preset ID: `16:9`, `16:9-4k`, `9:16`, `1:1`, `4:5` or `21:9`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SequenceCreate",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "sequence_create",
+      "name": "sequence.create",
+      "namespace": "sequence",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `sequence.create` and `sequence.create_from_media`.",
+        "properties": {
+          "audio_track": {
+            "description": "Its audio track `A1`.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "format": {
+            "description": "Its format.",
+            "properties": {
+              "background": {
+                "description": "Canvas color behind all tracks.",
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                "type": "string"
+              },
+              "color_space": {
+                "description": "Working color space.",
+                "oneOf": [
+                  {
+                    "const": "rec709",
+                    "description": "Rec.709 primaries, SDR.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "frame_rate": {
+                "additionalProperties": false,
+                "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "height": {
+                "description": "Canvas height in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sample_rate": {
+                "description": "The mix rate.",
+                "maximum": 352800000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "width": {
+                "description": "Canvas width in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "frame_rate",
+              "sample_rate",
+              "color_space",
+              "background"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "description": "The new sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "video_track": {
+            "description": "Its video track `V1`.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "video_track",
+          "audio_track",
+          "format"
+        ],
+        "title": "SequenceCreateOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add a sequence from an aspect preset or a format",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Adds a sequence holding the given assets one after another from 0: pictures and stills on\n`V1`, a video's sound linked on `A1`, audio files on `A1`. Each clip takes the whole asset,\nfloored to whole frames (a still gets 5 s). The format is the project's default.",
+        "properties": {
+          "media": {
+            "description": "The assets, in order (1..=1000).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "default": null,
+            "description": "Name (default `Sequence <n>`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "SequenceCreateFromMedia",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "sequence_create_from_media",
+      "name": "sequence.create_from_media",
+      "namespace": "sequence",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `sequence.create` and `sequence.create_from_media`.",
+        "properties": {
+          "audio_track": {
+            "description": "Its audio track `A1`.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "format": {
+            "description": "Its format.",
+            "properties": {
+              "background": {
+                "description": "Canvas color behind all tracks.",
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                "type": "string"
+              },
+              "color_space": {
+                "description": "Working color space.",
+                "oneOf": [
+                  {
+                    "const": "rec709",
+                    "description": "Rec.709 primaries, SDR.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "frame_rate": {
+                "additionalProperties": false,
+                "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "height": {
+                "description": "Canvas height in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sample_rate": {
+                "description": "The mix rate.",
+                "maximum": 352800000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "width": {
+                "description": "Canvas width in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "frame_rate",
+              "sample_rate",
+              "color_space",
+              "background"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "description": "The new sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "video_track": {
+            "description": "Its video track `V1`.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "video_track",
+          "audio_track",
+          "format"
+        ],
+        "title": "SequenceCreateOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add a sequence holding the given assets in order",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes a sequence with its tracks and items; the media stays in the bin. Fails with\n`Invalid` for the last sequence and for a sequence that compound clips refer to.",
+        "properties": {
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "SequenceDelete",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "sequence_delete",
+      "name": "sequence.delete",
+      "namespace": "sequence",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `sequence.delete`.",
+        "properties": {
+          "removed_items": {
+            "description": "How many items it held (removed with it).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The removed sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "sequence_count": {
+            "description": "How many sequences the project has now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "removed_items",
+          "sequence_count"
+        ],
+        "title": "SequenceDeleteOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete a sequence (not the last one, not while a compound clip uses it)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Copies a sequence: the copy has new IDs for the sequence, its tracks, items, markers and\nlinked groups, and uses the same media. Editing the copy never changes the original.",
+        "properties": {
+          "name": {
+            "default": null,
+            "description": "Name of the copy (default: the name plus ` copy`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence to copy.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "SequenceDuplicate",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "sequence_duplicate",
+      "name": "sequence.duplicate",
+      "namespace": "sequence",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `sequence.duplicate`.",
+        "properties": {
+          "item_count": {
+            "description": "How many items it holds.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Its name.",
+            "type": "string"
+          },
+          "sequence": {
+            "description": "The copy.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "name",
+          "item_count"
+        ],
+        "title": "SequenceDuplicateOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Copy a sequence (new IDs, shared media), for another platform",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Renames a sequence.",
+        "properties": {
+          "name": {
+            "description": "New name (1..=200 characters).",
+            "type": "string"
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "name"
+        ],
+        "title": "SequenceRename",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "sequence_rename",
+      "name": "sequence.rename",
+      "namespace": "sequence",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `sequence.rename`.",
+        "properties": {
+          "name": {
+            "description": "The name now in effect (trimmed).",
+            "type": "string"
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "name"
+        ],
+        "title": "SequenceRenameOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rename a sequence",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Changes a sequence's canvas size, frame rate, sample rate or background (absent fields stay).\nA new canvas size reframes every video clip by `reframe` (default `fit`: the whole composition\nshrinks to sit inside the new canvas; `fill` covers it; `keep_scale` keeps pixel sizes;\n`none` leaves transforms). A new frame rate moves every item edge to the nearest frame of\nthe new grid without creating overlaps or gaps. Fails with `Locked` if a locked track holds\nitems this would change.",
+        "properties": {
+          "background": {
+            "default": null,
+            "description": "Canvas color, `#rrggbb`.",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_rate": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "The edit grid.",
+            "properties": {
+              "den": {
+                "description": "Seconds.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "num": {
+                "description": "Frames.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "height": {
+            "default": null,
+            "description": "Canvas height in pixels, `1..=16384`.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reframe": {
+            "anyOf": [
+              {
+                "description": "How clip transforms follow a new canvas (see the module docs).",
+                "oneOf": [
+                  {
+                    "const": "keep_scale",
+                    "description": "Keep each clip's pixel size and pixel offset from the centre.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "fit",
+                    "description": "Scale the composition to sit whole inside the new canvas.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "fill",
+                    "description": "Scale the composition to cover the new canvas.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "none",
+                    "description": "Leave transforms alone.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How clips follow a new canvas size (default `fit`)."
+          },
+          "sample_rate": {
+            "default": null,
+            "description": "The mix rate in Hz.",
+            "maximum": 352800000,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "width": {
+            "default": null,
+            "description": "Canvas width in pixels, `1..=16384`.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "SequenceSetFormat",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "sequence_set_format",
+      "name": "sequence.set_format",
+      "namespace": "sequence",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `sequence.set_format`.",
+        "properties": {
+          "format": {
+            "description": "Its format now.",
+            "properties": {
+              "background": {
+                "description": "Canvas color behind all tracks.",
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                "type": "string"
+              },
+              "color_space": {
+                "description": "Working color space.",
+                "oneOf": [
+                  {
+                    "const": "rec709",
+                    "description": "Rec.709 primaries, SDR.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "frame_rate": {
+                "additionalProperties": false,
+                "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "height": {
+                "description": "Canvas height in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sample_rate": {
+                "description": "The mix rate.",
+                "maximum": 352800000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "width": {
+                "description": "Canvas width in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "frame_rate",
+              "sample_rate",
+              "color_space",
+              "background"
+            ],
+            "type": "object"
+          },
+          "reframed": {
+            "description": "Clips whose position or scale changed to follow the new canvas.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retimed": {
+            "description": "Items whose start or length moved to the new frame grid.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "format",
+          "reframed",
+          "retimed"
+        ],
+        "title": "SequenceSetFormatOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Change a sequence's size, frame rate, sample rate or background",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Adds a marker to a sequence, or to an item of it when `item` is given (then `t` is relative\nto the item's start and the marker moves with it). `duration` makes a range marker. `kind`\nis `user` (default), `beat` or `chapter`; `color` is `#rrggbb`. Times snap to the frame\ngrid. Sequence markers never move with a ripple; an item marker on a locked track fails\nwith `Locked`.",
         "properties": {
           "color": {
@@ -19002,6 +19788,14 @@ expression: text
         "additionalProperties": false,
         "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
         "properties": {
+          "active_sequence": {
+            "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "master_gain": {
             "description": "Master output gain (linear, `0..=4`, 1 = unity).",
             "format": "double",
@@ -19155,7 +19949,8 @@ expression: text
           "selection",
           "panel_layout",
           "preview_quality",
-          "master_gain"
+          "master_gain",
+          "active_sequence"
         ],
         "title": "UiState",
         "type": "object"
@@ -19312,6 +20107,14 @@ expression: text
         "additionalProperties": false,
         "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
         "properties": {
+          "active_sequence": {
+            "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "master_gain": {
             "description": "Master output gain (linear, `0..=4`, 1 = unity).",
             "format": "double",
@@ -19465,7 +20268,8 @@ expression: text
           "selection",
           "panel_layout",
           "preview_quality",
-          "master_gain"
+          "master_gain",
+          "active_sequence"
         ],
         "title": "UiState",
         "type": "object"
@@ -19491,6 +20295,15 @@ expression: text
             "additionalProperties": false,
             "description": "The fields to change.",
             "properties": {
+              "active_sequence": {
+                "default": null,
+                "description": "The sequence to show; must exist.",
+                "pattern": "^seq_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "master_gain": {
                 "default": null,
                 "description": "New master gain (linear, `0..=4`).",
@@ -19698,6 +20511,14 @@ expression: text
         "additionalProperties": false,
         "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
         "properties": {
+          "active_sequence": {
+            "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "master_gain": {
             "description": "Master output gain (linear, `0..=4`, 1 = unity).",
             "format": "double",
@@ -19851,7 +20672,8 @@ expression: text
           "selection",
           "panel_layout",
           "preview_quality",
-          "master_gain"
+          "master_gain",
+          "active_sequence"
         ],
         "title": "UiState",
         "type": "object"
@@ -19859,6 +20681,56 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Update the UI view state (partial merge; not undoable)",
+      "undoable": false,
+      "view": true
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Chooses the sequence the editor shows (WP-2B.01). Not undoable; never changes the project.",
+        "properties": {
+          "sequence": {
+            "description": "The sequence; it must exist.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "ViewSetActiveSequence",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "view_set_active_sequence",
+      "name": "view.set_active_sequence",
+      "namespace": "view",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `view.set_active_sequence`.",
+        "properties": {
+          "sequence": {
+            "description": "The sequence the editor shows now.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "ViewSetActiveSequenceOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Show a sequence in the editor",
       "undoable": false,
       "view": true
     },
@@ -19903,6 +20775,14 @@ expression: text
         "additionalProperties": false,
         "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
         "properties": {
+          "active_sequence": {
+            "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "master_gain": {
             "description": "Master output gain (linear, `0..=4`, 1 = unity).",
             "format": "double",
@@ -20056,7 +20936,8 @@ expression: text
           "selection",
           "panel_layout",
           "preview_quality",
-          "master_gain"
+          "master_gain",
+          "active_sequence"
         ],
         "title": "UiState",
         "type": "object"
@@ -20099,6 +20980,14 @@ expression: text
         "additionalProperties": false,
         "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
         "properties": {
+          "active_sequence": {
+            "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "master_gain": {
             "description": "Master output gain (linear, `0..=4`, 1 = unity).",
             "format": "double",
@@ -20252,7 +21141,8 @@ expression: text
           "selection",
           "panel_layout",
           "preview_quality",
-          "master_gain"
+          "master_gain",
+          "active_sequence"
         ],
         "title": "UiState",
         "type": "object"

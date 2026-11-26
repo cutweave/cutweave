@@ -30,6 +30,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "rpc.hello",
   "rpc.subscribe",
   "rpc.unsubscribe",
+  "sequence.list",
   "timeline.get",
   "timeline.list_markers",
   "track.list",

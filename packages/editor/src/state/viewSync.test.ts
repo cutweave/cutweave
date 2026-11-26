@@ -38,6 +38,7 @@ const engineView = (over: Partial<UiState> = {}): UiState => ({
   panel_layout: null,
   preview_quality: "full",
   master_gain: null,
+  active_sequence: null,
   ...over,
 });
 
