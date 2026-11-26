@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! WP-1A.03, WP-2A.02 and WP-2F.07 acceptance: golden fixtures per schema version, the v0 → v1
-//! and v1 → v2 migrations, read-only newer documents and lossless round trips.
+//! WP-1A.03, WP-2A.02, WP-2F.07 and WP-2F.05c acceptance: golden fixtures per schema version,
+//! the v0 → v1, v1 → v2 and v2 → v3 migrations, read-only newer documents and lossless round
+//! trips.
 //!
-//! The current-version (v2) fixtures are exactly what `to_document_string` writes for the
-//! projects built below. The v1 fixtures are the frozen v1 files of the same projects; they
+//! The current-version (v3) fixtures are exactly what `to_document_string` writes for the
+//! projects built below. The v1 and v2 fixtures are the frozen files of the same projects; they
 //! must migrate to them (the migration of legacy shapes is covered by `v1/legacy-needs-fixes`).
-//! `v2/folders` holds what v1 cannot express (nested media folders and renamed assets,
-//! ADR-0020), and `v2/animated` keyed values, crop, flip, blend mode and pan (WP-2C.03,
-//! ADR-0024); neither has a v1 counterpart.
-//! After an intended format change, regenerate the v2 fixtures with
+//! `folders` holds what v1 cannot express (nested media folders and renamed assets,
+//! ADR-0020), and `animated` keyed values, crop, flip, blend mode and pan (WP-2C.03,
+//! ADR-0024); neither has a v1 counterpart. `v3/image-sequence` holds what v2 cannot express
+//! (ADR-0035) and has no older counterpart.
+//! After an intended format change, regenerate the v3 fixtures with
 //! `CUTWEAVE_BLESS_FIXTURES=1 cargo nextest run -p cutweave-model -E 'binary(migrations)'`.
 //! Fixtures of older versions are frozen: they must keep loading (through migrations) as the
 //! same projects forever.
@@ -23,11 +25,11 @@ use std::{
 
 use cutweave_model::{
     AudioInfo, CURRENT_SCHEMA_VERSION, Clip, Color, ColorPrimaries, ColorRange, ColorTags,
-    Duration, FolderId, FrameRate, IdGen, MatrixCoefficients, MediaAsset, MediaFolder, MediaKind,
-    MigrationError, OLDEST_SCHEMA_VERSION, OpenOutcome, ProbeInfo, Project, SampleRate, SeededGen,
-    Sequence, SequenceFormat, StreamInfo, StreamKind, Time, Track, TrackKind,
-    TransferCharacteristics, Vec2, canonical_json_pretty, migrate_to_current, migrate_value, open,
-    open_str, schema_version_of, to_document_string,
+    Duration, FolderId, FrameRate, IdGen, ImageSequence, MIGRATIONS, MatrixCoefficients,
+    MediaAsset, MediaFolder, MediaKind, MigrationError, Migrator, OLDEST_SCHEMA_VERSION,
+    OpenOutcome, ProbeInfo, Project, SampleRate, SeededGen, Sequence, SequenceFormat, StreamInfo,
+    StreamKind, Time, Track, TrackKind, TransferCharacteristics, Vec2, canonical_json_pretty,
+    migrate_to_current, migrate_value, open, open_str, schema_version_of, to_document_string,
 };
 use serde_json::{Value, json};
 
@@ -421,6 +423,68 @@ fn expected_animated() -> Project {
     project
 }
 
+/// `v3/image-sequence.cutweave` (ADR-0035): a 300-frame render with two gaps, cut into a
+/// sequence, next to a plain still.
+fn expected_image_sequence() -> Project {
+    let mut ids = SeededGen::new(5);
+    let mut project = Project::new("Image sequence");
+    stamp(&mut project);
+    let picture = StreamInfo {
+        index: 0,
+        kind: StreamKind::Video,
+        codec: Some("png".into()),
+        profile: None,
+        width: Some(1920),
+        height: Some(1080),
+        pixel_format: Some("rgba".into()),
+        sample_rate: None,
+        channels: None,
+        language: None,
+        extra: cutweave_model::Extra::new(),
+    };
+    let probe = ProbeInfo {
+        streams: vec![picture],
+        ..ProbeInfo::default()
+    };
+    let mut render = MediaAsset::image_sequence(
+        ids.mint(),
+        "/renders/shot 50%_0098.png",
+        ImageSequence {
+            pattern: "shot 50%%_%04d.png".into(),
+            first: 98,
+            count: 300,
+            fps: FrameRate::FPS_23_976,
+            missing: vec![120, 121, 250],
+            extra: cutweave_model::Extra::new(),
+        },
+        probe.clone(),
+    );
+    render.path_rel = Some("../renders/shot 50%_0098.png".into());
+    render.content_hash = Some("xxh3:0a1b2c3d4e5f6071".into());
+    let still = MediaAsset::file(ids.mint(), MediaKind::Image, "/renders/still.png", probe);
+    let mut sequence = Sequence::new(
+        ids.mint(),
+        "Main",
+        SequenceFormat::new(1920, 1080, FrameRate::FPS_23_976, SampleRate::HZ_48_000),
+    );
+    let mut video = Track::new(ids.mint(), TrackKind::Video, "V1");
+    let frame = FrameRate::FPS_23_976;
+    let at = |f: i64| frame.frame_to_time(f).unwrap();
+    let mut clip = Clip::new(
+        ids.mint(),
+        render.id,
+        at(0),
+        Duration::from_flicks(at(240).flicks()).unwrap(),
+    );
+    clip.source_in = at(24);
+    video.items.insert(clip.into());
+    sequence.insert_track(0, video);
+    project.media.insert(render.id, render);
+    project.media.insert(still.id, still);
+    project.sequences.insert(sequence.id, sequence);
+    project
+}
+
 /// The current fixtures that are the migrated form of a frozen v1 file.
 fn migrated_fixtures() -> [(&'static str, Project); 3] {
     [
@@ -431,6 +495,15 @@ fn migrated_fixtures() -> [(&'static str, Project); 3] {
 }
 
 fn current_fixtures() -> Vec<(&'static str, Project)> {
+    let mut all: Vec<_> = migrated_fixtures().into();
+    all.push(("folders", expected_folders()));
+    all.push(("animated", expected_animated()));
+    all.push(("image-sequence", expected_image_sequence()));
+    all
+}
+
+/// The current fixtures that are the migrated form of a frozen v2 file.
+fn migrated_from_v2() -> Vec<(&'static str, Project)> {
     let mut all: Vec<_> = migrated_fixtures().into();
     all.push(("folders", expected_folders()));
     all.push(("animated", expected_animated()));
@@ -525,24 +598,24 @@ fn the_v0_fixture_migrates_to_the_current_three_clip_project() {
     let text = read(&fixtures().join("v0/three-clips.cutweave"));
     let (project, report) = editable(open_str(&text).unwrap());
     assert_eq!(project, expected_three_clips());
-    assert_eq!((report.from_version, report.to_version), (0, 2));
-    assert_eq!(report.steps.len(), 2);
+    assert_eq!((report.from_version, report.to_version), (0, 3));
+    assert_eq!(report.steps.len(), 3);
     assert!(report.steps[0].description.contains("pre-release"));
     let (migrated, _) = migrate_value(serde_json::from_str(&text).unwrap()).unwrap();
     insta::assert_snapshot!("v0_three_clips_migrated", canonical_json_pretty(&migrated));
 }
 
-/// The frozen v1 files migrate to the same projects the v2 fixtures hold.
+/// The frozen v1 files migrate to the same projects the current fixtures hold.
 #[test]
-fn the_v1_fixtures_migrate_to_the_v2_projects() {
+fn the_v1_fixtures_migrate_to_the_current_projects() {
     for (name, expected) in migrated_fixtures() {
         let text = read(&fixtures().join(format!("v1/{name}.cutweave")));
         let (project, report) = editable(open_str(&text).unwrap());
         assert_eq!(project, expected, "{name}");
-        assert_eq!((report.from_version, report.to_version), (1, 2), "{name}");
-        assert_eq!(report.steps.len(), 1, "{name}");
-        // The migrated document is what the engine saves: the v2 fixture, byte for byte.
-        let v2 = read(&fixtures().join(format!("v2/{name}.cutweave")));
+        assert_eq!((report.from_version, report.to_version), (1, 3), "{name}");
+        assert_eq!(report.steps.len(), 2, "{name}");
+        // The migrated document is what the engine saves: the v3 fixture, byte for byte.
+        let v2 = read(&fixtures().join(format!("v3/{name}.cutweave")));
         assert_eq!(to_document_string(&project).unwrap(), v2, "{name}");
         // Saving the migrated document and migrating it again changes nothing (ADR-0020).
         let (again, again_report) = editable(open_str(&v2).unwrap());
@@ -574,7 +647,7 @@ fn the_v1_migration_puts_every_asset_at_the_top_level() {
 
 #[test]
 fn the_folders_fixture_keeps_its_tree() {
-    let text = read(&fixtures().join("v2/folders.cutweave"));
+    let text = read(&fixtures().join("v3/folders.cutweave"));
     let (project, _) = editable(open_str(&text).unwrap());
     let paths: Vec<String> = project
         .folders
@@ -606,7 +679,8 @@ fn the_folders_fixture_keeps_its_tree() {
 fn the_v1_migration_repairs_legacy_shapes() {
     let text = read(&fixtures().join("v1/legacy-needs-fixes.cutweave"));
     let (migrated, report) = migrate_value(serde_json::from_str(&text).unwrap()).unwrap();
-    assert_eq!((report.from_version, report.to_version), (1, 2));
+    assert_eq!((report.from_version, report.to_version), (1, 3));
+    assert!(report.steps[1].notes.is_empty());
     let notes = &report.steps[0].notes;
     assert_eq!(
         notes,
@@ -634,16 +708,99 @@ fn the_v1_migration_repairs_legacy_shapes() {
     assert!(!again_report.migrated());
 }
 
-/// Migrating twice is the same as migrating once (a v2 document is left alone).
+/// Migrating twice is the same as migrating once (a current document is left alone).
 #[test]
-fn the_v1_migration_is_idempotent_on_v2_documents() {
+fn migrating_is_idempotent_on_current_documents() {
     for (name, _) in current_fixtures() {
-        let v2: Value =
-            serde_json::from_str(&read(&fixtures().join(format!("v2/{name}.cutweave")))).unwrap();
-        let (again, report) = migrate_value(v2.clone()).unwrap();
-        assert_eq!(again, v2, "{name}");
+        let v3: Value =
+            serde_json::from_str(&read(&fixtures().join(format!("v3/{name}.cutweave")))).unwrap();
+        let (again, report) = migrate_value(v3.clone()).unwrap();
+        assert_eq!(again, v3, "{name}");
         assert!(!report.migrated(), "{name}");
     }
+}
+
+/// ADR-0035, the migration golden: v2 → v3 rewrites nothing. Every frozen v2 file opens as the
+/// project its v3 fixture holds, and the migrated JSON is the v2 JSON with the version number
+/// changed and nothing else.
+#[test]
+fn the_v2_fixtures_migrate_to_v3_changing_only_the_version() {
+    for (name, expected) in migrated_from_v2() {
+        let text = read(&fixtures().join(format!("v2/{name}.cutweave")));
+        let (project, report) = editable(open_str(&text).unwrap());
+        assert_eq!(project, expected, "{name}");
+        assert_eq!((report.from_version, report.to_version), (2, 3), "{name}");
+        assert_eq!(report.steps.len(), 1, "{name}");
+        assert!(report.steps[0].notes.is_empty(), "{name}");
+        assert!(report.steps[0].description.contains("image sequences"));
+        let v3 = read(&fixtures().join(format!("v3/{name}.cutweave")));
+        assert_eq!(to_document_string(&project).unwrap(), v3, "{name}");
+
+        let before: Value = serde_json::from_str(&text).unwrap();
+        let (after, _) = migrate_value(before.clone()).unwrap();
+        let mut expected_json = before;
+        expected_json["meta"]["schema_version"] = json!(3);
+        assert_eq!(after, expected_json, "{name}");
+    }
+}
+
+/// ADR-0035: a build with the older schema version refuses a document with an image sequence,
+/// with the usual "newer version" message, instead of misreading the run as one picture.
+#[test]
+fn a_document_with_an_image_sequence_is_refused_by_the_older_schema_version() {
+    let text = read(&fixtures().join("v3/image-sequence.cutweave"));
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(schema_version_of(&doc), Ok(3));
+    let kinds: Vec<&str> = doc["media"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|m| m["kind"].as_str().unwrap())
+        .collect();
+    assert!(kinds.contains(&"image_sequence"), "{kinds:?}");
+    // The build before this one: the chain that ends at v2.
+    let older = Migrator::new(&MIGRATIONS[..2], 2).unwrap();
+    let err = older.migrate(doc).unwrap_err();
+    assert_eq!(
+        err,
+        MigrationError::NewerVersion {
+            found: 3,
+            supported: 2
+        }
+    );
+    assert_eq!(
+        err.to_string(),
+        "schema version 3 is newer than this version of Cutweave supports (2)"
+    );
+}
+
+#[test]
+fn the_image_sequence_fixture_keeps_its_run() {
+    let text = read(&fixtures().join("v3/image-sequence.cutweave"));
+    let (project, report) = editable(open_str(&text).unwrap());
+    assert!(!report.migrated());
+    let asset = project
+        .media
+        .values()
+        .find(|m| m.kind == MediaKind::ImageSequence)
+        .unwrap();
+    let run = asset.image_sequence.as_ref().unwrap();
+    assert_eq!(
+        run.file_name(run.first).as_deref(),
+        Some("shot 50%_0098.png")
+    );
+    assert_eq!(run.number_for_frame(23), 119, "frame 22 and 23 are missing");
+    assert_eq!(asset.probe.duration, run.duration());
+    // A still next to it has no `image_sequence` key at all.
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    let stills = doc["media"]
+        .as_object()
+        .unwrap()
+        .values()
+        .filter(|m| m["kind"] == "image")
+        .filter(|m| m.get("image_sequence").is_none())
+        .count();
+    assert_eq!(stills, 1);
 }
 
 #[test]
@@ -703,7 +860,7 @@ fn opening_rejects_documents_that_are_not_projects() {
         open(json!({"meta": {}})).unwrap_err(),
         MigrationError::MissingVersion
     );
-    let err = open(json!({"meta": {"schema_version": 2}})).unwrap_err();
+    let err = open(json!({"meta": {"schema_version": CURRENT_SCHEMA_VERSION}})).unwrap_err();
     assert!(matches!(err, MigrationError::Malformed { .. }), "{err:?}");
     let mut doc: Value =
         serde_json::from_str(&read(&fixtures().join("v0/three-clips.cutweave"))).unwrap();

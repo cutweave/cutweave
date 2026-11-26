@@ -21,6 +21,9 @@ pub enum MediaKind {
     Audio,
     /// A still image (no duration).
     Image,
+    /// A numbered run of pictures that plays like video (ADR-0035); described by
+    /// [`MediaAsset::image_sequence`].
+    ImageSequence,
     /// Another sequence of this project, used as a compound clip (arch §4.3).
     SequenceRef,
 }
@@ -39,6 +42,7 @@ impl MediaKind {
             MediaKind::Video => "video",
             MediaKind::Audio => "audio",
             MediaKind::Image => "image",
+            MediaKind::ImageSequence => "image_sequence",
             MediaKind::SequenceRef => "sequence_ref",
         }
     }
@@ -71,6 +75,10 @@ pub struct MediaAsset {
     pub content_hash: Option<String>,
     /// The referenced sequence (`sequence_ref` only).
     pub sequence: Option<SequenceId>,
+    /// The run of pictures (`image_sequence` only, ADR-0035); left out of the file otherwise.
+    /// `path_abs` and `path_rel` name the first file of the run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_sequence: Option<ImageSequence>,
     /// Probe results.
     pub probe: ProbeInfo,
     /// Plugin data (arch §4.3).
@@ -79,6 +87,163 @@ pub struct MediaAsset {
     #[serde(flatten)]
     #[schemars(skip)]
     pub extra: Extra,
+}
+
+/// A numbered run of pictures imported as one asset (ADR-0035): frame `n` (from 0) is the file
+/// `pattern` with the number `first + n`. Files are referenced, never copied.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
+pub struct ImageSequence {
+    /// The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`
+    /// (`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in
+    /// the directory of `path_abs`.
+    pub pattern: String,
+    /// The number of the first file.
+    pub first: u32,
+    /// How many numbers the run covers, from `first` (missing ones included); at least 2.
+    pub count: u32,
+    /// The frame rate chosen at import; changing the app setting never changes it.
+    pub fps: FrameRate,
+    /// The numbers with no file at import time, ascending. A missing frame shows the last
+    /// picture before it.
+    pub missing: Vec<u32>,
+    /// Fields unknown to this version.
+    #[serde(flatten)]
+    #[schemars(skip)]
+    pub extra: Extra,
+}
+
+/// The most numbers one image sequence may cover (about 9 hours at 30 fps).
+pub const MAX_IMAGE_SEQUENCE_FRAMES: u32 = 1_000_000;
+
+impl ImageSequence {
+    /// Where the counter is in `pattern`: the text before it, the zero-padded width (`None` for
+    /// `%d`) and the text after it. `None` if the pattern has no counter, more than one, or
+    /// another `%` directive.
+    #[must_use]
+    pub fn split_pattern(pattern: &str) -> Option<(String, Option<u8>, String)> {
+        let mut before = String::new();
+        let mut after = String::new();
+        let mut counter: Option<Option<u8>> = None;
+        let mut chars = pattern.chars().peekable();
+        while let Some(c) = chars.next() {
+            let out = if counter.is_some() {
+                &mut after
+            } else {
+                &mut before
+            };
+            if c != '%' {
+                out.push(c);
+                continue;
+            }
+            if chars.peek() == Some(&'%') {
+                chars.next();
+                out.push('%');
+                continue;
+            }
+            if counter.is_some() {
+                return None;
+            }
+            let mut digits = String::new();
+            while let Some(d) = chars.peek().copied().filter(char::is_ascii_digit) {
+                digits.push(d);
+                chars.next();
+            }
+            if chars.next() != Some('d') {
+                return None;
+            }
+            let width = if digits.is_empty() {
+                None
+            } else {
+                // Only the zero-padded form: `%4d` would pad with spaces.
+                let width = digits.strip_prefix('0')?.parse::<u8>().ok()?;
+                (1..=20).contains(&width).then_some(width)?;
+                Some(width)
+            };
+            counter = Some(width);
+        }
+        counter.map(|width| (before, width, after))
+    }
+
+    /// The pattern for a file name whose counter is `digits` (as written, so `0007` gives
+    /// `%04d` and `7` gives `%d`) between `before` and `after`.
+    #[must_use]
+    pub fn make_pattern(before: &str, digits: &str, after: &str) -> String {
+        let escape = |s: &str| s.replace('%', "%%");
+        let counter = if digits.len() > 1 && digits.starts_with('0') {
+            format!("%0{}d", digits.len())
+        } else {
+            "%d".to_owned()
+        };
+        format!("{}{counter}{}", escape(before), escape(after))
+    }
+
+    /// The file name of `number`, or `None` if the pattern is malformed.
+    #[must_use]
+    pub fn file_name(&self, number: u32) -> Option<String> {
+        let (before, width, after) = Self::split_pattern(&self.pattern)?;
+        Some(match width {
+            Some(width) => format!(
+                "{before}{number:0width$}{after}",
+                width = usize::from(width)
+            ),
+            None => format!("{before}{number}{after}"),
+        })
+    }
+
+    /// The number of the file that frame `frame` (from 0) shows: `first + frame`, or the last
+    /// number before it that is not missing. Frames past the end show the last one.
+    #[must_use]
+    pub fn number_for_frame(&self, frame: u32) -> u32 {
+        let last = self.count.saturating_sub(1);
+        let mut number = self.first.saturating_add(frame.min(last));
+        // `missing` is ascending: walk back over a run of missing numbers.
+        while number > self.first && self.missing.binary_search(&number).is_ok() {
+            number -= 1;
+        }
+        number
+    }
+
+    /// The playable length: `count / fps`, in whole flicks.
+    #[must_use]
+    pub fn duration(&self) -> Option<Duration> {
+        let end = self.fps.frame_to_time(i64::from(self.count)).ok()?;
+        Duration::from_flicks(end.flicks()).ok()
+    }
+
+    /// What is wrong with the description, if anything.
+    #[must_use]
+    pub fn problem(&self) -> Option<&'static str> {
+        if self.pattern.contains(['/', '\\']) || Self::split_pattern(&self.pattern).is_none() {
+            return Some(
+                "an image sequence pattern must be a file name with exactly one %0Nd or %d counter",
+            );
+        }
+        if !(2..=MAX_IMAGE_SEQUENCE_FRAMES).contains(&self.count) {
+            return Some("an image sequence must cover between 2 and 1,000,000 numbers");
+        }
+        // FFmpeg's start number is a signed 32-bit integer.
+        let Some(end) = self
+            .first
+            .checked_add(self.count)
+            .filter(|end| *end <= i32::MAX.unsigned_abs())
+        else {
+            return Some("an image sequence's numbers must stay below 2,147,483,647");
+        };
+        if !self.missing.windows(2).all(|w| w[0] < w[1]) {
+            return Some("an image sequence's missing numbers must be ascending without repeats");
+        }
+        // The first and the last number are files: the run starts and ends on a picture.
+        if self
+            .missing
+            .iter()
+            .any(|n| *n <= self.first || *n >= end - 1)
+        {
+            return Some(
+                "an image sequence's missing numbers must lie between its first and last file",
+            );
+        }
+        None
+    }
 }
 
 impl MediaAsset {
@@ -99,6 +264,7 @@ impl MediaAsset {
             path_rel: None,
             content_hash: None,
             sequence: None,
+            image_sequence: None,
             probe,
             custom: Custom::new(),
             extra: Extra::new(),
@@ -117,6 +283,7 @@ impl MediaAsset {
             path_rel: None,
             content_hash: None,
             sequence: Some(sequence),
+            image_sequence: None,
             probe: ProbeInfo::default(),
             custom: Custom::new(),
             extra: Extra::new(),
@@ -127,7 +294,10 @@ impl MediaAsset {
     #[must_use]
     pub fn has_video(&self) -> bool {
         match self.kind {
-            MediaKind::Video | MediaKind::Image | MediaKind::SequenceRef => true,
+            MediaKind::Video
+            | MediaKind::Image
+            | MediaKind::ImageSequence
+            | MediaKind::SequenceRef => true,
             MediaKind::Audio => false,
         }
     }
@@ -137,8 +307,26 @@ impl MediaAsset {
     pub fn has_audio(&self) -> bool {
         match self.kind {
             MediaKind::Audio | MediaKind::Video | MediaKind::SequenceRef => true,
-            MediaKind::Image => false,
+            MediaKind::Image | MediaKind::ImageSequence => false,
         }
+    }
+
+    /// An image-sequence asset (ADR-0035): `first_file` is the absolute path of the first
+    /// picture of `run`. The probe's duration and frame rate come from the run.
+    #[must_use]
+    pub fn image_sequence(
+        id: MediaId,
+        first_file: impl Into<String>,
+        run: ImageSequence,
+        mut probe: ProbeInfo,
+    ) -> Self {
+        probe.duration = run.duration();
+        probe.fps = Some(run.fps);
+        probe.vfr = false;
+        probe.audio = None;
+        let mut asset = MediaAsset::file(id, MediaKind::ImageSequence, first_file, probe);
+        asset.image_sequence = Some(run);
+        asset
     }
 }
 
@@ -440,6 +628,120 @@ mod tests {
         assert_eq!(serde_json::from_value::<ColorTags>(back).unwrap(), tags);
         assert!(serde_json::from_value::<ColorTags>(json!({"gamut": "x"})).is_err());
         assert_eq!(TransferCharacteristics::Pq.to_string(), "smpte2084");
+    }
+
+    fn run(pattern: &str, first: u32, count: u32, missing: &[u32]) -> ImageSequence {
+        ImageSequence {
+            pattern: pattern.into(),
+            first,
+            count,
+            fps: FrameRate::FPS_30,
+            missing: missing.to_vec(),
+            extra: Extra::new(),
+        }
+    }
+
+    #[test]
+    fn image_sequence_patterns_split_and_format() {
+        assert_eq!(
+            ImageSequence::split_pattern("shot_%04d.exr"),
+            Some(("shot_".into(), Some(4), ".exr".into()))
+        );
+        assert_eq!(
+            ImageSequence::split_pattern("100%% %d.png"),
+            Some(("100% ".into(), None, ".png".into()))
+        );
+        for bad in [
+            "plain.png",
+            "a_%04d_%04d.png",
+            "a_%4d.png",
+            "a_%s.png",
+            "a_%",
+            "%00d",
+        ] {
+            assert_eq!(ImageSequence::split_pattern(bad), None, "{bad}");
+        }
+        assert_eq!(
+            ImageSequence::make_pattern("shot_", "0007", ".exr"),
+            "shot_%04d.exr"
+        );
+        assert_eq!(
+            ImageSequence::make_pattern("50%_", "7", ".png"),
+            "50%%_%d.png"
+        );
+        assert_eq!(ImageSequence::make_pattern("f", "0", ".png"), "f%d.png");
+        let seq = run("shot_%04d.exr", 98, 5, &[]);
+        assert_eq!(seq.file_name(98).as_deref(), Some("shot_0098.exr"));
+        assert_eq!(seq.file_name(12345).as_deref(), Some("shot_12345.exr"));
+        assert_eq!(
+            run("f%d.png", 9, 3, &[]).file_name(10).as_deref(),
+            Some("f10.png")
+        );
+    }
+
+    #[test]
+    fn a_missing_frame_shows_the_last_picture_before_it() {
+        let seq = run("f_%03d.png", 10, 8, &[12, 13, 15]);
+        let shown: Vec<u32> = (0..10).map(|f| seq.number_for_frame(f)).collect();
+        assert_eq!(shown, [10, 11, 11, 11, 14, 14, 16, 17, 17, 17]);
+        assert_eq!(seq.problem(), None);
+    }
+
+    #[test]
+    fn image_sequence_duration_is_count_over_fps() {
+        let mut seq = run("f_%03d.png", 1, 300, &[]);
+        assert_eq!(seq.duration(), Some(Duration::from_secs(10).unwrap()));
+        seq.fps = FrameRate::FPS_23_976;
+        seq.count = 24_000;
+        assert_eq!(seq.duration(), Some(Duration::from_secs(1001).unwrap()));
+    }
+
+    #[test]
+    fn image_sequence_problems() {
+        assert!(run("f.png", 0, 2, &[]).problem().is_some());
+        assert!(run("d/f%d.png", 0, 2, &[]).problem().is_some());
+        assert!(run("f%d.png", 0, 1, &[]).problem().is_some());
+        assert!(
+            run("f%d.png", 0, MAX_IMAGE_SEQUENCE_FRAMES + 1, &[])
+                .problem()
+                .is_some()
+        );
+        assert!(run("f%d.png", u32::MAX - 1, 2, &[]).problem().is_some());
+        assert!(run("f%d.png", 0, 5, &[3, 2]).problem().is_some());
+        assert!(run("f%d.png", 0, 5, &[2, 2]).problem().is_some());
+        assert!(run("f%d.png", 0, 5, &[0]).problem().is_some());
+        assert!(run("f%d.png", 0, 5, &[4]).problem().is_some());
+        assert_eq!(run("f%d.png", 0, 5, &[1, 2, 3]).problem(), None);
+    }
+
+    #[test]
+    fn an_image_sequence_asset_is_video_without_audio() {
+        let asset = MediaAsset::image_sequence(
+            MediaId::from_u128(4),
+            "/renders/shot_0001.exr",
+            run("shot_%04d.exr", 1, 300, &[]),
+            ProbeInfo::default(),
+        );
+        assert!(asset.has_video() && !asset.has_audio() && asset.kind.is_file());
+        assert_eq!(asset.probe.duration, Some(Duration::from_secs(10).unwrap()));
+        assert_eq!(asset.probe.fps, Some(FrameRate::FPS_30));
+        let value = serde_json::to_value(&asset).unwrap();
+        assert_eq!(value["kind"], "image_sequence");
+        assert_eq!(value["image_sequence"]["pattern"], "shot_%04d.exr");
+        assert_eq!(serde_json::from_value::<MediaAsset>(value).unwrap(), asset);
+        // Other kinds leave the field out of the file.
+        let still = MediaAsset::file(
+            MediaId::from_u128(1),
+            MediaKind::Image,
+            "/media/still.png",
+            ProbeInfo::default(),
+        );
+        assert!(
+            serde_json::to_value(&still)
+                .unwrap()
+                .get("image_sequence")
+                .is_none()
+        );
     }
 
     #[test]

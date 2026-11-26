@@ -506,6 +506,48 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       ],
       "type": "object"
     },
+    "ImageSequence": {
+      "description": "A numbered run of pictures imported as one asset (ADR-0035): frame `n` (from 0) is the file\n`pattern` with the number `first + n`. Files are referenced, never copied.",
+      "properties": {
+        "count": {
+          "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "first": {
+          "description": "The number of the first file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fps": {
+          "$ref": "#/$defs/FrameRate",
+          "description": "The frame rate chosen at import; changing the app setting never changes it."
+        },
+        "missing": {
+          "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "pattern": {
+          "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "first",
+        "count",
+        "fps",
+        "missing"
+      ],
+      "type": "object"
+    },
     "InOut": {
       "description": "The sequence's in and out points: the half-open range `[start, end)` that lift, extract and\nthree-point edits use. Both ends or neither (`Sequence::in_out` is `None` when unset).",
       "properties": {
@@ -940,6 +982,17 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "pattern": "^med_[0-9a-f]{32}$",
           "type": "string"
         },
+        "image_sequence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageSequence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run of pictures (`image_sequence` only, ADR-0035); left out of the file otherwise.\n`path_abs` and `path_rel` name the first file of the run."
+        },
         "kind": {
           "$ref": "#/$defs/MediaKind",
           "description": "What the media is."
@@ -1038,6 +1091,11 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         {
           "const": "image",
           "description": "A still image (no duration).",
+          "type": "string"
+        },
+        {
+          "const": "image_sequence",
+          "description": "A numbered run of pictures that plays like video (ADR-0035); described by\n[`MediaAsset::image_sequence`].",
           "type": "string"
         },
         {

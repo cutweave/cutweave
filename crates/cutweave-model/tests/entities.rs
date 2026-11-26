@@ -397,3 +397,41 @@ fn the_source_bound_counts_speed_and_freeze_frames() {
         "{frozen_past:?}"
     );
 }
+
+/// ADR-0035: the kind and the description of the run go together, and the description is
+/// checked.
+#[test]
+fn image_sequence_media_is_checked() {
+    let reasons = |edit: &dyn Fn(&mut Value)| -> Vec<String> {
+        let mut value: Value =
+            serde_json::from_str(&fixture("invalid/valid-base.cutweave")).unwrap();
+        let media = value["media"].as_object_mut().unwrap();
+        let key = media.keys().next().unwrap().clone();
+        edit(&mut media[&key]);
+        let project: Project = serde_json::from_value(value).unwrap();
+        project
+            .violations()
+            .into_iter()
+            .filter_map(|v| match v {
+                Invariant::InvalidMedia { reason, .. } => Some(reason),
+                _ => None,
+            })
+            .collect()
+    };
+    let run = json!({"pattern": "f_%04d.png", "first": 1, "count": 300,
+        "fps": {"num": 30, "den": 1}, "missing": [7]});
+    assert_eq!(reasons(&|m| m["image_sequence"] = run.clone()).len(), 1);
+    let no_run = reasons(&|m| m["kind"] = json!("image_sequence"));
+    assert!(
+        no_run
+            .iter()
+            .any(|r| r.contains("needs its image_sequence")),
+        "{no_run:?}"
+    );
+    let bad = reasons(&|m| {
+        m["kind"] = json!("image_sequence");
+        m["image_sequence"] = run.clone();
+        m["image_sequence"]["missing"] = json!([300]);
+    });
+    assert!(bad.iter().any(|r| r.contains("missing numbers")), "{bad:?}");
+}
