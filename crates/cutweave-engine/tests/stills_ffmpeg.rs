@@ -11,7 +11,11 @@
 //! The pictures are written at test time (`cutweave_media::testing::stills`): no corpus.
 
 #![cfg(feature = "ffmpeg")]
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::cast_possible_truncation
+)]
 
 mod engine_support;
 mod full_support;
