@@ -78,7 +78,10 @@ pub use migrate::{
     open_str, schema_version_of, to_document_string,
 };
 pub use presets::{ASPECT_PRESETS, AspectPreset, FRAME_RATE_PRESETS, aspect_preset};
-pub use project::{ItemRef, Project, ProjectMeta, ProjectSettings};
+pub use project::{
+    DEFAULT_STILL_DURATION_SECS, ItemRef, MAX_STILL_DURATION_SECS, Project, ProjectMeta,
+    ProjectSettings,
+};
 pub use rate::{FrameRate, Rounding, SampleRate};
 pub use sequence::{
     Color, ColorError, ColorSpace, Sequence, SequenceFormat, Track, TrackItems, TrackKind,

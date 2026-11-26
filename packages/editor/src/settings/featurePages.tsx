@@ -7,6 +7,7 @@ import {
   EXPORT_HW_CHOICES,
   EXPORT_QUALITIES,
   IMAGE_SEQUENCE_FPS_CHOICES,
+  STILL_DURATION_MAX,
 } from "@cutweave/preferences";
 import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
 import { type ChoiceOption, registerSettingsPage, type SettingsPageDef } from "./registry.ts";
@@ -133,6 +134,31 @@ const exportPage: SettingsPageDef = {
   ],
 };
 
+// ---- Editing (WP-2F.05b; more rows come with WP-2A.13) ------------------------------------------
+
+const editingPage: SettingsPageDef = {
+  id: "editing",
+  title: "settings.pages.editing",
+  icon: "scissors",
+  group: "preferences",
+  order: 30,
+  rows: [
+    {
+      id: "editing.still_duration",
+      key: "editing.still_duration",
+      label: "settings.rows.stillDuration.label",
+      description: "settings.rows.stillDuration.description",
+      keywords: "settings.rows.stillDuration.keywords",
+      control: {
+        kind: "number",
+        min: 1,
+        max: STILL_DURATION_MAX,
+        unit: "settings.rows.stillDuration.unit",
+      },
+    },
+  ],
+};
+
 // ---- Media and import (WP-1M.14) --------------------------------------------------------------
 
 const mediaPage: SettingsPageDef = {
@@ -178,7 +204,7 @@ const mediaPage: SettingsPageDef = {
 };
 
 /** The pages of this work package. */
-export const FEATURE_PAGES: readonly SettingsPageDef[] = [mediaPage, exportPage];
+export const FEATURE_PAGES: readonly SettingsPageDef[] = [editingPage, mediaPage, exportPage];
 
 /** Registers them (idempotent). */
 export function registerFeaturePages(): void {

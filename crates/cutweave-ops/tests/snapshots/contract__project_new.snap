@@ -89,6 +89,29 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           },
           "description": "Format of the first sequence; also the default for new sequences.",
           "default": null
+        },
+        "still_duration": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How long a still image is when it is placed without a length (up to one hour); absent:\nfive seconds. The editor passes the person's \"Still image duration\" setting.",
+          "default": null
         }
       },
       "required": [
@@ -196,6 +219,29 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           }
         },
         "description": "Format of the first sequence; also the default for new sequences.",
+        "default": null
+      },
+      "still_duration": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "How long a still image is when it is placed without a length (up to one hour); absent:\nfive seconds. The editor passes the person's \"Still image duration\" setting.",
         "default": null
       }
     },

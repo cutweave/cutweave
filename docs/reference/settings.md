@@ -84,7 +84,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| `editing.still_duration` | Still image duration for new projects (freeze frames default to 3 s, set per freeze with `clip.freeze_frame`'s `duration`) | 5 s | App, copied to the project | `project.new` | Read and change the project's value | WP-2F.05 |
+| `editing.still_duration` | Still image duration for new projects (freeze frames default to 3 s, set per freeze with `clip.freeze_frame`'s `duration`) | 5 s | App, copied to the project | `project.new` (`still_duration`) | Read the project's value (`settings.still_duration`); changing it comes with `project.set_settings` (WP-2H.08) | WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)) |
 | `editing.text_duration` | Duration of new text | 5 s | App | Renderer | — | WP-3A.07 |
 | `editing.transition_duration` | Duration of new transitions | 0.5 s | App | Renderer | — | WP-4A.09 |
 | `editing.audio_fade` | Length of a fade added with one click | 0.5 s | App | Renderer | — | WP-2E.05 |
@@ -289,7 +289,7 @@ Stored in the document, changed with undoable commands (`project.set_settings`, 
 |---|---|---|---|---|
 | `meta.name` | Project name | Chosen at creation | Read and change (`project.rename`) | Exists (P1) |
 | `default_format` | Format of new sequences | 1920 × 1080, 30 fps, 48 kHz | Read and change | WP-2H.08 (field exists since WP-1A.02) |
-| `still_duration` | Still image duration | The app default (5 s) | Read and change | WP-2F.05 |
+| `still_duration` | Still image duration | The app default (5 s) | Read; change with `project.set_settings` (WP-2H.08) | The field and the insert default: WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)); the row in File > Project settings…: WP-2H.08 |
 | `proxy_policy` | Proxies: off, auto, all | The app default (auto) | Read and change | WP-2F.01 follow-up ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md), Proposed; every project is `auto` until then) |
 | `render_cache.enabled` | Render heavy parts in the background | On | Read and change | WP-2J.09 |
 | `autosave` | Autosave for engines without the app (headless, agents) | On, every 30 s | Read and change | WP-1C.03 (dialog row: WP-2H.08) |

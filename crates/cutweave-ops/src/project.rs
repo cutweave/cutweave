@@ -9,11 +9,11 @@ use cutweave_commands::{
     CmdError, Command, Query, QueryCtx, Registry, RegistryError, Tx, command, query, wire,
 };
 use cutweave_model::{
-    Duration, FrameRate, Invariant, Project, SampleRate, Sequence, SequenceFormat, SequenceId,
-    Track, TrackId, TrackKind,
+    Duration, FrameRate, Invariant, MAX_STILL_DURATION_SECS, Project, SampleRate, Sequence,
+    SequenceFormat, SequenceId, TimeInput, Track, TrackId, TrackKind,
 };
 
-use crate::util::check_name;
+use crate::util::{check_name, resolve_duration};
 
 pub mod collect;
 
@@ -81,6 +81,28 @@ pub struct ProjectNew {
     pub name: String,
     /// Format of the first sequence; also the default for new sequences.
     pub format: Option<FormatSpec>,
+    /// How long a still image is when it is placed without a length (up to one hour); absent:
+    /// five seconds. The editor passes the person's "Still image duration" setting.
+    pub still_duration: Option<TimeInput>,
+}
+
+impl ProjectNew {
+    /// The still duration to store, if one was given.
+    fn still(&self, format: &SequenceFormat) -> Result<Option<Duration>, CmdError> {
+        let Some(input) = self.still_duration else {
+            return Ok(None);
+        };
+        let length = resolve_duration("/still_duration", input, format.frame_rate)?;
+        let longest = Duration::from_secs(MAX_STILL_DURATION_SECS)
+            .map_err(|e| CmdError::internal(e.to_string()))?;
+        if length > longest {
+            return Err(CmdError::invalid(
+                "/still_duration",
+                "a still can be at most one hour long by default",
+            ));
+        }
+        Ok(Some(length))
+    }
 }
 
 impl Command for ProjectNew {
@@ -95,6 +117,7 @@ impl Command for ProjectNew {
             ));
         }
         let format = self.format.clone().unwrap_or_default().resolve();
+        self.still(&format)?;
         let mut probe = Project::new("format check");
         probe.settings.default_format = format;
         for v in probe.violations() {
@@ -109,6 +132,7 @@ impl Command for ProjectNew {
         self.validate(&tx.query_ctx())?;
         let name = check_name("/name", &self.name)?;
         let format = self.format.clone().unwrap_or_default().resolve();
+        let still = self.still(&format)?;
         let mut sequence = Sequence::new(tx.new_id(), DEFAULT_SEQUENCE_NAME, format.clone());
         let video = Track::new(tx.new_id(), TrackKind::Video, "V1");
         let audio = Track::new(tx.new_id(), TrackKind::Audio, "A1");
@@ -125,6 +149,7 @@ impl Command for ProjectNew {
         })?;
         tx.update_settings(|s| {
             s.default_format = format;
+            s.still_duration = still;
             Ok(())
         })?;
         tx.insert_sequence(&sequence)?;

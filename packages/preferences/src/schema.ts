@@ -142,6 +142,9 @@ export interface PreferenceValues {
    */
   "agents.allowed_folders": readonly string[];
   "agents.client_profile": ClientProfile;
+  // Editing (WP-2F.05b, ADR-0035)
+  /** Seconds a still image gets in new projects when it is placed without a length. */
+  "editing.still_duration": number;
   // Media and import (WP-1M.14)
   /** Show a video's frames while the pointer moves across its card in the bin. */
   "media.hover_scrub": boolean;
@@ -196,6 +199,8 @@ export type PreferenceDef =
       writer?: "main";
     };
 
+/** The longest still duration, in seconds (one hour, the engine's limit for `project.new`). */
+export const STILL_DURATION_MAX = 3600;
 export const RECENT_COUNT_MAX = 25;
 /** The most bindings a person can change, keys per binding, and the length of one key. */
 export const MAX_SHORTCUT_OVERRIDES = 512;
@@ -284,6 +289,14 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     scope: "app",
     options: CLIENT_PROFILES,
     default: "standard",
+  },
+  // Editing (WP-2F.05b, ADR-0035)
+  "editing.still_duration": {
+    type: "int",
+    scope: "app",
+    min: 1,
+    max: STILL_DURATION_MAX,
+    default: 5,
   },
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
