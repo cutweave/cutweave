@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The Speed section of the Inspector (WP-2H.03b): the clip's speed as text the engine parses
 // (`2x`, `50%`, `1/3`), Reverse, what a change keeps (the clip's length or its media), whether
-// keyframes stretch, Reset speed and Freeze frame. Every edit is `clip.set_speed`, `clip.reverse`,
+// keyframes stretch, the section's reset (Reset speed) and Freeze frame. Every edit is `clip.set_speed`, `clip.reverse`,
 // `clip.reset_speed` or `clip.freeze_frame`. It shows for clips that play moving pictures (not for
 // stills, freeze frames or sound): the engine refuses those with `Unsupported`.
 //
@@ -159,15 +159,6 @@ export function SpeedSection({
         </InspectorRow>
         {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would bring its own border and layout */}
         <div className="cw-inspector__flags" role="group" aria-label={t("inspector.speed.actions")}>
-          <Tooltip label={t("inspector.speed.reset")}>
-            <IconButton
-              size="sm"
-              icon="undo-2"
-              label={t("inspector.speed.reset")}
-              disabled={locked || clips.every(isNormal)}
-              onClick={reset}
-            />
-          </Tooltip>
           <Tooltip label={freezeReason ?? t("inspector.speed.freeze")}>
             <IconButton
               size="sm"

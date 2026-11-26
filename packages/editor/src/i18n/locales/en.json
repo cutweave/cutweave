@@ -1060,7 +1060,6 @@
       "lengthStays": "Stays",
       "scaleKeys": "Scale keyframes",
       "ripple": "Move what follows",
-      "reset": "Reset speed",
       "freeze": "Freeze frame at playhead",
       "freezeNeedsOne": "Select one clip to freeze a frame",
       "freezeNeedsPlayhead": "Move the playhead inside the clip",

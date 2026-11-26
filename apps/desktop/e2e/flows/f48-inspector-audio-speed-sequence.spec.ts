@@ -3,7 +3,7 @@
 // selected: volume, pan and a fade for both (one undo step each). A picture clip: speed typed as
 // text, Reverse, Reset speed, Freeze frame. Nothing selected: the sequence's canvas size and
 // frame rate.
-import { expect, test } from "../fixtures.ts";
+import { editorCall, expect, test } from "../fixtures.ts";
 import {
   clickClip,
   clipAt,
@@ -22,9 +22,9 @@ import {
   sec,
   sequence,
   sequenceFormat,
-  shortcut,
   snapshot,
   timecode,
+  timelineCanvas,
   timelineGeometry,
   workspace,
   xAt,
@@ -45,11 +45,19 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
       await dropCard(page, "interview.mp4", "V1", 1);
       await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
       await editorCaughtUp(page);
+      // Zoom out (- on the focused timeline) so both clips show.
+      await timelineCanvas(page).locator("canvas").focus();
+      for (let i = 0; i < 5; i++) await page.keyboard.press("-");
+      const zoom = async () =>
+        (await editorCall<{ zoom: number | null }>(page, "view.get")).zoom ?? 100;
+      await expect.poll(zoom, BOUND).toBeLessThan(40);
       await dropCard(page, "interview.mp4", "V1", 12);
       await expect
         .poll(async () => (await layout(page)).find((t) => t.track === "V1")?.clips.length)
         .toBe(2);
       await editorCaughtUp(page);
+      // Undo with the toolbar button: the keys belong to a text field while it has the focus.
+      const undo = () => page.getByRole("button", { name: /^Undo/ }).click();
       const seq = await sequence(page);
       const sound = seq.tracks.find((t) => t.name === "A1")?.items ?? [];
       const picture = seq.tracks.find((t) => t.name === "V1")?.items ?? [];
@@ -65,7 +73,7 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
       await expect(f.panel.getByRole("button", { name: "Audio", exact: true })).toBeVisible(BOUND);
       const g = await timelineGeometry(page);
       await page.keyboard.down("Shift");
-      await page.mouse.click(xAt(g, sec(14)), laneY(g, "A1"));
+      await page.mouse.click(xAt(g, sec(12)) + 60, laneY(g, "A1"));
       await page.keyboard.up("Shift");
       await expect(f.panel.getByText(/2 clips selected/)).toBeVisible(BOUND);
 
@@ -84,7 +92,7 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
       await expect.poll(async () => (await item(page, a2.id)).audio.pan, BOUND).toBe(-0.5);
       // One undo step takes the pan of both back; the volume stays.
       await editorCaughtUp(page);
-      await shortcut(app, "Control+Z");
+      await undo();
       await expect.poll(async () => (await item(page, a1.id)).audio.pan, BOUND).toBe(0);
       await expect.poll(async () => (await item(page, a2.id)).audio.pan, BOUND).toBe(0);
       expect((await item(page, a1.id)).audio.gain).toBe(-6);
@@ -116,7 +124,7 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
       await expect.poll(async () => (await item(page, v1.id)).item.duration, BOUND).toBe(sec(5));
       await expect.poll(async () => (await item(page, a1.id)).item.duration, BOUND).toBe(sec(5));
       await editorCaughtUp(page);
-      await shortcut(app, "Control+Z");
+      await undo();
       await expect.poll(async () => (await item(page, v1.id)).item.duration, BOUND).toBe(sec(10));
 
       // Text the engine does not accept is refused with its own message; nothing changes.
@@ -128,7 +136,7 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
       // Reverse, then Reset speed.
       await f.panel.getByRole("switch", { name: "Reverse" }).click();
       await expect.poll(async () => (await item(page, v1.id)).source?.reverse, BOUND).toBe(true);
-      await f.panel.getByRole("button", { name: "Reset speed" }).click();
+      await f.panel.getByRole("button", { name: "Reset Speed", exact: true }).click();
       await expect.poll(async () => (await item(page, v1.id)).source?.reverse, BOUND).toBe(false);
       await snapshot(page, info, "speed section");
 
@@ -158,7 +166,7 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
       await snapshot(page, info, "sequence section");
       // Both are one undo step each.
       await editorCaughtUp(page);
-      await shortcut(app, "Control+Z");
+      await undo();
       await expect
         .poll(async () => (await sequenceFormat(page)).frame_rate, BOUND)
         .toEqual({ num: 30, den: 1 });

@@ -265,7 +265,7 @@ describe("the Speed section", () => {
     await user.click(screen.getByRole("switch", { name: "Reverse" }));
     await waitFor(() => expect(calls("clip.reverse")).toHaveLength(1));
     expect(calls("clip.reverse")[0]).toEqual({ items: ["itm_v"], reverse: true });
-    await user.click(screen.getByRole("button", { name: "Reset speed" }));
+    await user.click(screen.getByRole("button", { name: "Reset Speed" }));
     await waitFor(() => expect(calls("clip.reset_speed")).toHaveLength(1));
     expect(calls("clip.reset_speed")[0]).toEqual({
       items: ["itm_v"],
