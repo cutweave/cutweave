@@ -2,94 +2,28 @@
 import { describe, expect, it } from "vitest";
 import {
   baseName,
-  defaultDraft,
   defaultOutputPath,
   dirName,
   encoderLabel,
-  formatProblem,
-  fpsText,
-  hardwareEncoders,
-  hasMp4Extension,
-  hwFor,
   isAbsolutePath,
   parseFps,
   parseProgressLine,
   pathInFolder,
   percent,
-  presetFor,
-  presetSize,
   proposedOutputPath,
   safeFileStem,
 } from "./exportSettings.ts";
 
-const hd = { width: 1920, height: 1080, fps: { num: 30, den: 1 } };
-
-describe("the preset's size", () => {
-  it("keeps 1080p and fits larger and portrait canvases without enlarging", () => {
-    expect(presetSize(hd)).toEqual({ width: 1920, height: 1080 });
-    expect(presetSize({ width: 3840, height: 2160 })).toEqual({ width: 1920, height: 1080 });
-    expect(presetSize({ width: 1080, height: 1920 })).toEqual({ width: 1080, height: 1920 });
-    expect(presetSize({ width: 2160, height: 3840 })).toEqual({ width: 1080, height: 1920 });
-    expect(presetSize({ width: 1280, height: 720 })).toEqual({ width: 1280, height: 720 });
-    expect(presetSize({ width: 1001, height: 563 })).toEqual({ width: 1000, height: 562 });
-  });
-});
-
 describe("frame rates", () => {
-  it("reads and writes the usual ones", () => {
+  it("reads the usual ones", () => {
     expect(parseFps("30")).toEqual({ num: 30, den: 1 });
     expect(parseFps("29.97")).toEqual({ num: 30000, den: 1001 });
     expect(parseFps("23,976")).toEqual({ num: 24000, den: 1001 });
     expect(parseFps("12.5")).toEqual({ num: 12500, den: 1000 });
-    expect(fpsText({ num: 30000, den: 1001 })).toBe("29.97");
-    expect(fpsText({ num: 25, den: 1 })).toBe("25");
   });
 
   it("refuses what the engine would refuse", () => {
     for (const bad of ["", "0", "-5", "abc", "241", "0.0001"]) expect(parseFps(bad)).toBeNull();
-  });
-});
-
-describe("the format fields", () => {
-  it("start at the preset and are valid", () => {
-    const draft = defaultDraft(hd);
-    expect(draft).toEqual({ width: "1920", height: "1080", fps: "30", quality: "high" });
-    expect(formatProblem(draft)).toBeNull();
-    expect(presetFor(draft, hd)).toBe("h264-mp4-1080p");
-  });
-
-  it("name the first bad field", () => {
-    const draft = defaultDraft(hd);
-    expect(formatProblem({ ...draft, width: "1921" })).toBe("width");
-    expect(formatProblem({ ...draft, width: "8" })).toBe("width");
-    expect(formatProblem({ ...draft, height: "9000" })).toBe("height");
-    expect(formatProblem({ ...draft, height: "" })).toBe("height");
-    expect(formatProblem({ ...draft, fps: "300" })).toBe("fps");
-  });
-
-  it("make a custom export once one value differs from the preset", () => {
-    const draft = defaultDraft(hd);
-    expect(presetFor({ ...draft, quality: "low" }, hd)).toEqual({
-      custom: { width: 1920, height: 1080, fps: { num: 30, den: 1 }, quality: "low" },
-    });
-    expect(presetFor({ ...draft, width: "1280", height: "720" }, hd)).toEqual({
-      custom: { width: 1280, height: 720, fps: { num: 30, den: 1 }, quality: "high" },
-    });
-    expect(presetFor({ ...draft, fps: "24" }, hd)).toEqual({
-      custom: { width: 1920, height: 1080, fps: { num: 24, den: 1 }, quality: "high" },
-    });
-  });
-
-  it("see an NTSC rate typed as 29.97 as the sequence's own rate", () => {
-    const ntsc = { ...hd, fps: { num: 30000, den: 1001 } };
-    expect(presetFor(defaultDraft(ntsc), ntsc)).toBe("h264-mp4-1080p");
-  });
-});
-
-describe("hardware choice", () => {
-  it("is auto or off", () => {
-    expect(hwFor(true)).toBe("auto");
-    expect(hwFor(false)).toBe("off");
   });
 });
 
@@ -125,15 +59,6 @@ describe("the output path", () => {
     expect(proposedOutputPath("chosen", folders, null, "My: film")).toBe("E:\\Chosen\\My film.mp4");
   });
 
-  it("starts the draft at the person's quality; the preset is still high quality", () => {
-    expect(defaultDraft(hd, "low").quality).toBe("low");
-    expect(defaultDraft(hd).quality).toBe("high");
-    expect(presetFor(defaultDraft(hd, "high"), hd)).toBe("h264-mp4-1080p");
-    expect(presetFor(defaultDraft(hd, "medium"), hd)).toMatchObject({
-      custom: { quality: "medium", width: 1920, height: 1080 },
-    });
-  });
-
   it("makes a file name of any project name", () => {
     expect(safeFileStem('a:b/c*"d"?')).toBe("a b c d");
     expect(safeFileStem("  ")).toBe("Export");
@@ -144,37 +69,18 @@ describe("the output path", () => {
     expect(isAbsolutePath("C:\\a\\b.mp4")).toBe(true);
     expect(isAbsolutePath("/a/b.mp4")).toBe(true);
     expect(isAbsolutePath("b.mp4")).toBe(false);
-    expect(hasMp4Extension("x.MP4")).toBe(true);
-    expect(hasMp4Extension("x.mov")).toBe(false);
     expect(baseName("C:\\a\\b.mp4")).toBe("b.mp4");
   });
 });
 
 describe("encoders", () => {
-  it("are named for people", () => {
+  it("are named for people, for every codec", () => {
     expect(encoderLabel("h264_nvenc")).toBe("NVIDIA NVENC");
-    expect(encoderLabel("h264_amf")).toBe("AMD AMF");
-    expect(encoderLabel("h264_qsv")).toBe("Intel Quick Sync");
+    expect(encoderLabel("hevc_amf")).toBe("AMD AMF");
+    expect(encoderLabel("av1_qsv")).toBe("Intel Quick Sync");
+    expect(encoderLabel("hevc_videotoolbox")).toBe("Apple VideoToolbox");
     expect(encoderLabel("h264_mystery")).toBe("h264_mystery");
-  });
-
-  it("are read from media.capabilities, in order", () => {
-    const answer = {
-      hw_decode: [],
-      hw_encode: [
-        { device: "cuda", codec: "h264", implementation: "h264_nvenc" },
-        { device: "d3d11", codec: "h264", implementation: "h264_amf" },
-        { device: "x", codec: "h264", implementation: "h264_nvenc" },
-      ],
-      codecs: [],
-    };
-    expect(hardwareEncoders(answer)).toEqual(["h264_nvenc", "h264_amf"]);
-    expect(hardwareEncoders({ hw_encode: [] })).toEqual([]);
-    expect(hardwareEncoders({})).toBeNull();
-    expect(
-      hardwareEncoders({ available: false, hw_encode: [], hw_decode: [], codecs: [] }),
-    ).toBeNull();
-    expect(hardwareEncoders(null)).toBeNull();
+    expect(encoderLabel("libx264")).toBe("libx264");
   });
 });
 

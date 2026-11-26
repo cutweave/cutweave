@@ -731,6 +731,7 @@ test.describe("F42 context menus", () => {
       await page.getByRole("button", { name: "Export", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Export video" });
       await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Advanced" }).click();
       await dialog.getByLabel("Width").fill("3840");
       await dialog.getByLabel("Height").fill("2160");
       await dialog.getByRole("radio", { name: "Low" }).click();

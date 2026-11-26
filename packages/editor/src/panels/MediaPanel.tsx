@@ -465,13 +465,11 @@ export function MediaPanel() {
   const layout = useStore(layoutStore, (s) => s.layout);
   const ready = useEngineStore((s) => s.rpc !== null && s.connection === "ready");
   const failures = useMediaStore((s) => s.failures);
-  const jobs = useJobStore((s) => s.jobs);
-  const importer = useImport();
-  const nFolders = folders.length;
-
-  const analyzing = useMemo(() => {
+  // Only which media are being analyzed: an export's progress events must not re-render the bin
+  // (WP-2G.04), so the selector returns a string that changes only when that set does.
+  const analyzingKey = useJobStore((s) => {
     const ids = new Set<string>();
-    for (const job of Object.values(jobs)) {
+    for (const job of Object.values(s.jobs)) {
       if (
         job.kind === "analysis" &&
         job.media_id !== null &&
@@ -480,8 +478,15 @@ export function MediaPanel() {
         ids.add(job.media_id);
       }
     }
-    return ids;
-  }, [jobs]);
+    return [...ids].sort().join("\n");
+  });
+  const importer = useImport();
+  const nFolders = folders.length;
+
+  const analyzing = useMemo(
+    () => new Set(analyzingKey === "" ? [] : analyzingKey.split("\n")),
+    [analyzingKey],
+  );
 
   // ---- focus and windowing ---------------------------------------------------------------
   const scroller = useRef<HTMLDivElement>(null);
