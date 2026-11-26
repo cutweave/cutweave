@@ -41,7 +41,7 @@ const vec = (v: unknown, fallback: Vec): Vec => {
   return { x: finite(o.x, fallback.x), y: finite(o.y, fallback.y) };
 };
 
-function findItem(project: Project, id: string): Item | null {
+export function findItem(project: Project, id: string): Item | null {
   for (const sequence of Object.values(project.sequences)) {
     for (const track of Object.values(sequence.tracks)) {
       const item = (track.items as Record<string, Item | undefined>)[id];
@@ -52,7 +52,7 @@ function findItem(project: Project, id: string): Item | null {
 }
 
 /** The picture as displayed (coded size turned by the display rotation), or null if unknown. */
-function displaySize(media: MediaAsset | undefined): [number, number] | null {
+export function displaySize(media: MediaAsset | undefined): [number, number] | null {
   const video = media?.probe?.streams?.find((s) => s.kind === "video");
   const w = finite(video?.width, 0);
   const h = finite(video?.height, 0);
