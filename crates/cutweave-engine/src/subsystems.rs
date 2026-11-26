@@ -93,8 +93,16 @@ pub const DEGRADED_EVENT: &str = "engine.degraded";
 /// proxy, so reverse playback is slower until the proxy queued for it is ready (WP-2D.01b).
 pub const REVERSE_SLOW_EVENT: &str = "media.reverse_slow";
 
+/// The `playback.meters` event: the track and master meters, 30 times a second while playing
+/// (WP-2E.02).
+pub const METERS_EVENT: &str = "playback.meters";
+
 /// The events subsystems emit, as `(name, summary)` (for the generated events catalog).
 pub const SUBSYSTEM_EVENTS: &[(&str, &str)] = &[
+    (
+        METERS_EVENT,
+        "The meters, 30 times a second while playing (WP-2E.02); payload: {t, master{peak_db[2], rms_db[2], true_peak_db, lufs_momentary, lufs_short_term, lufs_integrated, gr_db}, buses[{track, peak_db[2], rms_db[2]}]} (dB values null when silent; RMS on the AES17 scale)",
+    ),
     (
         DEGRADED_EVENT,
         "A subsystem runs in a reduced mode (audio on the null clock, software rendering); payload: {subsystem, reason}",

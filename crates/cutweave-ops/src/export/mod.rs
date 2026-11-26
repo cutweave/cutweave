@@ -331,6 +331,9 @@ pub struct PlanAdvanced {
     pub audio_channels: Option<u16>,
     /// The PCM sample size, 16 or 24 (24 when absent).
     pub pcm_bits: Option<u8>,
+    /// The master's true-peak limiter (WP-2E.02; on when absent).
+    #[serde(default)]
+    pub audio_limiter: Option<bool>,
 }
 
 impl Default for PlanOutput {

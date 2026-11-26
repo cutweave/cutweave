@@ -24,9 +24,11 @@
 //!   [`PIPELINE_DEPTH`] frames ahead of the next stage, so an export runs at the speed of its
 //!   slowest stage rather than their sum; clips decode sequentially
 //!   ([`DecoderFrameSource`](super::DecoderFrameSource)).
-//! - **Sound** is the offline mixdown ([`mixdown`], the real-time mixer's lane and bus code) of
-//!   the exported range at [`EXPORT_SAMPLE_RATE`] stereo, gapless from sample 0, pushed in step
-//!   with the pictures (up to the end of each frame).
+//! - **Sound** is the offline mixdown ([`mixdown_with`], the real-time mixer's lane and bus code:
+//!   track gain, mute and solo, the master's true-peak limiter at −1 dBTP unless
+//!   `advanced.audio.limiter` is false; WP-2E.02) of the exported range at
+//!   [`EXPORT_SAMPLE_RATE`] stereo, gapless from sample 0, pushed in step with the pictures (up
+//!   to the end of each frame).
 //! - **Timestamps.** Frame `i` shows sequence time `start + i / fps` and gets pts `i / fps` in
 //!   the file (output time from 0); flicks become codec time bases only inside the encoder.
 //! - **Encoder** (WP-1E.02): the plan's `hw` becomes the encode spec's [`HwEncode`] (`auto`:
@@ -54,7 +56,7 @@ use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, PoisonError};
 use std::time::{Duration as StdDuration, Instant};
 
-use cutweave_audio::{Mixdown, mixdown};
+use cutweave_audio::{BusGraph, LimiterConfig, Mixdown, mixdown_with};
 use cutweave_jobs::{CancelToken, JobError, JobProgress};
 use cutweave_media::{
     AudioChunk, AudioEncodeSpec, CancelCheck, EncodeSpec, EncodeSummary, Encoder, HwEncode,
@@ -464,13 +466,24 @@ impl AudioFeed {
             .start
             .checked_add(plan.duration)
             .map_err(|e| failed(format!("the export range: {e}")))?;
+        // The audible tracks only (nothing to decode for a muted track), with their buses.
         let segments = evaluate_audio(doc, plan.sequence, plan.start, end)
             .map_err(|e| failed(format!("cannot evaluate the audio: {e}")))?;
-        let mix = mixdown(
+        let buses = doc
+            .sequences
+            .get(&plan.sequence)
+            .map_or_else(|| BusGraph::from_segments(&segments), BusGraph::of_sequence);
+        let limiter = LimiterConfig {
+            enabled: plan.output.advanced.audio_limiter.unwrap_or(true),
+            ..LimiterConfig::default()
+        };
+        let mix = mixdown_with(
             &services.sources.audio(doc),
             &segments,
+            &buses,
             plan.start..end,
             rate,
+            limiter,
         )
         .map_err(|e| failed(format!("cannot mix the audio down: {e}")))?;
         Ok(AudioFeed {

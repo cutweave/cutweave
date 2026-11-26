@@ -2,12 +2,13 @@
 
 # Command reference
 
-Every command and query the engine registers (134 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (135 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
 | Namespace | Command | Summary | Flags | MCP |
 |---|---|---|---|---|
+| audio | `audio.get_levels` | Measure peak, true peak, RMS and LUFS loudness of a sequence's mix (and each track) over a range | engine, read-only, idempotent | catalog |
 | audio | `audio.set` | Set a clip's fades, volume (dB) or pan | command, undoable, idempotent | core |
 | audio | `audio.set_fade` | Set a clip's fade in and fade out (length and curve) | command, undoable, idempotent | catalog |
 | audio | `audio.set_gain` | Give a clip one flat gain in dB, removing its volume keys | command, undoable, idempotent | catalog |

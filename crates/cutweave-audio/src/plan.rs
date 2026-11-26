@@ -15,7 +15,8 @@ use cutweave_model::{Duration, ItemId, MediaId, Rounding, SampleRate, Speed, Tim
 use cutweave_render::AudioSegment;
 
 use crate::automation::Envelope;
-use crate::dsp::db_to_gain;
+use crate::bus::BusGraph;
+use crate::dsp::CHANNELS;
 use crate::error::MixError;
 
 /// One clip on the output sample grid.
@@ -44,13 +45,13 @@ pub(crate) struct ClipPlan {
     pub env: Envelope,
 }
 
-/// The clips of one track, in start order, and the track's gain.
+/// The clips of one track, in start order, and the track bus's gains.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BusPlan {
     /// The track.
     pub track: TrackId,
-    /// Linear track gain.
-    pub gain: f32,
+    /// Linear bus gains (left, right): track gain and pan, mute and solo applied.
+    pub gains: [f32; CHANNELS],
     /// Clips sorted by `start`. Shared with the lane renderers.
     pub clips: Arc<[ClipPlan]>,
 }
@@ -65,7 +66,8 @@ impl BusPlan {
 }
 
 /// Builds the buses of `segments` at the output rate `rate`, in the order tracks first appear
-/// (the `evaluate_audio` order: top to bottom).
+/// (the `evaluate_audio` order: top to bottom), with the gains `graph` gives each track (a
+/// track the graph does not know plays at its segments' track gain).
 ///
 /// Empty or sub-sample segments are dropped. A speed outside the model's range is rejected.
 /// Speed changes play by resampling (the pitch follows the speed until WP-2D.02) and reversed
@@ -73,8 +75,9 @@ impl BusPlan {
 pub(crate) fn plan_buses(
     segments: &[AudioSegment],
     rate: SampleRate,
+    graph: &BusGraph,
 ) -> Result<Vec<BusPlan>, MixError> {
-    let mut buses: Vec<(TrackId, f32, Vec<ClipPlan>)> = Vec::new();
+    let mut buses: Vec<(TrackId, [f32; CHANNELS], Vec<ClipPlan>)> = Vec::new();
     for seg in segments {
         let speed = Speed::new(seg.speed.0, seg.speed.1).map_err(|_| MixError::Unsupported {
             item: seg.item,
@@ -92,7 +95,11 @@ pub(crate) fn plan_buses(
         let index = if let Some(i) = buses.iter().position(|b| b.0 == seg.track) {
             i
         } else {
-            buses.push((seg.track, db_to_gain(seg.track_gain_db), Vec::new()));
+            buses.push((
+                seg.track,
+                graph.gains_or(seg.track, seg.track_gain_db),
+                Vec::new(),
+            ));
             buses.len() - 1
         };
         let bus = &mut buses[index];
@@ -115,11 +122,11 @@ pub(crate) fn plan_buses(
     Ok(buses
         .into_iter()
         .filter(|b| !b.2.is_empty())
-        .map(|(track, gain, mut clips)| {
+        .map(|(track, gains, mut clips)| {
             clips.sort_by_key(|c| (c.start, c.end));
             BusPlan {
                 track,
-                gain,
+                gains,
                 clips: clips.into(),
             }
         })
@@ -147,6 +154,11 @@ mod tests {
     #![allow(clippy::float_cmp, clippy::unwrap_used)]
 
     use super::*;
+    use crate::dsp::db_to_gain;
+
+    fn plan(segs: &[AudioSegment], rate: SampleRate) -> Result<Vec<BusPlan>, MixError> {
+        plan_buses(segs, rate, &BusGraph::from_segments(segs))
+    }
 
     fn seg(track: u128, item: u128, start: i64, dur: i64) -> AudioSegment {
         AudioSegment {
@@ -180,12 +192,13 @@ mod tests {
         // 29.97 fps frame boundaries are not sample-aligned: 1601.6 samples per frame.
         let frame = 23_543_520; // flicks per frame at 30000/1001
         let segs = [seg(1, 1, 0, frame), seg(1, 2, frame, frame)];
-        let buses = plan_buses(&segs, rate).unwrap();
+        let buses = plan(&segs, rate).unwrap();
         assert_eq!(buses.len(), 1);
         let c = &buses[0].clips;
         assert_eq!((c[0].start, c[0].end), (0, 1602));
         assert_eq!((c[1].start, c[1].end), (1602, 3203));
-        assert!((buses[0].gain - db_to_gain(-6.0)).abs() < f32::EPSILON);
+        assert!((buses[0].gains[0] - db_to_gain(-6.0)).abs() < f32::EPSILON);
+        assert_eq!(buses[0].gains[0], buses[0].gains[1]);
     }
 
     #[test]
@@ -197,7 +210,7 @@ mod tests {
             seg(2, 3, 0, 5 * S),
             seg(3, 4, 0, S / 4), // shorter than half a sample: dropped
         ];
-        let buses = plan_buses(&segs, rate).unwrap();
+        let buses = plan(&segs, rate).unwrap();
         assert_eq!(buses.len(), 2);
         assert_eq!(buses[0].track, TrackId::from_u128(2));
         assert_eq!(buses[0].clips[0].item, ItemId::from_u128(3));
@@ -211,7 +224,7 @@ mod tests {
         let mut s = seg(1, 1, 100 * S, 1000 * S);
         s.src_start = Time::from_flicks(3000 * S).unwrap();
         s.speed = (2, 1);
-        let buses = plan_buses(&[s.clone()], rate).unwrap();
+        let buses = plan(&[s.clone()], rate).unwrap();
         let clip = &buses[0].clips[0];
         assert_eq!(clip.src_end, Time::from_flicks(5000 * S).unwrap());
         assert_eq!(
@@ -219,7 +232,7 @@ mod tests {
             Time::from_flicks(3100 * S).unwrap()
         );
         s.reverse = true;
-        let buses = plan_buses(&[s.clone()], rate).unwrap();
+        let buses = plan(&[s.clone()], rate).unwrap();
         let clip = &buses[0].clips[0];
         assert_eq!(clip.src_end, Time::from_flicks(1000 * S).unwrap());
         assert_eq!(
@@ -227,14 +240,14 @@ mod tests {
             Time::from_flicks(2900 * S).unwrap()
         );
         s.speed = (3, 3);
-        assert!(plan_buses(&[s.clone()], rate).is_ok());
+        assert!(plan(&[s.clone()], rate).is_ok());
         s.speed = (1, 20);
         assert!(matches!(
-            plan_buses(&[s.clone()], rate),
+            plan(&[s.clone()], rate),
             Err(MixError::Unsupported { .. })
         ));
         s.speed = (2, 0);
-        assert!(plan_buses(&[s], rate).is_err());
+        assert!(plan(&[s], rate).is_err());
     }
 
     #[test]
@@ -242,7 +255,7 @@ mod tests {
         let rate = SampleRate::HZ_48_000;
         let mut s = seg(1, 1, 100 * S, 1000 * S);
         s.src_start = Time::from_flicks(7 * S).unwrap();
-        let buses = plan_buses(&[s], rate).unwrap();
+        let buses = plan(&[s], rate).unwrap();
         let clip = &buses[0].clips[0];
         assert_eq!(
             source_time_at(clip, rate, 100).unwrap(),
