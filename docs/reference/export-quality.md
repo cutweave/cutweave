@@ -80,7 +80,7 @@ what an encoder takes; the checks that refuse the rest run before anything is qu
 | `video.gop` | `keyint` (frames) or `keyint_seconds` (whole seconds, turned into frames at the output frame rate, rounded), `keyint_min`, `bframes`, `closed_gop`, `scenecut`. |
 | `video` | `preset` (ultrafast to veryslow), `tune`, `profile`, `level`, `pix_fmt`, `threads`. |
 | `color` | `primaries`, `transfer`, `matrix`, `range` (`limited` or `full`), `tag_only`. |
-| `audio` | `codec` (`aac`, `mp3`, `opus`, `flac`, `pcm_s16`, `pcm_s24`), `bitrate_kbps` (lossy codecs), `sample_rate` (44100, 48000, 96000), `channels` (`mono`, `stereo`). |
+| `audio` | `codec` (`aac`, `mp3`, `opus`, `flac`, `pcm_s16`, `pcm_s24`), `bitrate_kbps` (lossy codecs), `sample_rate` (44100, 48000, 96000), `channels` (`mono`, `stereo`), `limiter` (the master's true-peak limiter at −1 dBTP; default `true`, WP-2E.02). |
 
 What each encoder takes:
 
@@ -113,7 +113,9 @@ What each encoder takes:
 - **Audio.** The mix is made at the requested rate; mono averages the stereo mix. Opus runs at 48 kHz
   only, MP3 up to 48 kHz, PCM needs MOV, Opus and FLAC need MP4. A preset's own `audio.sample_rate`
   and `audio.channels` are still not applied (the mixer's 48 kHz stereo): only `advanced.audio` is,
-  so a preset without `advanced` exports as before.
+  so a preset without `advanced` exports as before. The mix goes through the track buses (gain, mute,
+  solo) and the master's true-peak limiter (−1 dBTP, as playback; WP-2E.02); `limiter: false` exports
+  the unlimited mix, which the encoder clips at full scale.
 - **Preset speed.** A preset's `video.preset` is still not applied (it would change the output of the
   built-in presets); `advanced.video.preset` is. SVT-AV1 maps the names to its numeric presets 12 to
   2 (medium 6).

@@ -557,6 +557,13 @@ flowchart LR
 
 - **Engine wiring (decided in WP-1I.05):** a Gui engine plays through the default output (`CUTWEAVE_AUDIO` overrides it); a headless engine always plays on the null clock. When the device fails, playback continues on the null clock and the engine sends `engine.degraded{subsystem: "audio"}`. The master gain follows `view.set`.
 
+- **Buses, limiter and meters (decided in WP-2E.02):**
+  - **Track buses** (`BusGraph`): gain, pan (a balance; the model has no track pan yet, ADR-0034), mute and exclusive solo-in-place: when any audio track is soloed, the unsoloed audio tracks are silent; video is not affected; mute wins over solo, and a muted solo still counts as a solo. Playback feeds the mixer every audio track (the buses apply mute and solo, not `evaluate_audio`), so a mute, solo or gain change ramps in over 10 ms at the next callback without re-rendering a lane. Exports mix the audible tracks with the same buses.
+  - **Master:** a true-peak look-ahead limiter (default −1 dBTP, 5 ms look-ahead, 100 ms release; the 48-tap 4× interpolator `ebur128` measures true peak with), then the monitoring volume (`view.set{master_gain}`, after the limiter so it never changes how the mix is limited). The limiter's latency (245 frames at 48 kHz) is compensated: the lanes run that far ahead of the output after a pre-roll at every seek, so output sample `n` is still timeline sample `n` and playback still equals the mixdown bit for bit. It replaces the 0 dBFS soft clipper. Exports switch it with `advanced.audio.limiter` (default on). A +6 dBFS sine comes out at −1.000 dBTP.
+  - **Meters:** every 33 ms while playing, `playback.meters{t, master{peak_db[2], rms_db[2], true_peak_db, lufs_momentary, lufs_short_term, lufs_integrated, gr_db}, buses[{track, peak_db[2], rms_db[2]}]}`: post-fader bus levels; LUFS by `ebur128` in histogram mode on the real-time thread (allocation-free; integrated since the last seek); dB values `null` when silent, RMS on the AES17 scale (a sine reads its peak level).
+  - **`audio.get_levels{sequence?, in?, out?, limiter?}`** (read-only engine command, MCP catalog): mixes the range as an export would and returns the master's and every track's peak, true peak, RMS and integrated LUFS, plus the master's loudest momentary and short-term loudness and loudness range.
+  - Track pan, a keyframed track gain and the master settings in the document (`audio.set_master`, a keyframed `track.set_gain`) wait for ADR-0034 (Proposed).
+
 ---
 
 ## 10. Playback & preview delivery (`cutweave-playback`, `cutweave-bridge`)
@@ -1018,6 +1025,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 031 | Detached panels: dockview popout windows in the editor's renderer process, unsandboxed with no preload, saved with the workspace layout (§2, §16, §18; [research](research/10-detached-panels.md)) | **Accepted** (product owner, 2026-11-26) |
 | 032 | Exports encode the BT.709 transfer curve they are tagged with; `render.frame` gets a matching transfer parameter (§7, §8) | **Accepted** (product owner, 2026-11-26) |
 | 033 | The editor's CSP allows `'wasm-unsafe-eval'` for the bundled math module (§10, §18) | **Accepted** (product owner, 2026-11-26) |
+| 034 | Track pan, a keyframed track gain and the master bus settings (master gain, limiter) in the project as optional fields; `track.set_gain`, `audio.set_master` (§4.2, §9, §17) | Proposed: maintainers' review of WP-2E.02 |
 
 ## 24. Open questions (tracked; none block Phase 0)
 
