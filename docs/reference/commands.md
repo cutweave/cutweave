@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (131 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (132 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -15,6 +15,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | audio | `audio.set_volume` | Set a clip's volume in dB (keyed at the playhead when animated) | command, undoable, idempotent | catalog |
 | clip | `clip.freeze_frame` | Freeze a clip's frame at a time: split there and insert a still of it (3 s by default) | command, undoable | catalog |
 | clip | `clip.paste_attributes` | Copy transform, crop, flip, compositing or audio settings of a clip onto other clips | command, undoable, idempotent | catalog |
+| clip | `clip.replace` | Replace a clip's media and keep its transform, keyframes, audio settings, links and position | command, undoable | catalog |
 | clip | `clip.reset_speed` | Play a clip forwards at normal speed again (linked partners follow) | command, undoable, idempotent | catalog |
 | clip | `clip.reverse` | Play a clip backwards, or forwards again (linked partners follow) | command, undoable | catalog |
 | clip | `clip.ripple_trim` | Trim a clip's edge and move what follows by the same amount (ripple) | command, undoable | catalog |

@@ -4,7 +4,7 @@
 // commands add their rows here; a row for a command nobody has registered is left out, so a
 // feature WP only adds its row.
 // TODO(WP-2A.03): Ripple delete, Delete gap. TODO(WP-2A.06): Cut, Copy, Paste, Paste attributes,
-// Duplicate. TODO(WP-2A.11): Replace clip. WP-2D.01 adds
+// Duplicate. WP-2D.01 adds
 // Speed ▸, Reverse and Freeze frame. TODO(WP-2A.02): markers, in and out, Make magnetic, track
 // height, Move up and down, Color label. TODO(WP-2A.09): Zoom to fit and Zoom to selection.
 // TODO(WP-2C.05): the keyframe menu. The edge menu (WP-2A.04) trims, ripple trims and rolls the
@@ -243,6 +243,24 @@ const pasteAttributesReason = (ctx: MenuContext) =>
       ? ("contextMenu.reason.noCopiedClip" as const)
       : ("contextMenu.reason.oneClip" as const);
 
+/** Replace clip… needs one clip that plays a file (not a freeze frame or a compound clip). */
+const canReplace = (ctx: MenuContext): boolean => {
+  const only = ctx.ids.length === 1 ? clipFacts(ctx.ids)[0] : undefined;
+  return (
+    only !== undefined &&
+    ctx.keys["track.locked"] !== true &&
+    (only.clip.freeze ?? null) === null &&
+    mediaAsset(only.clip.media)?.kind !== "sequence_ref"
+  );
+};
+
+const replaceReason = (ctx: MenuContext) =>
+  ctx.keys["track.locked"] === true
+    ? LOCKED
+    : ctx.ids.length !== 1
+      ? ("contextMenu.reason.oneClip" as const)
+      : ("contextMenu.reason.cannotReplace" as const);
+
 const clipRows: readonly MenuRow[] = [
   {
     command: "clip.split",
@@ -265,6 +283,13 @@ const clipRows: readonly MenuRow[] = [
     when: "!track.locked",
     reason: LOCKED,
     args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
+    command: "timeline.replace_clip",
+    group: "edit",
+    order: 2,
+    enabledIf: canReplace,
+    reason: replaceReason,
   },
   {
     command: "timeline.cut",

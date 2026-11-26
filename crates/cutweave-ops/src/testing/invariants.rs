@@ -109,6 +109,7 @@ pub fn check_linked_edit(
             sped_together(name, params, output, before, after)
         }
         "clip.freeze_frame" => frozen(params, output, before, after),
+        "clip.replace" => replaced(params, output, before, after),
         _ => Ok(()),
     }
 }
@@ -673,6 +674,83 @@ fn sped_together(
             if name == "clip.reset_speed" && (!c.speed.is_one() || c.reverse) {
                 return Err(format!("clip.reset_speed left {id} at {this:?}"));
             }
+        }
+    }
+    Ok(())
+}
+
+/// WP-2A.11: `clip.replace` keeps everything of the replaced clips but `media`, `source_in` and
+/// `duration` (and the speed fields of a video that became a still), their starts and links; a
+/// muted partner is unlinked and disabled and the rest of it stays.
+fn replaced(
+    params: &Value,
+    output: &Value,
+    before: &Project,
+    after: &Project,
+) -> Result<(), String> {
+    let media = params["media"]
+        .as_str()
+        .ok_or("no `media` in the params")?
+        .to_string();
+    let listed = |key: &str| -> Result<Vec<ItemId>, String> {
+        output[key]
+            .as_array()
+            .ok_or_else(|| format!("no `{key}` in {output}"))?
+            .iter()
+            .map(id_at)
+            .collect()
+    };
+    let (replaced, muted) = (listed("replaced")?, listed("muted")?);
+    if replaced.first() != Some(&id_at(&output["item"])?) {
+        return Err(format!("clip.replace: `item` is not first in {replaced:?}"));
+    }
+    let reset = output["speed_reset"] == Value::Bool(true);
+    let blank = |c: &cutweave_model::Clip, ignore_speed: bool| -> Value {
+        let mut c = c.clone();
+        c.media = cutweave_model::MediaId::from_u128(0);
+        c.source_in = Time::ZERO;
+        c.duration = cutweave_model::Duration::ZERO;
+        // The last clip left in a group by its muted partners is unlinked.
+        if !muted.is_empty() {
+            c.linked_group = None;
+        }
+        if ignore_speed {
+            c.speed = cutweave_model::Speed::ONE;
+            c.reverse = false;
+        }
+        serde_json::to_value(c).unwrap_or(Value::Null)
+    };
+    let (mut shortest, mut longest) = (i64::MAX, 0);
+    for id in &replaced {
+        let (_, was) = found(before, *id, "before the replace")?;
+        let (_, now) = found(after, *id, "after the replace")?;
+        let (Some(w), Some(c)) = (was.as_clip(), now.as_clip()) else {
+            return Err(format!("clip.replace: {id} is not a clip"));
+        };
+        if c.media.to_string() != media {
+            return Err(format!("clip.replace: {id} still plays {}", c.media));
+        }
+        if c.start != w.start || blank(w, reset) != blank(c, reset) {
+            return Err(format!("clip.replace changed more than the media of {id}"));
+        }
+        shortest = shortest.min(c.duration.flicks());
+        longest = longest.max(c.duration.flicks());
+    }
+    if shortest != longest {
+        return Err("clip.replace: the replaced clips differ in length".into());
+    }
+    let shortened = output["shortened"] == Value::Bool(true);
+    let (_, first) = found(before, replaced[0], "before the replace")?;
+    if shortened != (longest < first.duration().flicks()) {
+        return Err(format!(
+            "clip.replace: `shortened` is {shortened} but {longest} vs {first:?}"
+        ));
+    }
+    for id in &muted {
+        let (_, was) = found(before, *id, "before the replace")?;
+        let (_, now) = found(after, *id, "after the replace")?;
+        if now.linked_group().is_some() || now.enabled() || was.start() != now.start() {
+            return Err(format!("clip.replace: the muted {id} is {now:?}"));
         }
     }
     Ok(())

@@ -462,6 +462,21 @@ Invariants:
 - **INV-195** Pasting never reuses an ID, in the payload or the document (INV-10, INV-23).
 - **INV-196** `timeline.copy` and a payload never change the document; a payload of another version is `Invalid{path:"/payload/version"}`.
 
+### 4.8b `clip.replace`
+
+```text
+clip.replace { item, media, mode?: keep_duration|keep_source_in|fit_to_source, source_in? }
+  -> { item, replaced: [ItemId], muted: [ItemId], shortened, speed_reset, report }
+```
+
+Swaps the media of a clip and keeps everything else: its ID, start, name, enabled state, transform, crop, flip, opacity, blend, every keyframe, audio settings, speed, markers, links and attachments. `keep_duration` (default) plays the new media from `source_in` (default its start) for the old length; if less media is left, the clip is shortened to what is left on the frame grid (`shortened: true`). `keep_source_in` starts at the clip's old source position (`source_in` is `Invalid`). `fit_to_source` plays from `source_in` to the end of the media, so the length changes (a still or media of unknown length keeps its length). A length change ripples as in `clip.set_speed`: the magnetic track stays gapless, on a free track growing into the next item is `Invalid{path:"/mode"}`. Pictures (video, stills) replace pictures and sound replaces sound; audio and video do not swap (`Invalid{path:"/media"}`); the same media, a freeze frame and a compound clip are refused. A video that becomes a still loses speed and direction (`speed_reset: true`). Linked partners that play the same media are replaced together; if the new media has no sound, a partner on an audio track is unlinked, disabled and left on its old media (no longer than the clip), listed in `muted`; a linked clip playing other media is `Invalid{path:"/item"}`. Keyframes are never moved or dropped.
+
+Invariants:
+
+- **INV-197** A replaced clip equals its old self except `media`, `source_in`, `duration` (and the speed fields of a video that became a still), and, when partners were muted, its link.
+- **INV-198** The replaced clip and its replaced partners have one length and start where they did; the magnetic track stays gapless and no track overlaps (INV-1, INV-31).
+- **INV-199** Locked track: `Locked`, nothing changes (INV-27). The source range stays inside the media (INV-24, INV-25).
+
 ### 4.9 `clip.trim`
 
 ```text

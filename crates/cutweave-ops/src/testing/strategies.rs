@@ -189,6 +189,8 @@ struct Itm {
     seq_end: i64,
     /// The keys of its animated properties: property ID and item time in flicks.
     keys: Vec<(&'static str, i64)>,
+    /// The media it plays, if it is a clip.
+    media: Option<MediaId>,
 }
 
 #[derive(Clone, Debug)]
@@ -249,6 +251,7 @@ impl Pools {
                         len: frames(i.duration().flicks()).max(1),
                         seq_end,
                         keys: item_keys(i),
+                        media: i.media(),
                     });
                     used.extend(i.media());
                     pools.markers.extend(i.markers().keys().copied());
@@ -381,6 +384,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "timeline.copy" => (1, item_delete(p)),
         "timeline.paste" => (edits.div_ceil(2), timeline_paste(p)),
         "clip.paste_attributes" => (edits.div_ceil(3), clip_paste_attributes(p)),
+        "clip.replace" => (edits.div_ceil(2), clip_replace(p)),
         "item.duplicate" => (edits.div_ceil(2), item_duplicate(p)),
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
@@ -2119,6 +2123,66 @@ fn clip_paste_attributes(p: &Pools) -> BoxedStrategy<Value> {
         subsequence(groups.to_vec(), 0..=5),
     )
         .prop_map(|(from, to, which)| json!({"from": from, "to": to, "which": which}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `clip.replace` (WP-2A.11): a clip and a media of the pools in any mode, sometimes with a
+/// source position (also negative or past the media), sometimes an unknown clip or media.
+fn clip_replace(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid = prop_oneof![
+        (fresh::<ItemId>(), fresh::<MediaId>()).prop_map(|(i, m)| json!({"item": i, "media": m})),
+        Just(
+            json!({"item": ItemId::from_u128(1), "media": MediaId::from_u128(1),
+                    "mode": "fit_to_source", "source_in": "-1s"})
+        ),
+    ]
+    .boxed();
+    if p.items.is_empty() || p.media.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    // Mostly a media of the clip's own family (pictures for picture tracks, sound for audio).
+    let (items, media) = (p.items.clone(), p.media.clone());
+    let valid = select(items)
+        .prop_flat_map(move |it| {
+            let fits: Vec<MediaId> = media
+                .iter()
+                .filter(|m| Some(m.id) != it.media)
+                .filter(|m| match it.kind {
+                    TrackKind::Audio => matches!(m.kind, MediaKind::Audio | MediaKind::Video),
+                    _ => matches!(m.kind, MediaKind::Video | MediaKind::Image),
+                })
+                .map(|m| m.id)
+                .collect();
+            let all: Vec<MediaId> = media.iter().map(|m| m.id).collect();
+            let pick = if fits.is_empty() {
+                one_of(all)
+            } else {
+                prop_oneof![9 => one_of(fits), 1 => one_of(all)].boxed()
+            };
+            (Just(it.id), pick)
+        })
+        .prop_flat_map(|(item, media)| {
+            (
+                Just(item),
+                Just(media),
+                option::weighted(
+                    0.6,
+                    select(vec!["keep_duration", "keep_source_in", "fit_to_source"]),
+                ),
+                option::weighted(0.3, select(vec!["0s", "1s", "3s", "10s", "-1s", "500s"])),
+            )
+        })
+        .prop_map(|(item, media, mode, source_in)| {
+            let mut v = json!({"item": item, "media": media});
+            if let Some(m) = mode {
+                v["mode"] = json!(m);
+            }
+            if let Some(t) = source_in {
+                v["source_in"] = json!(t);
+            }
+            v
+        })
         .boxed();
     mix(valid, invalid)
 }

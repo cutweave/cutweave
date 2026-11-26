@@ -45,6 +45,7 @@ const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
   "clip.reverse": "history.reverse",
   "clip.reset_speed": "history.resetSpeed",
   "clip.freeze_frame": "history.freezeFrame",
+  "clip.replace": "history.replaceClip",
   "item.duplicate": "history.duplicate",
   [`${"timeline"}.paste`]: "history.paste",
   [`${"clip"}.paste_attributes`]: "history.pasteAttributes",

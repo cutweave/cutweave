@@ -23,6 +23,7 @@ export const COMMAND_INFO: readonly CommandInfo[] = [
   { name: "clip.set_speed", label: "contextMenu.command.clipSetSpeed", undoable: true },
   { name: "clip.reverse", label: "contextMenu.command.clipReverse", undoable: true },
   { name: "clip.freeze_frame", label: "contextMenu.command.clipFreezeFrame", undoable: true },
+  { name: "clip.replace", label: "contextMenu.command.clipReplace", undoable: true },
   {
     name: "item.delete",
     label: "contextMenu.command.itemDelete",
