@@ -27,10 +27,12 @@
 //!
 //! # Parts of a clip (splits, cuts, trims)
 //!
-//! A forward clip is anchored at `source_in` and a reversed one at `source_out`: the part of a
-//! clip that starts `o` into it plays from `source_in + round(o × s)` forwards, or ends at
-//! `source_out − round(o × s)` reversed ([`SourceMap::part`]). A part that rounding would put one
-//! flick outside the media is nudged back inside it.
+//! A part of a clip keeps the media position shown at the clip edge it keeps
+//! ([`SourceMap::part`]): forwards the part with the clip's start keeps `source_in` and the part
+//! with its end keeps `source_out`; reversed the start shows the source end, so it is the other
+//! way round. A head trim by `δ` therefore moves `source_in` by `round(len × s) − round((len − δ)
+//! × s)` (which is `round(δ × s)` whenever no rounding is involved), trimming by `δ` and back by
+//! `−δ` restores it exactly, and no part ever reads outside the media the clip read.
 
 use std::{borrow::Cow, fmt};
 
@@ -391,23 +393,37 @@ impl SourceMap {
     }
 
     /// The `source_in` of the part of the clip that starts `offset` into it and lasts `len`
-    /// (splits, cuts and trims): forward clips keep their anchor at `source_in`, reversed ones
-    /// at `source_out`; a freeze frame keeps its position. With the media's length (`media_len`,
-    /// bounded media only) a result that rounding put one flick outside the media is nudged back.
+    /// (splits, cuts and trims; INV-47). A part that keeps the clip's start keeps the media
+    /// position shown there, one that keeps its end the position shown at the end: forwards a
+    /// head part keeps `source_in` and a tail part `source_out`, reversed the other way round. A
+    /// freeze frame keeps its position. A part inside the clip (neither end) starts at
+    /// `round(offset × s)` from the start's side, nudged back into the media (`media_len`) if
+    /// rounding put it one flick outside.
     #[must_use]
     pub fn part(&self, offset: i64, len: i64, media_len: Option<i64>) -> i64 {
         if self.freeze.is_some() {
             return self.source_in;
         }
         let span = self.speed.source(len);
-        let start = if self.reverse {
-            self.source_out()
-                .saturating_sub(self.speed.source(offset))
-                .saturating_sub(span)
-        } else {
-            self.source_in.saturating_add(self.speed.source(offset))
-        };
-        fit(start, span, media_len)
+        let keeps_start = offset == 0;
+        let keeps_end = offset.saturating_add(len) == self.len;
+        // Forwards the start shows `source_in`; reversed it shows the source end.
+        match (keeps_start, keeps_end, self.reverse) {
+            (true, _, false) | (false, true, true) => self.source_in,
+            (true, _, true) | (false, true, false) => self.source_out().saturating_sub(span),
+            (false, false, false) => fit(
+                self.source_in.saturating_add(self.speed.source(offset)),
+                span,
+                media_len,
+            ),
+            (false, false, true) => fit(
+                self.source_out()
+                    .saturating_sub(self.speed.source(offset))
+                    .saturating_sub(span),
+                span,
+                media_len,
+            ),
+        }
     }
 }
 
@@ -591,6 +607,43 @@ mod tests {
         for o in 0..60 {
             let got = if o < 20 { left.at(o) } else { right.at(o - 20) };
             assert_eq!(got, rev.at(o), "{o}");
+        }
+    }
+
+    /// With rounding speeds, a head or tail part stays inside the range the whole clip plays,
+    /// keeps the media position at the edge it shares, and cutting it back restores the clip.
+    #[test]
+    fn parts_stay_inside_and_trims_undo_exactly_under_rounding() {
+        for (n, d) in [(3_u32, 2_u32), (1, 3), (7, 5), (13, 11), (100, 1), (1, 10)] {
+            let speed = sp(n, d);
+            for reverse in [false, true] {
+                for len in [7_i64, 50, 101, 997] {
+                    let whole = map(0, len, speed, reverse);
+                    let out = whole.source_out();
+                    for cut in 1..len {
+                        let head = map(whole.part(cut, len - cut, None), len - cut, speed, reverse);
+                        let tail = map(whole.part(0, cut, None), cut, speed, reverse);
+                        for p in [head, tail] {
+                            assert!(p.source_in >= 0 && p.source_out() <= out, "{n}/{d} {p:?}");
+                        }
+                        // The shared edge keeps its position.
+                        let (start_shown, end_shown) = if reverse {
+                            (tail.source_out(), head.source_in)
+                        } else {
+                            (tail.source_in, head.source_out())
+                        };
+                        assert_eq!(
+                            (start_shown, end_shown),
+                            if reverse { (out, 0) } else { (0, out) }
+                        );
+                        // Extending the head part back to the whole length restores the clip.
+                        let back = head.part(-cut, len, None);
+                        assert_eq!(back, whole.source_in, "{n}/{d} rev {reverse} cut {cut}");
+                        let back = tail.part(0, len, None);
+                        assert_eq!(back, whole.source_in, "{n}/{d} rev {reverse} cut {cut}");
+                    }
+                }
+            }
         }
     }
 

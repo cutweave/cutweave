@@ -365,6 +365,10 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "clip.roll" => (edits.div_ceil(2), clip_roll(p)),
         "clip.slip" => (edits.div_ceil(2), clip_shift(p, false)),
         "clip.slide" => (edits.div_ceil(2), clip_shift(p, true)),
+        "clip.set_speed" => (edits.div_ceil(2), clip_set_speed(p)),
+        "clip.reverse" => (edits.div_ceil(3), clip_reverse(p)),
+        "clip.reset_speed" => (edits.div_ceil(3), clip_reset_speed(p)),
+        "clip.freeze_frame" => (edits.div_ceil(3), clip_freeze_frame(p)),
         "item.move" => (edits, item_move(p)),
         "item.delete" => (edits.div_ceil(2), item_delete(p)),
         "item.duplicate" => (edits.div_ceil(2), item_duplicate(p)),
@@ -1631,6 +1635,123 @@ fn clip_split(p: &Pools) -> BoxedStrategy<Value> {
                 1 if form % 4 == 0 => json!({"item": it.id, "items": [it.id], "at": at}),
                 _ => json!({"item": it.id, "at": at, "fine": fine}),
             }
+        })
+        .boxed();
+    mix(valid, unknown_item("at"))
+}
+
+/// One clip (`item`) or two (`items`) of the pools, or an unknown one.
+fn speed_targets(p: &Pools) -> BoxedStrategy<Value> {
+    let unknown = fresh::<ItemId>().prop_map(|id| json!({"item": id})).boxed();
+    if p.items.is_empty() {
+        return unknown;
+    }
+    let known = (
+        select(p.items.clone()),
+        option::weighted(0.2, select(p.items.clone())),
+    )
+        .prop_map(|(it, other)| match other {
+            Some(o) => json!({"items": [it.id, o.id]}),
+            None => json!({"item": it.id}),
+        })
+        .boxed();
+    prop_oneof![8 => known, 1 => unknown].boxed()
+}
+
+/// `clip.set_speed` (WP-2D.01): one or two clips at a speed in any input form (sometimes out
+/// of range or not a speed), sometimes keeping the duration, rippling or scaling keys.
+fn clip_set_speed(p: &Pools) -> BoxedStrategy<Value> {
+    let speeds = select(vec![
+        json!(2),
+        json!(0.5),
+        json!("1/3"),
+        json!("3/2"),
+        json!({"num": 5, "den": 4}),
+        json!(1),
+        json!("2x"),
+        json!(4),
+        json!(0.25),
+        json!("7/13"),
+        json!(101),
+        json!("fast"),
+    ]);
+    let valid = (
+        speed_targets(p),
+        speeds,
+        option::weighted(0.3, select(vec!["in_point", "duration"])),
+        option::weighted(0.3, any::<bool>()),
+        option::weighted(0.3, select(vec!["keep", "scale"])),
+    )
+        .prop_map(|(mut v, speed, keep, ripple, keys)| {
+            v["speed"] = speed;
+            v["keep"] = json!(keep);
+            v["ripple"] = json!(ripple);
+            v["keyframes"] = json!(keys);
+            v
+        })
+        .boxed();
+    let invalid = fresh::<ItemId>()
+        .prop_map(|id| json!({"item": id, "speed": 2}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `clip.reverse` (WP-2D.01): one or two clips, backwards, forwards or toggled.
+fn clip_reverse(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (speed_targets(p), option::weighted(0.5, any::<bool>()))
+        .prop_map(|(mut v, reverse)| {
+            v["reverse"] = json!(reverse);
+            v
+        })
+        .boxed();
+    mix(valid.clone(), speed_targets(p))
+}
+
+/// `clip.reset_speed` (WP-2D.01): one or two clips, sometimes rippling or scaling keys.
+fn clip_reset_speed(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        speed_targets(p),
+        option::weighted(0.3, any::<bool>()),
+        option::weighted(0.3, select(vec!["keep", "scale"])),
+    )
+        .prop_map(|(mut v, ripple, keys)| {
+            v["ripple"] = json!(ripple);
+            v["keyframes"] = json!(keys);
+            v
+        })
+        .boxed();
+    mix(valid.clone(), speed_targets(p))
+}
+
+/// `clip.freeze_frame` (WP-2D.01): a clip frozen mostly inside it (sometimes at its first frame,
+/// its end or outside), for the default 3 s or a few frames.
+fn clip_freeze_frame(p: &Pools) -> BoxedStrategy<Value> {
+    if p.items.is_empty() {
+        return mix(unknown_item("at"), unknown_item("at"));
+    }
+    let valid = select(p.items.clone())
+        .prop_flat_map(|it| {
+            let inside = if it.len > 1 {
+                (it.start + 1..it.start + it.len).boxed()
+            } else {
+                Just(it.start).boxed()
+            };
+            let at = prop_oneof![
+                8 => inside,
+                2 => Just(it.start),
+                1 => Just(it.start + it.len),
+                1 => it.start - 5..it.start + it.len + 5,
+            ];
+            (
+                Just(it),
+                at,
+                any::<(u8, u32)>(),
+                option::weighted(0.4, 0..120_i64),
+            )
+        })
+        .prop_map(|(it, at, (form, jitter), frames)| {
+            json!({"item": it.id, "at": time_json(it.fpf, at, form, jitter),
+                   "duration": frames.map(|f| time_json(it.fpf, f, form, 0))})
         })
         .boxed();
     mix(valid, unknown_item("at"))

@@ -247,6 +247,27 @@ impl<T: Clone> Keyframes<T> {
         })
     }
 
+    /// Every key moved to `f(t)` (WP-2D.01's `scale_times`, keyframes §8.1). `f` must not
+    /// decrease; where two keys land on one time, the later one wins.
+    #[must_use]
+    pub fn retimed(&self, f: impl Fn(Time) -> Time) -> Keyframes<T> {
+        let mut keys: Vec<Keyframe<T>> = Vec::with_capacity(self.keys.len());
+        for k in self.keys.iter() {
+            let t = f(k.t);
+            if let Some(last) = keys.last_mut()
+                && last.t >= t
+            {
+                *last = k.clone().at(last.t);
+                continue;
+            }
+            keys.push(k.clone().at(t));
+        }
+        Keyframes {
+            keys: keys.into(),
+            extra: self.extra.clone(),
+        }
+    }
+
     /// `window(K, a, b)` (§8): the keys with `a ≤ t < b`, plus the last key before `a` and the
     /// first key at or after `b`. Exact: for every `τ` in `[a, b)` it evaluates to the same bits
     /// as `self`. Never empty, since every key is before, inside or after the window.

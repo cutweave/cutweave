@@ -48,10 +48,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use cutweave_commands::{CmdError, Tx, wire};
 use cutweave_model::{
     Duration, EntityId, EntityKind, FrameRate, GroupId, Item, ItemId, MediaKind, Project, Sequence,
-    SequenceId, Time, Track, TrackId, TrackItems, TrackKind,
+    SequenceId, SourceMap, Time, Track, TrackId, TrackItems, TrackKind,
 };
 
 use crate::{
+    clip::media_bound,
     keyframe::{rekey, retime::Retime},
     report::{EditReport, SplitReport},
     timeline::OverlapPolicy,
@@ -334,6 +335,18 @@ impl<'d> Edit<'d> {
             .is_some_and(|m| m.kind == MediaKind::Image)
     }
 
+    /// The `source_in` of the part `[offset, offset + len)` (item time) of `item` (INV-47,
+    /// INV-181): forward clips keep their source start, reversed ones their source end, stills
+    /// and freeze frames their position (`cutweave_model::SourceMap::part`).
+    fn part_source(&self, item: &Item, offset: i64, len: i64) -> Option<Time> {
+        let c = item.as_clip()?;
+        if self.is_still(item) {
+            return Some(c.source_in);
+        }
+        let media_len = self.doc.media.get(&c.media).and_then(media_bound);
+        Some(time(SourceMap::of(c).part(offset, len, media_len)))
+    }
+
     /// The item with its track.
     pub(crate) fn locate(&self, id: ItemId) -> Option<(TrackId, &Item)> {
         self.seq.find_item(&id).map(|(t, i)| (t.id, i))
@@ -540,8 +553,9 @@ impl<'d> Edit<'d> {
             return;
         };
         let item = item.clone();
-        let still = self.is_still(&item);
         let (start, end) = span(&item);
+        let left_source = self.part_source(&item, 0, cut - start);
+        let right_source = self.part_source(&item, resume - start, end - resume);
         let (left_markers, right_markers) =
             split_markers(item.markers(), cut - start, resume - start);
         let mut part = item.clone();
@@ -562,13 +576,16 @@ impl<'d> Edit<'d> {
             c.duration = tail;
             c.linked_group = group;
             c.markers = right_markers;
-            if !still {
-                c.source_in = time(c.source_in.flicks() + (resume - start));
+            if let Some(source) = right_source {
+                c.source_in = source;
             }
         }
         self.update(id, |i| {
             i.set_duration(dur(cut - start));
             *i.markers_mut() = left_markers;
+            if let (Some(c), Some(source)) = (i.as_clip_mut(), left_source) {
+                c.source_in = source;
+            }
         });
         self.rekey(
             id,
@@ -617,21 +634,31 @@ impl<'d> Edit<'d> {
         self.retimed.insert(id);
     }
 
-    /// The end of `id` moves to `t` (keeps its start).
+    /// The end of `id` moves to `t` (keeps its start; a reversed clip's source start moves).
     fn trim_end(&mut self, id: ItemId, t: i64) {
+        let Some((s, source)) = self
+            .locate(id)
+            .map(|(_, i)| (span(i).0, self.part_source(i, 0, t - span(i).0)))
+        else {
+            return;
+        };
         self.update(id, |i| {
-            let s = i.start().flicks();
             i.set_duration(dur(t - s));
+            if let (Some(c), Some(source)) = (i.as_clip_mut(), source) {
+                c.source_in = source;
+            }
         });
         self.retimed.insert(id);
     }
 
     /// The start of `id` moves to `u` (keeps its end; the source advances, markers re-base).
     fn trim_start(&mut self, id: ItemId, u: i64) {
-        let still = self.locate(id).is_some_and(|(_, i)| self.is_still(i));
         let Some((s, e)) = self.locate(id).map(|(_, i)| span(i)) else {
             return;
         };
+        let source = self
+            .locate(id)
+            .and_then(|(_, i)| self.part_source(i, u - s, e - u));
         // A head trim by `u - s`: keys stay on the same content (keyframes §8.1).
         self.rekey(
             id,
@@ -647,8 +674,8 @@ impl<'d> Edit<'d> {
             *i.markers_mut() = kept;
             i.set_start(time(u));
             i.set_duration(dur(e - u));
-            if !still && let Some(c) = i.as_clip_mut() {
-                c.source_in = time(c.source_in.flicks() + cut);
+            if let (Some(c), Some(source)) = (i.as_clip_mut(), source) {
+                c.source_in = source;
             }
         });
         self.retimed.insert(id);

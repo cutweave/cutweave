@@ -679,11 +679,14 @@ impl Command for SequenceSetFormat {
                     let timing = timing.as_ref().and_then(|t| t.items.get(&id));
                     let visual = k.is_some() && track.kind == TrackKind::Video;
                     track.items.update(&id, |item| {
-                        if let Some((start, duration)) = timing
+                        if let Some((start, duration, source)) = timing
                             && (item.start() != *start || item.duration() != *duration)
                         {
                             item.set_start(*start);
                             item.set_duration(*duration);
+                            if let (Some(source), Some(clip)) = (source, item.as_clip_mut()) {
+                                clip.source_in = *source;
+                            }
                             retimed += 1;
                         }
                         if let (true, Some(k), Some(clip)) = (visual, k, item.as_clip_mut()) {

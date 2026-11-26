@@ -26,6 +26,8 @@
 //!
 //! A clip must not read past the end of its media (INV-25): when the rounded end would, the
 //! edge is lowered to the last whole frame that fits (never below the previous edge plus one).
+//! The room counts the clip's speed; a reversed clip keeps its source end and its room reaches
+//! back to the start of the media (INV-47).
 //! A clip with less than one new frame of media left cannot be kept and fails the command.
 //!
 //! Keyframe times, item markers, sequence markers and the in/out range are not on the grid by
@@ -35,13 +37,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cutweave_commands::CmdError;
 use cutweave_model::{
-    Duration, FrameRate, Item, ItemId, MediaKind, Project, Rounding, Sequence, Time,
+    Duration, FrameRate, Item, ItemId, MediaKind, Project, Rounding, Sequence, SourceMap, Time,
 };
 
 /// The new times of every item of a sequence, by item.
 pub struct Regrid {
-    /// `(start, duration)` per item, in flicks.
-    pub items: BTreeMap<ItemId, (Time, Duration)>,
+    /// `(start, duration, source_in)` per item; `source_in` is `Some` for a reversed clip, which
+    /// keeps its source end (the first frame it shows) as its length changes (INV-47).
+    pub items: BTreeMap<ItemId, (Time, Duration, Option<Time>)>,
 }
 
 fn invalid(msg: impl Into<String>) -> CmdError {
@@ -68,15 +71,25 @@ pub fn plan(doc: &Project, sequence: &Sequence, rate: FrameRate) -> Result<Regri
             clips.push((item, s, e));
         }
     }
-    // The media room of each clip: how long it may be, from its source position.
+    // The media room of each clip: how long it may be on the timeline, from its source
+    // position at its speed (reversed: back to the media start from its source end).
     let room = |item: &Item| -> Option<i64> {
         let clip = item.as_clip()?;
         let media = doc.media.get(&clip.media)?;
-        if media.kind == MediaKind::Image {
+        if media.kind == MediaKind::Image || clip.freeze.is_some() {
             return None;
         }
+        if clip.reverse {
+            return Some(
+                clip.speed
+                    .longest_within(SourceMap::of(clip).source_out().max(0)),
+            );
+        }
         let total = media.probe.duration?.flicks();
-        Some((total - clip.source_in.flicks()).max(0))
+        Some(
+            clip.speed
+                .longest_within((total - clip.source_in.flicks()).max(0)),
+        )
     };
     // Items ending at each edge, for the media caps.
     let mut enders: BTreeMap<i64, Vec<(i64, i64)>> = BTreeMap::new();
@@ -119,7 +132,14 @@ pub fn plan(doc: &Project, sequence: &Sequence, rate: FrameRate) -> Result<Regri
     for (item, s, e) in clips {
         let (new_s, new_e) = (at(frame_of[&s])?, at(frame_of[&e])?);
         let duration = Duration::from_flicks(new_e - new_s).map_err(|e| invalid(e.to_string()))?;
-        items.insert(item.id(), (time(new_s)?, duration));
+        let source = match item.as_clip() {
+            Some(c) if c.reverse && c.freeze.is_none() && new_e - new_s != e - s => {
+                let map = SourceMap::of(c);
+                Some(time(map.part(0, new_e - new_s, None).max(0))?)
+            }
+            _ => None,
+        };
+        items.insert(item.id(), (time(new_s)?, duration, source));
     }
     Ok(Regrid { items })
 }

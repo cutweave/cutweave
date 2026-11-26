@@ -90,8 +90,9 @@ const REGRESSIONS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/proptest-regressions/registry_props.txt"
 );
-/// Sequences of the deterministic coverage run.
-const COVERAGE_CASES: u32 = 48;
+/// Sequences of the deterministic coverage run (64 since WP-2D.01's four speed commands: with
+/// 93 entries, 48 left a few rarely-valid ones unexercised).
+const COVERAGE_CASES: u32 = 64;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 
