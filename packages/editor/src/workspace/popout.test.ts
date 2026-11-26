@@ -405,6 +405,12 @@ describe("moving a panel into its own window (WP-2H.14)", () => {
     expect(setPopoutOnTop).toHaveBeenCalledWith(win.name, true);
     // The main window's groups have no such button.
     expect(screen.queryByRole("button", { name: "Keep on top" })).toBeNull();
+    // Its tooltip shows in the detached window, not the main one (WP-2H.15).
+    fireEvent.focus(pin);
+    await waitFor(() =>
+      expect(win.document.querySelector(".cw-tooltip")?.textContent).toContain("Keep on top"),
+    );
+    expect(document.querySelector(".cw-tooltip")).toBeNull();
   });
 
   it("opens a window where a tab dragged out of the main window was let go", async () => {
