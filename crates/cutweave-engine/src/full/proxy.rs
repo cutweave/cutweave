@@ -479,10 +479,14 @@ impl FullProxies {
                 continue;
             }
             let reason = self.reverse_reason(asset, &hash);
-            self.reverse
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .insert(hash, reason.clone());
+            {
+                // The watcher and a reconcile may decide the same file at once: one warns.
+                let mut decided = self.reverse.lock().unwrap_or_else(PoisonError::into_inner);
+                if decided.contains_key(&hash) {
+                    continue;
+                }
+                decided.insert(hash, reason.clone());
+            }
             let Some(reason) = reason else { continue };
             if self.ready(asset).is_some() {
                 continue;
