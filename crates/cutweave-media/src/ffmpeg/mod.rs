@@ -238,7 +238,21 @@ impl MediaBackend for FfmpegBackend {
     fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError> {
         if let Some(run) = SequenceSource::parse(path) {
             // An image sequence (ADR-0035): the first file only.
-            return Ok(run.probe(probe::probe(&run.first_file())?));
+            let first = probe::probe(&run.first_file())?;
+            let picture = first.duration.is_none()
+                && first
+                    .streams
+                    .iter()
+                    .any(|s| s.kind == cutweave_model::StreamKind::Video);
+            if !picture {
+                return Err(MediaError::Unsupported {
+                    message: format!(
+                        "an image sequence is made of pictures, and `{}` is not one",
+                        crate::path::display(&run.first_file())
+                    ),
+                });
+            }
+            return Ok(run.probe(first));
         }
         probe::probe(path)
     }

@@ -1095,7 +1095,7 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         },
         {
           "const": "image_sequence",
-          "description": "A numbered run of pictures that plays like video (ADR-0035); described by\n[`MediaAsset::image_sequence`].",
+          "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
           "type": "string"
         },
         {

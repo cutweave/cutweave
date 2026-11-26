@@ -45,6 +45,19 @@ pub const IMPORT_PATHS: [&str; 6] = [
     "C:\\import\\voice.wav",
 ];
 
+/// The pictures of the numbered run [`fake_probe`] serves to `media.import_sequence`
+/// (`shot_0004.png` is missing: a gap).
+pub const SEQUENCE_PATHS: [&str; 5] = [
+    "/import/render/shot_0001.png",
+    "/import/render/shot_0002.png",
+    "/import/render/shot_0003.png",
+    "/import/render/shot_0005.png",
+    "/import/render/shot_0006.png",
+];
+
+/// The folder of [`SEQUENCE_PATHS`].
+pub const SEQUENCE_FOLDER: &str = "/import/render";
+
 /// A file [`fake_probe`] cannot read: `media.import` reports it in `failed[]` (code
 /// `unsupported`) and imports the other files.
 pub const BROKEN_IMPORT_PATH: &str = "/import/notes.txt";
@@ -69,7 +82,11 @@ pub const AGENT_LABEL: &str = "prop";
 #[must_use]
 pub fn fake_probe() -> FakeProbe {
     let [interview, broll, music, logo, take, voice] = IMPORT_PATHS;
-    FakeProbe::new()
+    SEQUENCE_PATHS
+        .iter()
+        .fold(FakeProbe::new(), |probe, picture| {
+            probe.with(picture, FakeProbe::image(picture))
+        })
         .with(interview, FakeProbe::video(interview, 20, true))
         .with(broll, FakeProbe::video(broll, 8, false))
         .with(music, FakeProbe::audio(music, 30))
@@ -327,6 +344,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
         "media.register_tree" => (if no_media { 3 } else { 1 }, media_register_tree(p)),
         "media.import" => (if no_media { 4 } else { 2 }, media_import(p)),
+        "media.import_sequence" => (1, media_import_sequence(p)),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
@@ -717,6 +735,33 @@ fn media_import(p: &Pools) -> BoxedStrategy<Value> {
         Just(json!({"paths": []})),
         Just(json!({"paths": ["import/relative.mp4"]})),
         select(IMPORT_PATHS.to_vec()).prop_map(|p| json!({"paths": [p, p]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_import_sequence(p: &Pools) -> BoxedStrategy<Value> {
+    let mut places = SEQUENCE_PATHS.to_vec();
+    places.push(SEQUENCE_FOLDER);
+    let fps = prop_oneof![
+        3 => Just(Value::Null),
+        1 => Just(json!({"num": 24, "den": 1})),
+        1 => Just(json!({"num": 30000, "den": 1001})),
+    ];
+    let valid = (
+        select(places),
+        fps,
+        option::weighted(0.3, one_of(p.folders.clone())),
+    )
+        .prop_map(|(path, fps, folder)| json!({"path": path, "fps": fps, "folder": folder}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"path": "import/render/shot_0001.png"})),
+        // A still is not a run, and a folder without one is not either.
+        Just(json!({"path": IMPORT_PATHS[3]})),
+        Just(json!({"path": "/import"})),
+        Just(json!({"path": "/import/render/shot_0004.png"})),
+        Just(json!({"path": SEQUENCE_PATHS[0], "fps": {"num": 0, "den": 1}})),
     ]
     .boxed();
     mix(valid, invalid)

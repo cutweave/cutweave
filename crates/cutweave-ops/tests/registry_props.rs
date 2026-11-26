@@ -491,7 +491,7 @@ impl<'s> Harness<'s> {
         }
     }
 
-    fn import(&self, ctx: &ActorCtx, params: &Value) -> Result<Value, CmdError> {
+    fn import(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let importer = if *ctx.actor() == cutweave_commands::Actor::User {
             ActorCtx::ui(ConnId::new(1001))
         } else {
@@ -504,7 +504,7 @@ impl<'s> Harness<'s> {
         let mut ctx_any = ImportCtx::new(Arc::new(fake_probe()), Box::new(sink))
             .with_analysis(analyzer(&self.jobs));
         self.registry
-            .invoke_engine_json("media.import", params.clone(), &mut ctx_any, ctx.access())
+            .invoke_engine_json(name, params.clone(), &mut ctx_any, ctx.access())
     }
 
     /// Runs `export.start` against the committed document (the starter queues nothing).
@@ -633,7 +633,7 @@ impl<'s> Harness<'s> {
         };
         let result = match context {
             Some(c) if c == TypeId::of::<ImportCtx>() => {
-                self.import(ctx, params).map(|output| Done {
+                self.import(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })

@@ -21,8 +21,8 @@ pub enum MediaKind {
     Audio,
     /// A still image (no duration).
     Image,
-    /// A numbered run of pictures that plays like video (ADR-0035); described by
-    /// [`MediaAsset::image_sequence`].
+    /// A numbered run of pictures that plays like video (ADR-0035); the asset's
+    /// `image_sequence` field describes the run.
     ImageSequence,
     /// Another sequence of this project, used as a compound clip (arch §4.3).
     SequenceRef,
