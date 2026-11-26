@@ -115,13 +115,14 @@ test.describe("F34 export for a platform", () => {
       await dropCard(page, "image_png.png", "V1", video);
       await expect.poll(async () => (await clips()).length, BOUND).toBe(2);
       await editorCaughtUp(page);
-      await clickClip(page, clipAt(await timelineGeometry(page), "V1", video).id);
+      const still = (await clips())[1]?.[0] ?? video;
+      await clickClip(page, clipAt(await timelineGeometry(page), "V1", still).id);
       await inspector(page).duration.fill("200s");
       await page.keyboard.press("Enter");
       await expect.poll(async () => (await clips())[1]?.[1], BOUND).toBe(200);
       await editorCaughtUp(page);
-      const total = video + 200;
-      const clock = `${Math.floor(total / 60)}:${String(Math.round(total % 60)).padStart(2, "0")}`;
+      const total = Math.round(still + 200);
+      const clock = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 
       // File > Export…: the presets made for 9:16 come first.
       await chooseMenu(page, app, "File", "Export…");
