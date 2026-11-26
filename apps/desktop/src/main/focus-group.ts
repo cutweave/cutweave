@@ -16,9 +16,10 @@ export interface FocusGroupOptions {
 
 /**
  * How long a blur waits for the focus to land on another window of the group before it counts.
- * The OS blurs one window before it focuses the next.
+ * The OS blurs one window before it focuses the next; only gaining the focus is reported to the
+ * engine, so waiting a little longer costs nothing.
  */
-export const FOCUS_SETTLE_MS = 100;
+export const FOCUS_SETTLE_MS = 250;
 
 export class FocusGroup {
   #focused = false;
