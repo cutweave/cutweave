@@ -33,6 +33,7 @@
 //! - **Audio.** `codec`, `bitrate_kbps` (lossy codecs), `sample_rate` (44100, 48000, 96000;
 //!   the mix is made at that rate) and `channels` (a stereo mix is averaged to mono).
 
+use cutweave_commands::__private::schemars::{Schema, SchemaGenerator, json_schema};
 use cutweave_commands::{
     Annotations, CmdError, CommandSpec, Described, EngineCommand, EntryKind, McpExposure,
     Registrable, Registry, RegistryError, Scope, wire,
@@ -41,7 +42,6 @@ use cutweave_model::{
     ColorPrimaries, ColorRange, ColorTags, Duration, FrameRate, MatrixCoefficients,
     TransferCharacteristics,
 };
-use cutweave_commands::__private::schemars::{Schema, SchemaGenerator, json_schema};
 use serde_json::{Value, json};
 
 use super::presets::{

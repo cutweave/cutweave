@@ -409,7 +409,7 @@ fn a_software_only_setting_moves_an_auto_export_to_the_software_encoder_with_a_w
     );
     let warnings = started["warnings"].as_array().unwrap();
     assert!(
-        warnings.iter().any(|w| w["code"] == "software_encoder"),
+        warnings.iter().any(|w| w["code"] == "SoftwareEncoder"),
         "{warnings:?}"
     );
     assert_eq!(keyframes(&path), [0, 30, 60]);
