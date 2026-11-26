@@ -237,10 +237,24 @@ describe("startEngineRuntime", () => {
     expect(sent(0, "media.set_decode_policy")).toMatchObject([{ hw: "off" }]);
     expect(sent(0, "media.set_cache_config")).toMatchObject([
       {
-        limits: { thumbnails: 1_073_741_824, waveforms: 536_870_912 },
+        limits: { thumbnails: 1_073_741_824, waveforms: 536_870_912, proxies: 53_687_091_200 },
         frame_cache_bytes: 0,
       },
     ]);
+    // Proxies (WP-2F.03b): the size and the jobs at once, before the caches.
+    expect(sent(0, "media.set_proxy_config")).toMatchObject([{ size: 960, jobs: 2 }]);
+    const order = (engine.sockets[0]?.sent ?? []).map((m) => m.method);
+    expect(order.indexOf("media.set_proxy_config")).toBeLessThan(
+      order.indexOf("media.set_cache_config"),
+    );
+    set({ "media.proxy_size": 540, "performance.proxy_jobs": 1 });
+    await flushPromises(50);
+    expect(sent(0, "media.set_proxy_config").at(-1)).toMatchObject({ size: 540, jobs: 1 });
+    set({ "cache.proxies_limit": 10_737_418_240 });
+    await flushPromises(50);
+    expect(sent(0, "media.set_cache_config").at(-1)).toMatchObject({
+      limits: { proxies: 10_737_418_240 },
+    });
     set({ "performance.frame_memory": 2_147_483_648 });
     await flushPromises(50);
     expect(sent(0, "media.set_cache_config").at(-1)).toMatchObject({

@@ -21,6 +21,11 @@
 //!   picture for [`IDLE_BEFORE_PROXIES`] (playback, scrub, Source view; issue 153); finished
 //!   parts stay, so a pause loses nothing. Exports yield too, less: while the preview is busy
 //!   each exported frame waits [`EXPORT_YIELD`](crate::export::EXPORT_YIELD) (WP-2G.03a).
+//! - **Size and jobs** (WP-2F.03b). The longest side of new proxies (540, 720 or 960 pixels)
+//!   and how many proxy jobs run at once are this computer's settings
+//!   (`media.set_proxy_config`, UI-only). Another size is another profile, so another proxy:
+//!   a change stops the generations of the old size, queues what the project wants at the new
+//!   one, and leaves ready proxies of other sizes in the cache until its limit removes them.
 //! - **Policy.** [`DEFAULT_POLICY`] (`auto`) for every project until ADR-0027 stores one in
 //!   the project.
 //! - **Reversed clips** (WP-2D.01b, [`FullProxies::reversed`]). Reverse playback reads the
@@ -36,14 +41,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration as StdDuration, Instant};
 
 use cutweave_cache::proxy::{
-    GenerateOptions, Pacer, ProxyGenerator, ProxyProfile, ProxyRecord, ProxySource, ProxyState,
-    ProxyStore, ReadyProxy, submit_proxy,
+    GenerateOptions, Pacer, ProxyCodec, ProxyGenerator, ProxyProfile, ProxyRecord, ProxySource,
+    ProxyState, ProxyStore, ReadyProxy, submit_proxy,
 };
 use cutweave_cache::{CacheDb, ContentHash};
 use cutweave_commands::{CmdError, DocHandle};
@@ -176,7 +181,10 @@ impl Pacer for Activity {
 pub struct FullProxies {
     store: Arc<ProxyStore>,
     generator: Arc<ProxyGenerator>,
-    profile: Option<ProxyProfile>,
+    /// The best proxy codec the backend encodes; `None`: it makes no proxies.
+    codec: Option<ProxyCodec>,
+    /// The longest side of the proxies made from now on, in pixels.
+    long_edge: AtomicU32,
     doc: CurrentDoc,
     link: EngineLink,
     /// Generations queued or running, by original and profile.
@@ -197,7 +205,7 @@ pub struct FullProxies {
 impl std::fmt::Debug for FullProxies {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FullProxies")
-            .field("profile", &self.profile)
+            .field("profile", &self.profile())
             .field("root", &self.store.root())
             .finish_non_exhaustive()
     }
@@ -239,14 +247,15 @@ impl FullProxies {
             )
             .with_pacer(Arc::clone(&activity) as Arc<dyn Pacer>),
         );
-        let profile = generator.profile();
-        if profile.is_none() {
+        let codec = generator.profile().map(|p| p.codec);
+        if codec.is_none() {
             tracing::info!("the media backend encodes no proxy codec: no proxies are made");
         }
         FullProxies {
             store,
             generator,
-            profile,
+            codec,
+            long_edge: AtomicU32::new(ProxyProfile::DEFAULT_LONG_EDGE),
             doc,
             link,
             jobs: Arc::default(),
@@ -267,11 +276,89 @@ impl FullProxies {
             hash: hash_of(asset).expect("a content hash"),
             probe: asset.probe.clone(),
         };
-        let profile = self.profile.expect("a proxy codec");
+        let profile = self.profile().expect("a proxy codec");
         self.generator
             .generate(&source, &profile, &CancelToken::new(), &mut |_| {})
             .expect("the proxy is made")
             .proxy
+    }
+
+    /// How proxies are made now: the backend's best proxy codec at the size in force; `None`
+    /// when the backend encodes no proxy codec.
+    fn profile(&self) -> Option<ProxyProfile> {
+        self.codec.map(|codec| ProxyProfile {
+            codec,
+            long_edge: self.long_edge.load(Ordering::Relaxed),
+        })
+    }
+
+    /// The longest side of the proxies made from now on, in pixels.
+    pub(crate) fn long_edge(&self) -> u32 {
+        self.long_edge.load(Ordering::Relaxed)
+    }
+
+    /// How many proxy jobs run at once (the engine's job manager; the default while it is not
+    /// reachable).
+    pub(crate) fn job_slots(&self) -> usize {
+        self.link
+            .jobs()
+            .map_or(cutweave_jobs::DEFAULT_PROXY_SLOTS, |jobs| {
+                jobs.proxy_slots()
+            })
+    }
+
+    /// Sets how many proxy jobs run at once.
+    pub(crate) fn set_job_slots(&self, slots: usize) {
+        if let Some(jobs) = self.link.jobs() {
+            jobs.set_proxy_slots(slots);
+        }
+    }
+
+    /// Sets the longest side of the proxies made from now on. A change stops the generations
+    /// of the old size (their unfinished files are removed) and queues what the open project
+    /// wants at the new size, on the reconcile thread. Ready proxies of other sizes stay in the
+    /// cache, unused, until its limit removes them.
+    pub(crate) fn set_long_edge(self: &Arc<Self>, long_edge: u32) {
+        if self.long_edge.swap(long_edge, Ordering::Relaxed) == long_edge || self.codec.is_none() {
+            return;
+        }
+        let Some(current) = self.profile().map(|p| p.key()) else {
+            return;
+        };
+        let stale: Vec<(Key, JobId)> = {
+            let mut running = self.running();
+            let stale: Vec<Key> = running
+                .keys()
+                .filter(|(_, profile)| *profile != current)
+                .cloned()
+                .collect();
+            stale
+                .into_iter()
+                .filter_map(|key| running.remove(&key).map(|id| (key, id)))
+                .collect()
+        };
+        let snapshot = self.doc.snapshot();
+        self.spawn_reconcile(move |proxies| {
+            let jobs = proxies.link.jobs();
+            for ((hash, profile), id) in stale {
+                if let Some(jobs) = &jobs {
+                    jobs.cancel(id);
+                    let _ = jobs.wait(id, DELETE_WAIT);
+                }
+                let unfinished = proxies
+                    .store
+                    .get(&hash, &profile)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|row| row.state == ProxyState::Building);
+                if unfinished && let Err(e) = proxies.store.evict(&hash, &profile) {
+                    tracing::debug!(error = %e, "cannot remove an unfinished proxy");
+                }
+            }
+            if let Some(snapshot) = snapshot {
+                proxies.reconcile(&snapshot.doc);
+            }
+        });
     }
 
     /// The same proxies, sending `media.reverse_slow` to `events`.
@@ -284,10 +371,15 @@ impl FullProxies {
     /// under the session lock); [`stop`](Self::stop) joins the thread.
     pub(crate) fn reconcile_in_background(self: &Arc<Self>, doc: &DocHandle) {
         let snapshot = doc.snapshot();
+        self.spawn_reconcile(move |proxies| proxies.reconcile(&snapshot.doc));
+    }
+
+    /// Runs `work` on a `cw-proxy-reconcile` thread, which [`stop`](Self::stop) joins.
+    fn spawn_reconcile(self: &Arc<Self>, work: impl FnOnce(&FullProxies) + Send + 'static) {
         let proxies = Arc::clone(self);
         let spawned = std::thread::Builder::new()
             .name("cw-proxy-reconcile".into())
-            .spawn(move || proxies.reconcile(&snapshot.doc));
+            .spawn(move || work(&proxies));
         let thread = match spawned {
             Ok(thread) => thread,
             Err(e) => {
@@ -342,7 +434,7 @@ impl FullProxies {
         if !proxyable(asset) {
             return None;
         }
-        let (hash, profile) = (hash_of(asset)?, self.profile?);
+        let (hash, profile) = (hash_of(asset)?, self.profile()?);
         match self.store.ready(&hash, &profile.key()) {
             Ok(ready) => ready,
             Err(e) => {
@@ -369,7 +461,7 @@ impl FullProxies {
 
     /// Queues the generation of `asset`'s proxy after `after` unless one is queued or running.
     fn queue(&self, jobs: &JobManager, asset: &MediaAsset, after: &[JobId]) -> Option<JobId> {
-        let (hash, profile) = (hash_of(asset)?, self.profile?);
+        let (hash, profile) = (hash_of(asset)?, self.profile()?);
         // The file, or the locator of an image sequence (ADR-0035).
         let path = PathBuf::from(asset.source_path()?);
         let key = (hash, profile.key());
@@ -462,7 +554,7 @@ impl FullProxies {
     /// per-project hooks (it reads the cache database and queues jobs): the document watcher
     /// and the reconcile thread do.
     pub(crate) fn reversed(&self, doc: &Project) {
-        let Some(profile) = self.profile else {
+        let Some(profile) = self.profile() else {
             return;
         };
         for media in reversed_media(doc) {
@@ -533,8 +625,8 @@ impl FullProxies {
             .or_else(|| hash_of(asset).and_then(|h| self.reverse_reason_of(&h)));
         info.wanted = reason.is_some();
         info.reason = reason;
-        let (Some(hash), Some(profile)) = (hash_of(asset), self.profile) else {
-            if self.profile.is_none() {
+        let (Some(hash), Some(profile)) = (hash_of(asset), self.profile()) else {
+            if self.codec.is_none() {
                 info.reason = Some("this engine cannot encode proxies".to_owned());
             }
             return info;
@@ -562,7 +654,7 @@ impl FullProxies {
     /// Queues what the policy wants for `doc` and was never made or was interrupted (engine
     /// start, `project.open`: generations resume after a restart).
     pub(crate) fn reconcile(&self, doc: &Project) {
-        let (Some(jobs), Some(profile)) = (self.link.jobs(), self.profile) else {
+        let (Some(jobs), Some(profile)) = (self.link.jobs(), self.profile()) else {
             return;
         };
         let key = profile.key();
@@ -631,7 +723,7 @@ impl ProxyService for FullProxies {
     }
 
     fn generate(&self, doc: &Project, media: &[MediaId]) -> Result<Vec<ProxyInfo>, CmdError> {
-        if self.profile.is_none() {
+        if self.codec.is_none() {
             return Err(CmdError::unsupported(
                 "this engine's media backend cannot encode proxies",
             ));
@@ -659,7 +751,7 @@ impl ProxyService for FullProxies {
 
     fn delete(&self, doc: &Project, media: &[MediaId]) -> Result<Vec<ProxyInfo>, CmdError> {
         let jobs = self.link.jobs();
-        let Some(profile) = self.profile else {
+        let Some(profile) = self.profile() else {
             return Ok(self.status(doc, media));
         };
         let key = profile.key();
@@ -691,7 +783,7 @@ impl ProxyService for FullProxies {
             return ImportProxy::Ready;
         }
         let (Some(jobs), Some(profile), Some(hash)) =
-            (self.link.jobs(), self.profile, hash_of(asset))
+            (self.link.jobs(), self.profile(), hash_of(asset))
         else {
             return ImportProxy::None;
         };
@@ -865,7 +957,7 @@ mod tests {
             .generator
             .generate(
                 &source,
-                &proxies.profile.unwrap(),
+                &proxies.profile().unwrap(),
                 &CancelToken::new(),
                 &mut |_| {},
             )

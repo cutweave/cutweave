@@ -3676,6 +3676,10 @@ export type MediaCacheStatusOutput = {
 	decode_hw: DecodeHw,
 	/**  Bytes of decoded frames the RAM frame cache may hold. */
 	frame_cache_bytes: number,
+	/**  The longest side, in pixels, of the proxies made from now on (540, 720 or 960). */
+	proxy_size: number,
+	/**  How many proxy jobs run at once (one while an export runs). */
+	proxy_jobs: number,
 };
 
 /**
@@ -4282,6 +4286,21 @@ export type MediaSetLocation = {
 	content_hash?: string | null,
 	/**  What probing the file found, when its content differs from the asset's. */
 	probe?: ProbeInfo | null,
+};
+
+/**
+ *  Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960
+ *  pixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size
+ *  applies to proxies made from now on: generations of the old size stop, the open project's
+ *  wanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache
+ *  unused until its limit removes them. Not undoable, not journaled, never marks the project
+ *  dirty; UI credential only (the desktop app applies the person's machine preferences).
+ */
+export type MediaSetProxyConfig = {
+	/**  The longest side of new proxies in pixels: 540, 720 or 960. Left out: unchanged. */
+	size?: number | null,
+	/**  Proxy jobs at once, 1 to 8. Left out: unchanged. */
+	jobs?: number | null,
 };
 
 /**  How to order the list; without one, by ID ascending. */

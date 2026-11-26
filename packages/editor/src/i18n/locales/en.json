@@ -406,6 +406,29 @@
         "description": "The frame rate a numbered run of pictures gets when you import it as an image sequence. Sequences you have already imported keep theirs.",
         "keywords": "image sequence, frames, fps, frame rate, numbered pictures, render, time-lapse, png, exr, import",
         "sequence": "The sequence's frame rate"
+      },
+      "proxiesLimit": {
+        "label": "Proxies",
+        "description": "Smaller copies of video that is slow to scrub. When the limit is reached, the proxies used longest ago are removed; the original files are never touched.",
+        "keywords": "proxy proxies cache limit size disk space storage"
+      },
+      "proxyJobs": {
+        "label": "Proxy jobs at once",
+        "description": "How many proxies are made at the same time. More finishes sooner and uses more of the computer. Only one runs while an export does.",
+        "keywords": "proxy proxies jobs background parallel concurrent cpu"
+      },
+      "proxyPolicy": {
+        "label": "Proxies for new projects",
+        "description": "Which video gets a proxy in a new project. Auto makes one for H.264 and HEVC video that is slow to scrub: larger than 1920 pixels, faster than 60 fps, or 10-bit HEVC.",
+        "keywords": "proxy proxies policy automatic new project scrub",
+        "off": "Off",
+        "auto": "Auto",
+        "all": "All video"
+      },
+      "proxySize": {
+        "label": "Proxy size",
+        "description": "The longest side of a proxy picture, in pixels. Smaller proxies scrub faster and take less space. A new size applies to proxies made from now on.",
+        "keywords": "proxy proxies size resolution 540p 720p 960p"
       }
     },
     "cache": {
@@ -420,7 +443,9 @@
       "cleared": "{{name}} cleared.",
       "clearFailed": "Could not clear {{name}}.",
       "clearedAll": "All caches cleared.",
-      "clearAllFailed": "Could not clear all caches."
+      "clearAllFailed": "Could not clear all caches.",
+      "proxies": "Proxies",
+      "clearProxies": "Clear proxies"
     },
     "performance": {
       "reading": "Reading…",

@@ -7,6 +7,8 @@ import {
   EXPORT_HW_CHOICES,
   EXPORT_QUALITIES,
   IMAGE_SEQUENCE_FPS_CHOICES,
+  PROXY_POLICIES,
+  PROXY_SIZES,
   STILL_DURATION_MAX,
 } from "@cutweave/preferences";
 import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
@@ -28,6 +30,12 @@ const QUALITY_LABELS = {
 const HW_LABELS = {
   auto: "settings.rows.exportHw.auto",
   off: "settings.rows.exportHw.off",
+} as const;
+
+const PROXY_POLICY_LABELS = {
+  off: "settings.rows.proxyPolicy.off",
+  auto: "settings.rows.proxyPolicy.auto",
+  all: "settings.rows.proxyPolicy.all",
 } as const;
 
 const choices = <T extends string>(
@@ -199,6 +207,29 @@ const mediaPage: SettingsPageDef = {
             : { value, text: `${value} fps` },
         ),
       },
+    },
+    // Proxies (WP-2F.03b, ADR-0027): the policy new projects start with, and this computer's
+    // proxy size (applied by the engine).
+    {
+      id: "media.proxy_policy",
+      key: "media.proxy_policy",
+      label: "settings.rows.proxyPolicy.label",
+      description: "settings.rows.proxyPolicy.description",
+      keywords: "settings.rows.proxyPolicy.keywords",
+      control: { kind: "segmented", options: choices(PROXY_POLICIES, PROXY_POLICY_LABELS) },
+    },
+    {
+      id: "media.proxy_size",
+      key: "media.proxy_size",
+      label: "settings.rows.proxySize.label",
+      description: "settings.rows.proxySize.description",
+      keywords: "settings.rows.proxySize.keywords",
+      // "960p" is a size, not a phrase: nothing to translate.
+      control: {
+        kind: "select",
+        options: PROXY_SIZES.map((value) => ({ value, text: `${value}p` })),
+      },
+      applies: "engine",
     },
   ],
 };

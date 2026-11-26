@@ -176,6 +176,55 @@ impl Rig {
     }
 }
 
+/// WP-2F.03b: the proxy size and the proxy jobs at once are this computer's settings, set by
+/// the app (UI-only) and readable by agents. A new size makes the project's proxies again at
+/// that size and leaves the old ones in the cache.
+#[test]
+fn the_app_sets_the_proxy_size_and_jobs_and_a_new_size_makes_the_proxies_again() {
+    let r = rig("proxies-config", 3, StdDuration::ZERO);
+    let status = call(&r.agent, "media.cache_status", json!({})).unwrap();
+    assert_eq!(status["proxy_size"], 960, "{status}");
+    assert_eq!(status["proxy_jobs"], 2, "{status}");
+    let err = call(&r.agent, "media.set_proxy_config", json!({ "size": 540 })).unwrap_err();
+    assert_eq!(err.code(), "forbidden", "{err:?}");
+    for params in [
+        json!({ "size": 1000 }),
+        json!({ "jobs": 0 }),
+        json!({ "jobs": 9 }),
+    ] {
+        let err = call(&r.ui, "media.set_proxy_config", params.clone()).unwrap_err();
+        assert_eq!(err.code(), "invalid", "{params}: {err:?}");
+    }
+
+    let imported = r.import();
+    let media = imported["media_ids"][0].clone();
+    let large = r.wait_status(&media, "ready");
+    assert_eq!(large["profile"], "prores_proxy-960", "{large}");
+
+    let set = call(
+        &r.ui,
+        "media.set_proxy_config",
+        json!({ "size": 540, "jobs": 1 }),
+    )
+    .unwrap();
+    assert_eq!(set["proxy_size"], 540, "{set}");
+    assert_eq!(set["proxy_jobs"], 1, "{set}");
+    // The project's proxy is made again at the new size; the larger one stays in the cache.
+    let small = eventually("the smaller proxy", || {
+        let s = r.status(&media);
+        (s["status"] == "ready" && s["profile"] == "prores_proxy-540").then_some(s)
+    });
+    assert_eq!(small["size"], json!([540, 304]), "{small}");
+    assert_eq!(r.proxies_kind()["entries"], 2);
+    // Nothing named: nothing changes, and the answer says what is in force.
+    let same = call(&r.ui, "media.set_proxy_config", json!({})).unwrap();
+    assert_eq!(same["proxy_size"], 540, "{same}");
+    assert_eq!(same["proxy_jobs"], 1, "{same}");
+    let status = call(&r.agent, "media.cache_status", json!({})).unwrap();
+    assert_eq!(status["proxy_size"], 540, "{status}");
+    r.engine.shutdown();
+}
+
 #[test]
 fn an_imported_4k_class_clip_gets_a_proxy_that_the_commands_manage() {
     let r = rig("proxies-commands", 3, StdDuration::ZERO);
