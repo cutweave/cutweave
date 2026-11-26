@@ -2948,6 +2948,121 @@
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Lists the layouts `item.apply_layout` knows, with how many clips each takes.",
+        "properties": {
+          "count": {
+            "default": null,
+            "description": "Only the layouts for this many clips.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "ItemLayouts",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "item_layouts",
+      "name": "item.layouts",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.layouts`.",
+        "properties": {
+          "layouts": {
+            "description": "The layouts, in table order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A layout, as `item.layouts` lists it.",
+              "properties": {
+                "cells": {
+                  "description": "The cells in fractions of the canvas at gap 0, in cell order (for diagrams).",
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "A cell in fractions of the canvas.",
+                    "properties": {
+                      "h": {
+                        "description": "Height.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "w": {
+                        "description": "Width.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "x": {
+                        "description": "Left edge.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Top edge.",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "w",
+                      "h"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "count": {
+                  "description": "How many clips the layout takes.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The ID to give `item.apply_layout`.",
+                  "type": "string"
+                },
+                "label": {
+                  "description": "English name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "count",
+                "cells"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "layouts"
+        ],
+        "title": "ItemLayoutsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the layouts item.apply_layout offers",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Reads keys into a clipboard payload (nothing changes). `NotFound` if a key does not exist.",
         "properties": {
           "item": {
