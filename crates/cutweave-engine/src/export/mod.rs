@@ -47,8 +47,8 @@ use cutweave_jobs::queue::{
 };
 use cutweave_jobs::{JobCtx, JobError, JobId, JobManager, JobProgress};
 use cutweave_media::Capabilities;
-use cutweave_ops::export::queue::{PlanCodec, queue_error};
 use cutweave_ops::export::encoders::EncoderEntry;
+use cutweave_ops::export::queue::{PlanCodec, queue_error};
 use cutweave_ops::export::{ExportHw, ExportPlan, ExportStarter};
 
 pub use pipeline::{
@@ -267,14 +267,17 @@ fn encoder_entries(caps: &Capabilities) -> Vec<EncoderEntry> {
                 device: None,
             }));
         }
-        entries.extend(caps.hw_encode.iter().filter(|c| c.codec == id).map(|c| {
-            EncoderEntry {
-                codec: id.to_owned(),
-                implementation: c.implementation.clone(),
-                hardware: true,
-                device: Some(c.device.clone()),
-            }
-        }));
+        entries.extend(
+            caps.hw_encode
+                .iter()
+                .filter(|c| c.codec == id)
+                .map(|c| EncoderEntry {
+                    codec: id.to_owned(),
+                    implementation: c.implementation.clone(),
+                    hardware: true,
+                    device: Some(c.device.clone()),
+                }),
+        );
     }
     entries
 }

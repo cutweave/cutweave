@@ -803,6 +803,24 @@ msg: string;
 /**  Human message. */
 message: string };
 
+/**  One codec and how it can be exported here. */
+export type CodecEncoders = {
+	/**  The codec. */
+	codec: VideoCodec,
+	/**  Whether any encoder (software or hardware) is available. */
+	available: boolean,
+	/**  The software encoder (`libx265`), when this FFmpeg build has it. */
+	software?: string | null,
+	/**  Hardware encoders verified on this machine, in the order `auto` tries them. */
+	hardware: HardwareEncoderInfo[],
+	/**  The containers the codec goes into. */
+	containers: Container[],
+	/**  The bit depths of the coded video. */
+	bit_depths: number[],
+	/**  The profile names a preset's `video.profile` takes (empty when the codec has none). */
+	profiles: string[],
+};
+
 /**  A software codec and its implementations. */
 export type CodecInfo = {
 	/**  Codec name (`h264`, `hevc`, `aac`), as the probe reports it. */
@@ -1229,15 +1247,15 @@ export type ExportEnqueue = {
 /**  Whether to use a hardware video encoder. */
 export type ExportHw = 
 /**
- *  The first hardware H.264 encoder that works here, else software (x264); if it fails
- *  during the export, the export starts again in software.
+ *  The first hardware encoder of the codec that works here (`export.list_encoders`), else
+ *  software; if it fails during the export, the export starts again in software.
  */
 "auto" | 
-/**  Software (x264) only. */
+/**  Software (x264, x265, SVT-AV1) only. */
 "off" | 
 /**
- *  This hardware encoder and no other, e.g. "h264_nvenc" (the `implementation` names of
- *  the machine's hardware encoders); fails instead of falling back.
+ *  This hardware encoder and no other, e.g. "hevc_nvenc" (the `implementation` names of
+ *  the machine's hardware encoders, `export.list_encoders`); fails instead of falling back.
  */
 { force: string };
 
@@ -1400,9 +1418,9 @@ export type ExportRetry = {
 };
 
 /**
- *  Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a
- *  background job and returns the job id at once; wait with `job.wait`, stop with
- *  `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
+ *  Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id
+ *  picks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with
+ *  `job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
  *  also resumes a paused queue (`export.queue` lists it). The export uses the project as it is
  *  now; later edits do not change it. Agents and headless callers may only write inside the
  *  project folder and folders the user approved. An existing file is replaced only with
@@ -1411,7 +1429,7 @@ export type ExportRetry = {
 export type ExportStart = {
 	/**  Sequence; optional when the project has one. */
 	sequence?: SequenceId | null,
-	/**  Absolute path of the output file (`.mp4`). */
+	/**  Absolute path of the output file (`.mp4`; `.mov` for ProRes presets). */
 	path: string,
 	/**  Part of the sequence to export (default: all of it). */
 	range?: ExportRange | null,
@@ -1420,7 +1438,7 @@ export type ExportStart = {
 	 *  fps, quality, preset}}.
 	 */
 	preset?: ExportPreset | null,
-	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
+	/**  Hardware encoder: "auto" (default), "off", or {"force": "hevc_nvenc"}. */
 	hw?: ExportHw | null,
 	/**  Replace an existing file at `path` (default false). */
 	overwrite?: boolean | null,
@@ -1678,6 +1696,14 @@ export type GroupMember = {
 	track: TrackId,
 	/**  Its linked group, if any. */
 	linked_group: GroupId | null,
+};
+
+/**  A hardware encoder that passed the trial encode. */
+export type HardwareEncoderInfo = {
+	/**  The name for `hw: {"force": ...}` (`hevc_nvenc`). */
+	implementation: string,
+	/**  The device type it runs on (`cuda`, `amf`, `qsv`, `videotoolbox`, `vaapi`). */
+	device: string,
 };
 
 /**  What happened to an actor's stacks. */
@@ -3011,6 +3037,19 @@ export type LayoutInfo = {
 
 /**  Every checkpoint, oldest first. */
 export type ListCheckpoints = Record<string, never>;
+
+/**
+ *  Lists the video codecs this machine exports (H.264, HEVC, AV1, ProRes) with their software
+ *  encoder, the hardware encoders that passed an 8-frame trial encode (what `hw: "auto"` uses
+ *  and `hw: {"force": ...}` names), and the containers, bit depths and profiles each takes.
+ */
+export type ListEncoders = Record<string, never>;
+
+/**  Result of `export.list_encoders`. */
+export type ListEncodersOutput = {
+	/**  H.264, HEVC, AV1 and ProRes, in that order. */
+	codecs: CodecEncoders[],
+};
 
 /**
  *  Lists the open transactions (oldest first) and the items each soft-locks: a `gesture` or
@@ -4415,7 +4454,7 @@ export type ProxyStatus =
 
 /**  How the video encoder spends bits. */
 export type RateControlSpec = 
-/**  Constant quality on the x264 CRF scale (0-51, lower is better). */
+/**  Constant quality on the x264 CRF scale (0-51, lower is better; AV1 maps it onto its own). */
 { mode: "crf"; 
 /**  The CRF value. */
 crf: number } | 
@@ -6034,6 +6073,8 @@ export type VideoCodec =
 "h264" | 
 /**  H.265 / HEVC. */
 "hevc" | 
+/**  AV1. */
+"av1" | 
 /**  Apple ProRes. */
 "prores" | 
 /**  GIF (palette). */
