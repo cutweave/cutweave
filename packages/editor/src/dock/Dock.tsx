@@ -13,6 +13,8 @@ import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
 import { ContextSurface, registerContextSurface } from "../menus/host.tsx";
 import { EmptyState } from "../panels/EmptyState.tsx";
+import { desktopFromWindow } from "../session/desktop.ts";
+import { isKeptOnTop, setKeptOnTop } from "../shell/windows.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import "../workspace/builtinPanels.ts";
 import { runWorkspaceCommand } from "../workspace/commands.ts";
@@ -55,7 +57,7 @@ function PanelTab({ api, params }: IDockviewPanelHeaderProps<{ titleKey: TKey }>
  * `workspace.close_panel` command, which remembers where the panel was docked so View > Panels
  * can bring it back there.
  */
-function CloseActivePanel({ activePanel }: IDockviewHeaderActionsProps) {
+function CloseActivePanel({ activePanel }: Pick<IDockviewHeaderActionsProps, "activePanel">) {
   const { t } = useTranslation();
   if (activePanel === undefined) return null;
   const title = t((activePanel.params as { titleKey: TKey }).titleKey);
@@ -67,6 +69,54 @@ function CloseActivePanel({ activePanel }: IDockviewHeaderActionsProps) {
       label={t("panel.closeNamed", { name: title })}
       onClick={() => runWorkspaceCommand("workspace.close_panel", { panel: activePanel.id })}
     />
+  );
+}
+
+/**
+ * Keep on top, in a detached panel's window (WP-2H.14, ADR-0031): main keeps that OS window above
+ * the others. Only in the desktop app (a browser has no such window), only in a detached group.
+ * Its tooltip is the native one: the design system's tooltips open in the main window until
+ * WP-2H.15 gives each window its own.
+ */
+function KeepOnTop({ group }: Pick<IDockviewHeaderActionsProps, "group">) {
+  const { t } = useTranslation();
+  const [detached, setDetached] = useState(group.api.location.type === "popout");
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const sub = group.api.onDidLocationChange((e) => setDetached(e.location.type === "popout"));
+    return () => sub.dispose();
+  }, [group]);
+  const bridge = desktopFromWindow()?.window;
+  if (!detached || bridge?.setPopoutOnTop === undefined) return null;
+  const win = group.api.getWindow();
+  const on = isKeptOnTop(win);
+  const label = t("windows.keepOnTop");
+  return (
+    <IconButton
+      icon="layers"
+      size="sm"
+      className="cw-dock-tab__pin"
+      label={label}
+      title={label}
+      pressed={on}
+      onClick={() => {
+        void bridge.setPopoutOnTop?.(win.name, !on).then((applied) => {
+          if (!applied) return;
+          setKeptOnTop(win, !on);
+          rerender((n) => n + 1);
+        });
+      }}
+    />
+  );
+}
+
+/** The actions at the end of a group's tab strip. */
+function GroupActions({ activePanel, group }: IDockviewHeaderActionsProps) {
+  return (
+    <>
+      <KeepOnTop group={group} />
+      <CloseActivePanel activePanel={activePanel} />
+    </>
   );
 }
 
@@ -161,7 +211,7 @@ export function Dock() {
       className="cw-dock"
       components={components}
       tabComponents={tabComponents}
-      rightHeaderActionsComponent={CloseActivePanel}
+      rightHeaderActionsComponent={GroupActions}
       watermarkComponent={EmptyDock}
       theme={dockTheme()}
       singleTabMode="fullwidth"

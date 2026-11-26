@@ -7,7 +7,16 @@
 // so a key or a palette entry can name one panel without arguments.
 import type { TKey } from "../i18n/index.ts";
 import { viewStore, WORKSPACES, type WorkspaceId } from "../state/viewStore.ts";
-import { closePanel, openPanel, reopenAllPanels, togglePanel } from "./dockHost.ts";
+import {
+  activePanelId,
+  closePanel,
+  dockPanel,
+  isPanelDetached,
+  openPanel,
+  popoutPanel,
+  reopenAllPanels,
+  togglePanel,
+} from "./dockHost.ts";
 import { type PanelId, registeredPanels } from "./panelRegistry.ts";
 
 export interface WorkspaceCommand {
@@ -29,6 +38,9 @@ const BASE: readonly WorkspaceCommand[] = [
   { id: "workspace.close_panel", title: "workspace.commands.closePanel" },
   { id: "workspace.toggle_panel", title: "workspace.commands.togglePanel" },
   { id: "workspace.reopen_panels", title: "workspace.commands.reopenPanels" },
+  // A panel in a window of its own and back (WP-2H.14); with no `panel`, the active one.
+  { id: "workspace.popout_panel", title: "contextMenu.item.moveToWindow" },
+  { id: "workspace.dock_panel", title: "contextMenu.item.moveToMain" },
   { id: "workspace.reset_layout", title: "workspace.reset" },
   { id: "workspace.reset_all", title: "workspace.resetAll" },
   { id: "workspace.switch_workspace", title: "workspace.commands.switch" },
@@ -81,6 +93,14 @@ export function runWorkspaceCommand(id: string, args: WorkspaceCommandArgs = {})
     case "workspace.reopen_panels":
       reopenAllPanels();
       return true;
+    case "workspace.popout_panel":
+    case "workspace.dock_panel": {
+      const panel = args.panel ?? activePanelId();
+      if (panel === undefined) return false;
+      if (id === "workspace.popout_panel") void popoutPanel(panel);
+      else if (isPanelDetached(panel)) dockPanel(panel);
+      return true;
+    }
     case "workspace.reset_layout":
       resetCurrentWorkspace();
       return true;

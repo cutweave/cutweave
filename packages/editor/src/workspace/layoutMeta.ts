@@ -134,7 +134,45 @@ export function layoutProblem(layout: unknown, known: ReadonlySet<PanelId>): str
     }
     return null;
   };
-  return missing(grid.root as GridNode);
+  const inGrid = missing(grid.root as GridNode);
+  if (inGrid !== null) return inGrid;
+  // Detached panels' windows (WP-2H.14). A layout saved before them has none.
+  const popouts = layout.popoutGroups;
+  if (popouts === undefined) return null;
+  if (!Array.isArray(popouts)) return "bad popout groups";
+  for (const popout of popouts) {
+    const problem = popoutProblem(popout, missing);
+    if (problem !== null) return problem;
+  }
+  return null;
+}
+
+/** The page a detached panel's window loads; a saved popout naming another one is refused. */
+const POPOUT_PAGE = "/popout.html";
+
+const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/**
+ * Why one saved popout group (dockview's `{data | grid, position, url, gridReferenceGroup}`)
+ * cannot be restored, or `null`. Its panels are checked like the grid's.
+ */
+function popoutProblem(
+  popout: unknown,
+  missing: (node: GridNode) => string | null,
+): string | null {
+  if (!isRecord(popout)) return "bad popout group";
+  if (popout.url !== undefined && popout.url !== POPOUT_PAGE) return "bad popout page";
+  const position = popout.position;
+  if (position !== undefined && position !== null) {
+    if (!isRecord(position)) return "bad popout position";
+    for (const key of ["left", "top", "width", "height"]) {
+      if (!isFiniteNumber(position[key])) return "bad popout position";
+    }
+  }
+  if (isRecord(popout.data)) return missing({ type: "leaf", data: popout.data });
+  const grid = popout.grid;
+  if (isRecord(grid) && isRecord(grid.root)) return missing(grid.root as GridNode);
+  return "bad popout group";
 }
 
 /**

@@ -84,6 +84,20 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     label: "contextMenu.item.float",
     run: (args) => floatPanel(arg<{ panel: string }>(args).panel),
   },
+  // A panel in a window of its own and back (WP-2H.14). The palette lists them with the
+  // workspace commands (for the active panel), so they are hidden here.
+  {
+    id: "workspace.popout_panel",
+    label: "contextMenu.item.moveToWindow",
+    hidden: true,
+    run: (args) => void runWorkspaceCommand("workspace.popout_panel", arg(args)),
+  },
+  {
+    id: "workspace.dock_panel",
+    label: "contextMenu.item.moveToMain",
+    hidden: true,
+    run: (args) => void runWorkspaceCommand("workspace.dock_panel", arg(args)),
+  },
   {
     id: "workspace.move_panel",
     label: "contextMenu.item.moveTo",
