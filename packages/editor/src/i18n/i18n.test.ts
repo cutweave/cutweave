@@ -70,6 +70,9 @@ const MENU_IDS: ReadonlySet<string> = new Set([
   "history.copy_label",
   "history.open",
   "menu.commandPalette",
+  // The timeline interaction machine's engine answers (WP-2A.08, wired by WP-2A.10).
+  "engine.result",
+  "engine.cancelled",
 ]);
 const referenced = new Set([...code.matchAll(KEY_LIKE)].map((m) => m[1] as string));
 

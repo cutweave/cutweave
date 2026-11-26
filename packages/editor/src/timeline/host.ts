@@ -19,7 +19,6 @@ import {
   type DropPreview,
   type DroppedMedia,
   type FrameScheduler,
-  frameDurationFlicks,
   type GestureEdit,
   type HitResult,
   type MachineAction,
@@ -32,7 +31,6 @@ import {
   type Rect,
   type SnapGuide,
   type SnapPort,
-  snapToFrame,
   type TimelineMachine,
   type TimelineMarker,
   type TimelineModel,
@@ -49,6 +47,7 @@ import type { ToastStore } from "../state/toastStore.ts";
 import type { ViewStore } from "../state/viewStore.ts";
 import { describeRefusal, FAILED_TITLE, heldByOther, type Translate } from "./errors.ts";
 import { EngineQueue, GestureTransactions, toRpcError } from "./gestureTx.ts";
+import { inOutArgs, markerArgs } from "./inOut.ts";
 import type { LocksState } from "./locks.ts";
 import { RttProbe } from "./rttProbe.ts";
 
@@ -597,37 +596,20 @@ export class TimelineHost {
 
   /** Adds a sequence marker at `at` (default: the playhead), on its frame. */
   addMarker(at = this.#deps.view.getState().playhead): void {
-    const sequence = this.#sequence();
-    if (sequence === null) return;
-    this.#oneShot("timeline.add_marker", {
-      sequence,
-      t: snapToFrame(Math.max(0, at), this.#model().fps),
-    });
+    const args = markerArgs(this.#deps.doc.getState().project, at);
+    if (args !== null) this.#oneShot("timeline.add_marker", args);
   }
 
   /** Sets the in point at `at` (default: the playhead), keeping the out point after it. */
   markIn(at = this.#deps.view.getState().playhead): void {
-    const sequence = this.#sequence();
-    if (sequence === null) return;
-    const model = this.#model();
-    const start = snapToFrame(Math.max(0, at), model.fps);
-    const range = selectInOut(this.#deps.doc.getState().project);
-    const frame = frameDurationFlicks(model.fps);
-    const end =
-      range !== null && range.out > start ? range.out : Math.max(contentEnd(model), start + frame);
-    this.#oneShot("timeline.set_in_out", { sequence, start, end });
+    const args = inOutArgs(this.#deps.doc.getState().project, "in", at);
+    if (args !== null) this.#oneShot("timeline.set_in_out", args);
   }
 
   /** Sets the out point at `at` (default: the playhead), keeping the in point before it. */
   markOut(at = this.#deps.view.getState().playhead): void {
-    const sequence = this.#sequence();
-    if (sequence === null) return;
-    const model = this.#model();
-    const end = snapToFrame(Math.max(0, at), model.fps);
-    if (end <= 0) return;
-    const range = selectInOut(this.#deps.doc.getState().project);
-    const start = range !== null && range.in < end ? range.in : 0;
-    this.#oneShot("timeline.set_in_out", { sequence, start, end });
+    const args = inOutArgs(this.#deps.doc.getState().project, "out", at);
+    if (args !== null) this.#oneShot("timeline.set_in_out", args);
   }
 
   clearInOut(): void {
@@ -910,13 +892,6 @@ export function withCode(message: string, code: string): string {
   return message.includes(`(${code})`) || /\([a-z_]+\)$/.test(message)
     ? message
     : `${message} (${code})`;
-}
-
-/** The end of the last clip, flicks. */
-function contentEnd(model: TimelineModel): number {
-  let end = 0;
-  for (const i of model.items) end = Math.max(end, i.start + i.duration);
-  return end;
 }
 
 function sameArray(a: unknown, b: unknown): boolean {

@@ -1628,7 +1628,13 @@
       "nothingToRedo": "Nothing to redo",
       "onlyOneToast": "No other notices",
       "layoutAssets": "Select 2 to 4 videos or images",
-      "layoutSwap": "Apply a layout to the two clips first"
+      "layoutSwap": "Apply a layout to the two clips first",
+      "noInOut": "Set an in and out point first",
+      "outAtStart": "The out point cannot be at the very start",
+      "trackAtTop": "Already the top track",
+      "trackAtBottom": "Already the bottom track",
+      "noGapHere": "No gap between clips here",
+      "mainTrackVideo": "Only a video track can be the main track"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -1661,7 +1667,19 @@
       "editRedo": "Redo",
       "viewSelect": "Select",
       "viewSetPlayhead": "Move playhead here",
-      "itemApplyLayout": "Apply layout"
+      "itemApplyLayout": "Apply layout",
+      "timelineRippleDelete": "Ripple delete",
+      "timelineRippleDeleteMany": "Ripple delete {{count}} clips",
+      "timelineAddMarker": "Add marker",
+      "timelineRemoveMarker": "Delete marker",
+      "timelineSetInOut": "Set in and out",
+      "timelineClearInOut": "Clear in and out",
+      "timelineDeleteGap": "Delete gap",
+      "timelineLift": "Lift range",
+      "timelineExtract": "Extract range",
+      "trackSetMagnetic": "Magnetic main track",
+      "trackSetHeight": "Track height",
+      "trackReorder": "Move track"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -1695,7 +1713,8 @@
       "workspace": "Workspace actions",
       "history": "Undo and redo actions",
       "toast": "Notice actions",
-      "engine": "Engine actions"
+      "engine": "Engine actions",
+      "marker": "Marker actions for {{name}}"
     },
     "item": {
       "cut": "Cut",
@@ -1795,7 +1814,24 @@
       "layout": "Layout",
       "swapLayout": "Swap",
       "placeSideBySide": "Place side by side",
-      "placeAs": "Place as"
+      "placeAs": "Place as",
+      "addMarkerHere": "Add marker here",
+      "addMarkerAtPlayhead": "Add marker at playhead",
+      "setInHere": "Set in point here",
+      "setOutHere": "Set out point here",
+      "setIn": "Set in point",
+      "setOut": "Set out point",
+      "selectAfterHere": "Select all clips after here",
+      "zoomToFit": "Zoom to fit",
+      "zoomToSelection": "Zoom to selection",
+      "goToMarker": "Go to marker",
+      "magneticTrack": "Magnetic main track",
+      "trackHeight": "Track height",
+      "heightSmall": "Small",
+      "heightMedium": "Medium",
+      "heightLarge": "Large",
+      "moveTrackUp": "Move up",
+      "moveTrackDown": "Move down"
     },
     "dialog": {
       "cancel": "Cancel",

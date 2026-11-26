@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The timeline's menus (WP-2H.13), one table per hit zone of the canvas: a clip, an empty lane, a
-// track header, the ruler and the playhead. WP-2A.10 and the work packages that add timeline
-// commands add their rows here; a row for a command nobody has registered is left out, so a
-// feature WP only adds its row.
-// TODO(WP-2A.03): Ripple delete, Delete gap. TODO(WP-2A.06): Cut, Copy, Paste, Paste attributes,
-// Duplicate. WP-2D.01 adds
-// Speed ▸, Reverse and Freeze frame. TODO(WP-2A.02): markers, in and out, Make magnetic, track
-// height, Move up and down, Color label. TODO(WP-2A.09): Zoom to fit and Zoom to selection.
-// TODO(WP-2C.05): the keyframe menu. The edge menu (WP-2A.04) trims, ripple trims and rolls the
-// edge to the playhead, and extends it to the next clip.
+// The timeline's menus (WP-2H.13, completed by WP-2A.10), one table per hit zone of the canvas: a
+// clip, a clip's edge, an empty lane, a track header, the ruler (with the in/out range's items),
+// the playhead and a marker (docs/research/09-context-menus.md §6.4). Every row names a command
+// that exists; a row for a command nobody has registered is left out, so a feature WP only adds
+// its row. Not here yet, for want of a command: Color label (`item.set_label_color`), the
+// marker's Edit… and Convert to chapter (`timeline.update_marker`), Detach audio
+// (`audio.extract`), Group, Compound clip, Match frame. TODO(WP-2C.05): the keyframe menu.
 import { formatTimecode } from "@cutweave/timeline";
 import { canSwap, visualClipIds } from "../../layout/actions.ts";
 import { LAYOUT_NAMES } from "../../layout/names.ts";
 import { LAYOUTS } from "../../layout/table.ts";
+import { activeDocument } from "../../shell/windows.ts";
+import { docStore } from "../../state/docStore.ts";
+import { selectInOut } from "../../state/selectors.ts";
 import { attributesSource, hasClipboardItems } from "../../timeline/clipboard.ts";
+import { inOutArgs, markerArgs } from "../../timeline/inOut.ts";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
 import type { ContextValues } from "../when.ts";
@@ -285,9 +286,18 @@ const clipRows: readonly MenuRow[] = [
     args: (ctx) => ({ items: ctx.ids }),
   },
   {
-    command: "timeline.replace_clip",
+    // WP-2A.10: delete and close the gap (the magnetic track closes it on its own).
+    command: "timeline.ripple_delete",
     group: "edit",
     order: 2,
+    when: "!track.locked",
+    reason: LOCKED,
+    args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
+    command: "timeline.replace_clip",
+    group: "edit",
+    order: 3,
     enabledIf: canReplace,
     reason: replaceReason,
   },
@@ -659,10 +669,106 @@ const moveHere: MenuRow = {
   order: 0,
 };
 
+/** The project the menus read (the same projection the canvas draws). */
+const project = () => docStore.getState().project;
+
+/** Where on the timeline the menu opened (the hit's time), or the playhead. */
+const timeHere = (ctx: MenuContext): number => ctx.target.place?.time ?? ctx.playhead ?? 0;
+
+/** `timeline.add_marker` at the menu's time ("here"), or at the playhead. */
+const markerRow = (id: string, order: number, at: "here" | "playhead", group: string): MenuRow => ({
+  id,
+  command: "timeline.add_marker",
+  group,
+  order,
+  label: {
+    key: at === "here" ? "contextMenu.item.addMarkerHere" : "contextMenu.item.addMarkerAtPlayhead",
+  },
+  // The M key adds at the playhead; "here" is the click's time.
+  ...(at === "here" && { noHint: true }),
+  enabledIf: (ctx) =>
+    markerArgs(project(), at === "here" ? timeHere(ctx) : (ctx.playhead ?? 0)) !== null,
+  reason: "contextMenu.reason.noTrack",
+  args: (ctx) => markerArgs(project(), at === "here" ? timeHere(ctx) : (ctx.playhead ?? 0)),
+});
+
+/** `timeline.set_in_out` that puts the in or the out point at the menu's time or the playhead. */
+const inOutRow = (
+  id: string,
+  order: number,
+  point: "in" | "out",
+  at: "here" | "playhead",
+  group: string,
+): MenuRow => {
+  const time = (ctx: MenuContext) => (at === "here" ? timeHere(ctx) : (ctx.playhead ?? 0));
+  const label =
+    point === "in"
+      ? at === "here"
+        ? "contextMenu.item.setInHere"
+        : "contextMenu.item.setIn"
+      : at === "here"
+        ? "contextMenu.item.setOutHere"
+        : "contextMenu.item.setOut";
+  return {
+    id,
+    command: "timeline.set_in_out",
+    group,
+    order,
+    label: { key: label },
+    enabledIf: (ctx) => inOutArgs(project(), point, time(ctx)) !== null,
+    reason: "contextMenu.reason.outAtStart",
+    args: (ctx) => inOutArgs(project(), point, time(ctx)),
+  };
+};
+
+/** The sequence's in and out are set. */
+const hasRange = (): boolean => selectInOut(project()) !== null;
+
+/** The active sequence's id, for commands that name it. */
+const sequenceArg = () => ({ sequence: activeSequence()?.id });
+
+/** The ruler's in/out rows: clear them, lift or extract what is between (WP-2A.03). */
+const rangeRows = (): MenuRow[] => [
+  {
+    command: "timeline.clear_in_out",
+    group: "range",
+    order: 0,
+    enabledIf: hasRange,
+    reason: "contextMenu.reason.noInOut",
+    args: sequenceArg,
+  },
+  {
+    command: "timeline.lift",
+    group: "range",
+    order: 1,
+    enabledIf: hasRange,
+    reason: "contextMenu.reason.noInOut",
+    args: sequenceArg,
+  },
+  {
+    command: "timeline.extract",
+    group: "range",
+    order: 2,
+    enabledIf: hasRange,
+    reason: "contextMenu.reason.noInOut",
+    args: sequenceArg,
+  },
+];
+
+/** A gap between two clips at the lane point: some clip on the track starts after it. */
+function gapAt(target: MenuTarget): boolean {
+  const time = target.place?.time;
+  const fact = trackFact(target.place?.trackId ?? "");
+  if (time === undefined || fact === null) return false;
+  const items = Object.values(fact.track.items);
+  const inside = items.some((i) => time >= i.start && time < i.start + i.duration);
+  return !inside && items.some((i) => i.start > time);
+}
+
 export const TIMELINE_LANE: MenuSurfaceDef = {
   id: "timeline.lane",
   name: () => ({ key: "contextMenu.name.lane" }),
-  groups: ["playhead", "clipboard", "select", "tracks"],
+  groups: ["playhead", "clipboard", "marker", "gap", "select", "tracks", "view"],
   selection: itemSelection,
   keys: (target) => ({
     "track.locked": trackFact(target.place?.trackId ?? "")?.track.locked === true,
@@ -679,6 +785,17 @@ export const TIMELINE_LANE: MenuSurfaceDef = {
       reason: (ctx) =>
         ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.clipboardEmpty" as const),
     },
+    markerRow("add-marker-here", 0, "here", "marker"),
+    {
+      // WP-2A.03: closes the gap under the pointer, when it is one between clips.
+      command: "timeline.delete_gap",
+      group: "gap",
+      order: 0,
+      enabledIf: (ctx) => ctx.keys["track.locked"] !== true && gapAt(ctx.target),
+      reason: (ctx) =>
+        ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.noGapHere" as const),
+      args: (ctx) => ({ track: ctx.target.place?.trackId, at: timeHere(ctx) }),
+    },
     {
       command: "timeline.select_all_on_track",
       group: "select",
@@ -689,7 +806,9 @@ export const TIMELINE_LANE: MenuSurfaceDef = {
       },
       reason: "contextMenu.reason.emptyTrack",
     },
+    { command: "timeline.select_after_here", group: "select", order: 1 },
     ...addRows("tracks"),
+    { command: "timeline.zoom_to_fit", group: "view", order: 0 },
   ],
 };
 
@@ -718,13 +837,61 @@ const flagRow = (
   args: trackSet((track) => ({ [flag]: track?.[flag] !== true })),
 });
 
+/** A length token in CSS px, as the timeline lays its rows out with it. */
+function tokenPx(name: string): number {
+  const doc = activeDocument();
+  const value = doc.defaultView?.getComputedStyle(doc.documentElement).getPropertyValue(name);
+  return Number.parseFloat(value ?? "") || 0;
+}
+
+type Height = "sm" | "md" | "lg";
+
+/** Which of the three sizes a track's height (`track.height`, CSS px; `null`: default) is. */
+function heightOf(height: number | null | undefined): Height {
+  if (height === null || height === undefined) return "md";
+  if (height <= tokenPx("--track-sm")) return "sm";
+  if (height >= tokenPx("--track-lg")) return "lg";
+  return "md";
+}
+
+const heightRow = (size: Height, order: number, label: LabelSpec): MenuRow => ({
+  id: `height-${size}`,
+  command: "track.set_height",
+  group: "height",
+  order,
+  radio: true,
+  label,
+  checked: (ctx) => heightOf(trackOf(ctx)?.height) === size,
+  args: (ctx) => ({
+    track: ctx.ids[0],
+    height: size === "md" ? null : tokenPx(size === "sm" ? "--track-sm" : "--track-lg"),
+  }),
+});
+
+/** `track.reorder` one place up or down (0 is the top). */
+const moveRow = (id: string, order: number, by: -1 | 1, label: LabelSpec): MenuRow => ({
+  id,
+  command: "track.reorder",
+  group: "tracks",
+  order,
+  label,
+  enabledIf: (ctx) => {
+    const fact = trackFact(ctx.ids[0] ?? "");
+    if (fact === null) return false;
+    const next = fact.index + by;
+    return next >= 0 && next < fact.sequence.sequence.track_order.length;
+  },
+  reason: by < 0 ? "contextMenu.reason.trackAtTop" : "contextMenu.reason.trackAtBottom",
+  args: (ctx) => ({ track: ctx.ids[0], index: (trackFact(ctx.ids[0] ?? "")?.index ?? 0) + by }),
+});
+
 export const TIMELINE_TRACK: MenuSurfaceDef = {
   id: "timeline.track",
   name: (target) => ({
     key: "contextMenu.name.track",
     vars: { name: target.name ?? trackFact(target.ids[0] ?? "")?.track.name ?? "" },
   }),
-  groups: ["name", "flags", "tracks", "remove"],
+  groups: ["name", "flags", "height", "tracks", "remove"],
   selection: trackSelection,
   keys: (target) => ({
     "track.locked": trackFact(target.ids[0] ?? "")?.track.locked === true,
@@ -759,6 +926,31 @@ export const TIMELINE_TRACK: MenuSurfaceDef = {
       { key: "contextMenu.item.lockTrack" },
       { key: "contextMenu.item.unlockTrack" },
     ),
+    {
+      // WP-2A.02: the magnetic main track (one per sequence; video tracks).
+      id: "magnetic",
+      command: "track.set_magnetic",
+      group: "flags",
+      order: 4,
+      enabledIf: (ctx) => trackOf(ctx)?.kind === "video",
+      reason: "contextMenu.reason.mainTrackVideo",
+      label: { key: "contextMenu.item.magneticTrack" },
+      checked: (ctx) => trackOf(ctx)?.magnetic === true,
+      args: (ctx) => ({ track: ctx.ids[0], magnetic: trackOf(ctx)?.magnetic !== true }),
+    },
+    {
+      id: "height",
+      group: "height",
+      order: 0,
+      submenu: {
+        label: { key: "contextMenu.item.trackHeight" },
+        rows: [
+          heightRow("sm", 0, { key: "contextMenu.item.heightSmall" }),
+          heightRow("md", 1, { key: "contextMenu.item.heightMedium" }),
+          heightRow("lg", 2, { key: "contextMenu.item.heightLarge" }),
+        ],
+      },
+    },
     ...addRows("tracks"),
     {
       command: "timeline.select_all_on_track",
@@ -770,6 +962,8 @@ export const TIMELINE_TRACK: MenuSurfaceDef = {
       },
       reason: "contextMenu.reason.emptyTrack",
     },
+    moveRow("move-up", 3, -1, { key: "contextMenu.item.moveTrackUp" }),
+    moveRow("move-down", 4, 1, { key: "contextMenu.item.moveTrackDown" }),
     { command: "timeline.delete_track", group: "remove", order: 0 },
   ],
 };
@@ -780,8 +974,7 @@ function timecodeAt(ctx: MenuContext): string {
   return formatTimecode(ctx.target.place?.time ?? ctx.playhead ?? 0, rate, true);
 }
 
-const timeRows = (): MenuRow[] => [
-  moveHere,
+const navigateRows = (): MenuRow[] => [
   { command: "transport.to_start", group: "navigate", order: 0 },
   { command: "transport.to_end", group: "navigate", order: 1 },
   {
@@ -797,13 +990,47 @@ const timeRows = (): MenuRow[] => [
 export const TIMELINE_RULER: MenuSurfaceDef = {
   id: "timeline.ruler",
   name: () => ({ key: "contextMenu.name.ruler" }),
-  groups: ["playhead", "navigate", "copy"],
-  rows: timeRows(),
+  groups: ["playhead", "marker", "range", "navigate", "view", "copy"],
+  rows: [
+    moveHere,
+    markerRow("add-marker-here", 0, "here", "marker"),
+    inOutRow("set-in-here", 1, "in", "here", "marker"),
+    inOutRow("set-out-here", 2, "out", "here", "marker"),
+    ...rangeRows(),
+    ...navigateRows(),
+    { command: "timeline.zoom_to_fit", group: "view", order: 0 },
+    { command: "timeline.zoom_to_selection", group: "view", order: 1 },
+  ],
 };
 
 export const TIMELINE_PLAYHEAD: MenuSurfaceDef = {
   id: "timeline.playhead",
   name: () => ({ key: "contextMenu.name.playhead" }),
-  groups: ["navigate", "copy"],
-  rows: timeRows().filter((row) => row !== moveHere),
+  groups: ["edit", "marker", "navigate", "copy"],
+  rows: [
+    { command: "timeline.split_at_playhead", group: "edit", order: 0 },
+    markerRow("add-marker", 0, "playhead", "marker"),
+    inOutRow("set-in", 1, "in", "playhead", "marker"),
+    inOutRow("set-out", 2, "out", "playhead", "marker"),
+    ...navigateRows(),
+  ],
+};
+
+/** A sequence marker (its pin in the ruler): go to it, or delete it. */
+export const TIMELINE_MARKER: MenuSurfaceDef = {
+  id: "timeline.marker",
+  name: (target) => ({
+    key: "contextMenu.name.marker",
+    vars: { name: target.name === undefined || target.name === "" ? "-" : target.name },
+  }),
+  groups: ["navigate", "remove"],
+  rows: [
+    { command: "timeline.go_to_marker", group: "navigate", order: 0 },
+    {
+      command: "timeline.remove_marker",
+      group: "remove",
+      order: 0,
+      args: (ctx) => ({ marker: ctx.ids[0] }),
+    },
+  ],
 };
