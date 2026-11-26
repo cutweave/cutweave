@@ -1,0 +1,50 @@
+{
+  "description": "Linked clips and attachments (WP-2A.05): attach an overlay to a clip and move the clip (the overlay follows), detach it, unlink the picture from its sound and move only the picture, refuse to link what is not aligned, move it back and link again, undo and redo, then read the group.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "c.png" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0,
+        "duration": "6s"
+      }
+    },
+    { "cmd": "track.add", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "video" } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[3].output.track" },
+        "media": { "$ref": "steps[1].output.media_ids[1]" },
+        "at": "1s",
+        "duration": "2s"
+      }
+    },
+    {
+      "cmd": "item.attach",
+      "args": { "items": [{ "$ref": "steps[4].output.clips[0]" }], "parent": { "$ref": "steps[2].output.clips[0]" } }
+    },
+    { "cmd": "item.move", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "delta": "1s" } },
+    { "cmd": "item.detach", "args": { "items": [{ "$ref": "steps[4].output.clips[0]" }] } },
+    { "cmd": "item.unlink", "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }] } },
+    { "cmd": "item.move", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "delta": "1s" } },
+    { "cmd": "item.move", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "delta": "-1s" } },
+    {
+      "cmd": "item.link",
+      "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }, { "$ref": "steps[2].output.clips[1]" }] }
+    },
+    { "cmd": "edit.undo" },
+    { "cmd": "edit.redo" },
+    { "cmd": "item.group_select", "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }] } },
+    { "cmd": "item.get", "args": { "item": { "$ref": "steps[4].output.clips[0]" } } },
+    {
+      "cmd": "item.link",
+      "args": { "items": [{ "$ref": "steps[4].output.clips[0]" }, { "$ref": "steps[2].output.clips[0]" }] },
+      "expect": { "error": "invalid" }
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The `item` namespace (WP-1B.06, WP-2A.03; arch §4.3, §5.1; timeline spec §4.2, §4.3, §4.8):
 //! generic edits of any timeline item: `item.move`, `item.delete` and `item.duplicate`
-//! ([`edit`], on the placement core), `item.set_props` and the query `item.get`. The media-clip
-//! specifics (`clip.split` and the trim family) live in [`crate::clip`].
+//! ([`edit`], on the placement core), `item.link`, `item.unlink`, `item.attach`, `item.detach` and
+//! the query `item.group_select` ([`link`], WP-2A.05), `item.set_props` and the query `item.get`.
+//! The media-clip specifics (`clip.split` and the trim family) live in [`crate::clip`].
 //!
 //! # Edit semantics (the contract for the timeline UI and for agents)
 //!
@@ -30,6 +31,7 @@
 //! * **Edit reports.** Every edit returns `report`: exactly what changed.
 
 pub mod edit;
+pub mod link;
 mod reset;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,6 +44,10 @@ use cutweave_model::{
     TimeInput, Track, TrackId, Vec2, VisualProps,
 };
 
+pub use link::{
+    GroupMember, ItemAttach, ItemAttachOutput, ItemDetach, ItemGroupSelect, ItemGroupSelectOutput,
+    ItemLink, ItemLinkOutput, ItemUnlink, ItemUnlinkOutput,
+};
 pub use reset::{ItemResetProps, ItemResetPropsOutput, ResetGroup};
 
 pub use edit::{
@@ -65,6 +71,11 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ItemMove>()?
         .register::<ItemDelete>()?
         .register::<ItemDuplicate>()?
+        .register::<ItemLink>()?
+        .register::<ItemUnlink>()?
+        .register::<ItemAttach>()?
+        .register::<ItemDetach>()?
+        .register::<ItemGroupSelect>()?
         .register::<ItemSetProps>()?
         .register::<ItemResetProps>()?
         .register::<ItemGet>()?;
@@ -610,6 +621,11 @@ pub struct ItemGetOutput {
     pub visual: Option<VisualProps>,
     /// The other items of the linked group, if any.
     pub linked: Vec<ItemId>,
+    /// The item this one is attached to (it follows that parent), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attached_to: Option<ItemId>,
+    /// The items attached to this one, in track-ID then item-ID order.
+    pub children: Vec<ItemId>,
 }
 
 /// Reads one item: the `timeline.get` item summary plus its track, source, audio and visual
@@ -660,6 +676,15 @@ impl Query for ItemGet {
             audio: clip.filter(|_| wants("audio")).map(|c| c.audio.clone()),
             visual: clip.filter(|_| wants("visual")).map(|c| c.visual.clone()),
             linked: group.iter().skip(1).map(|m| m.item.id()).collect(),
+            attached_to: at.item.attached_to(),
+            children: at
+                .sequence
+                .tracks
+                .values()
+                .flat_map(|t| t.items.iter_by_id().map(|(_, i)| i))
+                .filter(|i| i.attached_to() == Some(self.item))
+                .map(Item::id)
+                .collect(),
         })
     }
 }
