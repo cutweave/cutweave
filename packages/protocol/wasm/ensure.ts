@@ -32,7 +32,10 @@ function newest(entry: string): number {
 }
 
 /** True when the module is missing or older than a source it is built from. */
-export function isMathModuleStale(root: string = repoRoot, staged: string = STAGED_MODULE): boolean {
+export function isMathModuleStale(
+  root: string = repoRoot,
+  staged: string = STAGED_MODULE,
+): boolean {
   if (!existsSync(staged)) return true;
   const built = statSync(staged).mtimeMs;
   return SOURCES.some((source) => newest(path.join(root, source)) > built);
