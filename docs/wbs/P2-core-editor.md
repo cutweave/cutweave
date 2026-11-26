@@ -1070,6 +1070,8 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - HEVC output decodes frame-exact against the golden at PSNR ≥ 40 dB (CRF preset).
 - **Tests:** ffprobe matrix, PSNR checks, HW nightly.
 - **Out of scope:** VP9/WebM beyond what ffmpeg already exposes (listed as optional, not preset), ProRes RAW, DNxHR.
+- **Built (2026-11-26, the encoder half):** HEVC (`libx265` and the hardware `hevc_*` encoders, 8 and 10 bit, tagged `hvc1`), AV1 (`libsvtav1` and hardware `av1_*`), ProRes (`prores_ks`, proxy to 4444 XQ with alpha, 24-bit PCM in MOV), `export.list_encoders` (catalog query; hardware verified by an 8-frame trial encode), the `av1-small` preset, Rec.709 tags and faststart for every codec, and the `ffprobe` matrix (software encoders, `crates/cutweave-media/tests/ffmpeg_export_codecs.rs`, `crates/cutweave-engine/tests/export_codecs_ffmpeg.rs`). An encoder that fails midway restarts the whole encode in software from frame 0 (WP-1E.02), not only the encoder: the muxed file cannot change codec partway.
+- **Proposed WP-2G.02b (not built):** GIF (palette, dither, loop), audio-only exports (WAV, MP3, AAC, FLAC, Opus), PNG/JPEG sequences and `export.frame{t, path, format}`; the `gif` and `audio-*` presets keep resolving and report `supported: false` until then. 10-bit from a 16-bit pipeline waits for the ADR-0032 follow-up (the renderer produces 8-bit RGBA today).
 
 ### WP-2G.03a — Background export queue
 - **Area:** crates/cutweave-jobs, crates/cutweave-ops/src/export/queue.rs, crates/cutweave-engine (export job runner, queue store), docs/reference
