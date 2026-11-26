@@ -124,7 +124,7 @@ describe("PortalContainerProvider", () => {
         container: other.document.body,
         children: [
           h("input", { key: "a", "aria-label": "Search" }),
-          h("button", { key: "b", "aria-label": "Last" }),
+          h("button", { key: "b", type: "button", "aria-label": "Last" }),
         ],
       }),
     );
