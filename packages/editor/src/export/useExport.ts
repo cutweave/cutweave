@@ -52,6 +52,7 @@ export function exportQueue(): ExportQueue {
     t,
     desktop: desktopFromWindow(),
     clipboard: typeof navigator === "undefined" ? undefined : navigator.clipboard,
+    session: sessionStore,
   });
   return sharedQueue;
 }

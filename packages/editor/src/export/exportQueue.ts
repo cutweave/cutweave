@@ -11,6 +11,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { DesktopBridge } from "../session/desktop.ts";
 import { asRpcError } from "../session/errors.ts";
+import type { SessionStore } from "../session/sessionStore.ts";
 import type { JobStore } from "../state/jobStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
@@ -83,6 +84,8 @@ export interface ExportQueueDeps {
   readonly t: Translate;
   readonly desktop: DesktopBridge | null;
   readonly clipboard?: { writeText(text: string): Promise<void> } | undefined;
+  /** The open project: its queue is asked for again when another one opens. */
+  readonly session?: StoreApi<SessionStore> | undefined;
 }
 
 export class ExportQueue {
@@ -112,6 +115,15 @@ export class ExportQueue {
           this.#soon();
       }),
     );
+    // Another project has another queue (it lives in the project, ADR-0030).
+    const session = this.#deps.session;
+    if (session !== undefined) {
+      this.#offs.push(
+        session.subscribe((s, before) => {
+          if (s.path !== before.path) this.#soon();
+        }),
+      );
+    }
     return () => this.detach();
   }
 
