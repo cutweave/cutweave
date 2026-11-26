@@ -16,6 +16,7 @@ import { cx } from "../components/cx.ts";
 import { IconButton } from "../components/IconButton.tsx";
 import { InspectorSection } from "../components/InspectorSection.tsx";
 import { KeyframeGroup } from "../components/KeyframeToggle.tsx";
+import { Icon } from "../icons/index.ts";
 import { compileSchema, defaultOf, type FieldNode } from "./compile.ts";
 import {
   AngleControl,
@@ -75,6 +76,11 @@ export interface SchemaFormProps {
   onResetGroup?: ((group: string, paths: readonly string[]) => void) | undefined;
   /** The bin, for `asset` fields (filtered by `x-ui.kind`). */
   assets?: readonly AssetOption[] | undefined;
+  /**
+   * Why a value was refused, by dot path (`video.rate_control.mode`): shown under that field,
+   * whose label turns to the danger color. A message whose path has no field here is not shown.
+   */
+  errors?: Readonly<Record<string, string>> | undefined;
   /** Slots for editors that live outside this package (the `curve` editor). */
   renderers?: FormRenderers | undefined;
   disabled?: boolean | undefined;
@@ -106,6 +112,7 @@ interface LiveContext {
   rootValue: unknown;
   drafts: Readonly<Record<string, unknown>>;
   keyframes: Readonly<Record<string, FieldKeyframe>> | undefined;
+  errors: Readonly<Record<string, string>> | undefined;
 }
 
 const Ctx = createContext<FormContext | null>(null);
@@ -135,6 +142,7 @@ export function SchemaForm({
   onReset,
   onResetGroup,
   assets,
+  errors,
   renderers,
   disabled = false,
   strings,
@@ -261,8 +269,8 @@ export function SchemaForm({
     ],
   );
   const live = useMemo<LiveContext>(
-    () => ({ rootValue: value, drafts, keyframes }),
-    [value, drafts, keyframes],
+    () => ({ rootValue: value, drafts, keyframes, errors }),
+    [value, drafts, keyframes, errors],
   );
 
   return (
@@ -335,6 +343,7 @@ function FieldList({
       mixed={ctx.isMixed(node.path)}
       keyframe={live.keyframes?.[node.path]}
       hasKeyframes={live.keyframes !== undefined}
+      error={live.errors?.[node.path]}
     />
   );
   if (nested) return <>{visible.map(row)}</>;
@@ -392,6 +401,8 @@ interface FieldViewProps {
   mixed: boolean;
   keyframe: FieldKeyframe | undefined;
   hasKeyframes: boolean;
+  /** Why the value was refused (the `errors` prop at this path). */
+  error?: string | undefined;
 }
 
 const STACKED = new Set(["object", "array", "tuple", "textarea"]);
@@ -413,6 +424,7 @@ const FieldView = memo(function FieldView({
   mixed,
   keyframe,
   hasKeyframes,
+  error,
 }: FieldViewProps) {
   const ctx = useForm();
   const id = `${ctx.idBase}-${node.path}-c`;
@@ -515,7 +527,7 @@ const FieldView = memo(function FieldView({
   // A pair needs the row's width for its two fields; with the keyframe group and reset beside it
   // in a narrow dock the control would run under them, so the label gets its own line.
   const stacked = STACKED.has(node.widget) || (node.widget === "vec2" && showKeyframe);
-  return (
+  const row = (
     <div
       className="cw-row cw-sf-row"
       data-path={node.path}
@@ -524,6 +536,7 @@ const FieldView = memo(function FieldView({
       data-modified={modified ? "true" : undefined}
       data-mixed={mixed ? "true" : undefined}
       data-animated={keyframe && keyframe.state !== "off" ? keyframe.state : undefined}
+      data-invalid={error === undefined ? undefined : "true"}
     >
       {LABELLED_BY_FOR.has(node.widget) && node.widget !== "curve" ? (
         <label htmlFor={id} {...labelProps}>
@@ -554,6 +567,16 @@ const FieldView = memo(function FieldView({
         />
       ) : null}
     </div>
+  );
+  if (error === undefined) return row;
+  return (
+    <>
+      {row}
+      <p className="cw-sf-error caption" role="alert" data-path={node.path}>
+        <Icon name="circle-alert" size="sm" />
+        <span>{error}</span>
+      </p>
+    </>
   );
 });
 

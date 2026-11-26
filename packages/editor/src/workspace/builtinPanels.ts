@@ -2,6 +2,9 @@
 // The built-in panels, registered once when the dock is imported. Minimum sizes come from layout
 // tokens (design/tokens.json), so no pixel literal lives here.
 import { tokenPx } from "../dock/theme.ts";
+import { ExportQueuePanel } from "../export/ExportQueuePanel.tsx";
+import "../export/queueRegistration.ts";
+import { QUEUE_PANEL } from "../export/useExport.ts";
 import { HistoryPanel } from "../history/HistoryPanel.tsx";
 import { AssetBrowserPanel } from "../panels/AssetBrowserPanel.tsx";
 import "../history/index.ts";
@@ -44,6 +47,16 @@ export function registerBuiltinPanels(): void {
     id: "history",
     title: "panel.history",
     component: HistoryPanel,
+    defaultDock: { ref: "inspector", direction: "within" },
+    startClosed: true,
+    minSize: () => ({ width: tokenPx("--layer-width-sm") }),
+  });
+  // WP-2G.04: the export queue, a tab next to the Inspector, from View > Panels or the toast
+  // of an export added to the queue.
+  registerPanel({
+    id: QUEUE_PANEL,
+    title: "panel.exports",
+    component: ExportQueuePanel,
     defaultDock: { ref: "inspector", direction: "within" },
     startClosed: true,
     minSize: () => ({ width: tokenPx("--layer-width-sm") }),

@@ -156,10 +156,11 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | `export.folder` | Save exports in: the project folder, the last folder used, or a chosen folder | Project folder | App | Renderer (export dialog) | — | WP-1M.13 |
 | `export.folder_path` | The chosen folder (used when `export.folder` is "chosen"; the project folder applies until one is picked) | None | App | Renderer (export dialog) | — | WP-1M.13 |
 | `export.last_folder` | The folder last picked in the Export dialog (a different folder there updates this one only; "Forget" clears it) | None | App | Renderer (export dialog) | — | WP-1M.13 |
-| `export.quality` | Default quality: low, medium, high | Medium | App | Renderer | — | WP-1M.13 |
-| `export.hw` | Use hardware encoders: auto or off | Auto | App | Renderer (`export.start{hw}`) | — | WP-1M.13 |
-| `export.preset` | Default preset | Last used | App | Renderer | — | WP-2G.04 |
-| `export.filename` | File name pattern (project, sequence, date, preset) | `{project}` | App | Renderer | — | WP-2G.04 |
+| `export.quality` | Default quality: low, medium, high (the quality the general "H.264 MP4 1080p" preset starts at in the dialog; other presets start at their own) | Medium | App | Renderer | — | WP-1M.13 |
+| `export.hw` | Use hardware encoders: auto or off (a preset made for quality, such as Archive, starts with them off) | Auto | App | Renderer (`export.start{hw}`) | — | WP-1M.13 |
+| `export.preset` | Default preset: the last one used, or a preset of `export.list_presets` | Last used | App | Renderer (export dialog) | — | WP-2G.04 |
+| `export.last_preset` | The preset of the last export started from the dialog (what "Last used" means) | None | App | Renderer (export dialog) | — | WP-2G.04 |
+| `export.filename` | File name pattern: `{project}`, `{sequence}`, `{date}` (YYYY-MM-DD) and `{preset}` are filled in; the extension follows the preset | `{project}` | App | Renderer (export dialog) | — | WP-2G.04 |
 
 ### Saving and backups
 
