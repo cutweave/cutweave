@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (135 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (141 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -82,6 +82,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.create_folder` | Create a folder in the media bin (top level or inside another folder) | command, undoable | catalog |
 | media | `media.delete_folder` | Delete a media bin folder: lift its contents one level, or remove unused media in it | command, undoable, destructive | catalog |
 | media | `media.delete_proxy` | Remove the proxies of video assets (the preview uses the originals again) | engine, destructive, idempotent | catalog |
+| media | `media.find_missing` | List the media whose file is missing (or, with verify, changed) on this computer | engine, read-only, idempotent | catalog |
 | media | `media.generate_proxy` | Make proxies (small intra-frame copies the preview scrubs) of video assets now | engine, idempotent | catalog |
 | media | `media.import` | Import media files: probe and register them now, return media ids and analysis job ids | engine, idempotent | core |
 | media | `media.list` | List the project's media (filter, sort, paged; default by id) | query | core |
@@ -90,12 +91,17 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.proxy_status` | Show the proxies of video assets: status, progress, file, size, policy | engine, read-only, idempotent | catalog |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
 | media | `media.register_tree` | Register probed media files into bin folders that mirror a directory tree (used by import) | command, undoable, idempotent | hidden |
+| media | `media.relink` | Point a media asset at a file (the moved original, or a replacement) | engine, idempotent | catalog |
+| media | `media.relink_folder` | Find the files of missing media in a folder (by content, then name) and relink them | engine, idempotent | catalog |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
 | media | `media.rename` | Set the name the media bin shows for an asset, or go back to the file name | command, undoable, idempotent | catalog |
 | media | `media.rename_folder` | Rename a folder of the media bin | command, undoable, idempotent | catalog |
 | media | `media.set_cache_config` | Set the cache limits and the memory for decoded frames | engine, destructive, idempotent, ui-only | catalog |
 | media | `media.set_decode_policy` | Choose hardware or software decoding for the preview | engine, idempotent, ui-only | catalog |
+| media | `media.set_location` | Record where a media file is now (used by relink) | command, undoable, idempotent | hidden |
 | project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, destructive, idempotent | catalog |
+| project | `project.collect` | Copy the project and all its media into one folder that opens anywhere (a job) | engine, idempotent | catalog |
+| project | `project.collect_estimate` | Say what collecting the project would copy and whether it fits on the drive | engine, read-only, idempotent | catalog |
 | project | `project.connections` | List the agent connections open on this engine, with their last command | engine, read-only, idempotent | catalog |
 | project | `project.discard_recovery` | Discard unsaved changes from a crashed session and keep the saved project | engine, destructive | catalog |
 | project | `project.info` | Get project name, default format and a summary of its sequences | query | core |

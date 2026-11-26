@@ -14,7 +14,8 @@ use cutweave_commands::{
 use cutweave_model::{GroupId, ItemId, MediaId, Project, SeededGen, SequenceId, Time, TrackId};
 use cutweave_ops::media::{
     AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegisterTree,
-    MediaRegistered, MediaSink, MediaTreeRegistered, register_batch,
+    MediaRegistered, MediaSetLocation, MediaSink, MediaTreeRegistered, MemoryFiles, RelinkCtx,
+    RelinkSink, register_batch, relocate_batch,
 };
 use serde_json::{Value, json};
 
@@ -165,6 +166,17 @@ impl H {
         ImportCtx::new(Arc::new(prober), Box::new(HSink(self.shared.clone())))
     }
 
+    /// A relink context over this harness's document: its sink commits in one transaction.
+    pub fn relink_ctx(&self, prober: FakeProbe, files: MemoryFiles) -> RelinkCtx {
+        RelinkCtx {
+            doc: self.doc(),
+            prober: Arc::new(prober),
+            files: Arc::new(files),
+            sink: Some(Box::new(HSink(self.shared.clone()))),
+            policy: cutweave_ops::media::ImportPolicy::default(),
+        }
+    }
+
     /// Imports a fake video (`secs` seconds, optional audio) and returns its media ID.
     pub fn add_video(&mut self, path: &str, secs: i64, audio: bool) -> MediaId {
         let p = FakeProbe::video(path, secs, audio);
@@ -211,6 +223,19 @@ impl MediaSink for HSink {
         *doc = committed.doc;
         *commits += 1;
         Ok(out)
+    }
+}
+
+impl RelinkSink for HSink {
+    fn relocate(&mut self, batch: Vec<MediaSetLocation>) -> Result<(), CmdError> {
+        let mut s = self.0.lock().unwrap();
+        let Shared { doc, ids, commits } = &mut *s;
+        let mut txn = Transaction::begin(doc.clone());
+        relocate_batch(&mut txn.tx(ids, Access::STANDARD), &batch)?;
+        let committed = txn.commit();
+        *doc = committed.doc;
+        *commits += 1;
+        Ok(())
     }
 }
 

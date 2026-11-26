@@ -1062,6 +1062,44 @@ export type CodecInfo = {
 	encoders: string[],
 };
 
+/**  Result of `project.collect_estimate`. */
+export type CollectEstimate = {
+	/**  The folder the copy goes into. */
+	dest: string,
+	/**  The media files to copy. */
+	files: number,
+	/**  Their size in bytes. */
+	bytes: number,
+	/**  Free bytes on the destination drive, when it can be told. */
+	free_bytes: number | null,
+	/**  Whether the files fit (true when the free space cannot be told). */
+	enough_space: boolean,
+	/**  Media whose file is missing: relink them first (`media.relink_folder`). */
+	missing: CollectMissing[],
+	/**  Media left out because no timeline uses them (`trim_unused`). */
+	trimmed: number,
+};
+
+/**  A media file a collect cannot read. */
+export type CollectMissing = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  The name the bin shows. */
+	name: string,
+	/**  Where the project says its file is. */
+	path: string,
+};
+
+/**  Where collected media go. */
+export type CollectMode = 
+/**  Every media file goes under `media/` (the default). */
+"copy_all" | 
+/**
+ *  Files inside the project folder keep their place relative to it; only the others go
+ *  under `media/`.
+ */
+"copy_external_only";
+
 /**  What to do when the output file exists. */
 export type Collision = 
 /**  Pick a free name (`name (1).mp4`). */
@@ -3019,7 +3057,9 @@ export type JobKind =
  *  Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller
  *  intra-frame copy.
  */
-"proxy";
+"proxy" | 
+/**  Copying a project's files into another folder (WP-2F.04): disk work, no decoding. */
+"collect";
 
 /**
  *  Lists background jobs, newest first: unfinished ones and recently finished ones, optionally
@@ -3711,6 +3751,25 @@ export type MediaFilter = {
 	recursive?: boolean | null,
 };
 
+/**
+ *  Lists the media whose file is not where the project says (moved, renamed, deleted or on a
+ *  drive that is not connected). With `verify` it also reads every file that is there and
+ *  reports the ones whose content is no longer what was imported as `changed`. Relink them
+ *  with `media.relink_folder` or `media.relink`.
+ */
+export type MediaFindMissing = {
+	/**  Also read the files that exist and report changed content (slower; default false). */
+	verify: boolean | null,
+};
+
+/**  Result of `media.find_missing`. */
+export type MediaFindMissingOutput = {
+	/**  The assets whose file is missing or changed, by id. */
+	missing: MissingMedia[],
+	/**  The number of media files that were checked. */
+	checked: number,
+};
+
 /**  A folder of the media bin (ADR-0020). */
 export type MediaFolder = {
 	/**  The folder ID (also its key in `Project::folders`). */
@@ -3905,6 +3964,12 @@ export type MediaListOutput = {
 	matched: number,
 };
 
+/**  Result of `media.set_location`. */
+export type MediaLocationSet = {
+	/**  The asset. */
+	media_id: MediaId,
+};
+
 /**
  *  Moves assets and folders (with everything inside them) into a folder, or to the top level
  *  without `to`. Moving a folder into itself or one of its subfolders, or so deep that
@@ -3982,6 +4047,52 @@ export type MediaRegistered = {
 	kind: MediaKind,
 	/**  `false` when an asset with the same content hash already existed and nothing changed. */
 	created: boolean,
+};
+
+/**
+ *  Points one media asset at a file: the same file after it was moved or renamed, or another
+ *  file to use in its place. A replacement must be the same kind of media (video, audio or
+ *  image) and at least as long as the original, so every clip that uses the asset stays valid;
+ *  the asset then takes the new file's content hash and probe results. Fails with `Invalid` at
+ *  `/path` when the file cannot be read or cannot stand in. One undo step puts the old path
+ *  back. Agents and headless callers may only name files inside the project folder and the
+ *  folders the user approved.
+ */
+export type MediaRelink = {
+	/**  The asset (a file, not a compound clip). */
+	media: MediaId,
+	/**  Absolute path of the file to use. */
+	path: string,
+};
+
+/**
+ *  Searches a folder for the files of missing media and points each asset at its file, all in
+ *  one undo step. A file is recognized by its content, so moved and renamed files are found;
+ *  an asset whose content is nowhere in the folder takes the one file with its name, kind and
+ *  duration, if there is exactly one. Assets whose file is where the project says are left
+ *  alone. Reads at most 2,000 files per call (16 levels down, no links, no hidden files).
+ *  Agents and headless callers may only search the project folder and the folders the user
+ *  approved (`Invalid` at `/folder` otherwise).
+ */
+export type MediaRelinkFolder = {
+	/**  Absolute path of the folder on disk to search. */
+	folder: string,
+	/**  Also search the folders inside it (default true). */
+	recursive?: boolean | null,
+	/**  Only relink these assets (1..=256, no repeats); absent: every missing asset. */
+	media?: MediaId[] | null,
+};
+
+/**  Result of `media.relink_folder`. */
+export type MediaRelinkFolderOutput = {
+	/**  The assets whose file was found, by asset id. */
+	relinked: Relinked[],
+	/**  The assets (of `media`, or of the project) that are still missing. */
+	still_missing: MediaId[],
+	/**  The number of files that were read. */
+	scanned: number,
+	/**  The folder holds more files than one call reads (2,000): run it on its subfolders. */
+	truncated: boolean,
 };
 
 /**
@@ -4066,6 +4177,24 @@ export type MediaSetDecodePolicyOutput = {
 	hw: DecodeHw,
 };
 
+/**
+ *  Records where a media file is now. Internal plumbing of `media.relink` and
+ *  `media.relink_folder`, which check the file first: this command only writes the path, and
+ *  the content hash and probe results when the file's content is not what was imported. The
+ *  project-relative path is dropped (it named the old place) and recomputed when the project is
+ *  saved.
+ */
+export type MediaSetLocation = {
+	/**  The asset (a file, not a compound clip). */
+	media: MediaId,
+	/**  Absolute path of the file. */
+	path: string,
+	/**  The file's content hash, when it differs from the asset's. */
+	content_hash?: string | null,
+	/**  What probing the file found, when its content differs from the asset's. */
+	probe?: ProbeInfo | null,
+};
+
 /**  How to order the list; without one, by ID ascending. */
 export type MediaSort = {
 	/**  What to order by. */
@@ -4082,6 +4211,15 @@ export type MediaSortBy = "imported" | "name" | "duration" | "kind";
 
 /**  `asc` (default), or `desc`: exactly the reverse. */
 export type MediaSortOrder = "asc" | "desc";
+
+/**  Whether an asset's file is usable (`MediaAsset.status` of WP-2F.03; never saved). */
+export type MediaStatus = 
+/**  The file is where the project says. */
+"ok" | 
+/**  There is no readable file at the asset's path. */
+"missing" | 
+/**  There is a file, but its content is not what was imported (`verify` only). */
+"changed";
 
 /**  Summary of one media asset. */
 export type MediaSummary = {
@@ -4109,6 +4247,18 @@ export type MediaTreeRegistered = {
 	results: MediaRegistered[],
 	/**  How many bin folders were created. */
 	folders: number,
+};
+
+/**  An asset whose file is missing or changed. */
+export type MissingMedia = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  The name the bin shows. */
+	name: string,
+	/**  Where the project says its file is. */
+	path: string | null,
+	/**  What is wrong: `missing` or `changed`. */
+	status: MediaStatus,
 };
 
 /**  Where one item ended up. */
@@ -4447,6 +4597,64 @@ export type ProjectCloseOutput = {
 export type ProjectClosed = {
 	/**  The document path of the project that was closed. */
 	path: string,
+};
+
+/**
+ *  Makes a self-contained copy of the project in another folder: the project document and
+ *  every media file it uses (under `media/`), with the copy's document pointing at the copied
+ *  files, so the folder opens on any computer. The open project and its files are not changed.
+ *  Returns a background job; the copy is complete when the job succeeds (the document is
+ *  written last). Each copied file is compared with its original. Calling it again with the
+ *  same folder after a cancel or a crash continues without copying finished files again.
+ *  Fails with `Invalid` at `/dest` when the files do not fit on the drive or the folder
+ *  already holds a project, and at `/media` when a media file is missing (relink it first).
+ *  Agents and headless callers may only collect into folders the user approved.
+ */
+export type ProjectCollect = {
+	/**
+	 *  Absolute path of the folder to collect into: a new or empty folder, or the folder of
+	 *  an interrupted collect of this project.
+	 */
+	dest: string,
+	/**
+	 *  Where media go: `copy_all` (default, everything under `media/`) or
+	 *  `copy_external_only` (files inside the project folder keep their place).
+	 */
+	mode?: CollectMode | null,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused?: boolean | null,
+	/**  Also copy the project's `generated/` folder (default true). */
+	include_generated?: boolean | null,
+};
+
+/**
+ *  Says what `project.collect` with the same params would copy: how many media files, how many
+ *  bytes, the free space on the destination drive and whether the files fit, and which media
+ *  cannot be copied because their file is missing. Changes nothing.
+ */
+export type ProjectCollectEstimate = {
+	/**
+	 *  Absolute path of the folder to collect into: a new or empty folder, or the folder of
+	 *  an interrupted collect of this project.
+	 */
+	dest: string,
+	/**
+	 *  Where media go: `copy_all` (default, everything under `media/`) or
+	 *  `copy_external_only` (files inside the project folder keep their place).
+	 */
+	mode: CollectMode | null,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused: boolean | null,
+	/**  Also copy the project's `generated/` folder (default true). */
+	include_generated: boolean | null,
+};
+
+/**  Result of `project.collect`. */
+export type ProjectCollectOutput = {
+	/**  The copy job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`. */
+	job_id: JobId,
+	/**  What it copies. */
+	estimate: CollectEstimate,
 };
 
 /**
@@ -4979,6 +5187,27 @@ export type ReframePolicy =
 "fill" | 
 /**  Leave transforms alone. */
 "none";
+
+/**  How a file was recognized as an asset's. */
+export type RelinkMatch = 
+/**  Its content hash is the asset's: the same file, moved or renamed. */
+"hash" | 
+/**  Other bytes with the asset's file name, kind and duration (`media.relink_folder`). */
+"name" | 
+/**  The caller named it (`media.relink`) and its content differs from what was imported. */
+"chosen";
+
+/**  One asset that was pointed at a file. */
+export type Relinked = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  Where the document said its file was. */
+	from: string | null,
+	/**  Where it is now. */
+	to: string,
+	/**  How the file was recognized. */
+	matched_by: RelinkMatch,
+};
 
 /**  An item whose `linked_group` or `attached_to` changed. */
 export type RelinkedReport = {

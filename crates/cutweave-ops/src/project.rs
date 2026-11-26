@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The `project` namespace (WP-1B.05; arch §5.1): `project.new`, `project.info`,
-//! `project.rename`.
+//! `project.rename`; collecting a project's files into one folder (WP-2F.04: [`collect`]).
 //!
 //! Opening, saving and closing a project need disk access and live in the engine
 //! (`project.open`, WP-1I.04); these commands only edit the document they are given.
@@ -15,6 +15,8 @@ use cutweave_model::{
 
 use crate::util::{check_name, resolve_duration};
 
+pub mod collect;
+
 /// Name of the sequence `project.new` creates.
 pub const DEFAULT_SEQUENCE_NAME: &str = "Sequence 1";
 
@@ -24,7 +26,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ProjectNew>()?
         .register::<ProjectInfo>()?
         .register::<ProjectRename>()?;
-    Ok(())
+    collect::register(registry)
 }
 
 /// The format of the first sequence and of new sequences. Absent fields keep the default

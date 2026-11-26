@@ -60,6 +60,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "string",
               "const": "proxy",
               "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy."
+            },
+            {
+              "type": "string",
+              "const": "collect",
+              "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding."
             }
           ],
           "description": "What kind of work it is."
@@ -240,6 +245,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string",
             "const": "proxy",
             "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy."
+          },
+          {
+            "type": "string",
+            "const": "collect",
+            "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding."
           }
         ],
         "description": "What kind of work it is."

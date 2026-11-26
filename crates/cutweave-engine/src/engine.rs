@@ -46,8 +46,10 @@ use cutweave_ops::export::ExportCtx;
 use cutweave_ops::export::presets::{PresetCtx, PresetStore};
 use cutweave_ops::media::proxy::ProxyCall;
 use cutweave_ops::media::{
-    AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
+    AllowedRoots, AnalysisStages, Analyzer, DiskFiles, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
+    RelinkCtx,
 };
+use cutweave_ops::project::collect::CollectCtx;
 use cutweave_ops::view::{UiState, ViewCtx};
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -55,6 +57,7 @@ use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
 
 use crate::agents::Connections;
 use crate::autosave::AutosavePreference;
+use crate::collect::EngineCollectHost;
 use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
@@ -67,6 +70,7 @@ use crate::logging::{self, LogGuard};
 use crate::media_cache::CacheCall;
 use crate::media_caps::CapabilitiesCall;
 use crate::project_io::{LockInfo, ProjectIoError, ProjectStore};
+use crate::relink::RelinkTx;
 use crate::session::{
     self, Deps, ProjectCloseOutput, ProjectOpenOutput, ProjectRecoverOutput, ProjectSaveOutput,
     ProjectStatus, Session, SessionCall, SessionState,
@@ -346,6 +350,12 @@ impl Core {
         if context == TypeId::of::<ImportCtx>() {
             return self.import(ctx, name, params);
         }
+        if context == TypeId::of::<RelinkCtx>() {
+            return self.relink(ctx, name, params);
+        }
+        if context == TypeId::of::<CollectCtx>() {
+            return self.collect(ctx, name, params);
+        }
         if context == TypeId::of::<ExportCtx>() {
             return self.export(ctx, name, params);
         }
@@ -531,6 +541,69 @@ impl Core {
         drop(import);
         drop(guard);
         result.map(|output| self.reply(output))
+    }
+
+    /// The relink commands (WP-2F.03) with a per-call [`RelinkCtx`]: the real disk, the media
+    /// prober and the caller's read allowlist ([`path_roots`](Self::path_roots)), as for
+    /// `media.import`.
+    fn relink(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        let handle = session.handle().clone();
+        let policy = match self.path_roots(ctx, session) {
+            None => ImportPolicy::default(),
+            Some(roots) => ImportPolicy::restricted(roots),
+        };
+        let prober = self
+            .deps
+            .subsystems
+            .media_probe()
+            .unwrap_or_else(|| Arc::new(NoMediaBackend));
+        let sink = RelinkTx::new(handle.clone(), ctx_for(ctx.actor(), self.next_conn()));
+        let mut relink = RelinkCtx {
+            doc: handle.snapshot().doc.clone(),
+            prober,
+            files: Arc::new(DiskFiles),
+            sink: Some(Box::new(sink)),
+            policy,
+        };
+        let result = self
+            .deps
+            .registry
+            .invoke_engine_json(name, params, &mut relink, ctx.access());
+        // Closes the sink's connection before the session can change.
+        drop(relink);
+        drop(guard);
+        result.map(|output| self.reply(output))
+    }
+
+    /// The collect commands (WP-2F.04) against the committed document of the moment, with the
+    /// caller's write allowlist ([`path_roots`](Self::path_roots)), as for `export.start`.
+    fn collect(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let mut call = {
+            let guard = self.session()?;
+            let Some(session) = guard.as_ref() else {
+                return Err(stopped());
+            };
+            CollectCtx {
+                doc: session.handle().committed_snapshot().doc.clone(),
+                project_root: session
+                    .project_root()
+                    .map(|root| root.to_string_lossy().into_owned()),
+                allowed_roots: self.path_roots(ctx, session),
+                jobs: self.deps.jobs.clone(),
+                host: Arc::new(EngineCollectHost {
+                    free_space: Arc::clone(&self.free_space),
+                }),
+            }
+        };
+        let output =
+            self.deps
+                .registry
+                .invoke_engine_json(name, params, &mut call, ctx.access())?;
+        Ok(self.reply(output))
     }
 
     /// `export.start` against the committed document of the moment (later edits never change

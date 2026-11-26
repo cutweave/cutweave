@@ -17,5 +17,9 @@ name = "media.register_tree"
 reason = "Internal plumbing of media.import with folders (WP-2F.09): it takes probe data and the bin folders to make from the caller, the same as media.register. Agents import a folder with media_import, which walks and probes it and mirrors its directories, so an agent cannot register made-up probe data. RPC and the CLI still reach it."
 
 [[exempt]]
+name = "media.set_location"
+reason = "Internal plumbing of media.relink and media.relink_folder (WP-2F.03): it records a path, and a content hash and probe data taken from the caller. Agents relink with media_relink and media_relink_folder, which read the file themselves and check the caller's allowed folders, so an agent cannot point an asset at a file it may not read or record made-up probe data. RPC and the CLI still reach it."
+
+[[exempt]]
 name = "project.report_focus"
 reason = "The desktop app reporting that its window gained the focus (WP-1J.04), so an agent that names no engine gets the one the person is looking at. UI credential only (scope = \"ui\", ADR-0016): an agent has no window, and the focus is the app applying its own state to its engine, so no agent can or should call it. RPC reaches it with the UI credential and refuses agent tokens with forbidden."

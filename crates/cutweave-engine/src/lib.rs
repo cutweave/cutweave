@@ -27,6 +27,7 @@
 
 pub mod agents;
 pub mod autosave;
+mod collect;
 pub mod config;
 #[cfg(feature = "testing")]
 pub mod determinism;
@@ -46,6 +47,7 @@ pub mod media_cache;
 pub mod media_caps;
 pub mod media_http;
 pub mod project_io;
+mod relink;
 pub mod rpc_backend;
 pub mod session;
 mod startup;
