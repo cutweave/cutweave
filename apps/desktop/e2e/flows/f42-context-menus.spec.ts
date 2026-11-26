@@ -406,7 +406,7 @@ test.describe("F42 context menus", () => {
         .toBeLessThan(35);
       const moveTo = async (s: number) => {
         const g = await timelineGeometry(page);
-        await page.mouse.click(xAt(g, sec(s)) + 1, rulerY(g));
+        await page.mouse.click(xAt(g, sec(s)) + 0.5, rulerY(g));
         await expect(timecode(page)).toHaveText(`00:00:${String(s).padStart(2, "0")}:00`);
       };
 
@@ -480,16 +480,16 @@ test.describe("F42 context menus", () => {
       await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
       const clipMenu = page.getByRole("menu", { name: "Clip actions for interview.mp4" });
       await expect(clipMenu).toBeVisible();
-      await item(clipMenu, /^Copy/).click();
+      await item(clipMenu, /^Copy(?! path)/).click();
       await expect(menu).toHaveCount(0);
       g = await timelineGeometry(page);
-      await page.mouse.click(xAt(g, sec(22)), laneY(g, "V1"), { button: "right" });
+      await page.mouse.click(xAt(g, sec(22)) + 0.5, laneY(g, "V1"), { button: "right" });
       const laneMenu = page.getByRole("menu", { name: "Timeline actions" });
       await expect(laneMenu).toBeVisible();
       await item(laneMenu, /^Paste here/).click();
       await expect.poll(clipsOnV1).toEqual([
         [1, 10],
-        [30, 10],
+        [22, 10],
       ]);
       await editorCaughtUp(page);
       await shortcut(app, "Control+Z");
