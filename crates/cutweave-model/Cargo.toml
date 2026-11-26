@@ -50,3 +50,8 @@ harness = false
 
 [lints]
 workspace = true
+
+# Snap lookup budget (WP-2A.07): 50,000 candidates, under 0.1 ms.
+[[bench]]
+name = "snap"
+harness = false
