@@ -1,0 +1,3 @@
+# The staged math module (`just wasm` builds it); never committed.
+*.wasm
+*.tmp

@@ -381,7 +381,7 @@ fn easings(vectors: &Value) -> (Value, Value) {
     for bad in [
         json!({"kind": "bezier", "x1": 2.0, "y1": 0.0, "x2": 1.0, "y2": 1.0}),
         json!({"kind": "wobble"}),
-        json!("linear"),
+        json!(null),
     ] {
         let got = progress(&bad, 1, 2);
         assert!(got.is_nan());
@@ -511,13 +511,16 @@ fn invalids(vectors: &Value) -> Value {
         ("vector3", "", "0"),
         ("scalar", "opacity_x", "0"),
         ("vec2", "opacity", "0"),
-        ("scalar", "", "{"),
         ("bool", "flip.horizontal", "1.5"),
     ] {
         let [a, b, c] = m::write_input([kind, prop, json]);
         assert_eq!(m::cw_anim_new(a, b, c), 0, "{kind} {prop} {json}");
         out.push(json!([format!("{kind}|{prop}|{json}"), m::output()]));
     }
+    // Text that is not JSON (the TypeScript API always sends `JSON.stringify` output).
+    let [a, b, c] = m::write_input(["scalar", "", "{"]);
+    assert_eq!(m::cw_anim_new(a, b, c), 0);
+    assert!(m::output().contains("EOF"), "{}", m::output());
     json!(out)
 }
 

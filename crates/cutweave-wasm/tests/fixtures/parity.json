@@ -507,7 +507,7 @@
     ["bounce","1411200000",17,[0.0,0.7080339574064118,0.750428408979562,0.8847887655453748,0.9430766820342696,0.9597990713663445,0.9887872490954703,0.9870739259679333,0.9984371950708257,0.9961112791218691,0.999978880485202,0.9989084973511335,0.9998718518168049,0.9997269134903523,0.9999471231912231,0.9999553354310771,1.0]],
     [{"kind":"bezier","x1":2.0,"y1":0.0,"x2":1.0,"y2":1.0},"1",2,{"error":"KF-5 at `/x1`: bezier x1 must be in [0, 1], got 2"}],
     [{"kind":"wobble"},"1",2,{"error":"KF-5 at `/kind`: unknown interpolation kind \"wobble\"; expected hold, linear, bezier or spring"}],
-    ["linear","1",2,{"error":"KF-5 at ``: an interpolation is an object with a `kind`, got \"linear\""}]
+    [null,"1",2,{"error":"KF-5 at ``: an interpolation is an object with a `kind`, got null"}]
   ],
   "eval": [
     ["V001",[0.25]],
@@ -631,7 +631,6 @@
     ["vector3||0","unknown value type `vector3`"],
     ["scalar|opacity_x|0","unknown property `opacity_x`"],
     ["vec2|opacity|0","property `opacity` is a scalar, not a vec2"],
-    ["scalar||{","EOF while parsing an object at line 1 column 1"],
     ["bool|flip.horizontal|1.5","KF-4 at ``: 1.5 is not valid: invalid type: floating point `1.5`, expected a boolean"]
   ]
 }

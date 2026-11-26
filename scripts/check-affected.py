@@ -45,6 +45,13 @@ GEN_INPUT_CRATES = {
 }
 # Crates the Electron bridge fixture build depends on.
 BRIDGE_CRATES = {"cutweave-bridge", "cutweave-playback", "cutweave-model"}
+# The UI's shared math module (WP-2C.06): `cutweave-wasm` (affected whenever a crate it re-exports
+# changes) or its TypeScript side builds it, checks its typings snapshot and size budget, and runs
+# its parity tests in Node.
+WASM_MODULE_CRATE = "cutweave-wasm"
+WASM_MODULE_PATHS = ("packages/protocol/wasm/", "packages/protocol/src/wasm/")
+WASM_MODULE_STEP = "just wasm --check"
+WASM_MODULE_TESTS = "pnpm exec vitest run packages/protocol/src/wasm"
 # The user-flow suite (ADR-0018) runs the app against the engine and the CLI; a change to either
 # (or to any crate they depend on, through `affected`) runs it.
 FLOW_CRATES = {"cutweave-engine", "cutweave-cli"}
@@ -186,6 +193,7 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
         for f in files
     )
     bridge = bool(affected & BRIDGE_CRATES) or any(f.startswith("apps/desktop/") for f in files)
+    wasm_module = WASM_MODULE_CRATE in affected or any(f.startswith(WASM_MODULE_PATHS) for f in files)
 
     steps: list[tuple[str, str]] = []
     if affected:
@@ -226,8 +234,12 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
         ]
     if bridge:
         steps.append(("just bridge --fixture", "bridge, playback or desktop app affected"))
+    if wasm_module:
+        steps.append((WASM_MODULE_STEP, "math wasm module affected"))
     if js:
         steps.append(("python scripts/run-vitest.py", "TS/JS sources or config changed"))
+    elif wasm_module:
+        steps.append((WASM_MODULE_TESTS, "math wasm module affected: its parity tests"))
     if gen:
         steps.append(("cargo xtask gen --check", "schema/codegen inputs affected"))
     golden_paths = sorted({f for f in files if f.startswith(GOLDEN_PATHS) and not f.endswith(".md")})

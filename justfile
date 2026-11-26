@@ -16,7 +16,7 @@ setup:
 dev:
     pnpm --filter @cutweave/desktop dev
 
-# fmt, clippy -D warnings, nextest + doc-tests, wasm32 check, dep rule, license headers, cargo-deny, no-literals lint, Biome, Vitest
+# fmt, clippy -D warnings, nextest + doc-tests, wasm32 check, dep rule, license headers, cargo-deny, no-literals lint, Biome, math wasm module, Vitest
 check:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
@@ -33,6 +33,7 @@ check:
     pnpm format:check
     pnpm typecheck
     just bridge --fixture
+    just wasm --check
     python scripts/run-vitest.py
     cargo xtask gen --check
     python scripts/check-md-links.py
@@ -80,6 +81,10 @@ bench *args:
 # Build the cutweave-bridge napi addon into apps/desktop/native/ (`just bridge --release`; `--fixture` adds the Rust test writer)
 bridge *args:
     node apps/desktop/scripts/build-bridge.ts {{args}}
+
+# The UI's shared math module (WP-2C.06): build crates/cutweave-wasm for wasm32 into packages/protocol/wasm/, regenerate its typings and check the 150 KB gzip budget (`--check` fails on stale typings instead of rewriting them)
+wasm *args:
+    node packages/protocol/wasm/build.ts {{args}}
 
 # Playwright + Electron flows
 e2e:
