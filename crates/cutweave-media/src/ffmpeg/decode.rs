@@ -49,7 +49,7 @@ use std::ffi::c_int;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cutweave_model::{ColorRange, ColorTags, MatrixCoefficients, Time};
+use cutweave_model::{ColorRange, ColorTags, FrameRate, MatrixCoefficients, Time};
 use ffmpeg_next::codec::{self, threading};
 use ffmpeg_next::format::Pixel;
 use ffmpeg_next::format::context::Input;
@@ -83,6 +83,23 @@ const HW_THREADS: threading::Config = threading::Config {
     count: 1,
 };
 
+/// Where a decoder's packets come from.
+#[derive(Clone, Debug)]
+pub(super) enum Source {
+    /// The file at the decoder's path.
+    File,
+    /// The decoder's path is an `image2` pattern (`shot_%04d.png` in its directory): an
+    /// unbroken stretch of numbered pictures from `start`, `fps` pictures a second (ADR-0035).
+    Sequence {
+        /// The number of the first file.
+        start: u32,
+        /// The frame rate: one picture is one tick of the stream's time base.
+        fps: FrameRate,
+        /// The first file, for what only a real file can tell (its EXIF orientation).
+        first_file: PathBuf,
+    },
+}
+
 /// Opens a decoder for the main video stream of `path`, in hardware when `opts.hw` and `policy`
 /// allow it and the stream is eligible (`hwdec`).
 pub(super) fn open(
@@ -94,7 +111,19 @@ pub(super) fn open(
         Some(index) => Arc::clone(index),
         None => Arc::new(index::index_media(path)?),
     };
-    let (input, stream, info) = open_input(path, &index)?;
+    open_source(path, Source::File, index, opts, policy)
+}
+
+/// Opens a decoder on `source` at `path` with its frame `index` (`opts.index` is not read): a
+/// file, or a stretch of an image sequence, whose index is computed by the caller.
+pub(super) fn open_source(
+    path: &Path,
+    source: Source,
+    index: Arc<FrameIndex>,
+    opts: &DecodeOpts,
+    policy: &hwdec::Policy,
+) -> Result<Box<dyn VideoDecoder>, MediaError> {
+    let (input, stream, info) = open_input(path, &source, &index)?;
     let choice = match opts.hw {
         HwMode::Off => None,
         HwMode::Auto => {
@@ -113,7 +142,7 @@ pub(super) fn open(
             }
         }
     };
-    open_opened(path, opts, index, (input, stream, info), choice)
+    open_opened(path, source, opts, index, (input, stream, info), choice)
 }
 
 /// Tests: a decoder on `choice` whatever the stream's eligibility (real init failures).
@@ -127,13 +156,14 @@ pub(super) fn open_with_choice(
         Some(index) => Arc::clone(index),
         None => Arc::new(index::index_media(path)?),
     };
-    let opened = open_input(path, &index)?;
-    open_opened(path, opts, index, opened, Some(choice))
+    let opened = open_input(path, &Source::File, &index)?;
+    open_opened(path, Source::File, opts, index, opened, Some(choice))
 }
 
 /// The decoder on an opened input, in hardware on `choice` if given.
 fn open_opened(
     path: &Path,
+    source: Source,
     opts: &DecodeOpts,
     index: Arc<FrameIndex>,
     (input, stream, info): (Input, usize, StreamInfo),
@@ -141,9 +171,14 @@ fn open_opened(
 ) -> Result<Box<dyn VideoDecoder>, MediaError> {
     let sw_threads = threading_for(opts, &index);
     let end = index.end_time();
-    let mirror = still_mirror(path, &input);
+    let mirror = match &source {
+        Source::File => still_mirror(path, &input),
+        // Every picture of a run is turned like its first one.
+        Source::Sequence { first_file, .. } => still_mirror(first_file, &input),
+    };
     let mut d = FfmpegVideoDecoder {
         path: path.to_path_buf(),
+        source,
         input,
         codec: None,
         stream,
@@ -231,8 +266,19 @@ struct StreamInfo {
 
 /// Opens the container, checks the index's stream against it and makes the demuxer skip every
 /// other stream.
-fn open_input(path: &Path, index: &FrameIndex) -> Result<(Input, usize, StreamInfo), MediaError> {
-    let mut input = input::open(path)?;
+fn open_input(
+    path: &Path,
+    source: &Source,
+    index: &FrameIndex,
+) -> Result<(Input, usize, StreamInfo), MediaError> {
+    let mut input = match source {
+        Source::File => input::open(path)?,
+        Source::Sequence {
+            start,
+            fps,
+            first_file,
+        } => input::open_sequence(path, first_file, *start, *fps)?,
+    };
     let stream = usize::try_from(index.stream()).unwrap_or(usize::MAX);
     let not_this_file = || MediaError::Invalid {
         message: format!(
@@ -394,6 +440,8 @@ struct Stats {
 
 struct FfmpegVideoDecoder {
     path: PathBuf,
+    /// What `path` is: a file, or the pattern of an image sequence.
+    source: Source,
     input: Input,
     /// Always `Some` once opened (an `Option` only so `open` can build it with `self`).
     codec: Option<Codec>,
@@ -588,7 +636,7 @@ impl FfmpegVideoDecoder {
             "{}: demuxer seeks never landed at or before keyframe packet {k}; reading from the start",
             shown(&self.path)
         );
-        let (input, _, _) = open_input(&self.path, &self.index)?;
+        let (input, _, _) = open_input(&self.path, &self.source, &self.index)?;
         self.codec = None;
         self.input = input;
         self.codec = Some(self.open_codec()?);

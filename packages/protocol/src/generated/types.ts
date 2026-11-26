@@ -2266,6 +2266,30 @@ export type HwCodecInfo = {
 	implementation: string,
 };
 
+/**
+ *  A numbered run of pictures imported as one asset (ADR-0035): frame `n` (from 0) is the file
+ *  `pattern` with the number `first + n`. Files are referenced, never copied.
+ */
+export type ImageSequence = {
+	/**
+	 *  The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`
+	 *  (`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in
+	 *  the directory of `path_abs`.
+	 */
+	pattern: string,
+	/**  The number of the first file. */
+	first: number,
+	/**  How many numbers the run covers, from `first` (missing ones included); at least 2. */
+	count: number,
+	/**  The frame rate chosen at import; changing the app setting never changes it. */
+	fps: FrameRate,
+	/**
+	 *  The numbers with no file at import time, ascending. A missing frame shows the last
+	 *  picture before it.
+	 */
+	missing: number[],
+} & { [key in string]: unknown };
+
 /**  A file that was not imported (no asset was created for it). */
 export type ImportFailure = {
 	/**  The path as requested. */
@@ -3621,6 +3645,11 @@ export type MediaAsset = {
 	content_hash: string | null,
 	/**  The referenced sequence (`sequence_ref` only). */
 	sequence: SequenceId | null,
+	/**
+	 *  The run of pictures (`image_sequence` only, ADR-0035); left out of the file otherwise.
+	 *  `path_abs` and `path_rel` name the first file of the run.
+	 */
+	image_sequence?: ImageSequence | null,
 	/**  Probe results. */
 	probe: ProbeInfo,
 	/**  Plugin data (arch §4.3). */
@@ -3901,6 +3930,55 @@ export type MediaImportProgress = {
 	total: number,
 };
 
+/**
+ *  Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that
+ *  plays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:
+ *  the run is every file of that folder whose name differs only in the number at its end.
+ *  Fewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a
+ *  sequence). Only the first picture is read, so a long run imports at once; the files are
+ *  referenced, not copied.
+ * 
+ *  Numbers without a file are allowed: they are listed in `image_sequence.missing`, named in
+ *  `warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame
+ *  rate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes
+ *  on video tracks only (it has no sound). One undo removes it. Agents and headless callers
+ *  may only import from the project folder and user-approved folders.
+ */
+export type MediaImportSequence = {
+	/**  Absolute path of one picture of the run, or of the folder that holds the run. */
+	path: string,
+	/**
+	 *  Frames per second, as a fraction (`{"num": 24000, "den": 1001}`). Default: the frame
+	 *  rate of the sequence the editor shows, 30 without one.
+	 */
+	fps?: FrameRate | null,
+	/**  Bin folder (default: top level). */
+	folder?: FolderId | null,
+};
+
+/**  Result of `media.import_sequence`. */
+export type MediaImportSequenceOutput = {
+	/**  The asset; an existing one if the same run was imported before. */
+	media_id: MediaId,
+	/**  `image_sequence`. */
+	kind: MediaKind,
+	/**  `true` when the run was already in the project and nothing was added. */
+	duplicate: boolean,
+	/**  Absolute path of the first picture of the run. */
+	path: string,
+	/**
+	 *  The run as stored on the asset: pattern, first number, count, frame rate and the
+	 *  numbers that have no file.
+	 */
+	image_sequence: ImageSequence,
+	/**  One sentence per stretch of missing numbers; empty when the run has no gaps. */
+	warnings: string[],
+	/**  Background analysis jobs queued for the new asset (wait with `job.wait`). */
+	job_ids: JobId[],
+	/**  Whether a proxy was queued for it, or is already in the cache. */
+	proxy: ImportProxy,
+};
+
 /**  `media.indexed`: the asset's frame index is ready. */
 export type MediaIndexed = {
 	/**  The asset. */
@@ -3915,6 +3993,11 @@ export type MediaKind =
 "audio" | 
 /**  A still image (no duration). */
 "image" | 
+/**
+ *  A numbered run of pictures that plays like video (ADR-0035); the asset's
+ *  `image_sequence` field describes the run.
+ */
+"image_sequence" | 
 /**  Another sequence of this project, used as a compound clip (arch §4.3). */
 "sequence_ref";
 
@@ -4026,6 +4109,12 @@ export type MediaRegister = {
 	content_hash: string,
 	/**  The folder of the bin to put the new asset in; absent: the top level. */
 	folder?: FolderId | null,
+	/**
+	 *  For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`
+	 *  the picture with the run's duration and frame rate; the asset's kind is
+	 *  `image_sequence`. Absent for every other file.
+	 */
+	image_sequence?: ImageSequence | null,
 };
 
 /**

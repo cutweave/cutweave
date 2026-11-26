@@ -121,12 +121,15 @@ fn has_sound(media: &MediaAsset) -> bool {
     match media.kind {
         MediaKind::Audio => true,
         MediaKind::Video => media.probe.audio.is_some(),
-        _ => false,
+        MediaKind::Image | MediaKind::ImageSequence | MediaKind::SequenceRef => false,
     }
 }
 
 fn is_picture(kind: MediaKind) -> bool {
-    matches!(kind, MediaKind::Video | MediaKind::Image)
+    matches!(
+        kind,
+        MediaKind::Video | MediaKind::Image | MediaKind::ImageSequence
+    )
 }
 
 /// `len` shortened so that its end is on the frame grid (never later).

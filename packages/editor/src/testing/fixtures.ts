@@ -53,7 +53,7 @@ const track = (id: string, kind: string, items: object[], extra: object = {}) =>
 /** `itm_v` (video) and `itm_a` (its linked audio); `edits` patches the clips by ID. */
 export function sampleProject(edits: Record<string, object> = {}): Project {
   return {
-    meta: { name: "Sample", schema_version: 2, created: null, app_version: null },
+    meta: { name: "Sample", schema_version: 3, created: null, app_version: null },
     settings: { default_format: {} },
     media: {
       med_a: {

@@ -68,8 +68,9 @@ pub use item::{
 };
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
-    AudioInfo, ColorPrimaries, ColorRange, ColorTags, MatrixCoefficients, MediaAsset, MediaKind,
-    ProbeInfo, StreamInfo, StreamKind, TransferCharacteristics,
+    AudioInfo, ColorPrimaries, ColorRange, ColorTags, ImageSequence, MAX_IMAGE_SEQUENCE_FRAMES,
+    MatrixCoefficients, MediaAsset, MediaKind, ProbeInfo, StreamInfo, StreamKind,
+    TransferCharacteristics,
 };
 pub use migrate::{
     CURRENT_SCHEMA_VERSION, MIGRATIONS, Migration, MigrationError, MigrationReport, MigrationStep,

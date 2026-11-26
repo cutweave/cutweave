@@ -45,6 +45,7 @@ mod log_filter;
 mod path;
 mod pool;
 mod readback;
+mod sequence;
 mod still;
 pub mod testing;
 mod version;
@@ -71,6 +72,7 @@ pub use index::{
 };
 pub use pool::{DecoderLease, DecoderPool};
 pub use readback::ReadBack;
+pub use sequence::{Segment, SegmentOpener, SequenceDecoder, SequenceSource, segments_of};
 pub use still::{StillOrientation, read_orientation, still_orientation};
 pub use testing::FakeBackend;
 pub use version::{LibVersion, LinkedLibrary, PINNED_FFMPEG, Release};

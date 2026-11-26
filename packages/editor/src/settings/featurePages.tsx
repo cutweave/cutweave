@@ -6,6 +6,7 @@ import {
   EXPORT_FOLDER_CHOICES,
   EXPORT_HW_CHOICES,
   EXPORT_QUALITIES,
+  IMAGE_SEQUENCE_FPS_CHOICES,
   STILL_DURATION_MAX,
 } from "@cutweave/preferences";
 import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
@@ -182,6 +183,22 @@ const mediaPage: SettingsPageDef = {
       description: "settings.rows.keepStructure.description",
       keywords: "settings.rows.keepStructure.keywords",
       control: { kind: "switch" },
+    },
+    {
+      id: "media.image_sequence_fps",
+      key: "media.image_sequence_fps",
+      label: "settings.rows.imageSequenceFps.label",
+      description: "settings.rows.imageSequenceFps.description",
+      keywords: "settings.rows.imageSequenceFps.keywords",
+      control: {
+        kind: "select",
+        // Frame rates are numbers: only "the sequence's frame rate" is a phrase to translate.
+        options: IMAGE_SEQUENCE_FPS_CHOICES.map((value) =>
+          value === "sequence"
+            ? { value, label: "settings.rows.imageSequenceFps.sequence" as const }
+            : { value, text: `${value} fps` },
+        ),
+      },
     },
   ],
 };

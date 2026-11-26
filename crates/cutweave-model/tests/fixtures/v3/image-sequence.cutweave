@@ -1,0 +1,219 @@
+{
+  "meta": {
+    "schema_version": 3,
+    "name": "Image sequence",
+    "created": "2026-11-22T09:30:00Z",
+    "app_version": "0.1.0"
+  },
+  "settings": {
+    "default_format": {
+      "width": 1920,
+      "height": 1080,
+      "frame_rate": {
+        "num": 30,
+        "den": 1
+      },
+      "sample_rate": 48000,
+      "color_space": "rec709",
+      "background": "#000000"
+    }
+  },
+  "media": {
+    "med_00000000000178eb970d1a7919ff3ca3": {
+      "id": "med_00000000000178eb970d1a7919ff3ca3",
+      "kind": "image_sequence",
+      "name": null,
+      "folder": null,
+      "path_abs": "/renders/shot 50%_0098.png",
+      "path_rel": "../renders/shot 50%_0098.png",
+      "content_hash": "xxh3:0a1b2c3d4e5f6071",
+      "sequence": null,
+      "image_sequence": {
+        "pattern": "shot 50%%_%04d.png",
+        "first": 98,
+        "count": 300,
+        "fps": {
+          "num": 24000,
+          "den": 1001
+        },
+        "missing": [
+          120,
+          121,
+          250
+        ]
+      },
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "kind": "video",
+            "codec": "png",
+            "profile": null,
+            "width": 1920,
+            "height": 1080,
+            "pixel_format": "rgba",
+            "sample_rate": null,
+            "channels": null,
+            "language": null
+          }
+        ],
+        "duration": 8828820000,
+        "fps": {
+          "num": 24000,
+          "den": 1001
+        },
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": null
+      },
+      "custom": {}
+    },
+    "med_00000000000273b9a5bb955ec2ec464a": {
+      "id": "med_00000000000273b9a5bb955ec2ec464a",
+      "kind": "image",
+      "name": null,
+      "folder": null,
+      "path_abs": "/renders/still.png",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "kind": "video",
+            "codec": "png",
+            "profile": null,
+            "width": 1920,
+            "height": 1080,
+            "pixel_format": "rgba",
+            "sample_rate": null,
+            "channels": null,
+            "language": null
+          }
+        ],
+        "duration": null,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": null
+      },
+      "custom": {}
+    }
+  },
+  "folders": {},
+  "sequences": {
+    "seq_0000000000037d8e8fbac0f479caa8d0": {
+      "id": "seq_0000000000037d8e8fbac0f479caa8d0",
+      "name": "Main",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": {
+          "num": 24000,
+          "den": 1001
+        },
+        "sample_rate": 48000,
+        "color_space": "rec709",
+        "background": "#000000"
+      },
+      "tracks": {
+        "trk_0000000000047260bc1ec231a958fdda": {
+          "id": "trk_0000000000047260bc1ec231a958fdda",
+          "kind": "video",
+          "name": "V1",
+          "items": {
+            "itm_0000000000057a2d8368fc78ce0360de": {
+              "kind": "clip",
+              "id": "itm_0000000000057a2d8368fc78ce0360de",
+              "name": null,
+              "start": 0,
+              "duration": 7063056000,
+              "enabled": true,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_00000000000178eb970d1a7919ff3ca3",
+              "source_in": 706305600,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
+              "audio": {
+                "gain": 0.0,
+                "pan": 0.0,
+                "fade_in": {
+                  "duration": 0,
+                  "curve": "linear"
+                },
+                "fade_out": {
+                  "duration": 0,
+                  "curve": "linear"
+                }
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
+              },
+              "custom": {}
+            }
+          },
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        }
+      },
+      "track_order": [
+        "trk_0000000000047260bc1ec231a958fdda"
+      ],
+      "markers": {},
+      "in_out": null,
+      "custom": {}
+    }
+  },
+  "custom": {}
+}

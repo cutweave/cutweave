@@ -271,7 +271,8 @@ fn kind_rank(kind: MediaKind) -> u8 {
         MediaKind::Video => 0,
         MediaKind::Audio => 1,
         MediaKind::Image => 2,
-        MediaKind::SequenceRef => 3,
+        MediaKind::ImageSequence => 3,
+        MediaKind::SequenceRef => 4,
     }
 }
 

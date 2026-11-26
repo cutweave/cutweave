@@ -29,6 +29,7 @@
 
 mod v0_to_v1;
 mod v1_to_v2;
+mod v2_to_v3;
 
 use std::fmt;
 
@@ -37,13 +38,14 @@ use serde_json::{Map, Value};
 use crate::Project;
 
 /// The schema version this build reads, edits and writes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 /// The oldest schema version that can still be migrated (v0 is the pre-release draft format).
 pub const OLDEST_SCHEMA_VERSION: u32 = 0;
 
 /// The migration chain, ordered: entry `i` reads version `OLDEST_SCHEMA_VERSION + i`.
-pub static MIGRATIONS: &[&dyn Migration] = &[&v0_to_v1::V0ToV1, &v1_to_v2::V1ToV2];
+pub static MIGRATIONS: &[&dyn Migration] =
+    &[&v0_to_v1::V0ToV1, &v1_to_v2::V1ToV2, &v2_to_v3::V2ToV3];
 
 /// One step of the chain: rewrites a raw JSON document from [`Migration::source_version`] to the
 /// next version.
@@ -259,11 +261,6 @@ impl<'a> Migrator<'a> {
                 found: from_version,
                 oldest: self.oldest,
             });
-        }
-        if from_version == self.current && self.current == 2 {
-            // v2 was one version for several work packages (#168): fill in what a v2 file
-            // written by an earlier build lacks. Nothing changes in a complete document.
-            v1_to_v2::fill_in_v2(&mut doc)?;
         }
         let mut steps = Vec::new();
         for migration in self

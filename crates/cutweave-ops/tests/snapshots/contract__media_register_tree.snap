@@ -375,6 +375,71 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     ],
                     "pattern": "^fld_[0-9a-f]{32}$",
                     "default": null
+                  },
+                  "image_sequence": {
+                    "description": "For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`\nthe picture with the run's duration and frame rate; the asset's kind is\n`image_sequence`. Absent for every other file.",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "pattern": {
+                        "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                        "type": "string"
+                      },
+                      "first": {
+                        "description": "The number of the first file.",
+                        "type": "integer",
+                        "format": "uint32",
+                        "minimum": 0
+                      },
+                      "count": {
+                        "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                        "type": "integer",
+                        "format": "uint32",
+                        "minimum": 0
+                      },
+                      "fps": {
+                        "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                        "type": "object",
+                        "properties": {
+                          "num": {
+                            "description": "Frames.",
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4294967295
+                          },
+                          "den": {
+                            "description": "Seconds.",
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4294967295
+                          }
+                        },
+                        "required": [
+                          "num",
+                          "den"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "missing": {
+                        "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "required": [
+                      "pattern",
+                      "first",
+                      "count",
+                      "fps",
+                      "missing"
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -432,6 +497,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "description": "A still image (no duration).",
                     "type": "string",
                     "const": "image"
+                  },
+                  {
+                    "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                    "type": "string",
+                    "const": "image_sequence"
                   },
                   {
                     "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
@@ -826,6 +896,71 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   ],
                   "pattern": "^fld_[0-9a-f]{32}$",
                   "default": null
+                },
+                "image_sequence": {
+                  "description": "For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`\nthe picture with the run's duration and frame rate; the asset's kind is\n`image_sequence`. Absent for every other file.",
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "pattern": {
+                      "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                      "type": "string"
+                    },
+                    "first": {
+                      "description": "The number of the first file.",
+                      "type": "integer",
+                      "format": "uint32",
+                      "minimum": 0
+                    },
+                    "count": {
+                      "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                      "type": "integer",
+                      "format": "uint32",
+                      "minimum": 0
+                    },
+                    "fps": {
+                      "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                      "type": "object",
+                      "properties": {
+                        "num": {
+                          "description": "Frames.",
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4294967295
+                        },
+                        "den": {
+                          "description": "Seconds.",
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4294967295
+                        }
+                      },
+                      "required": [
+                        "num",
+                        "den"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "missing": {
+                      "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "format": "uint32",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  "required": [
+                    "pattern",
+                    "first",
+                    "count",
+                    "fps",
+                    "missing"
+                  ],
+                  "default": null
                 }
               },
               "additionalProperties": false,
@@ -883,6 +1018,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "description": "A still image (no duration).",
                   "type": "string",
                   "const": "image"
+                },
+                {
+                  "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                  "type": "string",
+                  "const": "image_sequence"
                 },
                 {
                   "description": "Another sequence of this project, used as a compound clip (arch §4.3).",

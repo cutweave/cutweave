@@ -67,6 +67,15 @@ const CONTRACT: &[Row] = &[
         false,
     ),
     (
+        "media.import_sequence",
+        EntryKind::Engine,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        false,
+    ),
+    (
         "media.list",
         EntryKind::Query,
         McpExposure::Core,
@@ -866,6 +875,7 @@ fn optional_params_are_not_required_in_the_input_schema() {
     );
     assert_eq!(required("media.list"), Vec::<String>::new());
     assert_eq!(required("media.import"), ["paths"]);
+    assert_eq!(required("media.import_sequence"), ["path"]);
     assert_eq!(required("media.create_folder"), Vec::<String>::new());
     assert_eq!(required("media.rename_folder"), ["folder", "name"]);
     assert_eq!(required("media.rename"), ["media"]);
