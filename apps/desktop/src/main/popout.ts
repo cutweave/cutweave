@@ -7,7 +7,7 @@
 
 import type { BrowserWindowConstructorOptions } from "electron";
 import { isTrustedOrigin, type OriginPolicy } from "./origins.ts";
-import { webPreferencesFor, type WindowPolicyContext } from "./window-policy.ts";
+import { type WindowPolicyContext, webPreferencesFor } from "./window-policy.ts";
 import { type Bounds, fitToDisplays } from "./window-state.ts";
 
 /** The one page a popout loads: a blank document with no script, which the editor fills. */

@@ -16,9 +16,9 @@ import {
   type EngineStatus,
   MENU_COMMANDS,
   type MenuCommand,
+  type PopoutOnTopRequest,
   type PrefsExportResult,
   type PrefsImportResult,
-  type PopoutOnTopRequest,
   type PrefsSnapshot,
   type ThemeId,
 } from "./api.ts";

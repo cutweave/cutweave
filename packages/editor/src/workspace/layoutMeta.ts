@@ -156,10 +156,7 @@ const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Num
  * Why one saved popout group (dockview's `{data | grid, position, url, gridReferenceGroup}`)
  * cannot be restored, or `null`. Its panels are checked like the grid's.
  */
-function popoutProblem(
-  popout: unknown,
-  missing: (node: GridNode) => string | null,
-): string | null {
+function popoutProblem(popout: unknown, missing: (node: GridNode) => string | null): string | null {
   if (!isRecord(popout)) return "bad popout group";
   if (popout.url !== undefined && popout.url !== POPOUT_PAGE) return "bad popout page";
   const position = popout.position;

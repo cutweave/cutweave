@@ -170,7 +170,9 @@ describe("moving a panel into its own window (WP-2H.14)", () => {
     expect(window.open).toHaveBeenCalledWith(POPOUT_URL, expect.anything(), expect.any(String));
     // dockview's window name, `<dock>-<group>`: the one main allows (popout.ts).
     expect(win.name).toMatch(/^\d{1,9}-\d{1,9}$/);
-    expect(await within(win.document.body).findByRole("region", { name: "Inspector" })).toBeTruthy();
+    expect(
+      await within(win.document.body).findByRole("region", { name: "Inspector" }),
+    ).toBeTruthy();
     expect(mainRegion("Inspector")).toBeNull();
     expect(mainRegion("Preview")).toBeTruthy();
 
@@ -356,12 +358,18 @@ describe("moving a panel into its own window (WP-2H.14)", () => {
     const user = userEvent.setup();
     render(h(EditorShell));
     await allPanelsShown();
-    await user.pointer({ keys: "[MouseRight]", target: screen.getByRole("tab", { name: "Preview" }) });
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("tab", { name: "Preview" }),
+    });
     expect(await screen.findByText("Move to new window")).toBeTruthy();
     expect(screen.queryByText("Move back to main window")).toBeNull();
     await user.keyboard("{Escape}");
     await detachInspector(user);
-    await user.pointer({ keys: "[MouseRight]", target: screen.getByRole("tab", { name: "Preview" }) });
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("tab", { name: "Preview" }),
+    });
     const back = (await screen.findByText("Move back to main window")).closest("[role='menuitem']");
     expect(back?.getAttribute("aria-disabled")).toBe("true");
   });

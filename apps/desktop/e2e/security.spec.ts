@@ -330,7 +330,11 @@ async function openPopout(app: ElectronApplication, page: Page, name = "1-99"): 
   const [child] = await Promise.all([
     app.waitForEvent("window"),
     page.evaluate((target) => {
-      const opened = window.open("/popout.html", target, "popup,left=40,top=40,width=320,height=240");
+      const opened = window.open(
+        "/popout.html",
+        target,
+        "popup,left=40,top=40,width=320,height=240",
+      );
       (window as unknown as { __popout?: Window | null }).__popout = opened;
     }, name),
   ]);
@@ -383,9 +387,7 @@ test.describe("detached panels' windows (ADR-0031)", () => {
     const popout = windows.find((w) => w.url === "app://cutweave/popout.html");
     expect(popout).toMatchObject({ preload: "", sandbox: false, pid: editor?.pid });
     // So the addon is loaded once, by the editor's preload: the only window with one.
-    expect(windows.filter((w) => w.preload !== "").map((w) => w.url)).toEqual([
-      "app://cutweave/",
-    ]);
+    expect(windows.filter((w) => w.preload !== "").map((w) => w.url)).toEqual(["app://cutweave/"]);
     expect(await page.evaluate(() => window.cutweave.preview.isAvailable())).toBe(true);
   });
 

@@ -97,9 +97,7 @@ export function attachDock(next: DockviewApi | null): void {
 
 /** The panels in the window `win` (a detached window, or the main one), in tab order. */
 function panelsIn(dock: DockviewApi, win: Window): IDockviewPanel[] {
-  return dock.panels.filter(
-    (p) => p.api.location.type === "popout" && safeWindow(p) === win,
-  );
+  return dock.panels.filter((p) => p.api.location.type === "popout" && safeWindow(p) === win);
 }
 
 function safeWindow(panel: IDockviewPanel): Window | null {

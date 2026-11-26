@@ -89,7 +89,10 @@ describe("popout windows for detached panels (ADR-0031)", () => {
     const popout = fakeContents();
     kinds.set(popout.contents, "popout");
     const log = vi.fn();
-    hardenWebContents(popout.contents as unknown as WebContents, ctx({ popouts: hooks(kinds), log }));
+    hardenWebContents(
+      popout.contents as unknown as WebContents,
+      ctx({ popouts: hooks(kinds), log }),
+    );
     expect(popout.open("app://cutweave/popout.html", "1-3")).toEqual({ action: "deny" });
 
     const navigate = (url: string, event = "will-frame-navigate") => {

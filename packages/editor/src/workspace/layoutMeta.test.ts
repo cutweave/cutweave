@@ -184,12 +184,10 @@ describe("layoutProblem", () => {
       expect(layoutProblem(withPopouts([popout({ url: "/index.html" })]), known)).toBe(
         "bad popout page",
       );
-      expect(
-        layoutProblem(withPopouts([popout({ position: { left: "x", top: 0 } })]), known),
-      ).toBe("bad popout position");
-      expect(layoutProblem(withPopouts([{ url: "/popout.html" }]), known)).toBe(
-        "bad popout group",
+      expect(layoutProblem(withPopouts([popout({ position: { left: "x", top: 0 } })]), known)).toBe(
+        "bad popout position",
       );
+      expect(layoutProblem(withPopouts([{ url: "/popout.html" }]), known)).toBe("bad popout group");
       expect(layoutProblem(withPopouts("nope"), known)).toBe("bad popout groups");
       expect(layoutProblem(withPopouts([7]), known)).toBe("bad popout group");
     });
