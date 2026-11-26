@@ -60,6 +60,7 @@ use cutweave_commands::{
 use cutweave_jobs::{ExportQueue, JobManager};
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
+    audio::{LevelReading, LevelsAnalyzer, LevelsCtx, LevelsMeasured, LevelsRequest},
     export::{
         ExportCtx, ExportPlan,
         presets::{PresetCtx, PresetStore},
@@ -534,6 +535,17 @@ impl<'s> Harness<'s> {
             .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
     }
 
+    /// Runs `audio.get_levels` (WP-2E.02) against an analyzer that hears silence: measuring
+    /// never changes the document.
+    fn levels(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut call = LevelsCtx {
+            snapshot: Arc::new(self.lock().snapshot()),
+            analyzer: Some(Arc::new(Silence)),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
     /// Runs a `job.*` command against the job manager.
     fn job(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let mut jobs = self.jobs.clone();
@@ -646,6 +658,12 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<ProxyCall>() => {
                 self.proxy(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<LevelsCtx>() => {
+                self.levels(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })
@@ -1052,4 +1070,20 @@ fn split_then_delete_then_undo_chain_restores_every_step() {
         doc = apply_patch(&doc, inv).unwrap();
     }
     assert_eq!(doc, initial);
+}
+
+/// The level analyzer of the harness: every mix is silent (no decoders here).
+struct Silence;
+
+impl LevelsAnalyzer for Silence {
+    fn analyze(&self, doc: &Project, request: &LevelsRequest) -> Result<LevelsMeasured, CmdError> {
+        assert!(doc.sequences.contains_key(&request.sequence));
+        assert!(request.start < request.end);
+        Ok(LevelsMeasured {
+            master: LevelReading::default(),
+            tracks: Vec::new(),
+            limiter_reduction_db: 0.0,
+            source_errors: 0,
+        })
+    }
 }

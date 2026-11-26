@@ -5,6 +5,311 @@
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Measures the audio of a sequence over a range, mixed as an export would be (track gain,\nmute and solo, the master limiter at −1 dBTP unless `limiter` is false): sample peak, true\npeak (dBTP), RMS (dBFS, AES17: a sine reads its peak level), integrated loudness (LUFS),\nthe loudest momentary and short-term loudness and the loudness range of the master, and\nthe same levels (without momentary, short-term and range) for every audio track\n(post-fader). Silent values are null. Read-only; it decodes and mixes the whole range before\nit answers, so a long range takes a while.",
+        "properties": {
+          "in": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode (default: 0)."
+          },
+          "limiter": {
+            "default": null,
+            "description": "Measure after the master limiter, as an export does (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "out": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "End, exclusive, at most the sequence end (default: the sequence end)."
+          },
+          "sequence": {
+            "default": null,
+            "description": "Sequence; optional when the project has one.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "GetLevels",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "audio_get_levels",
+      "name": "audio.get_levels",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `audio.get_levels`.",
+        "properties": {
+          "in": {
+            "description": "Range start (sequence time, flicks).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "limiter": {
+            "description": "Whether the master limiter was on (as in an export).",
+            "type": "boolean"
+          },
+          "limiter_reduction_db": {
+            "description": "The deepest gain reduction of the master limiter in dB (0: it never limited).",
+            "format": "double",
+            "type": "number"
+          },
+          "master": {
+            "additionalProperties": false,
+            "description": "The master output.",
+            "properties": {
+              "loudness_range_lu": {
+                "description": "Loudness range in LU (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_integrated": {
+                "default": null,
+                "description": "Integrated loudness in LUFS; null when everything is below the −70 LUFS gate.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_momentary_max": {
+                "description": "The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_short_term_max": {
+                "description": "The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "peak_db": {
+                "default": null,
+                "description": "Sample peak in dBFS (the louder channel); null when silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "rms_db": {
+                "default": null,
+                "description": "RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null\nwhen silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "true_peak_db": {
+                "default": null,
+                "description": "True peak in dBTP (4× oversampled; the louder channel); null when silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "peak_db",
+              "true_peak_db",
+              "rms_db",
+              "lufs_integrated"
+            ],
+            "type": "object"
+          },
+          "out": {
+            "description": "Range end, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The measured sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "source_errors": {
+            "description": "Clips whose audio could not be decoded (measured as silence).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tracks": {
+            "description": "The audio tracks with clips in the range, top to bottom (post-fader).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One track bus's levels (post-fader).",
+              "properties": {
+                "levels": {
+                  "additionalProperties": false,
+                  "description": "Its levels after its gain, pan, mute and solo.",
+                  "properties": {
+                    "loudness_range_lu": {
+                      "description": "Loudness range in LU (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_integrated": {
+                      "default": null,
+                      "description": "Integrated loudness in LUFS; null when everything is below the −70 LUFS gate.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_momentary_max": {
+                      "description": "The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_short_term_max": {
+                      "description": "The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "peak_db": {
+                      "default": null,
+                      "description": "Sample peak in dBFS (the louder channel); null when silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "rms_db": {
+                      "default": null,
+                      "description": "RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null\nwhen silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "true_peak_db": {
+                      "default": null,
+                      "description": "True peak in dBTP (4× oversampled; the louder channel); null when silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "peak_db",
+                    "true_peak_db",
+                    "rms_db",
+                    "lufs_integrated"
+                  ],
+                  "type": "object"
+                },
+                "track": {
+                  "description": "The audio track.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "track",
+                "levels"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sequence",
+          "in",
+          "out",
+          "limiter",
+          "master",
+          "tracks",
+          "limiter_reduction_db",
+          "source_errors"
+        ],
+        "title": "GetLevelsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Measure peak, true peak, RMS and LUFS loudness of a sequence's mix (and each track) over a range",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {

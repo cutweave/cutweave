@@ -102,6 +102,13 @@ export interface PreferenceValues {
   "export.last_folder": string;
   "export.quality": ExportQualityChoice;
   "export.hw": ExportHwChoice;
+  // Export (WP-2G.04)
+  /** The preset File > Export… starts at; `""` is "the last one used". */
+  "export.preset": string;
+  /** The preset of the last export started from the dialog; `""` is none yet. */
+  "export.last_preset": string;
+  /** The file name pattern: `{project}`, `{sequence}`, `{date}` and `{preset}` are filled in. */
+  "export.filename": string;
   /** `""` is the OS cache folder. Main passes the value to the engine as `--cache-dir`. */
   "cache.folder": string;
   "cache.thumbnails_limit": (typeof THUMBNAIL_LIMITS)[number];
@@ -150,6 +157,11 @@ export type PreferenceDef =
   | { type: "path"; scope: PreferenceScope; default: string }
   /** A short map of remembered choices: ids to short words. */
   | { type: "record"; scope: PreferenceScope; default: Record<string, string> }
+  /**
+   * A short line of text: at most `max` characters, no control characters and, when `pattern`
+   * is given, matching it. The default is always accepted.
+   */
+  | { type: "text"; scope: PreferenceScope; default: string; max: number; pattern?: RegExp }
   /** Binding ids to the keys they have (see {@link ShortcutOverrides}). */
   | { type: "bindings"; scope: PreferenceScope; default: ShortcutOverrides }
   /**
@@ -176,6 +188,10 @@ const MAX_PATH_LENGTH = 4096;
 const MAX_RECORD_ENTRIES = 64;
 const RECORD_KEY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const MAX_RECORD_VALUE = 64;
+/** An export preset id (the engine's rule: lowercase letters, digits and `-`). */
+const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/;
+/** A file name pattern: no folder separator and nothing else a file name cannot hold. */
+const FILE_NAME_PATTERN = /^[^\\/:*?"<>|]+$/;
 
 export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "general.startup": { type: "enum", scope: "app", options: STARTUP_CHOICES, default: "empty" },
@@ -198,6 +214,16 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "export.last_folder": { type: "path", scope: "app", default: "" },
   "export.quality": { type: "enum", scope: "app", options: EXPORT_QUALITIES, default: "medium" },
   "export.hw": { type: "enum", scope: "app", options: EXPORT_HW_CHOICES, default: "auto" },
+  // Export (WP-2G.04): preset ids are the engine's (`export.list_presets`).
+  "export.preset": { type: "text", scope: "app", default: "", max: 64, pattern: PRESET_ID },
+  "export.last_preset": { type: "text", scope: "app", default: "", max: 64, pattern: PRESET_ID },
+  "export.filename": {
+    type: "text",
+    scope: "app",
+    default: "{project}",
+    max: 128,
+    pattern: FILE_NAME_PATTERN,
+  },
   // This computer (WP-1D.08): never exported, applied to the engine by the app.
   "cache.folder": { type: "path", scope: "machine", default: "" },
   "cache.thumbnails_limit": {
@@ -336,6 +362,16 @@ function validateAgainst(def: PreferenceDef, value: unknown): Validation {
         clean[id] = choice;
       }
       return { ok: true, value: clean };
+    }
+    case "text": {
+      if (typeof value !== "string") return { ok: false, reason: "expected text" };
+      if (value === def.default) return { ok: true, value };
+      if (value.length > def.max || /\p{Cc}/u.test(value)) {
+        return { ok: false, reason: `expected at most ${def.max} characters on one line` };
+      }
+      return def.pattern === undefined || def.pattern.test(value)
+        ? { ok: true, value }
+        : { ok: false, reason: "has characters this setting cannot hold" };
     }
     case "bindings": {
       if (!isPlainObject(value)) return { ok: false, reason: "expected a list of shortcuts" };

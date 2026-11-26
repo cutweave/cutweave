@@ -8,6 +8,7 @@
  * against `schema/commands.json` (`readOnlyHint`), so a new query cannot be missed.
  */
 export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
+  "audio.get_levels",
   "edit.history",
   "edit.list_checkpoints",
   "edit.locks",

@@ -124,6 +124,7 @@ Events are notifications named after the event, with the event's payload as `par
 | `job.progress`, `media.indexed`, `media.analysis_failed`, `media.import_progress` | Jobs and media analysis |
 | `view.changed` | View state; not sent back to the connection that made the change |
 | `playback.state`, `engine.degraded` | Subsystems (WP-1I.05) |
+| `playback.meters` | Audio (WP-2E.02): 30 times a second while playing, `{t, master{peak_db[2], rms_db[2], true_peak_db, lufs_momentary, lufs_short_term, lufs_integrated, gr_db}, buses[{track, peak_db[2], rms_db[2]}]}`. `t` is the timeline time (flicks) of the end of the window; levels are dBFS (`[left, right]`), `null` when silent; RMS is on the AES17 scale (a sine reads its peak level); bus levels are post-fader (a muted track reads `null`); LUFS are `null` until measurable, the integrated loudness covers what played since the last seek; `gr_db` is the master limiter's deepest gain reduction (0: none). Nothing is sent while paused |
 | `media.reverse_slow` | Proxies (WP-2D.01b): a clip plays a long-GOP file backwards and the file has no proxy, so reverse playback is slower until the proxy queued for it is ready; `{media_id, reason, job_id}` (`job_id` is null when none was queued: the proxy was evicted or failed before, and `media.generate_proxy` makes it again). Sent once per file per engine session |
 
 `schema/events.json` has the payload schemas. Events of one source arrive in order (document events in revision order); there is no order across sources, nor between a response and the events its call caused.

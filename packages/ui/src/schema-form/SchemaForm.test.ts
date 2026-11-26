@@ -331,6 +331,34 @@ describe("reset, mixed, keyframes, visibility", () => {
     expect(screen.getByRole("button", { name: "Reset Scale" })).toBeTruthy();
   });
 
+  it("shows a refused value's reason under its field, nested paths too", () => {
+    const nested: JsonSchema = {
+      type: "object",
+      properties: {
+        video: {
+          type: "object",
+          properties: { rate: { type: "string", enum: ["crf", "cbr"] } },
+        },
+        scale: { type: "number" },
+      },
+    };
+    const { container } = render(
+      h(Harness, {
+        schema: nested,
+        initial: { video: { rate: "cbr" }, scale: 1 },
+        errors: { "video.rate": "Use VBR or software.", other: "not shown" },
+      }),
+    );
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts.map((a) => a.textContent)).toEqual(["Use VBR or software."]);
+    expect(alerts[0]?.getAttribute("data-path")).toBe("video.rate");
+    const row = container.querySelector('.cw-sf-row[data-path="video.rate"]');
+    expect(row?.getAttribute("data-invalid")).toBe("true");
+    expect(
+      container.querySelector('.cw-sf-row[data-path="scale"]')?.getAttribute("data-invalid"),
+    ).toBeNull();
+  });
+
   it("toggles a dependent field with visibleWhen", async () => {
     render(h(Harness, { schema, initial: { scale: 1, mode: "a" } }));
     expect(screen.queryByRole("spinbutton", { name: "Extra" })).toBeNull();

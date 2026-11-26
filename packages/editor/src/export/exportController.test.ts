@@ -7,10 +7,12 @@ import type { DesktopBridge } from "../session/desktop.ts";
 import { createSessionStore } from "../session/sessionStore.ts";
 import { createJobStore } from "../state/jobStore.ts";
 import { createToastStore } from "../state/toastStore.ts";
-import { ExportController, exportSource } from "./exportController.ts";
+import { ENCODERS, H264_OPTIONS, PRESET_ENTRIES } from "../testing/exportFixtures.ts";
+import { ExportController, type ExportRequest, exportSource } from "./exportController.ts";
 import { createExportStore } from "./exportStore.ts";
 
 const JOB = "job_1" as JobInfo["id"];
+const JOB2 = "job_2" as JobInfo["id"];
 
 function project(withItems: boolean): Project {
   return {
@@ -47,17 +49,23 @@ function job(patch: Partial<JobInfo>): JobInfo {
   };
 }
 
+const started = (path = "C:\\p\\film.mp4") => ({
+  job_id: JOB,
+  path,
+  warnings: [],
+  estimated_kib: null,
+});
+
 function setup(options: { items?: boolean; desktop?: DesktopBridge | null } = {}) {
   const prefs = new PreferencesClient();
   const engine = createEngineStore();
+  const showQueue = vi.fn();
   const call = vi.fn(async (name: string, _input: unknown): Promise<unknown> => {
-    if (name === "export.start") {
-      return { job_id: JOB, path: "C:\\p\\film.mp4" };
-    }
+    if (name === "export.start" || name === "export.enqueue") return started();
     if (name === "job.cancel") return job({ cancel_requested: true });
-    if (name === "media.capabilities") {
-      return { hw_encode: [{ implementation: "h264_nvenc" }] };
-    }
+    if (name === "export.list_presets") return { presets: PRESET_ENTRIES, problems: [] };
+    if (name === "export.list_encoders") return { codecs: ENCODERS };
+    if (name === "export.describe_options") return { schema: H264_OPTIONS };
     throw new Error(`unexpected ${name}`);
   });
   engine.setState({ rpc: { call } as never, connection: "ready" });
@@ -77,17 +85,19 @@ function setup(options: { items?: boolean; desktop?: DesktopBridge | null } = {}
     t: (key, vars) => (vars === undefined ? key : `${key} ${JSON.stringify(vars)}`),
     desktop: options.desktop ?? null,
     prefs,
+    showQueue,
+    now: () => new Date(2026, 10, 26),
   });
   controller.attach();
-  return { controller, engine, call, session, jobs, state, toasts, prefs };
+  return { controller, engine, call, session, jobs, state, toasts, prefs, showQueue };
 }
 
-const request = {
+const request: ExportRequest = {
   path: "C:\\p\\film.mp4",
-  preset: "h264-mp4-1080p",
+  preset: "youtube-1080p",
+  presetId: "youtube-1080p",
   hw: "auto",
-  overwrite: false,
-} as const;
+};
 
 describe("exportSource", () => {
   it("knows whether the timeline has clips", () => {
@@ -110,46 +120,107 @@ describe("ExportController", () => {
     expect(controller.available()).toBe(false);
   });
 
-  it("opens and asks which hardware encoders there are", async () => {
+  it("opens and asks for the presets and the encoders of each codec", async () => {
     const { controller, state, call } = setup();
     controller.open();
     expect(state.getState().dialogOpen).toBe(true);
-    await vi.waitFor(() => expect(state.getState().probe.status).toBe("ready"));
-    expect(state.getState().probe).toEqual({ status: "ready", encoders: ["h264_nvenc"] });
-    expect(call).toHaveBeenCalledWith("media.capabilities", {});
+    await vi.waitFor(() => expect(state.getState().encoders.status).toBe("ready"));
+    await vi.waitFor(() => expect(state.getState().presets.status).toBe("ready"));
+    expect(call).toHaveBeenCalledWith("export.list_presets", {});
+    expect(call).toHaveBeenCalledWith("export.list_encoders", {});
   });
 
-  it("copes with an engine that cannot answer the capabilities query", async () => {
+  it("copes with an engine that cannot list encoders or presets", async () => {
     const { controller, state, call } = setup();
     call.mockRejectedValueOnce(new RpcError("not_found", "no such method"));
     await controller.loadEncoders();
-    expect(state.getState().probe.status).toBe("unavailable");
+    expect(state.getState().encoders.status).toBe("unavailable");
+    call.mockRejectedValueOnce(new RpcError("not_found", "no such method"));
+    await controller.loadPresets();
+    expect(state.getState().presets.status).toBe("unavailable");
   });
 
-  it("proposes <project folder>/<name>.mp4", () => {
-    const { controller } = setup();
+  it("resolves a preset for the sequence and passes a refusal's pointer on", async () => {
+    const { controller, call } = setup();
+    call.mockResolvedValueOnce({ preset: "tiktok", width: 608, height: 1080, warnings: [] });
+    const ok = await controller.resolve("tiktok", { kind: "sequence" }, null);
+    expect(ok).toMatchObject({ ok: true, value: { width: 608 } });
+    expect(call).toHaveBeenLastCalledWith("export.resolve_preset", {
+      preset: "tiktok",
+      sequence: "seq_1",
+      range: { kind: "sequence" },
+      overrides: null,
+    });
+    call.mockRejectedValueOnce(new RpcError("invalid", "no in and out points", "/range/kind"));
+    expect(await controller.resolve("tiktok", { kind: "in_out" }, null)).toEqual({
+      ok: false,
+      message: "no in and out points",
+      pointer: "/range/kind",
+    });
+  });
+
+  it("asks for a codec's encoder options once", async () => {
+    const { controller, call } = setup();
+    expect(await controller.describeOptions("h264", "mp4")).toEqual(H264_OPTIONS);
+    expect(await controller.describeOptions("h264", "mp4")).toEqual(H264_OPTIONS);
+    expect(call.mock.calls.filter(([name]) => name === "export.describe_options")).toHaveLength(1);
+  });
+
+  it("proposes <project folder>/<pattern>.<the preset's extension>", async () => {
+    const { controller, prefs } = setup();
     expect(controller.defaultPath()).toBe("C:\\p\\Film.mp4");
+    expect(controller.defaultPath("ProRes 422 HQ", "mov")).toBe("C:\\p\\Film.mov");
+    await prefs.set("export.filename", "{project}_{sequence}_{preset}_{date}");
+    expect(controller.defaultPath("TikTok", "mp4")).toBe("C:\\p\\Film_Main_TikTok_2026-11-26.mp4");
   });
 
-  it("starts the export and follows its job to the toast", async () => {
+  it("starts at the default preset, else the last one used (Settings > Export)", async () => {
+    const { controller, prefs } = setup();
+    expect(controller.formDefaults()).toEqual({
+      quality: "medium",
+      hardware: true,
+      presets: [""],
+      fileName: "{project}",
+    });
+    await prefs.set("export.last_preset", "tiktok");
+    expect(controller.formDefaults().presets).toEqual(["tiktok"]);
+    await prefs.set("export.preset", "youtube-4k");
+    await prefs.set("export.quality", "low");
+    await prefs.set("export.hw", "off");
+    expect(controller.formDefaults()).toMatchObject({
+      quality: "low",
+      hardware: false,
+      presets: ["youtube-4k"],
+    });
+  });
+
+  it("starts the export, remembers the preset and follows its job to the toast", async () => {
     const reveal = vi.fn(async () => undefined);
-    const { controller, state, call, jobs, toasts } = setup({
+    const { controller, state, call, jobs, toasts, prefs } = setup({
       desktop: {
         dialog: { openProjectFolder: async () => null },
         shell: { showItemInFolder: reveal },
       },
     });
     controller.open();
-    const outcome = await controller.start(request);
-    expect(outcome).toEqual({ kind: "started" });
+    const outcome = await controller.start({
+      ...request,
+      collision: "rename",
+      range: { kind: "custom", in: "1s", out: "4s" },
+      advanced: { audio: { channels: "mono" } },
+    });
+    expect(outcome).toMatchObject({ kind: "started", files: [{ fileName: "film.mp4" }] });
     expect(call).toHaveBeenCalledWith("export.start", {
       sequence: "seq_1",
       path: "C:\\p\\film.mp4",
-      preset: "h264-mp4-1080p",
+      preset: "youtube-1080p",
       hw: "auto",
-      overwrite: false,
+      collision: "rename",
+      range: { kind: "custom", in: "1s", out: "4s" },
+      advanced: { audio: { channels: "mono" } },
     });
-    expect(state.getState().active?.fileName).toBe("film.mp4");
+    expect(prefs.get("export.last_preset")).toBe("youtube-1080p");
+    expect(state.getState().active?.files[0]?.fileName).toBe("film.mp4");
 
     jobs.getState().applyProgress(job({}));
     expect(state.getState().active?.seen).toBe(true);
@@ -170,6 +241,44 @@ describe("ExportController", () => {
     expect(reveal).toHaveBeenCalledWith("C:\\p\\film.mp4");
   });
 
+  it("follows every file of a marker set and reports them together", async () => {
+    const { controller, call, state, jobs, toasts } = setup();
+    call.mockResolvedValueOnce({
+      ...started("C:\\p\\Film_Intro_1.mp4"),
+      jobs: [
+        { job_id: JOB, path: "C:\\p\\Film_Intro_1.mp4" },
+        { job_id: JOB2, path: "C:\\p\\Film_Hook_2.mp4" },
+      ],
+    });
+    await controller.start({ ...request, range: { kind: "markers" } });
+    expect(state.getState().active?.files.map((f) => f.jobId)).toEqual([JOB, JOB2]);
+    jobs.getState().applyProgress(job({ state: "succeeded" }));
+    jobs.getState().applyProgress(job({ id: JOB2 }));
+    expect(state.getState().active).not.toBeNull();
+    jobs.getState().applyProgress(job({ id: JOB2, state: "succeeded" }));
+    expect(state.getState().active).toBeNull();
+    expect(toasts.getState().notices[0]?.message).toBe(
+      'export.done.files {"count":"2","name":"Film_Intro_1.mp4"}',
+    );
+  });
+
+  it("adds to the queue without following it, with Show queue on the toast", async () => {
+    const { controller, call, state, toasts, showQueue } = setup();
+    call.mockResolvedValueOnce({ ...started(), estimated_kib: 51_200 });
+    const outcome = await controller.start(request, "queue");
+    expect(outcome.kind).toBe("started");
+    expect(call).toHaveBeenCalledWith(
+      "export.enqueue",
+      expect.objectContaining({ path: request.path }),
+    );
+    expect(state.getState().active).toBeNull();
+    const [notice] = toasts.getState().notices;
+    expect(notice?.title).toBe("export.queued.title");
+    expect(notice?.message).toBe('export.queued.sized {"name":"film.mp4","size":"53 MB"}');
+    notice?.actions?.[0]?.onClick();
+    expect(showQueue).toHaveBeenCalled();
+  });
+
   it("settles a job that finished before the start answer arrived", async () => {
     const { controller, state, jobs, toasts } = setup();
     jobs
@@ -180,23 +289,31 @@ describe("ExportController", () => {
     expect(toasts.getState().notices[0]?.tone).toBe("success");
   });
 
-  it("asks before replacing a file", async () => {
+  it("asks before replacing a file, then replaces it", async () => {
     const { controller, call } = setup();
     call.mockRejectedValueOnce(new RpcError("invalid", "exists", "/overwrite"));
     expect(await controller.start(request)).toEqual({ kind: "exists" });
-    expect((await controller.start({ ...request, overwrite: true })).kind).toBe("started");
     expect(call).toHaveBeenLastCalledWith(
       "export.start",
-      expect.objectContaining({ overwrite: true }),
+      expect.objectContaining({ overwrite: false }),
+    );
+    expect((await controller.start({ ...request, collision: "overwrite" })).kind).toBe("started");
+    expect(call).toHaveBeenLastCalledWith(
+      "export.start",
+      expect.objectContaining({ collision: "overwrite" }),
     );
   });
 
-  it("passes the engine's refusal on", async () => {
+  it("passes the engine's refusal on, with the field it names", async () => {
     const { controller, call, state } = setup();
-    call.mockRejectedValueOnce(new RpcError("unsupported", "no H.264 encoder"));
-    const outcome = await controller.start(request);
-    expect(outcome.kind).toBe("refused");
-    expect(outcome.kind === "refused" && outcome.message).toContain("no H.264 encoder");
+    call.mockRejectedValueOnce(
+      new RpcError("invalid", "CBR needs software; use VBR", "/advanced/video/rate_control/mode"),
+    );
+    expect(await controller.start(request)).toEqual({
+      kind: "refused",
+      message: "CBR needs software; use VBR",
+      pointer: "/advanced/video/rate_control/mode",
+    });
     expect(state.getState().active).toBeNull();
   });
 
@@ -262,19 +379,9 @@ describe("ExportController", () => {
     expect(state.getState().dialogOpen).toBe(true);
   });
 
-  it("starts the form at the person's quality and hardware choice (Settings > Export)", async () => {
-    const { controller, prefs } = setup();
-    expect(controller.formDefaults()).toEqual({ quality: "medium", hardware: true });
-    await prefs.set("export.quality", "low");
-    await prefs.set("export.hw", "off");
-    expect(controller.formDefaults()).toEqual({ quality: "low", hardware: false });
-  });
-
   it("proposes the folder Settings > Export names, and the project's until it is known", async () => {
     const { controller, prefs } = setup();
-    // Project folder is the default.
     expect(controller.defaultPath()).toBe("C:\\p\\Film.mp4");
-    // "Last folder" with none yet, and "chosen" with none picked, fall back to the project's.
     await prefs.set("export.folder", "last");
     expect(controller.defaultPath()).toBe("C:\\p\\Film.mp4");
     await prefs.set("export.last_folder", "D:\\Renders");
@@ -285,7 +392,7 @@ describe("ExportController", () => {
     expect(controller.defaultPath()).toBe("E:\\Chosen\\Film.mp4");
   });
 
-  it("remembers the folder picked in the dialog as the last one and leaves the chosen one alone", async () => {
+  it("remembers the folder picked in the dialog as the last one and keeps the preset's extension", async () => {
     const choose = vi.fn(async (_: string) => "F:\\Elsewhere\\x.mp4");
     const { controller, prefs } = setup({
       desktop: { dialog: { openProjectFolder: async () => null, chooseExportFile: choose } },
@@ -295,7 +402,7 @@ describe("ExportController", () => {
     expect(await controller.chooseFile("")).toBe("F:\\Elsewhere\\x.mp4");
     expect(prefs.get("export.last_folder")).toBe("F:\\Elsewhere");
     expect(prefs.get("export.folder_path")).toBe("E:\\Chosen");
-    expect(prefs.get("export.folder")).toBe("chosen");
+    expect(await controller.chooseFile("F:\\Elsewhere\\x.mov", "mov")).toBe("F:\\Elsewhere\\x.mov");
   });
 
   it("does not remember a cancelled save dialog", async () => {
