@@ -319,7 +319,7 @@ pub struct AudioActivation {
     pub track_gain_db: f64,
     /// Whether the source plays backwards.
     pub reverse: bool,
-    /// Constant speed factor `numerator / denominator` (1/1 in schema v1).
+    /// Constant speed factor `numerator / denominator` (the clip's `speed`, WP-2D.01).
     pub speed: (u32, u32),
 }
 
@@ -338,7 +338,8 @@ pub struct AudioSegment {
     pub dst_start: Time,
     /// Length on the timeline.
     pub dst_duration: Duration,
-    /// Source position corresponding to `dst_start`.
+    /// Source position corresponding to `dst_start` (`cutweave_model::source_time`; for a
+    /// reversed clip the latest position of the segment, which then plays backwards).
     pub src_start: Time,
     /// Clip gain in dB at `dst_start`.
     pub clip_gain_db: f64,
@@ -359,7 +360,8 @@ pub struct AudioSegment {
     pub track_gain_db: f64,
     /// Whether the source plays backwards (source time then decreases along the segment).
     pub reverse: bool,
-    /// Constant speed factor `numerator / denominator` (1/1 in schema v1).
+    /// Constant speed factor `numerator / denominator` (the clip's `speed`, WP-2D.01): source
+    /// time moves `num / den` times as fast as the timeline.
     pub speed: (u32, u32),
     /// Sample rate of the sequence the segment is mixed into.
     pub sample_rate: SampleRate,

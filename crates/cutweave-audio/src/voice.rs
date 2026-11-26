@@ -1,29 +1,38 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! One clip's source chain (worker side): [`PcmSource`] → stereo down-mix → `rubato` resample to
-//! the output rate → output-rate stereo frames on demand.
+//! One clip's source chain (worker side): [`PcmSource`] (backwards for a reversed clip) → stereo
+//! down-mix → `rubato` resample to the output rate → output-rate stereo frames on demand.
+//!
+//! **Speed** (WP-2D.01): a clip at speed `s` reads its source `s` times as fast, so the
+//! resampler maps the source rate × `s` to the output rate (a sinc resampler at that exact
+//! ratio; the pitch follows the speed until WP-2D.02 adds pitch preservation). At normal speed
+//! the chain is unchanged: no resampler at the output rate, the fixed FFT one otherwise.
 
-use cutweave_model::{Rounding, SampleRate};
+use cutweave_model::{Rounding, SampleRate, Speed};
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
-use rubato::{Fft, FixedSync, Resampler};
+use rubato::{
+    Async, Fft, FixedAsync, FixedSync, Resampler, SincInterpolationParameters, WindowFunction,
+};
 
 use crate::automation::Automation;
 use crate::dsp::{CHANNELS, downmix_into};
 use crate::error::SourceError;
 use crate::plan::{ClipPlan, source_time_at};
+use crate::reverse::Reversed;
 use crate::source::{PcmSource, SourceFactory, SourceRequest};
 
 /// Source frames read (and resampled) per step.
 const SOURCE_CHUNK: usize = 1024;
 
-/// A synchronous FFT resampler (fixed ratio source rate → output rate) with its start-up delay
+/// A resampler (source rate → output rate, times the clip's speed) with its start-up delay
 /// trimmed, so output frame 0 is source frame 0.
 struct Resample {
-    fft: Fft<f32>,
+    inner: Box<dyn Resampler<f32>>,
     out: Vec<f32>,
     trim: usize,
 }
 
 impl Resample {
+    /// The fixed-ratio FFT resampler of normal speed.
     fn new(from: SampleRate, to: SampleRate) -> Result<Resample, SourceError> {
         let fft = Fft::<f32>::new(
             from.hz() as usize,
@@ -33,21 +42,43 @@ impl Resample {
             FixedSync::Input,
         )
         .map_err(|e| SourceError::Format(format!("no resampler {from} → {to}: {e}")))?;
-        let out = vec![0.0; fft.output_frames_max() * CHANNELS];
-        let trim = fft.output_delay();
-        Ok(Resample { fft, out, trim })
+        Ok(Resample::of(Box::new(fft)))
+    }
+
+    /// A sinc resampler at the exact ratio `to / (from × speed)` (WP-2D.01): the source is read
+    /// `speed` times as fast as it plays.
+    fn varispeed(from: SampleRate, to: SampleRate, speed: Speed) -> Result<Resample, SourceError> {
+        let ratio = (f64::from(to.hz()) * f64::from(speed.den()))
+            / (f64::from(from.hz()) * f64::from(speed.num()));
+        let params = SincInterpolationParameters::new(128, WindowFunction::BlackmanHarris2);
+        let sinc = Async::<f32>::new_sinc(
+            ratio,
+            1.0,
+            &params,
+            SOURCE_CHUNK,
+            CHANNELS,
+            FixedAsync::Input,
+        )
+        .map_err(|e| SourceError::Format(format!("no resampler {from} → {to} at {speed}x: {e}")))?;
+        Ok(Resample::of(Box::new(sinc)))
+    }
+
+    fn of(inner: Box<dyn Resampler<f32>>) -> Resample {
+        let out = vec![0.0; inner.output_frames_max() * CHANNELS];
+        let trim = inner.output_delay();
+        Resample { inner, out, trim }
     }
 
     /// Resamples one `SOURCE_CHUNK` of stereo input and appends the (trimmed) output to `fifo`.
     fn process(&mut self, input: &[f32], fifo: &mut Vec<f32>) -> Result<(), SourceError> {
         let err = |e: &dyn std::fmt::Display| SourceError::Decode(format!("resampler: {e}"));
-        let frames_in = self.fft.input_frames_next();
+        let frames_in = self.inner.input_frames_next();
         let input = InterleavedSlice::new(input, CHANNELS, frames_in).map_err(|e| err(&e))?;
         let frames_out = self.out.len() / CHANNELS;
         let mut output =
             InterleavedSlice::new_mut(&mut self.out, CHANNELS, frames_out).map_err(|e| err(&e))?;
         let (_, produced) = self
-            .fft
+            .inner
             .process_into_buffer(&input, &mut output, None)
             .map_err(|e| err(&e))?;
         let skip = self.trim.min(produced);
@@ -83,12 +114,21 @@ impl ClipVoice {
         rate: SampleRate,
         at: i64,
     ) -> Result<ClipVoice, SourceError> {
+        // The source range as a read-ahead hint: a reversed clip reads down to `src_end`.
+        let (start, end) = if clip.reverse {
+            (clip.src_end, clip.src_start)
+        } else {
+            (clip.src_start, clip.src_end)
+        };
         let mut source = sources.open(&SourceRequest {
             media: clip.media,
             stream: clip.stream,
-            start: clip.src_start,
-            end: clip.src_end,
+            start,
+            end,
         })?;
+        if clip.reverse {
+            source = Box::new(Reversed::new(source));
+        }
         let format = source.format();
         let channels = usize::from(format.channels);
         if channels == 0 {
@@ -96,9 +136,17 @@ impl ClipVoice {
         }
         let src_time = source_time_at(clip, rate, at)
             .map_err(|e| SourceError::Format(format!("source position: {e}")))?;
-        let frame = format.rate.time_to_samples(src_time, Rounding::Nearest);
+        // Reversed, the first position is just inside the end of the range: the sample holding it.
+        let rounding = if clip.reverse {
+            Rounding::Floor
+        } else {
+            Rounding::Nearest
+        };
+        let frame = format.rate.time_to_samples(src_time, rounding);
         source.seek(u64::try_from(frame).unwrap_or(0))?;
-        let resample = if format.rate == rate {
+        let resample = if !clip.speed.is_one() {
+            Some(Resample::varispeed(format.rate, rate, clip.speed)?)
+        } else if format.rate == rate {
             None
         } else {
             Some(Resample::new(format.rate, rate)?)
@@ -192,6 +240,8 @@ mod tests {
             src_end: src_start
                 .checked_add(Duration::from_secs(100).unwrap())
                 .unwrap(),
+            speed: cutweave_model::Speed::ONE,
+            reverse: false,
             env: Envelope::flat(1.0, start, end - start),
         }
     }
