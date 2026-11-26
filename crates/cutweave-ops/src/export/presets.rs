@@ -1279,9 +1279,14 @@ impl EngineCommand for ResolvePreset {
             .as_ref()
             .ok_or_else(|| bad("/sequence", "no project is open"))?;
         let seq = super::resolve_sequence(&snapshot.doc, self.sequence)?;
-        let (start, end) = super::resolve_range(self.range.as_ref(), seq)?;
-        let length = end
-            .duration_since(start)
+        // A marker set is sized by its first region.
+        let regions = super::range::resolve_regions(self.range.as_ref(), seq)?;
+        let first = regions
+            .first()
+            .ok_or_else(|| bad("/range", "there is nothing to export"))?;
+        let length = first
+            .end
+            .duration_since(first.start)
             .map_err(|e| bad("/range", e.to_string()))?;
         let plan = plan_preset(&spec, seq, length, self.overrides.as_ref())?;
         let support = spec.engine_support();
