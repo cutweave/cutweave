@@ -107,13 +107,10 @@ mod tests {
             assert!(ASPECT_PRESETS[..i].iter().all(|q| q.id != p.id), "{}", p.id);
             assert!((1..=MAX_CANVAS_SIDE).contains(&p.width));
             assert!((1..=MAX_CANVAS_SIDE).contains(&p.height));
-            // The pixel size has the preset's ratio.
-            assert_eq!(
-                u64::from(p.width) * u64::from(p.aspect_h),
-                u64::from(p.height) * u64::from(p.aspect_w),
-                "{}",
-                p.id
-            );
+            // The pixel size has the preset's ratio, within 2 % (21:9 is 2560x1080, 64:27).
+            let (w, h) = (f64::from(p.width), f64::from(p.height));
+            let ratio = (w / h) / (f64::from(p.aspect_w) / f64::from(p.aspect_h));
+            assert!((ratio - 1.0).abs() < 0.02, "{}: {ratio}", p.id);
         }
     }
 

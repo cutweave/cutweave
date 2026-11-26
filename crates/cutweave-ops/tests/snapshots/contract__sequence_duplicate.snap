@@ -1,0 +1,126 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "sequence.duplicate",
+    "summary": "Copy a sequence (new IDs, shared media), for another platform",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence to copy."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name of the copy (default: the name plus ` copy`).",
+          "default": null
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "description": "Copies a sequence: the copy has new IDs for the sequence, its tracks, items, markers and\nlinked groups, and uses the same media. Editing the copy never changes the original.",
+      "title": "SequenceDuplicate"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The copy."
+        },
+        "name": {
+          "type": "string",
+          "description": "Its name."
+        },
+        "item_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many items it holds."
+        }
+      },
+      "required": [
+        "sequence",
+        "name",
+        "item_count"
+      ],
+      "description": "Result of `sequence.duplicate`.",
+      "title": "SequenceDuplicateOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence to copy."
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Name of the copy (default: the name plus ` copy`).",
+        "default": null
+      }
+    },
+    "required": [
+      "sequence"
+    ],
+    "description": "Copies a sequence: the copy has new IDs for the sequence, its tracks, items, markers and\nlinked groups, and uses the same media. Editing the copy never changes the original.",
+    "title": "SequenceDuplicate"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The copy."
+      },
+      "name": {
+        "type": "string",
+        "description": "Its name."
+      },
+      "item_count": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "How many items it holds."
+      }
+    },
+    "required": [
+      "sequence",
+      "name",
+      "item_count"
+    ],
+    "description": "Result of `sequence.duplicate`.",
+    "title": "SequenceDuplicateOutput"
+  }
+}

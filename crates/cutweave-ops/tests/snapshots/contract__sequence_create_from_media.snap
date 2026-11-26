@@ -1,0 +1,276 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "sequence.create_from_media",
+    "summary": "Add a sequence holding the given assets in order",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets, in order (1..=1000)."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name (default `Sequence <n>`).",
+          "default": null
+        }
+      },
+      "required": [
+        "media"
+      ],
+      "description": "Adds a sequence holding the given assets one after another from 0: pictures and stills on\n`V1`, a video's sound linked on `A1`, audio files on `A1`. Each clip takes the whole asset,\nfloored to whole frames (a still gets 5 s). The format is the project's default.",
+      "title": "SequenceCreateFromMedia"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The new sequence."
+        },
+        "video_track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "Its video track `V1`."
+        },
+        "audio_track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "Its audio track `A1`."
+        },
+        "format": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0,
+              "description": "Canvas width in pixels."
+            },
+            "height": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0,
+              "description": "Canvas height in pixels."
+            },
+            "frame_rate": {
+              "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+              "type": "object",
+              "properties": {
+                "num": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Frames."
+                },
+                "den": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Seconds."
+                }
+              },
+              "required": [
+                "num",
+                "den"
+              ],
+              "additionalProperties": false
+            },
+            "sample_rate": {
+              "description": "The mix rate.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 352800000
+            },
+            "color_space": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "rec709",
+                  "description": "Rec.709 primaries, SDR."
+                }
+              ],
+              "description": "Working color space."
+            },
+            "background": {
+              "description": "Canvas color behind all tracks.",
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            }
+          },
+          "required": [
+            "width",
+            "height",
+            "frame_rate",
+            "sample_rate",
+            "color_space",
+            "background"
+          ],
+          "description": "Its format."
+        }
+      },
+      "required": [
+        "sequence",
+        "video_track",
+        "audio_track",
+        "format"
+      ],
+      "description": "Result of `sequence.create` and `sequence.create_from_media`.",
+      "title": "SequenceCreateOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets, in order (1..=1000)."
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Name (default `Sequence <n>`).",
+        "default": null
+      }
+    },
+    "required": [
+      "media"
+    ],
+    "description": "Adds a sequence holding the given assets one after another from 0: pictures and stills on\n`V1`, a video's sound linked on `A1`, audio files on `A1`. Each clip takes the whole asset,\nfloored to whole frames (a still gets 5 s). The format is the project's default.",
+    "title": "SequenceCreateFromMedia"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The new sequence."
+      },
+      "video_track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "Its video track `V1`."
+      },
+      "audio_track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "Its audio track `A1`."
+      },
+      "format": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Canvas width in pixels."
+          },
+          "height": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Canvas height in pixels."
+          },
+          "frame_rate": {
+            "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+            "type": "object",
+            "properties": {
+              "num": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Frames."
+              },
+              "den": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Seconds."
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "sample_rate": {
+            "description": "The mix rate.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 352800000
+          },
+          "color_space": {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "rec709",
+                "description": "Rec.709 primaries, SDR."
+              }
+            ],
+            "description": "Working color space."
+          },
+          "background": {
+            "description": "Canvas color behind all tracks.",
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "frame_rate",
+          "sample_rate",
+          "color_space",
+          "background"
+        ],
+        "description": "Its format."
+      }
+    },
+    "required": [
+      "sequence",
+      "video_track",
+      "audio_track",
+      "format"
+    ],
+    "description": "Result of `sequence.create` and `sequence.create_from_media`.",
+    "title": "SequenceCreateOutput"
+  }
+}

@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (97 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (105 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -80,6 +80,13 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.save_as` | Save the document as a new project folder and continue there | engine | catalog |
 | project | `project.set_allowed_roots` | Set the folders agents may use besides the open project's (the app's own setting) | engine, idempotent, ui-only | catalog |
 | project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent, ui-only | catalog |
+| sequence | `sequence.create` | Add a sequence from an aspect preset or a format | command, undoable | core |
+| sequence | `sequence.create_from_media` | Add a sequence holding the given assets in order | command, undoable | catalog |
+| sequence | `sequence.delete` | Delete a sequence (not the last one, not while a compound clip uses it) | command, undoable, destructive | catalog |
+| sequence | `sequence.duplicate` | Copy a sequence (new IDs, shared media), for another platform | command, undoable | catalog |
+| sequence | `sequence.list` | List the sequences (and the aspect presets on request) | query | catalog |
+| sequence | `sequence.rename` | Rename a sequence | command, undoable, idempotent | catalog |
+| sequence | `sequence.set_format` | Change a sequence's size, frame rate, sample rate or background | command, undoable, destructive, idempotent | core |
 | timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | catalog |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |
 | timeline | `timeline.delete_gap` | Close the gap of a track at a time (what follows moves left; partners follow) | command, undoable | catalog |
@@ -103,5 +110,6 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | view | `view.get` | Get the UI view state (playhead, zoom, selection, ...) | engine, view, idempotent | catalog |
 | view | `view.select` | Select, add, remove or toggle entities in the selection | engine, view | catalog |
 | view | `view.set` | Update the UI view state (partial merge; not undoable) | engine, view, idempotent | catalog |
+| view | `view.set_active_sequence` | Show a sequence in the editor | engine, view, idempotent | catalog |
 | view | `view.set_playhead` | Move the playhead | engine, view, idempotent | catalog |
 | view | `view.set_zoom` | Set the timeline zoom (pixels per second) | engine, view, idempotent | catalog |

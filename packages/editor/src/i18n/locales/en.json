@@ -987,6 +987,12 @@
     "folderDelete": "Delete folder",
     "mediaMove": "Move media",
     "mediaRename": "Rename media",
+    "sequenceCreate": "New sequence",
+    "sequenceCreateFromMedia": "New sequence from media",
+    "sequenceDuplicate": "Duplicate sequence",
+    "sequenceRename": "Rename sequence",
+    "sequenceDelete": "Delete sequence",
+    "sequenceFormat": "Change sequence format",
     "panel": {
       "label": "Project history",
       "filterLabel": "Show changes by",

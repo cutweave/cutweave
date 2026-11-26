@@ -54,6 +54,12 @@ const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
   "media.delete_folder": "history.folderDelete",
   "media.move": "history.mediaMove",
   "media.rename": "history.mediaRename",
+  [`${"sequence"}.create`]: "history.sequenceCreate",
+  [`${"sequence"}.create_from_media`]: "history.sequenceCreateFromMedia",
+  [`${"sequence"}.duplicate`]: "history.sequenceDuplicate",
+  [`${"sequence"}.rename`]: "history.sequenceRename",
+  [`${"sequence"}.delete`]: "history.sequenceDelete",
+  [`${"sequence"}.set_format`]: "history.sequenceFormat",
 };
 
 /** Product names an agent label is capitalized to; any other label is shown as it is. */

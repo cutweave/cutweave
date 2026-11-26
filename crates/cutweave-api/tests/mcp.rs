@@ -95,9 +95,9 @@ async fn current_rev(client: &Client) -> u64 {
 // ----- catalog ------------------------------------------------------------------------------
 
 /// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
-/// P1 since `export_start`, WP-1E.03, 20 with `keyframe_set`, WP-2C.03; the core engine has no
+/// P1 since `export_start`, WP-1E.03, 20 with `keyframe_set`, WP-2C.03, 22 with `sequence_create` and `sequence_set_format`, WP-2B.01; the core engine has no
 /// renderer, so no `render_frame`: the
-/// full engine lists 21, tests/mcp_frames.rs), within the
+/// full engine lists 23, tests/mcp_frames.rs), within the
 /// standard budget (R36), on both revisions.
 #[tokio::test]
 async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
@@ -107,7 +107,7 @@ async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
         .map(|t| t["name"].as_str().unwrap().to_owned())
         .collect();
     expected.extend(catalog::GENERIC_TOOLS.map(str::to_owned));
-    assert_eq!(expected.len(), 20);
+    assert_eq!(expected.len(), 22);
     for revision in Revision::ALL {
         let client = h.client(Profile::Standard, revision).await;
         assert_eq!(client.negotiated(), revision.version());
@@ -231,6 +231,8 @@ async fn every_tool_has_the_right_annotations() {
         ("media_list", true, false, true),
         ("project_info", true, false, true),
         ("project_open", false, true, false),
+        ("sequence_create", false, false, false),
+        ("sequence_set_format", false, true, true),
         ("timeline_get", true, false, true),
         ("timeline_insert", false, false, false),
         ("cutweave_search_commands", true, false, true),
@@ -522,6 +524,14 @@ async fn each_core_tool_returns_the_engine_output() {
         assert_eq!(mcp["error"]["code"], json!(engine.code()), "{mcp}");
         assert_eq!(engine.code(), "invalid");
         step("export_start");
+        let reel = same!(
+            "sequence_create",
+            json!({ "name": "Reel", "preset": "9:16" })
+        );
+        same!(
+            "sequence_set_format",
+            json!({ "sequence": reel["sequence"], "width": 1080, "height": 1080 })
+        );
         // project_open: save each document as a project, close it, open it again.
         for (h, conn) in [(&a, a.direct("mcp")), (&b, b.direct("mcp"))] {
             let folder = h.dir.path().join("saved").to_string_lossy().into_owned();

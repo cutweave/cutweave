@@ -95,6 +95,7 @@ fn registry_contract() {
         "view.set_playhead",
         "view.select",
         "view.set_zoom",
+        "view.set_active_sequence",
     ] {
         let meta = &registry.get(name).expect(name).meta;
         assert_eq!(meta.kind, EntryKind::Engine, "{name}");

@@ -78,8 +78,8 @@ const SEC: i64 = 705_600_000;
 
 /// The standard profile's tools in Phase 1: the registry's 15 core tools and the 4 generic
 /// ones. `render_frame` is not here: this suite runs the dev-stub engine, which has no renderer
-/// (the full engine lists 20; standard budget, R36).
-const CORE_TOOLS: [&str; 16] = [
+/// (the full engine lists 22; standard budget, R36).
+const CORE_TOOLS: [&str; 18] = [
     "clip_split",
     "clip_trim",
     "edit_undo",
@@ -94,6 +94,8 @@ const CORE_TOOLS: [&str; 16] = [
     "media_list",
     "project_info",
     "project_open",
+    "sequence_create",
+    "sequence_set_format",
     "timeline_get",
     "timeline_insert",
 ];
@@ -826,6 +828,17 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         .await;
     assert_eq!(error["error"]["code"], "unsupported", "{error}");
     c.called.lock().unwrap().insert("export_start".into());
+    let reel = c
+        .tool(
+            "sequence_create",
+            json!({ "name": "Reel", "preset": "9:16" }),
+        )
+        .await;
+    c.tool(
+        "sequence_set_format",
+        json!({ "sequence": reel["sequence"], "width": 1080, "height": 1080 }),
+    )
+    .await;
 
     // project_open: save, then reopen the saved folder.
     let saved_at = session

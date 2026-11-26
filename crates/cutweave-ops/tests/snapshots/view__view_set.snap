@@ -213,6 +213,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "format": "double",
               "description": "New master gain (linear, `0..=4`).",
               "default": null
+            },
+            "active_sequence": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^seq_[0-9a-f]{32}$",
+              "description": "The sequence to show; must exist.",
+              "default": null
             }
           },
           "description": "The fields to change."
@@ -372,6 +381,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "type": "number",
           "format": "double",
           "description": "Master output gain (linear, `0..=4`, 1 = unity)."
+        },
+        "active_sequence": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists."
         }
       },
       "required": [
@@ -381,7 +398,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "selection",
         "panel_layout",
         "preview_quality",
-        "master_gain"
+        "master_gain",
+        "active_sequence"
       ],
       "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
       "title": "UiState"
@@ -582,6 +600,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "format": "double",
             "description": "New master gain (linear, `0..=4`).",
             "default": null
+          },
+          "active_sequence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence to show; must exist.",
+            "default": null
           }
         },
         "description": "The fields to change."
@@ -741,6 +768,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "type": "number",
         "format": "double",
         "description": "Master output gain (linear, `0..=4`, 1 = unity)."
+      },
+      "active_sequence": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists."
       }
     },
     "required": [
@@ -750,7 +785,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "selection",
       "panel_layout",
       "preview_quality",
-      "master_gain"
+      "master_gain",
+      "active_sequence"
     ],
     "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
     "title": "UiState"

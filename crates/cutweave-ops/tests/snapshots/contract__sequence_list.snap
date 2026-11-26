@@ -1,0 +1,494 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "sequence.list",
+    "summary": "List the sequences (and the aspect presets on request)",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "presets": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Also return the aspect and frame-rate presets.",
+          "default": null
+        }
+      },
+      "description": "Lists the sequences with their format, length and track counts; `presets: true` adds the\naspect presets and frame rates `sequence.create` and `sequence.set_format` offer.",
+      "title": "SequenceList"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequences": {
+          "type": "array",
+          "items": {
+            "description": "Summary of one sequence.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The sequence.",
+                "type": "string",
+                "pattern": "^seq_[0-9a-f]{32}$"
+              },
+              "name": {
+                "description": "Its name.",
+                "type": "string"
+              },
+              "format": {
+                "description": "Its format.",
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "description": "Canvas width in pixels.",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "description": "Canvas height in pixels.",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "frame_rate": {
+                    "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                    "type": "object",
+                    "properties": {
+                      "num": {
+                        "description": "Frames.",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 4294967295
+                      },
+                      "den": {
+                        "description": "Seconds.",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 4294967295
+                      }
+                    },
+                    "required": [
+                      "num",
+                      "den"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "sample_rate": {
+                    "description": "The mix rate.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 352800000
+                  },
+                  "color_space": {
+                    "description": "Working color space.",
+                    "oneOf": [
+                      {
+                        "description": "Rec.709 primaries, SDR.",
+                        "type": "string",
+                        "const": "rec709"
+                      }
+                    ]
+                  },
+                  "background": {
+                    "description": "Canvas color behind all tracks.",
+                    "type": "string",
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+                  }
+                },
+                "required": [
+                  "width",
+                  "height",
+                  "frame_rate",
+                  "sample_rate",
+                  "color_space",
+                  "background"
+                ]
+              },
+              "duration": {
+                "description": "End of the last item on any track.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "video_tracks": {
+                "description": "Number of video tracks.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "audio_tracks": {
+                "description": "Number of audio tracks.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "item_count": {
+                "description": "Number of items on all its tracks.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "format",
+              "duration",
+              "video_tracks",
+              "audio_tracks",
+              "item_count"
+            ]
+          },
+          "description": "The sequences, ordered by ID."
+        },
+        "presets": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "One aspect preset.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The ID `sequence.create` takes as `preset`.",
+                "type": "string"
+              },
+              "aspect_w": {
+                "description": "Aspect width (the `16` of 16:9).",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "aspect_h": {
+                "description": "Aspect height (the `9` of 16:9).",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "width": {
+                "description": "Canvas width in pixels.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "height": {
+                "description": "Canvas height in pixels.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "use_for": {
+                "description": "What it is used for.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "aspect_w",
+              "aspect_h",
+              "width",
+              "height",
+              "use_for"
+            ]
+          },
+          "description": "The aspect presets, when asked for."
+        },
+        "frame_rates": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A frame rate as an exact fraction of frames per second, e.g. {\"num\": 30000, \"den\": 1001} for 29.97 fps.",
+            "type": "object",
+            "properties": {
+              "num": {
+                "description": "Frames.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295
+              },
+              "den": {
+                "description": "Seconds.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The offered frame rates (`[num, den]` pairs), when presets are asked for."
+        }
+      },
+      "required": [
+        "sequences",
+        "presets",
+        "frame_rates"
+      ],
+      "description": "Result of `sequence.list`.",
+      "title": "SequenceListOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "presets": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Also return the aspect and frame-rate presets.",
+        "default": null
+      }
+    },
+    "description": "Lists the sequences with their format, length and track counts; `presets: true` adds the\naspect presets and frame rates `sequence.create` and `sequence.set_format` offer.",
+    "title": "SequenceList"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequences": {
+        "type": "array",
+        "items": {
+          "description": "Summary of one sequence.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The sequence.",
+              "type": "string",
+              "pattern": "^seq_[0-9a-f]{32}$"
+            },
+            "name": {
+              "description": "Its name.",
+              "type": "string"
+            },
+            "format": {
+              "description": "Its format.",
+              "type": "object",
+              "properties": {
+                "width": {
+                  "description": "Canvas width in pixels.",
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "height": {
+                  "description": "Canvas height in pixels.",
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "frame_rate": {
+                  "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                  "type": "object",
+                  "properties": {
+                    "num": {
+                      "description": "Frames.",
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4294967295
+                    },
+                    "den": {
+                      "description": "Seconds.",
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4294967295
+                    }
+                  },
+                  "required": [
+                    "num",
+                    "den"
+                  ],
+                  "additionalProperties": false
+                },
+                "sample_rate": {
+                  "description": "The mix rate.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 352800000
+                },
+                "color_space": {
+                  "description": "Working color space.",
+                  "oneOf": [
+                    {
+                      "description": "Rec.709 primaries, SDR.",
+                      "type": "string",
+                      "const": "rec709"
+                    }
+                  ]
+                },
+                "background": {
+                  "description": "Canvas color behind all tracks.",
+                  "type": "string",
+                  "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+                }
+              },
+              "required": [
+                "width",
+                "height",
+                "frame_rate",
+                "sample_rate",
+                "color_space",
+                "background"
+              ]
+            },
+            "duration": {
+              "description": "End of the last item on any track.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "video_tracks": {
+              "description": "Number of video tracks.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "audio_tracks": {
+              "description": "Number of audio tracks.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "item_count": {
+              "description": "Number of items on all its tracks.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "format",
+            "duration",
+            "video_tracks",
+            "audio_tracks",
+            "item_count"
+          ]
+        },
+        "description": "The sequences, ordered by ID."
+      },
+      "presets": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "One aspect preset.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The ID `sequence.create` takes as `preset`.",
+              "type": "string"
+            },
+            "aspect_w": {
+              "description": "Aspect width (the `16` of 16:9).",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "aspect_h": {
+              "description": "Aspect height (the `9` of 16:9).",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "width": {
+              "description": "Canvas width in pixels.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "height": {
+              "description": "Canvas height in pixels.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "use_for": {
+              "description": "What it is used for.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "aspect_w",
+            "aspect_h",
+            "width",
+            "height",
+            "use_for"
+          ]
+        },
+        "description": "The aspect presets, when asked for."
+      },
+      "frame_rates": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A frame rate as an exact fraction of frames per second, e.g. {\"num\": 30000, \"den\": 1001} for 29.97 fps.",
+          "type": "object",
+          "properties": {
+            "num": {
+              "description": "Frames.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            "den": {
+              "description": "Seconds.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            }
+          },
+          "required": [
+            "num",
+            "den"
+          ],
+          "additionalProperties": false
+        },
+        "description": "The offered frame rates (`[num, den]` pairs), when presets are asked for."
+      }
+    },
+    "required": [
+      "sequences",
+      "presets",
+      "frame_rates"
+    ],
+    "description": "Result of `sequence.list`.",
+    "title": "SequenceListOutput"
+  }
+}

@@ -400,6 +400,7 @@ function handle(client: Client, text: string): void {
         panel_layout: null,
         preview_quality: "full",
         master_gain: null,
+        active_sequence: null,
       });
       return;
     case "view.set":

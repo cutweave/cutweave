@@ -1125,6 +1125,23 @@ export type FolderSummary = {
 };
 
 /**
+ *  A format, field by field. Absent fields keep the base value: the project's default format
+ *  for a new sequence, the sequence's own format for `sequence.set_format`.
+ */
+export type FormatPatch = {
+	/**  Canvas width in pixels, `1..=16384`. */
+	width: number | null,
+	/**  Canvas height in pixels, `1..=16384`. */
+	height: number | null,
+	/**  The edit grid, `1..=1000` fps and a whole number of flicks per frame. */
+	frame_rate: FrameRate | null,
+	/**  The mix rate in Hz, `8000..=384000`. */
+	sample_rate: SampleRate | null,
+	/**  The canvas color behind all tracks, `#rrggbb`. */
+	background: Color | null,
+};
+
+/**
  *  The format of the first sequence and of new sequences. Absent fields keep the default
  *  (1920x1080, 30 fps, 48 kHz).
  */
@@ -3141,6 +3158,22 @@ max?: FrameRate | null } |
 /**  The rate. */
 rate: FrameRate };
 
+/**  One aspect preset. */
+export type PresetInfo = {
+	/**  The ID `sequence.create` takes as `preset`. */
+	id: string,
+	/**  Aspect width (the `16` of 16:9). */
+	aspect_w: number,
+	/**  Aspect height (the `9` of 16:9). */
+	aspect_h: number,
+	/**  Canvas width in pixels. */
+	width: number,
+	/**  Canvas height in pixels. */
+	height: number,
+	/**  What it is used for. */
+	use_for: string,
+};
+
 /**  Limits of the target; exceeding one is a warning. */
 export type PresetLimits = {
 	/**  Longest accepted video, in seconds. */
@@ -3765,6 +3798,17 @@ export type Redo = {
 	steps?: number | null,
 };
 
+/**  How clip transforms follow a new canvas (see the module docs). */
+export type ReframePolicy = 
+/**  Keep each clip's pixel size and pixel offset from the centre. */
+"keep_scale" | 
+/**  Scale the composition to sit whole inside the new canvas. */
+"fit" | 
+/**  Scale the composition to cover the new canvas. */
+"fill" | 
+/**  Leave transforms alone. */
+"none";
+
 /**  An item whose `linked_group` or `attached_to` changed. */
 export type RelinkedReport = {
 	/**  The item. */
@@ -4042,6 +4086,84 @@ export type SequenceBrief = {
 	item_count: number,
 };
 
+/**
+ *  Adds a sequence with an empty `V1` over an empty `A1`. The format starts from the project's
+ *  default; `preset` (an aspect preset ID such as `9:16`) sets the canvas size and `format`
+ *  overrides single fields.
+ */
+export type SequenceCreate = {
+	/**  Name (1..=200 characters). */
+	name: string,
+	/**  Aspect preset ID: `16:9`, `16:9-4k`, `9:16`, `1:1`, `4:5` or `21:9`. */
+	preset?: string | null,
+	/**  Format fields; they win over the preset. */
+	format?: FormatPatch | null,
+};
+
+/**
+ *  Adds a sequence holding the given assets one after another from 0: pictures and stills on
+ *  `V1`, a video's sound linked on `A1`, audio files on `A1`. Each clip takes the whole asset,
+ *  floored to whole frames (a still gets 5 s). The format is the project's default.
+ */
+export type SequenceCreateFromMedia = {
+	/**  The assets, in order (1..=1000). */
+	media: MediaId[],
+	/**  Name (default `Sequence <n>`). */
+	name?: string | null,
+};
+
+/**  Result of `sequence.create` and `sequence.create_from_media`. */
+export type SequenceCreateOutput = {
+	/**  The new sequence. */
+	sequence: SequenceId,
+	/**  Its video track `V1`. */
+	video_track: TrackId,
+	/**  Its audio track `A1`. */
+	audio_track: TrackId,
+	/**  Its format. */
+	format: SequenceFormat,
+};
+
+/**
+ *  Removes a sequence with its tracks and items; the media stays in the bin. Fails with
+ *  `Invalid` for the last sequence and for a sequence that compound clips refer to.
+ */
+export type SequenceDelete = {
+	/**  The sequence. */
+	sequence: SequenceId,
+};
+
+/**  Result of `sequence.delete`. */
+export type SequenceDeleteOutput = {
+	/**  The removed sequence. */
+	sequence: SequenceId,
+	/**  How many items it held (removed with it). */
+	removed_items: number,
+	/**  How many sequences the project has now. */
+	sequence_count: number,
+};
+
+/**
+ *  Copies a sequence: the copy has new IDs for the sequence, its tracks, items, markers and
+ *  linked groups, and uses the same media. Editing the copy never changes the original.
+ */
+export type SequenceDuplicate = {
+	/**  The sequence to copy. */
+	sequence: SequenceId,
+	/**  Name of the copy (default: the name plus ` copy`). */
+	name?: string | null,
+};
+
+/**  Result of `sequence.duplicate`. */
+export type SequenceDuplicateOutput = {
+	/**  The copy. */
+	sequence: SequenceId,
+	/**  Its name. */
+	name: string,
+	/**  How many items it holds. */
+	item_count: number,
+};
+
 /**  Canvas size, frame rate, audio rate and color of a sequence (arch §4.2 `format`). */
 export type SequenceFormat = {
 	/**  Canvas width in pixels. */
@@ -4064,6 +4186,78 @@ export type SequenceFormat = {
  *  Serialized as a string, exported to TypeScript as `string`.
  */
 export type SequenceId = string & { readonly __brand: "SequenceId" };
+
+/**
+ *  Lists the sequences with their format, length and track counts; `presets: true` adds the
+ *  aspect presets and frame rates `sequence.create` and `sequence.set_format` offer.
+ */
+export type SequenceList = {
+	/**  Also return the aspect and frame-rate presets. */
+	presets?: boolean | null,
+};
+
+/**  Result of `sequence.list`. */
+export type SequenceListOutput = {
+	/**  The sequences, ordered by ID. */
+	sequences: SequenceBrief[],
+	/**  The aspect presets, when asked for. */
+	presets: PresetInfo[] | null,
+	/**  The offered frame rates (`[num, den]` pairs), when presets are asked for. */
+	frame_rates: FrameRate[] | null,
+};
+
+/**  Renames a sequence. */
+export type SequenceRename = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  New name (1..=200 characters). */
+	name: string,
+};
+
+/**  Result of `sequence.rename`. */
+export type SequenceRenameOutput = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The name now in effect (trimmed). */
+	name: string,
+};
+
+/**
+ *  Changes a sequence's canvas size, frame rate, sample rate or background (absent fields stay).
+ *  A new canvas size reframes every video clip by `reframe` (default `fit`: the whole composition
+ *  shrinks to sit inside the new canvas; `fill` covers it; `keep_scale` keeps pixel sizes;
+ *  `none` leaves transforms). A new frame rate moves every item edge to the nearest frame of
+ *  the new grid without creating overlaps or gaps. Fails with `Locked` if a locked track holds
+ *  items this would change.
+ */
+export type SequenceSetFormat = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Canvas width in pixels, `1..=16384`. */
+	width?: number | null,
+	/**  Canvas height in pixels, `1..=16384`. */
+	height?: number | null,
+	/**  The edit grid. */
+	frame_rate?: FrameRate | null,
+	/**  The mix rate in Hz. */
+	sample_rate?: SampleRate | null,
+	/**  Canvas color, `#rrggbb`. */
+	background?: Color | null,
+	/**  How clips follow a new canvas size (default `fit`). */
+	reframe?: ReframePolicy | null,
+};
+
+/**  Result of `sequence.set_format`. */
+export type SequenceSetFormatOutput = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Its format now. */
+	format: SequenceFormat,
+	/**  Clips whose position or scale changed to follow the new canvas. */
+	reframed: number,
+	/**  Items whose start or length moved to the new frame grid. */
+	retimed: number,
+};
 
 /**  Where the session is in its lifecycle. */
 export type SessionState = 
@@ -5070,6 +5264,11 @@ export type UiState = {
 	preview_quality: PreviewQuality,
 	/**  Master output gain (linear, `0..=4`, 1 = unity). */
 	master_gain: number | null,
+	/**
+	 *  The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then
+	 *  shows the first sequence. Never names a sequence that no longer exists.
+	 */
+	active_sequence: SequenceId | null,
 };
 
 /**
@@ -5162,6 +5361,8 @@ export type ViewPatch = {
 	preview_quality?: PreviewQuality | null,
 	/**  New master gain (linear, `0..=4`). */
 	master_gain?: number | null,
+	/**  The sequence to show; must exist. */
+	active_sequence?: SequenceId | null,
 };
 
 /**  Changes the selection. Every ID that is added must exist in the project. */
@@ -5180,6 +5381,18 @@ export type ViewSelect = {
 export type ViewSet = {
 	/**  The fields to change. */
 	patch: ViewPatch,
+};
+
+/**  Chooses the sequence the editor shows (WP-2B.01). Not undoable; never changes the project. */
+export type ViewSetActiveSequence = {
+	/**  The sequence; it must exist. */
+	sequence: SequenceId,
+};
+
+/**  Result of `view.set_active_sequence`. */
+export type ViewSetActiveSequenceOutput = {
+	/**  The sequence the editor shows now. */
+	sequence: SequenceId,
 };
 
 /**  Moves the playhead. */

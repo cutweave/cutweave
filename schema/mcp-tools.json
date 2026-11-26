@@ -173,6 +173,30 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "sequence.create",
+      "description": "Add a sequence from an aspect preset or a format",
+      "kind": "command",
+      "name": "sequence_create"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "sequence.set_format",
+      "description": "Change a sequence's size, frame rate, sample rate or background",
+      "kind": "command",
+      "name": "sequence_set_format"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": true
