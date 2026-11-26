@@ -9,7 +9,7 @@
 // pressed in the detached Timeline plays (the timecode runs, the detached Preview presents new
 // frames, and drops no more than the playback probe allows), a right-click on a clip there opens
 // the clip's menu in that window (Split at playhead, then Ctrl+Z there), Ctrl+K opens the palette
-// in that window, and axe finds nothing in either detached window. The opt-in real-input steps
+// in that window, a notice raised there shows there, a text field's Paste there works, and axe finds nothing in either detached window. The opt-in real-input steps
 // (a card dragged from the main window onto the detached Timeline; the Timeline's tab dragged
 // back into the main dock) run with `CUTWEAVE_E2E_REAL_INPUT=1`.
 import { createHash } from "node:crypto";
@@ -25,6 +25,7 @@ import {
   clipAt,
   clipBox,
   createProject,
+  drag,
   dropCard,
   editorCaughtUp,
   hasRealEngine,
@@ -46,6 +47,7 @@ import {
   timecode,
   timelineCanvas,
   timelineGeometry,
+  toast,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -273,6 +275,20 @@ test.describe("F47 detached panels", () => {
       const dragged = Math.round((await item(page, id)).visual.opacity * 100);
       await expect(f.opacity).toHaveAttribute("aria-valuetext", `${dragged}%`);
 
+      // The text actions work in the detached window too (#191): Paste from a field's menu there
+      // puts the clipboard in that window's field; Escape gives the old name back.
+      await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), "Pasted in popout");
+      await f.name.click();
+      await popout.keyboard.press("Control+A");
+      await f.name.click({ button: "right" });
+      const fieldMenu = popout.getByRole("menu", { name: "Text actions for Name" });
+      await expect(fieldMenu).toBeVisible();
+      await fieldMenu.getByRole("menuitem", { name: "Paste" }).click();
+      await expect(f.name).toHaveValue("Pasted in popout");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await popout.keyboard.press("Escape");
+      await expect(f.name).not.toHaveValue("Pasted in popout");
+
       // The focus moving between the editor and its detached window is one window's focus to
       // the engine (ADR-0021): its record of the last focus does not change.
       await page.bringToFront();
@@ -463,6 +479,40 @@ test.describe("F47 detached panels", () => {
         await snapshot(timeline, info, "palette in the detached timeline");
         await shortcut(app, "Escape", timelineTitle);
         await expect(palette).toHaveCount(0);
+
+        // 5. A notice raised in the detached Timeline shows in that window, not in the main one
+        //    (#191): drag a clip on a locked track there, and "Clip not moved" appears in it.
+        g = await timelineGeometry(page, timeline);
+        const header = { x: g.box.x + 12, y: laneY(g, "V1") };
+        await timeline.mouse.click(header.x, header.y, { button: "right" });
+        const trackMenu = timeline.getByRole("menu", { name: "Track actions for V1" });
+        await expect(trackMenu).toBeVisible();
+        await trackMenu.getByRole("menuitemcheckbox", { name: /^Lock/ }).click();
+        await expect(timeline.getByRole("menu")).toHaveCount(0);
+        await expect(async () => {
+          await timeline.mouse.click(header.x, header.y, { button: "right" });
+          await expect(trackMenu.getByRole("menuitemcheckbox", { name: /^Unlock/ })).toBeChecked({
+            timeout: 1500,
+          });
+        }).toPass({ timeout: 10_000 });
+        await timeline.keyboard.press("Escape");
+        await expect(timeline.getByRole("menu")).toHaveCount(0);
+        const lockedBox = clipBox(await timelineGeometry(page, timeline), clipId);
+        const layoutBefore = await layout(page);
+        await drag(
+          timeline,
+          { x: lockedBox.x + Math.min(lockedBox.w / 2, 60), y: lockedBox.y },
+          { x: lockedBox.x + Math.min(lockedBox.w / 2, 60) + 2 * g.pxPerSec, y: lockedBox.y },
+        );
+        await expect(toast(timeline, "Clip not moved")).toBeVisible();
+        await expect(toast(page, "Clip not moved")).toHaveCount(0);
+        expect(await layout(page)).toEqual(layoutBefore);
+        await snapshot(timeline, info, "notice in the detached timeline");
+        await toast(timeline, "Clip not moved").getByRole("button", { name: "Dismiss" }).click();
+        await expect(toast(timeline, "Clip not moved")).toHaveCount(0);
+        await timeline.mouse.click(header.x, header.y, { button: "right" });
+        await trackMenu.getByRole("menuitemcheckbox", { name: /^Unlock/ }).click();
+        await expect(timeline.getByRole("menu")).toHaveCount(0);
 
         // axe finds nothing in either detached window.
         expect(await axeViolations(timeline)).toEqual([]);

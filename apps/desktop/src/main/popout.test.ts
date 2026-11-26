@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 import {
+  editTargetId,
   fitPopout,
   isAllowedPopoutNavigation,
   isFilledPopoutTitle,
@@ -138,5 +139,15 @@ describe("the popout window", () => {
       x: -900,
       y: 50,
     });
+  });
+});
+
+describe("editTargetId (Cut, Copy, Paste and Select all)", () => {
+  it("acts on the focused detached window of the editor, else on the editor", () => {
+    expect(editTargetId(1, [5, 6], 6)).toBe(6);
+    expect(editTargetId(1, [5, 6], 1)).toBe(1);
+    expect(editTargetId(1, [5, 6], null)).toBe(1);
+    // A window that is not this editor's popout never gets it.
+    expect(editTargetId(1, [5, 6], 9)).toBe(1);
   });
 });

@@ -8,7 +8,7 @@
 import type { TKey } from "../i18n/index.ts";
 import { desktopFromWindow, type EditAction } from "../session/desktop.ts";
 import { hasTag, isHTMLElement } from "../shell/realm.ts";
-import { activeDocument, isMainWindow } from "../shell/windows.ts";
+import { activeDocument } from "../shell/windows.ts";
 import type { UiCommand } from "./commands.ts";
 import type { OpenRequest } from "./host.tsx";
 import type { MenuContext, MenuSurfaceDef, OpenVia, ScreenPoint } from "./types.ts";
@@ -94,13 +94,13 @@ export function fieldRequest(field: TextField, point: ScreenPoint, via: OpenVia)
 const state = (ctx: MenuContext): FieldState => ctx.target.data as FieldState;
 
 /**
- * Runs the clipboard action on the focused field: main when it can (it acts on the editor
- * window), else the page. A field in a detached panel's window is that window's document's.
+ * Runs the clipboard action on the focused field: main when it can (it acts on the focused
+ * window of the editor, a detached panel's included: Paste needs the host), else the page.
  */
 function runEdit(action: EditAction): void {
   const bridge = desktopFromWindow();
   const doc = activeDocument();
-  if (bridge?.edit !== undefined && isMainWindow(doc.defaultView)) {
+  if (bridge?.edit !== undefined) {
     void bridge.edit.run(action).catch(() => undefined);
     return;
   }

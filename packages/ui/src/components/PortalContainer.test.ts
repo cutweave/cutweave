@@ -114,6 +114,35 @@ describe("PortalContainerProvider", () => {
     expect(other.document.activeElement?.getAttribute("aria-label")).toBe("Search");
   });
 
+  it("keeps Tab inside a dialog that is open in another window", () => {
+    const other = secondWindow();
+    render(
+      h(Dialog, {
+        open: true,
+        onOpenChange: () => {},
+        title: "Command palette",
+        container: other.document.body,
+        children: [
+          h("input", { key: "a", "aria-label": "Search" }),
+          h("button", { key: "b", "aria-label": "Last" }),
+        ],
+      }),
+    );
+    const search = other.document.querySelector<HTMLElement>('[aria-label="Search"]');
+    const last = other.document.querySelector<HTMLElement>('[aria-label="Last"]');
+    expect(other.document.activeElement).toBe(search);
+    // Tab from the last field wraps to the first; Shift+Tab from the first wraps to the last.
+    last?.focus();
+    fireEvent.keyDown(last as HTMLElement, { key: "Tab" });
+    expect(other.document.activeElement).toBe(search);
+    fireEvent.keyDown(search as HTMLElement, { key: "Tab", shiftKey: true });
+    expect(other.document.activeElement).toBe(last);
+    // In between, Tab moves on by one and stays inside.
+    search?.focus();
+    fireEvent.keyDown(search as HTMLElement, { key: "Tab" });
+    expect(other.document.activeElement).toBe(last);
+  });
+
   it("names the window a part of the tree is shown in", () => {
     const other = secondWindow();
     const seen: (Window | null)[] = [];

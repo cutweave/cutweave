@@ -51,6 +51,7 @@ import { type HardeningContext, hardenSession, hardenWebContents } from "./harde
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { applicationMenuTemplate } from "./menu.ts";
 import {
+  editTargetId,
   fitPopout,
   isFilledPopoutTitle,
   livePopoutProblem,
@@ -232,7 +233,17 @@ function liveWindow(): BrowserWindow | null {
 
 /** Edit > Cut, Copy, Paste, Select all: what the native menu's edit roles call. */
 function runEditCommand(action: EditAction): void {
-  const contents = liveWindow()?.webContents;
+  const editor = liveWindow();
+  if (editor === null) return;
+  // The editor window, or the detached panel's window of this editor that has the focus.
+  const popouts = popoutsOf(editor.webContents);
+  const targetId = editTargetId(
+    editor.id,
+    popouts.map((w) => w.id),
+    BrowserWindow.getFocusedWindow()?.id ?? null,
+  );
+  const contents = (targetId === editor.id ? editor : popouts.find((w) => w.id === targetId))
+    ?.webContents;
   if (contents === undefined) return;
   switch (action) {
     case "cut":

@@ -8,6 +8,7 @@ import { MediaHttp, MediaHttpError, mediaPath } from "./mediaHttp.ts";
 import {
   type FilmstripManifest,
   httpMediaLoaders,
+  loadersForWindow,
   parsePeaks,
   tileIndex,
   waveformLod,
@@ -304,6 +305,20 @@ describe("timeline loaders", () => {
       `http://127.0.0.1:4321/media/med_1/thumb?t=${SEC + SEC / 200}&w=160&hash=blake3-fast%3Aabcd`,
     );
     expect(calls[1]?.init?.signal).toBe(controller.signal);
+  });
+
+  it("size a frame for the density of the window the canvas is in", async () => {
+    const { loaders, calls } = loaderSetup((url) =>
+      url.includes("/filmstrip") ? stripResponse() : new Response("jpeg", { status: 200 }),
+    );
+    let density = 3;
+    const detached = loadersForWindow(loaders, () => density);
+    await detached.filmstripTile?.(tile(SEC, SEC / 100), new AbortController().signal);
+    // 71 CSS px at 3x, rounded up to 32: 224 (the main window's 2x would ask for 160).
+    expect(calls[1]?.url).toContain("&w=224&");
+    density = 1;
+    await detached.filmstripTile?.(tile(2 * SEC, SEC / 100), new AbortController().signal);
+    expect(calls[2]?.url).toContain("&w=96&");
   });
 
   it("show the placeholder for missing data until refreshed", async () => {

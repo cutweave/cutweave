@@ -5,6 +5,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import { useMediaLoaders } from "../media/mediaWiring.ts";
+import { loadersForWindow } from "../media/timelineLoaders.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
@@ -28,7 +29,14 @@ const PLACEHOLDER_TRACKS = [
 function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
-  const loaders = useMediaLoaders();
+  const mediaLoaders = useMediaLoaders();
+  // Detached into its own window (or docked back): the canvas observes and draws there.
+  const ownerWindow = useOwnerWindow();
+  // Filmstrip frames are sized for the density of the window the canvas is in (#191).
+  const loaders = useMemo(
+    () => loadersForWindow(mediaLoaders, () => ownerWindow?.devicePixelRatio ?? 1),
+    [mediaLoaders, ownerWindow],
+  );
   const model = useMemo(() => selectTimelineModel(project), [project]);
   const playhead = useViewStore((s) => s.playhead);
   const zoom = useViewStore((s) => s.zoom);
@@ -53,8 +61,6 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
     store.setZoom(v.pxPerSec);
     store.setScroll(v.scrollX, v.scrollY);
   }, []);
-  // Detached into its own window (or docked back): the canvas observes and draws there.
-  const ownerWindow = useOwnerWindow();
   return (
     <>
       {/* `display: contents`: no box of its own, it only marks the canvas for the menu host. */}

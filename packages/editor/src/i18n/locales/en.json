@@ -609,6 +609,11 @@
       "title": "Every panel is closed",
       "body": "Reopen the panels you had, or start again from the default layout.",
       "reopen": "Reopen panels"
+    },
+    "panelCrashed": {
+      "title": "{{name}} stopped working",
+      "body": "The rest of the editor is fine. Reload the panel to try again.",
+      "reload": "Reload panel"
     }
   },
   "windows": {

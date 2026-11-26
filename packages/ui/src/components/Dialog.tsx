@@ -26,6 +26,31 @@ function isMainDocument(doc: Document): boolean {
   return doc === document;
 }
 
+/**
+ * Keeps Tab inside `content` when it is in another window's document: Radix's focus scope reads
+ * the main document's focus, so it cannot wrap the ends there (WP-2H.15). Returns whether it
+ * handled the key.
+ */
+export function trapTab(event: KeyboardEvent<HTMLElement>, content: HTMLElement): boolean {
+  if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return false;
+  const doc = content.ownerDocument;
+  if (isMainDocument(doc)) return false;
+  const stops = [...content.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => !el.hasAttribute("hidden") && el.getAttribute("aria-hidden") !== "true",
+  );
+  event.preventDefault();
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  if (first === undefined || last === undefined) {
+    content.focus();
+    return true;
+  }
+  const at = stops.indexOf(doc.activeElement as HTMLElement);
+  if (event.shiftKey) (at <= 0 ? last : (stops[at - 1] ?? last)).focus();
+  else (at < 0 || at === stops.length - 1 ? first : (stops[at + 1] ?? first)).focus();
+  return true;
+}
+
 export interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -75,6 +100,7 @@ export function Dialog({
     onDismissAttempt?.();
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (trapTab(event, event.currentTarget)) return;
     if (
       event.key !== "Enter" ||
       !onSubmit ||

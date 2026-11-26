@@ -41,6 +41,20 @@ export function isFilledPopoutTitle(title: string): boolean {
   return title.trim() !== "" && title !== POPOUT_PAGE_TITLE;
 }
 
+/**
+ * Which window Cut, Copy, Paste and Select all act on (`edit:run`): the detached panel's window
+ * that has the focus, else the editor window. `focusedId` is the focused window's id (or `null`),
+ * `popoutIds` the ids of the editor's own popouts, so a window that is not the editor's never
+ * gets the action. The IPC carries no target: main reads the focus itself.
+ */
+export function editTargetId(
+  editorId: number,
+  popoutIds: readonly number[],
+  focusedId: number | null,
+): number {
+  return focusedId !== null && popoutIds.includes(focusedId) ? focusedId : editorId;
+}
+
 export interface PopoutRequest {
   readonly url: string;
   readonly frameName: string;

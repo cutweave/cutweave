@@ -79,6 +79,27 @@ export interface HttpLoaderOptions {
   readonly pixelRatio?: () => number;
 }
 
+/** A filmstrip load that can be told the pixel density of the window it is drawn in. */
+type DensityFilmstrip = (
+  req: FilmstripRequest,
+  signal: AbortSignal,
+  pixelRatio?: number,
+) => Promise<ImageBitmap | null>;
+
+/**
+ * `loaders` for a canvas in one window: filmstrip frames are sized for that window's pixel density
+ * (`ratio()`, read at each load), not the main window's (a detached Timeline on another display).
+ * Loaders that do not size by density come back as they are.
+ */
+export function loadersForWindow(loaders: MediaLoaders, ratio: () => number): MediaLoaders {
+  const tile = loaders.filmstripTile as DensityFilmstrip | undefined;
+  if (tile === undefined) return loaders;
+  return {
+    ...loaders,
+    filmstripTile: (req, signal) => tile.call(loaders, req, signal, ratio() || 1),
+  };
+}
+
 export interface HttpMediaLoaders extends MediaLoaders {
   /** Forgets the "not there yet" answers (an analysis finished); keeps what loaded. */
   refresh(): void;
@@ -206,6 +227,7 @@ export function httpMediaLoaders(options: HttpLoaderOptions): HttpMediaLoaders {
   async function filmstripTile(
     req: FilmstripRequest,
     signal: AbortSignal,
+    density?: number,
   ): Promise<ImageBitmap | null> {
     const media = options.media(req.mediaId as MediaId);
     if (media === null || media.hash === null || media.makingFilmstrip === true) return null;
@@ -216,7 +238,10 @@ export function httpMediaLoaders(options: HttpLoaderOptions): HttpMediaLoaders {
     const center = req.sourceTime + req.tileDuration / 2;
     if (req.tileDuration * 2 < manifest.interval) {
       // Zoomed in past the strip: this tile's own frame.
-      const w = Math.min(640, Math.max(32, Math.ceil((req.width * pixelRatio()) / 32) * 32));
+      const w = Math.min(
+        640,
+        Math.max(32, Math.ceil((req.width * (density ?? pixelRatio())) / 32) * 32),
+      );
       const path = mediaPath(req.mediaId, "thumb", { t: Math.floor(center), w, hash: media.hash });
       try {
         const response = await options.http.get(path, signal);

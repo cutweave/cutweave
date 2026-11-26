@@ -4,6 +4,7 @@
 import type { ToastTone } from "@cutweave/ui";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
+import { activeWindow, isMainWindow } from "../shell/windows.ts";
 
 export interface Notice {
   readonly id: number;
@@ -16,6 +17,11 @@ export interface Notice {
   readonly actions?: readonly { readonly label: string; readonly onClick: () => void }[];
   /** Milliseconds before it goes away, instead of the tone's default. */
   readonly duration?: number;
+  /**
+   * The detached panel's window it was raised from; it shows there (#191). Absent for the main
+   * window. Taken from the window the person last worked in when pushed.
+   */
+  readonly window?: Window;
 }
 
 /** Older notices are dropped beyond this many, so repeated refusals cannot pile up. */
@@ -37,11 +43,13 @@ export function createToastStore() {
     notices: [],
     push(notice) {
       const id = next++;
+      const raisedIn = notice.window ?? activeWindow();
+      const stamped = isMainWindow(raisedIn) ? notice : { ...notice, window: raisedIn };
       set((s) => {
         const others = s.notices.filter(
           (n) => n.tone !== notice.tone || n.title !== notice.title || n.message !== notice.message,
         );
-        return { notices: [...others, { ...notice, id }].slice(-MAX_NOTICES) };
+        return { notices: [...others, { ...stamped, id }].slice(-MAX_NOTICES) };
       });
       return id;
     },
