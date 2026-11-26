@@ -23,8 +23,8 @@ use std::cmp::Ordering;
 use cutweave_commands::{CmdError, Command, EngineCommand, Tx, command, wire};
 use cutweave_jobs::JobId;
 use cutweave_model::{
-    Duration, EntityKind, ItemId, MediaId, MediaKind, Project, SequenceId, Time, TimeInput,
-    TrackId, TrackKind,
+    Duration, EntityKind, ItemId, MediaId, MediaKind, Project, Sequence, SequenceId, Time,
+    TimeInput, Track, TrackId, TrackKind,
 };
 
 use super::{
@@ -171,68 +171,74 @@ impl SlideshowSteps for Tx<'_> {
     }
 }
 
+/// The sequence `id`, or the project's only one.
+fn sequence_of(doc: &Project, id: Option<SequenceId>) -> Result<&Sequence, CmdError> {
+    if let Some(id) = id {
+        return doc
+            .sequences
+            .get(&id)
+            .ok_or_else(|| CmdError::not_found(EntityKind::Sequence, id));
+    }
+    let mut all = doc.sequences.values();
+    match (all.next(), all.next()) {
+        (Some(sequence), None) => Ok(sequence),
+        (None, _) => Err(CmdError::invalid(
+            "/sequence",
+            "the project has no sequence",
+        )),
+        (Some(_), Some(_)) => Err(CmdError::invalid(
+            "/sequence",
+            format!(
+                "the project has {} sequences; name one",
+                doc.sequences.len()
+            ),
+        )),
+    }
+}
+
+/// The track `id` of `sequence`, or the one pictures go to when none is named: the main
+/// (magnetic) video track, else the first unlocked video track.
+fn track_of<'a>(
+    doc: &Project,
+    sequence: &'a Sequence,
+    id: Option<TrackId>,
+) -> Result<&'a Track, CmdError> {
+    let Some(id) = id else {
+        let usable = |magnetic: bool| {
+            sequence
+                .tracks_in_order()
+                .find(|t| t.kind == TrackKind::Video && !t.locked && t.magnetic == magnetic)
+        };
+        return usable(true).or_else(|| usable(false)).ok_or_else(|| {
+            CmdError::invalid(
+                "/track",
+                "the sequence has no unlocked video track for the pictures; add or unlock one",
+            )
+        });
+    };
+    if let Some(track) = sequence.track(&id) {
+        return Ok(track);
+    }
+    if doc.sequences.values().any(|s| s.track(&id).is_some()) {
+        return Err(CmdError::invalid(
+            "/track",
+            format!("track `{id}` is not in sequence `{}`", sequence.id),
+        ));
+    }
+    Err(CmdError::not_found(EntityKind::Track, id))
+}
+
 /// The sequence, the track and the start of a slideshow in `doc`.
 fn resolve(
     doc: &Project,
     batch: &SlideshowBatch,
 ) -> Result<(SequenceId, TrackId, TimeInput), CmdError> {
-    let (sequence_id, sequence) = match batch.sequence {
-        Some(id) => doc
-            .sequences
-            .get(&id)
-            .map(|s| (id, s))
-            .ok_or_else(|| CmdError::not_found(EntityKind::Sequence, id))?,
-        None => {
-            let mut all = doc.sequences.iter();
-            match (all.next(), all.next()) {
-                (Some((id, s)), None) => (*id, s),
-                (None, _) => {
-                    return Err(CmdError::invalid(
-                        "/sequence",
-                        "the project has no sequence",
-                    ));
-                }
-                (Some(_), Some(_)) => {
-                    return Err(CmdError::invalid(
-                        "/sequence",
-                        format!(
-                            "the project has {} sequences; name one",
-                            doc.sequences.len()
-                        ),
-                    ));
-                }
-            }
-        }
-    };
-    let track = match batch.track {
-        Some(id) => match sequence.track(&id) {
-            Some(track) => track,
-            None if doc.sequences.values().any(|s| s.track(&id).is_some()) => {
-                return Err(CmdError::invalid(
-                    "/track",
-                    format!("track `{id}` is not in sequence `{sequence_id}`"),
-                ));
-            }
-            None => return Err(CmdError::not_found(EntityKind::Track, id)),
-        },
-        None => {
-            let usable = |magnetic: bool| {
-                sequence
-                    .tracks_in_order()
-                    .find(|t| t.kind == TrackKind::Video && !t.locked && t.magnetic == magnetic)
-            };
-            usable(true).or_else(|| usable(false)).ok_or_else(|| {
-                CmdError::invalid(
-                    "/track",
-                    "the sequence has no unlocked video track for the pictures; add or unlock one",
-                )
-            })?
-        }
-    };
+    let sequence = sequence_of(doc, batch.sequence)?;
+    let track = track_of(doc, sequence, batch.track)?;
     let at = batch
         .at
         .unwrap_or_else(|| TimeInput::from(track.items.end()));
-    Ok((sequence_id, track.id, at))
+    Ok((sequence.id, track.id, at))
 }
 
 /// Registers the pictures of `batch` and inserts them one after the other. For

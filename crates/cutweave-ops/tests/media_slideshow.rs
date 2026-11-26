@@ -265,7 +265,7 @@ fn the_pictures_go_after_what_is_on_the_track_or_where_asked() {
     let out = slideshow(&h, json!({"files": ["/p/copy.png"], "per_image": "1s"})).unwrap();
     assert_eq!(out["track"], json!(p.video));
     assert_eq!(out["at"], json!(secs(16)));
-    assert!(clips(&h.doc(), &p, top).is_empty());
+    assert_eq!(clips(&h.doc(), &p, top), []);
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn a_refused_placement_leaves_no_asset_behind() {
     );
     assert_eq!(h.commits(), commits);
     assert_eq!(h.doc().media.len(), media, "the first picture was not kept");
-    assert!(clips(&h.doc(), &p, track).len() == 1);
+    assert_eq!(clips(&h.doc(), &p, track).len(), 1);
 }
 
 #[test]
@@ -382,7 +382,7 @@ fn a_frame_becomes_a_picture_in_the_bin_named_after_its_source_and_time() {
     );
     assert_eq!(out["name"], "Sequence 1 00:00:02:12");
     assert_eq!(asset.name.as_deref(), Some("Sequence 1 00:00:02:12"));
-    assert!(frames.discarded().is_empty());
+    assert_eq!(frames.discarded(), Vec::<String>::new());
 }
 
 #[test]

@@ -15,6 +15,7 @@
 //! - **An untitled document** has no project folder: the call is `Invalid` and asks the person
 //!   to save the project first.
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError};
 
@@ -52,7 +53,8 @@ pub(crate) struct EngineFrames {
 
 /// What one call renders.
 struct Target<'a> {
-    doc: &'a Project,
+    /// The document itself, or the transient timeline of a source.
+    doc: Cow<'a, Project>,
     sequence: SequenceId,
     name: String,
     /// The length of a source (a frame must be inside it); `None` for the sequence.
@@ -79,6 +81,27 @@ impl EngineFrames {
             "no free name was found for the picture in the project's generated/frames folder",
         ))
     }
+
+    /// Writes `png` into the frames folder of the project at `root`, named after a new media
+    /// id.
+    fn store(&self, root: &Path, png: &[u8]) -> Result<(MediaId, PathBuf), CmdError> {
+        let dir = FRAMES_DIR
+            .iter()
+            .fold(root.to_path_buf(), |dir, part| dir.join(part));
+        let io = |what: &str, e: &std::io::Error| {
+            CmdError::internal(format!("{what} `{}`: {e}", dir.display()))
+        };
+        std::fs::create_dir_all(&dir).map_err(|e| io("cannot create", &e))?;
+        let (media_id, path) = self.fresh(&dir)?;
+        // Written under another name first, so a picture is never seen half written.
+        let partial = path.with_extension("png.part");
+        std::fs::write(&partial, png).map_err(|e| io("cannot write the picture into", &e))?;
+        if let Err(e) = std::fs::rename(&partial, &path) {
+            let _ = std::fs::remove_file(&partial);
+            return Err(io("cannot write the picture into", &e));
+        }
+        Ok((media_id, path))
+    }
 }
 
 /// `Invalid` at `/source/media` for what [`source_info`] refuses at `/media`.
@@ -91,6 +114,48 @@ fn source_pointer(error: CmdError) -> CmdError {
     }
 }
 
+/// What `source` stands for in `doc`: the sequence the editor shows, or a video asset's own
+/// timeline.
+fn target(doc: &Project, source: FrameOf) -> Result<Target<'_>, CmdError> {
+    match source {
+        FrameOf::Sequence => {
+            let sequence = active_sequence(doc)
+                .and_then(|id| doc.sequences.get(&id))
+                .ok_or_else(|| {
+                    CmdError::invalid("/source", "the project has no sequence to take a frame of")
+                })?;
+            Ok(Target {
+                doc: Cow::Borrowed(doc),
+                sequence: sequence.id,
+                name: sequence.name.clone(),
+                length: None,
+            })
+        }
+        FrameOf::Media(media) => {
+            let info = source_info(doc, media).map_err(source_pointer)?;
+            let asset = doc
+                .media
+                .get(&media)
+                .filter(|asset| asset.kind == MediaKind::Video)
+                .ok_or_else(|| {
+                    CmdError::invalid(
+                        "/source/media",
+                        format!("media {media} has no picture: only a video has frames to take"),
+                    )
+                })?;
+            let timeline = source_timeline(doc, media).ok_or_else(|| {
+                CmdError::internal("the source has no timeline to render a frame of")
+            })?;
+            Ok(Target {
+                doc: Cow::Owned(timeline),
+                sequence: SOURCE_SEQUENCE,
+                name: asset_name(asset).into_owned(),
+                length: Some(info.duration),
+            })
+        }
+    }
+}
+
 impl FrameGrabber for EngineFrames {
     fn grab(&self, source: FrameOf, at: TimeInput) -> Result<GrabbedFrame, CmdError> {
         let Some(root) = &self.project_root else {
@@ -100,50 +165,7 @@ impl FrameGrabber for EngineFrames {
                  save the project first (project.save_as), then add the frame",
             ));
         };
-        let doc = &self.snapshot.doc;
-        let source_doc;
-        let target = match source {
-            FrameOf::Sequence => {
-                let sequence = active_sequence(doc)
-                    .and_then(|id| doc.sequences.get(&id))
-                    .ok_or_else(|| {
-                        CmdError::invalid(
-                            "/source",
-                            "the project has no sequence to take a frame of",
-                        )
-                    })?;
-                Target {
-                    doc,
-                    sequence: sequence.id,
-                    name: sequence.name.clone(),
-                    length: None,
-                }
-            }
-            FrameOf::Media(media) => {
-                let info = source_info(doc, media).map_err(source_pointer)?;
-                let asset = doc
-                    .media
-                    .get(&media)
-                    .filter(|asset| asset.kind == MediaKind::Video)
-                    .ok_or_else(|| {
-                        CmdError::invalid(
-                            "/source/media",
-                            format!(
-                                "media {media} has no picture: only a video has frames to take"
-                            ),
-                        )
-                    })?;
-                source_doc = source_timeline(doc, media).ok_or_else(|| {
-                    CmdError::internal("the source has no timeline to render a frame of")
-                })?;
-                Target {
-                    doc: &source_doc,
-                    sequence: SOURCE_SEQUENCE,
-                    name: asset_name(asset).into_owned(),
-                    length: Some(info.duration),
-                }
-            }
-        };
+        let target = target(&self.snapshot.doc, source)?;
         let rate = target
             .doc
             .sequences
@@ -172,27 +194,12 @@ impl FrameGrabber for EngineFrames {
         };
         let image = {
             let mut renderer = backend.lock().unwrap_or_else(PoisonError::into_inner);
-            render_full_frame(&mut *renderer, target.doc, target.sequence, time)?
+            render_full_frame(&mut *renderer, &target.doc, target.sequence, time)?
         };
         let mut png = Vec::new();
         encode_png(&image, &mut png)
             .map_err(|e| CmdError::internal(format!("the frame cannot be encoded: {e}")))?;
-
-        let dir = FRAMES_DIR
-            .iter()
-            .fold(root.clone(), |dir, part| dir.join(part));
-        let io = |what: &str, e: &std::io::Error| {
-            CmdError::internal(format!("{what} `{}`: {e}", dir.display()))
-        };
-        std::fs::create_dir_all(&dir).map_err(|e| io("cannot create", &e))?;
-        let (media_id, path) = self.fresh(&dir)?;
-        // Written under another name first, so a picture is never seen half written.
-        let partial = path.with_extension("png.part");
-        std::fs::write(&partial, &png).map_err(|e| io("cannot write the picture into", &e))?;
-        if let Err(e) = std::fs::rename(&partial, &path) {
-            let _ = std::fs::remove_file(&partial);
-            return Err(io("cannot write the picture into", &e));
-        }
+        let (media_id, path) = self.store(root, &png)?;
         Ok(GrabbedFrame {
             media_id,
             path: path.to_string_lossy().into_owned(),
