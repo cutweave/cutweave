@@ -137,6 +137,7 @@ fn floor_len(rate: FrameRate, start: i64, len: i64) -> i64 {
         .saturating_sub(start)
 }
 
+#[allow(clippy::too_many_lines)] // checks, source start, length, then the edit, in order
 fn plan_replace(
     cmd: &ClipReplace,
     doc: &Project,
