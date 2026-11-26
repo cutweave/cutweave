@@ -19,8 +19,8 @@ import {
   type TextField as TextFieldDef,
   type TimeField,
 } from "../inspector/fields.ts";
-import { PROXY_STATES } from "../inspector/labels.ts";
 import { LayoutSection } from "../inspector/LayoutSection.tsx";
+import { PROXY_STATES } from "../inspector/labels.ts";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { Section } from "../inspector/Section.tsx";
 import { TrackSection } from "../inspector/TrackSection.tsx";

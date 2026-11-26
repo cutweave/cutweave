@@ -8,8 +8,8 @@ import type { FolderId, MediaId, PreviewQuality, SelectionRef } from "@cutweave/
 import { engineStore } from "../../engine/engineStore.ts";
 import { exportController } from "../../export/useExport.ts";
 import { i18n } from "../../i18n/index.ts";
-import { applyLayout, placeAssets, swapLayout } from "../../layout/actions.ts";
 import { sectionsStore } from "../../inspector/sections.ts";
+import { applyLayout, placeAssets, swapLayout } from "../../layout/actions.ts";
 import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
 import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";

@@ -15,19 +15,19 @@ export {
 } from "./InspectorSection.tsx";
 export { JobList, JobProgress, type JobProgressProps, type JobState } from "./JobProgress.tsx";
 export {
-  type LayoutCell,
-  LayoutDiagram,
-  type LayoutOption,
-  LayoutPicker,
-  type LayoutPickerProps,
-} from "./LayoutPicker.tsx";
-export {
   KeyframeGroup,
   type KeyframeGroupProps,
   type KeyframeState,
   KeyframeToggle,
   type KeyframeToggleProps,
 } from "./KeyframeToggle.tsx";
+export {
+  type LayoutCell,
+  LayoutDiagram,
+  type LayoutOption,
+  LayoutPicker,
+  type LayoutPickerProps,
+} from "./LayoutPicker.tsx";
 export {
   type BreadcrumbSegment,
   MediaBreadcrumb,

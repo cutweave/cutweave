@@ -45,7 +45,6 @@ export function LayoutDiagram({ cells }: { readonly cells: readonly LayoutCell[]
       />
       {cells.map((c, i) => (
         <rect
-          // biome-ignore lint/suspicious/noArrayIndexKey: the cells are a fixed, ordered list
           key={i}
           className={cx("cw-layoutpicker__cell", i === 0 && "cw-layoutpicker__cell--first")}
           x={c.x * W + GAP}

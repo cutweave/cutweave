@@ -7,6 +7,9 @@
 // to these tables. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
 import type { MediaId } from "@cutweave/protocol";
 import { snapToFrame } from "@cutweave/timeline";
+import { placeable } from "../../layout/actions.ts";
+import { LAYOUT_NAMES } from "../../layout/names.ts";
+import { LAYOUTS } from "../../layout/table.ts";
 import { binStore, SORT_CHOICES } from "../../media/binStore.ts";
 import { selectMediaCards, selectMediaUsage } from "../../media/cards.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
@@ -18,9 +21,6 @@ import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.t
 import type { ContextValues } from "../when.ts";
 import { activeSequence, mediaAsset, mediaPath, sequenceEnd } from "./facts.ts";
 import { revealLabel } from "./shared.ts";
-import { placeable } from "../../layout/actions.ts";
-import { LAYOUT_NAMES } from "../../layout/names.ts";
-import { LAYOUTS } from "../../layout/table.ts";
 
 type Placement = "playhead" | "end";
 

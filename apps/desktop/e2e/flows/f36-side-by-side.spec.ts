@@ -96,7 +96,8 @@ test.describe("F36 side by side", () => {
       const interview = clipAt(g, "V1", 0).id;
       const city = clipAt(g, "V2", 0).id;
       // The first video fills the left half, the second the right half.
-      await expect.poll(async () => (await placed(page, interview)).visual.transform.position.x)
+      await expect
+        .poll(async () => (await placed(page, interview)).visual.transform.position.x)
         .toBeCloseTo(-0.25, 3);
       expect((await placed(page, city)).visual.transform.position.x).toBeCloseTo(0.25, 3);
       for (const id of [interview, city]) {
@@ -132,18 +133,14 @@ test.describe("F36 side by side", () => {
         .toBeCloseTo(-0.25, 3);
       await shortcut(app, "Control+Z");
       await expect
-        .poll(async () =>
-          (await sequence(page)).tracks.reduce((n, t) => n + t.items.length, 0),
-        )
+        .poll(async () => (await sequence(page)).tracks.reduce((n, t) => n + t.items.length, 0))
         .toBe(0);
       await editorCaughtUp(page);
 
       // 4. Redo brings both back; select both on the timeline and pick Picture in picture.
       await shortcut(app, "Control+Y");
       await expect
-        .poll(async () =>
-          (await sequence(page)).tracks.reduce((n, t) => n + t.items.length, 0),
-        )
+        .poll(async () => (await sequence(page)).tracks.reduce((n, t) => n + t.items.length, 0))
         .toBe(2);
       await editorCaughtUp(page);
       const again = await timelineGeometry(page);
@@ -158,7 +155,8 @@ test.describe("F36 side by side", () => {
       await expect(pickers).toBeVisible();
       await pickers.getByRole("button", { name: "Picture in picture, top right" }).click();
       // The clip on the top track sits small in the top right corner, the other fills the frame.
-      await expect.poll(async () => (await placed(page, first)).visual.transform.scale.x)
+      await expect
+        .poll(async () => (await placed(page, first)).visual.transform.scale.x)
         .toBeCloseTo(0.3, 3);
       const small = await placed(page, first);
       expect(small.visual.transform.position.x).toBeCloseTo(0.3, 3);

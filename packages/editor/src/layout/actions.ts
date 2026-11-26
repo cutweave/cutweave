@@ -178,11 +178,9 @@ export async function placeAssets(
     for (const id of media) {
       const args = insertArgsFor(id, "playhead");
       if (args === undefined) throw new Error(i18n.t("contextMenu.reason.noTrack"));
-      const out = await rpc.call(
-        "timeline.insert",
-        { ...args, media: id as MediaId } as never,
-        { tx },
-      );
+      const out = await rpc.call("timeline.insert", { ...args, media: id as MediaId } as never, {
+        tx,
+      });
       const clip = out.clips[0];
       if (clip === undefined) throw new Error(i18n.t("layout.failed"));
       clips.push(clip);

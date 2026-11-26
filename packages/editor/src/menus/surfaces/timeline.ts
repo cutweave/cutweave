@@ -10,6 +10,9 @@
 // TODO(WP-2C.05): the keyframe menu. The edge menu (WP-2A.04) trims, ripple trims and rolls the
 // edge to the playhead, and extends it to the next clip.
 import { formatTimecode } from "@cutweave/timeline";
+import { canSwap, visualClipIds } from "../../layout/actions.ts";
+import { LAYOUT_NAMES } from "../../layout/names.ts";
+import { LAYOUTS } from "../../layout/table.ts";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
 import type { ContextValues } from "../when.ts";
@@ -23,9 +26,6 @@ import {
   trackFact,
 } from "./facts.ts";
 import { sequenceRate } from "./shared.ts";
-import { canSwap, visualClipIds } from "../../layout/actions.ts";
-import { LAYOUT_NAMES } from "../../layout/names.ts";
-import { LAYOUTS } from "../../layout/table.ts";
 
 const LOCKED = "contextMenu.reason.trackLocked" as const;
 
