@@ -1030,7 +1030,7 @@ body {
 .cw-export__path {
   flex: 1 1 auto;
   min-width: 0;
-  width: calc(var(--space-12) * 4);
+  width: calc(var(--space-12) * 7);
 }
 .cw-export__num {
   width: calc(var(--space-12) * 2);
