@@ -1536,9 +1536,7 @@
       "nothingToRedo": "Nothing to redo",
       "onlyOneToast": "No other notices",
       "layoutAssets": "Select 2 to 4 videos or images",
-      "layoutSwap": "Apply a layout to the two clips first",
-      "inOwnWindow": "The panel is already in its own window",
-      "inMainWindow": "The panel is in the main window"
+      "layoutSwap": "Apply a layout to the two clips first"
     },
     "command": {
       "clipSplit": "Split at playhead",

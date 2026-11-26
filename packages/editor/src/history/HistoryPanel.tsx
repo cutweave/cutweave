@@ -4,7 +4,14 @@
 // Click a row to go back (or forward) to the state right after it. Agent rows are agent blue
 // (design/README.md). The list is windowed: only the rows in view are in the page.
 
-import { Icon, IconButton, type IconName, SegmentedControl, Tooltip } from "@cutweave/ui";
+import {
+  Icon,
+  IconButton,
+  type IconName,
+  SegmentedControl,
+  Tooltip,
+  useOwnerWindow,
+} from "@cutweave/ui";
 import {
   type KeyboardEvent,
   useCallback,
@@ -21,6 +28,7 @@ import { useContextMenu } from "../menus/host.tsx";
 import { EmptyState } from "../panels/EmptyState.tsx";
 import { preferences, usePref } from "../prefs/prefsStore.ts";
 import { actorDisplayName, historyLabel } from "../session/historyLabels.ts";
+import { observeSize } from "../shell/windows.ts";
 import { type Translate, translator } from "../timeline/errors.ts";
 import { goToStep, HistoryFeed } from "./historyFeed.ts";
 import {
@@ -187,13 +195,13 @@ export function HistoryPanel() {
     });
   }, []);
   useLayoutEffect(measure);
+  // Observed from the panel's own window (a detached History's), again when it moves.
+  const ownerWindow = useOwnerWindow();
   useEffect(() => {
     const el = listRef.current;
-    if (el === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [measure]);
+    if (el === null || ownerWindow === null) return;
+    return observeSize(el, measure);
+  }, [measure, ownerWindow]);
 
   const windowed = view.rowHeight > 0 && view.height > 0;
   const first = windowed ? Math.max(0, Math.floor(view.top / view.rowHeight) - OVERSCAN) : 0;

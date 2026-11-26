@@ -11,6 +11,7 @@ import { dragStore } from "../media/dragStore.ts";
 import { requestForCanvasEvent } from "../menus/canvas.ts";
 import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
 import { registerTimelineCanvas } from "../menus/timelineSurface.ts";
+import { forEveryWindow, framesOf } from "../shell/windows.ts";
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
@@ -76,6 +77,8 @@ export function useTimelineIntents(): TimelineIntents {
   const { t } = useTranslation();
   const translate = useRef<Translate>(translator(t));
   translate.current = translator(t);
+  /** The canvas's surface element: its window is where the gesture's frames come from. */
+  const surface = useRef<HTMLElement | null>(null);
 
   const controller = useMemo(
     () =>
@@ -87,6 +90,8 @@ export function useTimelineIntents(): TimelineIntents {
         t: (key, vars) => translate.current(key, vars),
         // Ruler scrubbing goes to the engine as latest-wins `view.seek` (WP-1M.04).
         seek: (at) => void transportController().seek(at),
+        // A detached Timeline's drags pace on its own window's frames (WP-2H.15).
+        frames: framesOf(() => surface.current),
       }),
     [],
   );
@@ -94,12 +99,16 @@ export function useTimelineIntents(): TimelineIntents {
   // Commands outside the panel (the palette's Split at playhead) reach it through this.
   useEffect(() => setActiveTimelineController(controller), [controller]);
 
-  // Losing the window mid-drag cancels the gesture (the pointer-up may never arrive).
+  // Losing the window mid-drag cancels the gesture (the pointer-up may never arrive): any editor
+  // window, since the Timeline may be in a detached one.
   useEffect(() => {
     const blur = (): void => controller.cancel();
-    window.addEventListener("blur", blur);
+    const off = forEveryWindow((win) => {
+      win.addEventListener("blur", blur);
+      return () => win.removeEventListener("blur", blur);
+    });
     return () => {
-      window.removeEventListener("blur", blur);
+      off();
       controller.dispose();
     };
   }, [controller]);
@@ -142,7 +151,12 @@ export function useTimelineIntents(): TimelineIntents {
 
   const canvasSurface = useCallback((el: HTMLElement | null) => {
     if (el === null) return undefined;
-    return registerTimelineCanvas(el, () => view.current);
+    surface.current = el;
+    const off = registerTimelineCanvas(el, () => view.current);
+    return () => {
+      off();
+      if (surface.current === el) surface.current = null;
+    };
   }, []);
 
   const keyTarget = useCallback(

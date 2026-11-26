@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // @vitest-environment jsdom
 // The editor's window registry (WP-2H.14): the main window and each detached panel's window.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { sessionStore } from "../session/sessionStore.ts";
 import { docStore } from "../state/docStore.ts";
+import { GestureSession } from "../timeline/gesture.ts";
 import {
+  activeDocument,
+  activeWindow,
   addPopoutWindow,
+  documentOf,
+  forEveryWindow,
+  framesOf,
   isKeptOnTop,
+  isMainWindow,
   MIRRORED_ATTRIBUTES,
   onDidAddWindow,
   onDidRemoveWindow,
@@ -17,6 +24,7 @@ import {
   setKeptOnTop,
   setPopoutPanels,
   windowEntry,
+  windowOf,
 } from "./windows.ts";
 
 /** A second window: an iframe's, named the way dockview names a popout. */
@@ -110,5 +118,100 @@ describe("the window registry", () => {
     setKeptOnTop(popout, true);
     expect(isKeptOnTop(popout)).toBe(true);
     expect(isKeptOnTop(window)).toBe(false);
+  });
+});
+
+// WP-2H.15: every panel works in its own window.
+describe("the per-window helpers", () => {
+  it("give a node its own window and document, and the main ones for none", () => {
+    const popout = secondWindow();
+    const moved = popout.document.createElement("canvas");
+    popout.document.body.append(moved);
+    expect(windowOf(moved)).toBe(popout);
+    expect(documentOf(moved)).toBe(popout.document);
+    expect(windowOf(popout.document)).toBe(popout);
+    expect(documentOf(popout.document)).toBe(popout.document);
+    // A node made in the main window and moved into the other one (what the dock does) follows.
+    const adopted = document.createElement("div");
+    popout.document.body.append(adopted);
+    expect(windowOf(adopted)).toBe(popout);
+    expect(windowOf(document.body)).toBe(window);
+    expect(windowOf(null)).toBe(window);
+    expect(documentOf(undefined)).toBe(document);
+    expect(isMainWindow(window)).toBe(true);
+    expect(isMainWindow(popout)).toBe(false);
+  });
+
+  it("know the window the person works in: the one that last had their keys or pointer", () => {
+    const popout = secondWindow();
+    expect(activeWindow()).toBe(window);
+    addPopoutWindow(popout, ["panel.timeline"]);
+    popout.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    expect(activeWindow()).toBe(popout);
+    expect(activeDocument()).toBe(popout.document);
+    window.dispatchEvent(new PointerEvent("pointerdown"));
+    expect(activeWindow()).toBe(window);
+    popout.dispatchEvent(new FocusEvent("focus"));
+    expect(activeWindow()).toBe(popout);
+    // A window that closed is not where the person is.
+    removePopoutWindow(popout);
+    expect(activeWindow()).toBe(window);
+  });
+
+  it("install on every window, as windows open, and undo it as they close", () => {
+    const first = secondWindow("1-1");
+    addPopoutWindow(first);
+    const installed: Window[] = [];
+    const removed: Window[] = [];
+    const stop = forEveryWindow((win) => {
+      installed.push(win);
+      return () => removed.push(win);
+    });
+    expect(installed).toEqual([window, first]);
+    const second = secondWindow("1-2");
+    addPopoutWindow(second);
+    expect(installed).toEqual([window, first, second]);
+    removePopoutWindow(first);
+    expect(removed).toEqual([first]);
+    stop();
+    expect(removed).toEqual([first, window, second]);
+    // Stopped: a window opening later gets nothing.
+    addPopoutWindow(secondWindow("1-3"));
+    expect(installed).toHaveLength(3);
+  });
+
+  it("take a node's frames from its own window, and cancel them there", () => {
+    const popout = secondWindow();
+    const node = popout.document.createElement("div");
+    popout.document.body.append(node);
+    const asked = vi.spyOn(popout, "requestAnimationFrame");
+    const cancelled = vi.spyOn(popout, "cancelAnimationFrame");
+    const mainAsked = vi.spyOn(window, "requestAnimationFrame");
+    const frames = framesOf(() => node);
+    const handle = frames.request(() => {});
+    frames.cancel(handle);
+    expect(asked).toHaveBeenCalledTimes(1);
+    expect(cancelled).toHaveBeenCalledTimes(1);
+    expect(mainAsked).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("pace a drag in a detached window on that window's frames (the gesture scheduler)", async () => {
+    const popout = secondWindow();
+    addPopoutWindow(popout, ["panel.inspector"]);
+    // The person works in the detached window: the drag's updates wait for its frames.
+    popout.dispatchEvent(new PointerEvent("pointerdown"));
+    const asked = vi.spyOn(popout, "requestAnimationFrame");
+    const mainAsked = vi.spyOn(window, "requestAnimationFrame");
+    const call = vi.fn(async (name: string) => (name === "edit.begin_tx" ? { tx: "tx_1" } : {}));
+    const session = new GestureSession({
+      rpc: { call } as unknown as ConstructorParameters<typeof GestureSession>[0]["rpc"],
+      label: "Opacity",
+    });
+    session.update({ name: "item.set_props", input: { items: ["itm_1"], props: {} } as never });
+    await vi.waitFor(() => expect(asked).toHaveBeenCalled());
+    expect(mainAsked).not.toHaveBeenCalled();
+    await session.finish(false);
+    vi.restoreAllMocks();
   });
 });

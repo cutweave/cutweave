@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import type { HTMLAttributes, ReactElement, Ref } from "react";
+import { usePortalContainer } from "./PortalContainer.ts";
 
 export interface TooltipProps
   extends Omit<HTMLAttributes<HTMLElement>, "children" | "title" | "color"> {
@@ -35,13 +36,15 @@ export function Tooltip({
   delayDuration = 500,
   ...triggerProps
 }: TooltipProps) {
+  // In a detached panel's window the tooltip shows there (`PortalContainerProvider`).
+  const container = usePortalContainer();
   return (
     <RadixTooltip.Provider delayDuration={delayDuration}>
       <RadixTooltip.Root>
         <RadixTooltip.Trigger asChild {...triggerProps}>
           {children}
         </RadixTooltip.Trigger>
-        <RadixTooltip.Portal>
+        <RadixTooltip.Portal container={container ?? undefined}>
           <RadixTooltip.Content side={side} className="cw-tooltip label">
             {label}
             {keys?.map((key) => (

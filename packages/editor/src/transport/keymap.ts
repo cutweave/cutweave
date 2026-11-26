@@ -12,6 +12,7 @@
 import { useEffect } from "react";
 import { comboText, matchEvent, strokesOf } from "../keymap/store.ts";
 import type { KeyCombo } from "../keymap/stroke.ts";
+import { forEveryWindow } from "../shell/windows.ts";
 
 export type ActionId =
   | "transport:togglePlay"
@@ -203,14 +204,19 @@ export class Keymap {
 /** The app's keymap. */
 export const keymap = new Keymap();
 
-/** Mount once (the shell): window key presses go through {@link keymap}. */
+/**
+ * Mount once (the shell): key presses in every editor window (a detached panel's too) go through
+ * {@link keymap}.
+ */
 export function useKeymapListener(map: Keymap = keymap): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (map.handle(event)) event.preventDefault();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return forEveryWindow((win) => {
+      win.addEventListener("keydown", onKey);
+      return () => win.removeEventListener("keydown", onKey);
+    });
   }, [map]);
 }
 

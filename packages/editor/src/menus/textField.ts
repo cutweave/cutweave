@@ -7,6 +7,8 @@
 
 import type { TKey } from "../i18n/index.ts";
 import { desktopFromWindow, type EditAction } from "../session/desktop.ts";
+import { hasTag, isHTMLElement } from "../shell/realm.ts";
+import { activeDocument, isMainWindow } from "../shell/windows.ts";
 import type { UiCommand } from "./commands.ts";
 import type { OpenRequest } from "./host.tsx";
 import type { MenuContext, MenuSurfaceDef, OpenVia, ScreenPoint } from "./types.ts";
@@ -25,13 +27,16 @@ const TEXT_INPUT_TYPES = new Set([
 
 export type TextField = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
 
-/** The text field `source` is, or is inside (a contenteditable's child), or `null`. */
+/**
+ * The text field `source` is, or is inside (a contenteditable's child), or `null`. Realm-safe: the
+ * field may be in a detached panel's window.
+ */
 export function textFieldOf(source: Element): TextField | null {
   const editable = source.closest("[contenteditable]");
-  if (editable instanceof HTMLElement && editable.isContentEditable) return editable;
+  if (isHTMLElement(editable) && editable.isContentEditable) return editable;
   const field = source.closest("input, textarea");
-  if (field instanceof HTMLTextAreaElement) return field;
-  if (field instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(field.type.toLowerCase())) {
+  if (hasTag(field, "textarea")) return field;
+  if (hasTag(field, "input") && TEXT_INPUT_TYPES.has(field.type.toLowerCase())) {
     return field;
   }
   return null;
@@ -45,7 +50,7 @@ export interface FieldState {
 }
 
 export function fieldState(field: TextField): FieldState {
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+  if (hasTag(field, "input") || hasTag(field, "textarea")) {
     const start = field.selectionStart;
     const end = field.selectionEnd;
     return {
@@ -88,15 +93,19 @@ export function fieldRequest(field: TextField, point: ScreenPoint, via: OpenVia)
 
 const state = (ctx: MenuContext): FieldState => ctx.target.data as FieldState;
 
-/** Runs the clipboard action on the focused field: main when it can, else the page. */
+/**
+ * Runs the clipboard action on the focused field: main when it can (it acts on the editor
+ * window), else the page. A field in a detached panel's window is that window's document's.
+ */
 function runEdit(action: EditAction): void {
   const bridge = desktopFromWindow();
-  if (bridge?.edit !== undefined) {
+  const doc = activeDocument();
+  if (bridge?.edit !== undefined && isMainWindow(doc.defaultView)) {
     void bridge.edit.run(action).catch(() => undefined);
     return;
   }
   const command = action === "selectAll" ? "selectAll" : action;
-  document.execCommand(command);
+  doc.execCommand(command);
 }
 
 export const FIELD_COMMANDS: readonly UiCommand[] = [
@@ -105,7 +114,7 @@ export const FIELD_COMMANDS: readonly UiCommand[] = [
     hidden: true,
     label: "contextMenu.field.undo",
     icon: "undo-2",
-    run: () => void document.execCommand("undo"),
+    run: () => void activeDocument().execCommand("undo"),
   },
   {
     id: "edit.text.cut",

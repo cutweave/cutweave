@@ -193,11 +193,81 @@ export class PresentLoop {
   }
 }
 
-/** The loop's clock in the preload: `requestAnimationFrame` and `performance.now`. */
-export function browserLoopClock(): LoopClock {
+/** The slice of a window the canvas clock uses. */
+export interface FrameWindow {
+  requestAnimationFrame(callback: FrameRequestCallback): number;
+  cancelAnimationFrame(handle: number): void;
+  addEventListener(type: "pagehide", listener: () => void): void;
+  readonly closed?: boolean;
+}
+
+/**
+ * The loop's clock on the canvas's own window (WP-2H.15): a Preview detached into its own window
+ * is presented on that window's display frames, so it keeps playing while the main window is
+ * minimized (a hidden window's frames stop). `canvasWindow` is read at every tick, so a canvas
+ * that moves between windows takes the new window's frames from its next tick. A frame asked of
+ * a window that closes before it comes is asked again of the main window. No allocation per tick.
+ */
+export function canvasLoopClock(
+  canvasWindow: () => FrameWindow | null,
+  main: FrameWindow = globalThis as unknown as FrameWindow,
+  now: () => number = () => performance.now(),
+): LoopClock {
+  let pendingWindow: FrameWindow | null = null;
+  let pendingId = 0;
+  let pendingTick: (() => void) | null = null;
+  let handles = 0;
+  const watched = new WeakSet<object>();
+
+  const fire = (): void => {
+    const tick = pendingTick;
+    pendingWindow = null;
+    pendingTick = null;
+    tick?.();
+  };
+
+  const windowNow = (): FrameWindow => {
+    try {
+      const win = canvasWindow();
+      return win === null || win.closed === true ? main : win;
+    } catch {
+      // A window that went away mid-read: the main one.
+      return main;
+    }
+  };
+
+  const ask = (tick: () => void): void => {
+    const win = windowNow();
+    if (win !== main && !watched.has(win)) {
+      watched.add(win);
+      // Closing that window drops the frame it owed: ask the main window instead.
+      win.addEventListener("pagehide", () => {
+        if (pendingWindow !== win || pendingTick === null) return;
+        pendingWindow = main;
+        pendingId = main.requestAnimationFrame(fire);
+      });
+    }
+    pendingWindow = win;
+    pendingTick = tick;
+    pendingId = win.requestAnimationFrame(fire);
+  };
+
   return {
-    schedule: (tick) => requestAnimationFrame(() => tick()),
-    cancel: (handle) => cancelAnimationFrame(handle),
-    now: () => performance.now(),
+    schedule: (tick) => {
+      ask(tick);
+      handles += 1;
+      return handles;
+    },
+    cancel: () => {
+      const win = pendingWindow;
+      pendingWindow = null;
+      pendingTick = null;
+      try {
+        win?.cancelAnimationFrame(pendingId);
+      } catch {
+        // Its window closed, and the frame with it.
+      }
+    },
+    now,
   };
 }

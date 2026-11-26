@@ -4,12 +4,15 @@
 // runs it, so a person can rebind it, and it works from anywhere, a text field included, as a
 // native accelerator does. Another dialog being open (Settings, Export) keeps it out, and pressing
 // it again closes the palette.
+import { registeredWindows } from "../shell/windows.ts";
 import { closePalette, openPalette, paletteStore } from "./paletteStore.ts";
 
-/** Whether a dialog other than the palette is showing. */
+/** Whether a dialog other than the palette is showing, in any editor window. */
 function otherDialogOpen(): boolean {
-  return [...document.querySelectorAll('[role="dialog"]')].some(
-    (el) => !el.classList.contains("cw-dialog--palette"),
+  return registeredWindows().some(({ window: win }) =>
+    [...win.document.querySelectorAll('[role="dialog"]')].some(
+      (el) => !el.classList.contains("cw-dialog--palette"),
+    ),
   );
 }
 

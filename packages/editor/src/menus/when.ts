@@ -34,6 +34,8 @@ export const CONTEXT_KEYS = [
   "media.offline",
   "engine.live",
   "project.readOnly",
+  /** The panel is in a window of its own (a detached panel, WP-2H.15). */
+  "panel.detached",
 ] as const;
 
 export type ContextKey = (typeof CONTEXT_KEYS)[number];

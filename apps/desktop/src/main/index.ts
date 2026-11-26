@@ -50,7 +50,14 @@ import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { applicationMenuTemplate } from "./menu.ts";
-import { fitPopout, livePopoutProblem, popoutRefusal, popoutWindowOptions } from "./popout.ts";
+import {
+  fitPopout,
+  isFilledPopoutTitle,
+  livePopoutProblem,
+  POPOUT_FILL_TIMEOUT_MS,
+  popoutRefusal,
+  popoutWindowOptions,
+} from "./popout.ts";
 import { PreferencesStore } from "./preferences-store.ts";
 import { forcedPreviewPath } from "./preview-path.ts";
 import { RecentProjects } from "./recent-projects.ts";
@@ -185,6 +192,32 @@ function adoptPopout(
   if (fitted.x === undefined) child.center();
   child.on("focus", () => focusGroup.focus());
   child.on("blur", () => focusGroup.blur());
+  showWhenFilled(child);
+}
+
+/**
+ * A popout opens hidden and is shown once the editor has moved its panels in, which it says by
+ * titling the window after them (WP-2H.15): an empty window is never on screen. One the editor
+ * never fills (a failed open) is closed unseen.
+ */
+function showWhenFilled(child: BrowserWindow): void {
+  let shown = false;
+  const timer = setTimeout(() => {
+    if (shown || child.isDestroyed()) return;
+    console.warn("[popout] the editor never filled a detached window; it was closed unseen");
+    child.close();
+  }, POPOUT_FILL_TIMEOUT_MS);
+  const show = (): void => {
+    if (shown || child.isDestroyed()) return;
+    shown = true;
+    clearTimeout(timer);
+    child.show();
+  };
+  child.webContents.on("page-title-updated", (_event, title) => {
+    if (isFilledPopoutTitle(title)) show();
+  });
+  if (isFilledPopoutTitle(child.webContents.getTitle())) show();
+  child.once("closed", () => clearTimeout(timer));
 }
 
 // Every webContents (windows, devtools, anything created later) gets the guards, and every

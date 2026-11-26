@@ -4,10 +4,21 @@
 // back, move it out again and relaunch (the window comes back), then Reset layout. The engine's
 // focus record (ADR-0021) does not change while the focus moves between the editor and the
 // detached window. Playwright drives each window as its own page.
+//
+// WP-2H.15 extends it: with the Timeline and the Preview each in a window of its own, Space
+// pressed in the detached Timeline plays (the timecode runs, the detached Preview presents new
+// frames, and drops no more than the playback probe allows), a right-click on a clip there opens
+// the clip's menu in that window (Split at playhead, then Ctrl+Z there), Ctrl+K opens the palette
+// in that window, and axe finds nothing in either detached window. The opt-in real-input steps
+// (a card dragged from the main window onto the detached Timeline; the Timeline's tab dragged
+// back into the main dock) run with `CUTWEAVE_E2E_REAL_INPUT=1`.
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
-import { expect, quitApp, test } from "../fixtures.ts";
+import { desktopDir, editorCall, expect, quitApp, test } from "../fixtures.ts";
+import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   chooseMenu,
   chooseTheme,
@@ -20,14 +31,25 @@ import {
   importWithButton,
   inspector,
   item,
+  laneY,
   launchFlowApp,
   layout,
+  mediaCard,
+  mediaCards,
+  pickFiles,
   profileDir,
   removeDir,
+  rulerY,
+  sec,
+  shortcut,
   snapshot,
+  timecode,
+  timelineCanvas,
   timelineGeometry,
   workspace,
+  xAt,
 } from "./helpers.ts";
+import { osInputAvailable, ownerOf, runOsInput, screenPoint } from "./os-input.ts";
 
 /** A panel's content area (a dockview tab panel), in the window `page` shows. */
 const panel = (page: Page, name: string): Locator =>
@@ -50,6 +72,99 @@ async function settledBox(page: Page, name: string) {
   return found as { x: number; y: number; width: number; height: number };
 }
 
+/** The corpus clip of the WP-2H.15 steps (it has motion to see playback by). */
+const CLIP = "sintel_trailer_480p.mp4";
+
+/** `HH:MM:SS:FF` → frames at 30 fps (the new project's rate). */
+async function timecodeFrames(page: Page): Promise<number> {
+  const [hh, mm, ss, ff] = ((await timecode(page).textContent()) ?? "").split(/[:;]/).map(Number);
+  return (((hh ?? 0) * 60 + (mm ?? 0)) * 60 + (ss ?? 0)) * 30 + (ff ?? 0);
+}
+
+/** A hash of a 64 × 36 patch at the preview canvas's centre (whichever path drew it). */
+async function previewHash(page: Page): Promise<string> {
+  const box = await page.locator("canvas.cw-preview__canvas").boundingBox();
+  if (box === null) throw new Error("no preview canvas");
+  const png = await page.screenshot({
+    clip: {
+      x: Math.round(box.x + box.width / 2 - 32),
+      y: Math.round(box.y + box.height / 2 - 18),
+      width: 64,
+      height: 36,
+    },
+    animations: "allow",
+  });
+  return createHash("sha1").update(png).digest("hex");
+}
+
+/** Resolves once `read` gives the same answer twice in a row (the value settled). */
+async function settled<T>(read: () => Promise<T>): Promise<T> {
+  let last: T | undefined;
+  let value: T | undefined;
+  await expect
+    .poll(
+      async () => {
+        value = await read();
+        const same = value === last;
+        last = value;
+        return same;
+      },
+      { intervals: [150, 250, 400] },
+    )
+    .toBe(true);
+  return value as T;
+}
+
+/** The preload's present-loop figures (the playback probe), read in the editor window. */
+const presentStats = (page: Page) => page.evaluate(() => window.cutweave.preview.getPresentStats());
+
+/** axe's findings in a window's document, as `rule: first node`. */
+async function axeViolations(page: Page): Promise<string[]> {
+  // The editor's own axe-core (a devDependency there): evaluated in that window, past its CSP.
+  const source = readFileSync(
+    createRequire(path.join(desktopDir, "..", "..", "packages", "editor", "package.json")).resolve(
+      "axe-core/axe.min.js",
+    ),
+    "utf8",
+  );
+  await page.evaluate(source);
+  return page.evaluate(async () => {
+    const axe = (globalThis as unknown as { axe: { run(context: Document): Promise<AxeResult> } })
+      .axe;
+    interface AxeResult {
+      violations: { id: string; nodes: { html: string }[] }[];
+    }
+    const results = await axe.run(document);
+    return results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html ?? ""}`);
+  });
+}
+
+/**
+ * A person's drag with the real mouse from one window to another: press, nudge past the OS drag
+ * threshold, move in steps, pause over the target, release (HTML drag and drop runs the OS's
+ * drag loop, which needs real input).
+ */
+function osHandDrag(owner: number, from: { x: number; y: number }, to: typeof from): void {
+  const steps: Parameters<typeof runOsInput>[0][number][] = [
+    { op: "move", x: from.x, y: from.y },
+    { op: "pause", ms: 200 },
+    { op: "down" },
+    { op: "pause", ms: 200 },
+    { op: "move", x: from.x + 12, y: from.y + 12 },
+    { op: "pause", ms: 300 },
+  ];
+  for (let i = 1; i <= 16; i += 1) {
+    steps.push({
+      op: "move",
+      x: Math.round(from.x + ((to.x - from.x) * i) / 16),
+      y: Math.round(from.y + ((to.y - from.y) * i) / 16),
+    });
+    steps.push({ op: "pause", ms: 50 });
+  }
+  steps.push({ op: "pause", ms: 500 }, { op: "up" }, { op: "pause", ms: 300 });
+  runOsInput(steps, owner);
+}
+
 /** The detached windows: every page of the app but the editor's. */
 const detachedWindows = (app: ElectronApplication): Page[] =>
   app.windows().filter((w) => w.url().endsWith("/popout.html"));
@@ -63,8 +178,19 @@ async function moveToNewWindow(app: ElectronApplication, page: Page, name: strin
   await menu.getByRole("menuitem", { name: /^Move to new window/ }).click();
   const popout = await opened;
   await popout.waitForLoadState("domcontentloaded");
+  // On screen only once the panel is in it (WP-2H.15): never an empty window.
+  await expect(panel(popout, name)).toBeVisible();
+  await expect.poll(() => shownWindowTitles(app)).toContain(await popout.title());
   return popout;
 }
+
+/** The titles of the app's windows that are on screen, as main sees them. */
+const shownWindowTitles = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((w) => w.isVisible())
+      .map((w) => w.webContents.getTitle()),
+  );
 
 /** The engine's run-file record of when its window last had the focus (ms since the epoch). */
 async function focusedAt(app: ElectronApplication, home: string): Promise<number | null> {
@@ -209,6 +335,8 @@ test.describe("F47 detached panels", () => {
         const reopened = detachedWindows(second.app)[0] as Page;
         await expect(panel(reopened, "Inspector")).toBeVisible();
         await expect(reopened).toHaveTitle(/^Inspector — .*Cutweave$/);
+        // On screen once the Inspector is back in it (WP-2H.15).
+        await expect.poll(() => shownWindowTitles(second.app)).toContain(await reopened.title());
         await expect(reopened.locator("html")).toHaveAttribute("data-theme", "light");
         await expect(panel(page2, "Inspector")).toHaveCount(0);
         await expect(panel(page2, "Timeline")).toBeVisible();
@@ -223,6 +351,179 @@ test.describe("F47 detached panels", () => {
       } finally {
         // 7. Quitting leaves no window behind (quitApp waits for the app to exit).
         await second.close();
+      }
+    } finally {
+      work.remove();
+      removeDir(home);
+    }
+  });
+
+  // WP-2H.15: the Timeline and the Preview, each in a window of its own, work as docked: keys,
+  // menus, the palette and playback. Real media (FFmpeg and the corpus) like F13: the preview
+  // plays real frames through the ring.
+  test("the Timeline and the Preview work in their own windows: keys, menus, the palette, playback", async () => {
+    test.setTimeout(300_000);
+    const info = test.info();
+    const corpus = corpusDir();
+    test.skip(corpus === null, "the corpus is not fetched (just corpus)");
+    const work = workspace();
+    const home = profileDir();
+    try {
+      const launched = await launchFlowApp(work, home, { realMedia: true });
+      const { app, page } = launched;
+      try {
+        const caps = await editorCall<{ available?: boolean }>(page, "media.capabilities");
+        test.skip(
+          caps.available !== true,
+          "this engine has no media backend; build it with --features cutweave-engine/ffmpeg",
+        );
+        await createProject(app, page, "Two windows", work.dir);
+        await pickFiles(app, copyCorpusClips(corpus ?? "", work.media, [CLIP]));
+        await page.getByRole("button", { name: "Import", exact: true }).click();
+        await expect(mediaCards(page)).toHaveCount(1);
+        await dropCard(page, CLIP, "V1", 0);
+        await expect.poll(async () => (await layout(page))[0]?.clips.length ?? 0).toBe(1);
+        await editorCaughtUp(page);
+        const surface = page.locator(".cw-preview__surface");
+        await expect(surface).toHaveAttribute("data-path", /^(gpu|jpeg)$/, { timeout: 20_000 });
+        const gpu = (await surface.getAttribute("data-path")) === "gpu";
+        await expect(surface).toHaveAttribute("data-live", "true", { timeout: 30_000 });
+
+        // 1. Detach the Timeline and the Preview: a window each, named for its panel.
+        const timeline = await moveToNewWindow(app, page, "Timeline");
+        const timelineTitle = "Timeline — Two windows — Cutweave";
+        await expect(timeline).toHaveTitle(timelineTitle);
+        await expect(timelineCanvas(timeline)).toBeVisible();
+        const preview = await moveToNewWindow(app, page, "Preview");
+        await expect(preview).toHaveTitle("Preview — Two windows — Cutweave");
+        await expect(preview.locator(".cw-preview__surface")).toHaveAttribute("data-live", "true");
+        expect(detachedWindows(app)).toHaveLength(2);
+        await expect(panel(page, "Timeline")).toHaveCount(0);
+        await expect(panel(page, "Preview")).toHaveCount(0);
+
+        // 2. Click the detached Timeline's ruler at 10 s and press Space there: the timecode
+        //    runs, and the detached Preview's frames change. Space again pauses.
+        let g = await timelineGeometry(page, timeline);
+        await timeline.mouse.click(xAt(g, sec(10)), rulerY(g));
+        await expect(timecode(preview)).toHaveText("00:00:10:00");
+        const atTen = await settled(() => previewHash(preview));
+        const before = await presentStats(page);
+        await shortcut(app, "Space", timelineTitle);
+        await expect(preview.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+        await expect
+          .poll(() => timecodeFrames(preview), { timeout: 20_000 })
+          .toBeGreaterThan(300 + 15);
+        await expect.poll(() => previewHash(preview)).not.toBe(atTen);
+        if (gpu) {
+          // The frames presented in the detached window come from the ring, newer each time.
+          await expect
+            .poll(async () => (await presentStats(page))?.lastPts ?? 0)
+            .toBeGreaterThan(before?.lastPts ?? 0);
+          // The playback probe: over 10 s of display frames, fewer than 2 dropped.
+          const start = await presentStats(page);
+          if (start === null) throw new Error("no present stats while playing");
+          await expect
+            .poll(async () => (await presentStats(page))?.ticks ?? 0, { timeout: 40_000 })
+            .toBeGreaterThanOrEqual(start.ticks + 600);
+          const end = await presentStats(page);
+          const dropped = (end?.seqGaps ?? 0) - start.seqGaps;
+          info.annotations.push({
+            type: "playback probe (Preview detached)",
+            description: `${dropped} frames dropped over ${(end?.ticks ?? 0) - start.ticks} ticks`,
+          });
+          expect(dropped).toBeLessThan(2);
+        }
+        await snapshot(preview, info, "detached preview playing");
+        await shortcut(app, "Space", timelineTitle);
+        await expect(preview.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+        // 3. Right-click the clip in the detached Timeline: its menu opens in that window. Split
+        //    at playhead cuts it there; Ctrl+Z pressed there puts it back.
+        g = await timelineGeometry(page, timeline);
+        const clipId = clipAt(g, "V1", 0).id;
+        const box = clipBox(g, clipId);
+        await timeline.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
+        const clipMenu = timeline.getByRole("menu", { name: `Clip actions for ${CLIP}` });
+        await expect(clipMenu).toBeVisible();
+        await expect(page.getByRole("menu")).toHaveCount(0);
+        await snapshot(timeline, info, "clip menu in the detached timeline");
+        await clipMenu.getByRole("menuitem", { name: /^Split at playhead/ }).click();
+        await expect.poll(async () => (await layout(page))[0]?.clips.length).toBe(2);
+        await editorCaughtUp(page);
+        await shortcut(app, "Control+Z", timelineTitle);
+        await expect.poll(async () => (await layout(page))[0]?.clips.length).toBe(1);
+        await editorCaughtUp(page);
+
+        // 4. Ctrl+K there: the palette opens in that window, its search box focused; Esc closes.
+        await shortcut(app, "Control+K", timelineTitle);
+        const palette = timeline.getByRole("dialog", { name: "Command palette" });
+        await expect(palette).toBeVisible();
+        await expect(palette.getByRole("combobox", { name: "Search commands" })).toBeFocused();
+        await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
+        await snapshot(timeline, info, "palette in the detached timeline");
+        await shortcut(app, "Escape", timelineTitle);
+        await expect(palette).toHaveCount(0);
+
+        // axe finds nothing in either detached window.
+        expect(await axeViolations(timeline)).toEqual([]);
+        expect(await axeViolations(preview)).toEqual([]);
+
+        // Opt-in real input (WP-2H.15): a person's mouse across two OS windows, which Playwright
+        // cannot drive (`just e2e-real-input`; Windows only).
+        if (osInputAvailable) {
+          const owner = await ownerOf(app);
+          // A card dragged from the main window's bin onto the detached Timeline lands at the
+          // drop point: 5 s, on a track of its own since Video 1 is taken there (as in F4).
+          g = await timelineGeometry(page, timeline);
+          const card = await mediaCard(page, CLIP).boundingBox();
+          if (card === null) throw new Error("no media card");
+          const from = await screenPoint(app, {
+            x: card.x + card.width / 2,
+            y: card.y + card.height / 2,
+          });
+          const to = await screenPoint(
+            app,
+            { x: xAt(g, sec(5)), y: laneY(g, "V1") },
+            timelineTitle,
+          );
+          const clipsBefore = (await layout(page)).flatMap((t) => t.clips).length;
+          osHandDrag(owner, from, to);
+          await expect
+            .poll(async () => (await layout(page)).flatMap((t) => t.clips).length)
+            .toBeGreaterThan(clipsBefore);
+          const starts = (await layout(page)).flatMap((t) => t.clips.map(([at]) => at));
+          expect(starts.some((at) => Math.abs(at - 5) < 0.1)).toBe(true);
+          // The detached Timeline's tab dragged back into the main window's dock: it docks
+          // there, and its window closes.
+          const tab = await timeline
+            .getByRole("tab", { name: "Timeline", exact: true })
+            .boundingBox();
+          const dock = await panel(page, "Inspector").boundingBox();
+          if (tab === null || dock === null) throw new Error("no tab or dock to drag between");
+          osHandDrag(
+            owner,
+            await screenPoint(
+              app,
+              { x: tab.x + tab.width / 2, y: tab.y + tab.height / 2 },
+              timelineTitle,
+            ),
+            await screenPoint(app, { x: dock.x + dock.width / 2, y: dock.y + dock.height - 8 }),
+          );
+          await expect(panel(page, "Timeline")).toBeVisible();
+          await expect.poll(() => detachedWindows(app).length).toBe(1);
+        } else {
+          info.annotations.push({
+            type: "skipped",
+            description: "real-input steps: set CUTWEAVE_E2E_REAL_INPUT=1 (just e2e-real-input)",
+          });
+        }
+        // Quitting leaves no window behind, the detached ones included.
+        await quitApp(app, page, "discard", launched.mainLog);
+      } finally {
+        // After a failed step the first failure is the one to report, not the quit's.
+        await launched.close().catch((error: unknown) => {
+          console.warn(`F47: closing after a failed step: ${String(error)}`);
+        });
       }
     } finally {
       work.remove();

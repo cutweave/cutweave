@@ -58,7 +58,8 @@ export function Toolbar({ className, onKeyDown, ...rest }: HTMLAttributes<HTMLDi
       event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled)"),
     );
     if (items.length === 0) return;
-    const index = items.indexOf(document.activeElement as HTMLElement);
+    // The focus of the toolbar's own window (a detached panel's has its own).
+    const index = items.indexOf(event.currentTarget.ownerDocument.activeElement as HTMLElement);
     let next = index;
     if (key === "ArrowRight") next = (index + 1) % items.length;
     else if (key === "ArrowLeft") next = (index - 1 + items.length) % items.length;

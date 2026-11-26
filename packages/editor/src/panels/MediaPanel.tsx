@@ -16,6 +16,7 @@ import {
   SegmentedControl,
   StatusChip,
   Tooltip,
+  useOwnerWindow,
 } from "@cutweave/ui";
 import {
   type DragEvent,
@@ -74,6 +75,7 @@ import { useCardScrub } from "../media/useCardScrub.ts";
 import { useImport } from "../media/useImport.ts";
 import { ContextSurface, registerContextSurface, useContextMenu } from "../menus/host.tsx";
 import { useSessionStore } from "../session/sessionStore.ts";
+import { documentOf, forEveryWindow, observeSize } from "../shell/windows.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { useJobStore } from "../state/jobStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
@@ -147,7 +149,7 @@ interface Metrics {
  * card is drawn; after that only the rows in view plus a margin, with padding standing in for the
  * rest so the scroll bar keeps its length.
  */
-function windowOf(count: number, m: Metrics) {
+function visibleRange(count: number, m: Metrics) {
   if (m.height === 0 || m.rowHeight === 0 || m.cols === 0) {
     return { start: 0, end: count, padTop: 0, padBottom: 0 };
   }
@@ -542,15 +544,15 @@ export function MediaPanel() {
 
   // Measure after every layout-affecting change; follow the scroller's own size too.
   useLayoutEffect(measure, [measure, cards, folders, layout]);
+  // Observed from the panel's own window, again when it moves to another (a detached window).
+  const ownerWindow = useOwnerWindow();
   useEffect(() => {
     const el = scroller.current;
-    if (el === null || typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [measure]);
+    if (el === null || ownerWindow === null) return undefined;
+    return observeSize(el, measure);
+  }, [measure, ownerWindow]);
 
-  const win = windowOf(cards.length, layout === "list" ? { ...metrics, cols: 1 } : metrics);
+  const win = visibleRange(cards.length, layout === "list" ? { ...metrics, cols: 1 } : metrics);
 
   // Give the keyboard focus to the tile a key press moved to, once it is drawn.
   useEffect(() => {
@@ -614,10 +616,10 @@ export function MediaPanel() {
   };
 
   // A slow second click on the name of the only selected tile renames it, as in a file manager.
-  const slowRename = useRef<number | null>(null);
+  const slowRename = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
-      if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+      if (slowRename.current !== null) clearTimeout(slowRename.current);
     },
     [],
   );
@@ -633,10 +635,10 @@ export function MediaPanel() {
     applySelection(clickTile(order, before, tile, { ctrl, shift: e.shiftKey }));
     const at = order.findIndex((o) => o.kind === tile.kind && o.id === tile.id);
     if (at >= 0) setFocusIndex(at);
-    if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+    if (slowRename.current !== null) clearTimeout(slowRename.current);
     slowRename.current = null;
     if (sole && onName && !ctrl && !e.shiftKey) {
-      slowRename.current = window.setTimeout(() => {
+      slowRename.current = setTimeout(() => {
         slowRename.current = null;
         folderUiStore.getState().startRename(tile);
       }, SLOW_CLICK_MS);
@@ -779,8 +781,11 @@ export function MediaPanel() {
       const pick = action === "import" ? pickRef.current : pickFoldersRef.current;
       void pick(currentOpenFolder());
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // In every editor window, a detached panel's too.
+    return forEveryWindow((win) => {
+      win.addEventListener("keydown", onKey);
+      return () => win.removeEventListener("keydown", onKey);
+    });
   }, []);
 
   // Ctrl/Cmd+Shift+N and Ctrl/Cmd+A work anywhere in the panel except in a text field.
@@ -944,13 +949,18 @@ export function MediaPanel() {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (binKeyAction(e) !== "search") return;
       const root = sectionRef.current?.closest(".cw-assets") ?? sectionRef.current;
-      if (e.defaultPrevented || root === null || !root.contains(document.activeElement)) return;
+      // The focus of the panel's own window (a detached panel's window has its own).
+      if (e.defaultPrevented || root === null || !root.contains(documentOf(root).activeElement)) {
+        return;
+      }
       e.preventDefault();
       searchRef.current?.focus();
       searchRef.current?.select();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return forEveryWindow((win) => {
+      win.addEventListener("keydown", onKey);
+      return () => win.removeEventListener("keydown", onKey);
+    });
   }, []);
 
   const bin = binStore.getState();
@@ -1292,7 +1302,7 @@ export function MediaPanel() {
             onKeyDown={onKeyDown}
             // A double-click is not a slow click: it opens or inserts instead of renaming.
             onDoubleClickCapture={() => {
-              if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+              if (slowRename.current !== null) clearTimeout(slowRename.current);
               slowRename.current = null;
             }}
             onFocus={(e) => {

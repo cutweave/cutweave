@@ -2,8 +2,10 @@
 import * as RadixContextMenu from "@radix-ui/react-context-menu";
 import * as RadixDropdownMenu from "@radix-ui/react-dropdown-menu";
 import { type ReactNode, useId } from "react";
+import { createPortal } from "react-dom";
 import { Icon, type IconName } from "../icons/index.ts";
 import { cx } from "./cx.ts";
+import { usePortalContainer } from "./PortalContainer.ts";
 import { Tooltip } from "./Tooltip.tsx";
 
 export interface MenuItem {
@@ -133,6 +135,7 @@ function Label({ text, reason }: { text: string; reason: string | undefined }) {
 
 /** The rows of a list, for any of the Radix kits. */
 function Rows({ kit, items }: { kit: MenuKit; items: readonly MenuEntry[] }): ReactNode {
+  const container = usePortalContainer() ?? undefined;
   return items.map((entry, index) => {
     if (entry.kind === "separator") {
       return <kit.Separator key={entry.id ?? `sep-${index}`} className="cw-menu__sep" />;
@@ -156,7 +159,7 @@ function Rows({ kit, items }: { kit: MenuKit; items: readonly MenuEntry[] }): Re
             <Label text={entry.label} reason={entry.disabled ? entry.disabledReason : undefined} />
             <Icon name="chevron-right" size="md" />
           </kit.SubTrigger>
-          <kit.Portal>
+          <kit.Portal container={container}>
             <kit.SubContent className="cw-menu" collisionPadding={8} loop>
               <Rows kit={kit} items={entry.items} />
             </kit.SubContent>
@@ -214,8 +217,10 @@ export function Menu({
   className,
 }: MenuProps) {
   const kit: MenuKit = mode === "context" ? RadixContextMenu : RadixDropdownMenu;
+  // In a detached panel's window the menu opens there (`PortalContainerProvider`).
+  const container = usePortalContainer();
   const content = (
-    <kit.Portal>
+    <kit.Portal container={container ?? undefined}>
       <kit.Content
         aria-label={ariaLabel}
         // Radix labels dropdowns by their trigger; the menu's own name is more specific.
@@ -245,8 +250,9 @@ export function Menu({
   }
   if (mode === "point") {
     // A zero-size button at the point is the anchor. Not modal: a second right-click elsewhere
-    // closes this menu and still reaches the surface under it.
-    return (
+    // closes this menu and still reaches the surface under it. The anchor sits in the window the
+    // menu opens in, since the point is that window's.
+    const root = (
       <RadixDropdownMenu.Root
         open={open ?? false}
         modal={false}
@@ -264,6 +270,7 @@ export function Menu({
         {content}
       </RadixDropdownMenu.Root>
     );
+    return container === null ? root : createPortal(root, container);
   }
   return (
     <RadixDropdownMenu.Root

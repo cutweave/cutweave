@@ -4,6 +4,7 @@
 // ...), and its IDs and time are the target. The tables for those surfaces are WP-2H.13's; until a
 // surface has one, a right-click there shows nothing.
 import type { HitResult, HitZone, TimelinePointerEvent } from "@cutweave/timeline";
+import { isHTMLElement } from "../shell/realm.ts";
 import type { OpenRequest } from "./host.tsx";
 import type { OpenVia, ScreenPoint } from "./types.ts";
 
@@ -55,7 +56,7 @@ export function requestForHit(
 export function requestForCanvasEvent(e: TimelinePointerEvent): OpenRequest | null {
   if (e.type !== "contextmenu" && e.type !== "longpress") return null;
   const original = e.original;
-  const element = original.target instanceof HTMLElement ? original.target : null;
+  const element = isHTMLElement(original.target) ? original.target : null;
   return requestForHit(
     e.hit,
     { x: original.clientX, y: original.clientY },

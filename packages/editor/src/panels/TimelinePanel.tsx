@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { DEFAULT_VIEW_STATE, TimelineCanvas, type ViewState } from "@cutweave/timeline";
-import { Icon, IconButton, Toolbar, ToolbarSeparator, Tooltip } from "@cutweave/ui";
+import { Icon, IconButton, Toolbar, ToolbarSeparator, Tooltip, useOwnerWindow } from "@cutweave/ui";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
@@ -53,6 +53,8 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
     store.setZoom(v.pxPerSec);
     store.setScroll(v.scrollX, v.scrollY);
   }, []);
+  // Detached into its own window (or docked back): the canvas observes and draws there.
+  const ownerWindow = useOwnerWindow();
   return (
     <>
       {/* `display: contents`: no box of its own, it only marks the canvas for the menu host. */}
@@ -67,6 +69,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
           onPointer={intents.onPointer}
           onView={intents.onView}
           onViewChange={onViewChange}
+          ownerWindow={ownerWindow}
         />
       </div>
       <TrackRenameInput controller={intents.controller} />

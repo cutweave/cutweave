@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { Button, IconButton } from "@cutweave/ui";
+import { Button, IconButton, Tooltip } from "@cutweave/ui";
 import {
   type DockviewApi,
   DockviewReact,
@@ -21,6 +21,7 @@ import { runWorkspaceCommand } from "../workspace/commands.ts";
 import { attachDock, loadWorkspace, saveLayoutNow } from "../workspace/dockHost.ts";
 import { PANEL_TAB_COMPONENT } from "../workspace/panelOptions.ts";
 import { useRegisteredPanels } from "../workspace/panelRegistry.ts";
+import { inPanelWindow, type LocatedApi, useLocationWindow, WindowLayers } from "./panelWindow.tsx";
 import { dockTheme } from "./theme.ts";
 
 /** Saves are coalesced: a sash drag fires many layout events. */
@@ -88,8 +89,7 @@ function CloseActivePanel({ activePanel }: Pick<IDockviewHeaderActionsProps, "ac
 /**
  * Keep on top, in a detached panel's window (WP-2H.14, ADR-0031): main keeps that OS window above
  * the others. Only in the desktop app (a browser has no such window), only in a detached group.
- * Its tooltip is the native one: the design system's tooltips open in the main window until
- * WP-2H.15 gives each window its own.
+ * Its tooltip shows in that window (WP-2H.15).
  */
 function KeepOnTop({ group }: Pick<IDockviewHeaderActionsProps, "group">) {
   const { t } = useTranslation();
@@ -105,31 +105,33 @@ function KeepOnTop({ group }: Pick<IDockviewHeaderActionsProps, "group">) {
   const on = isKeptOnTop(win);
   const label = t("windows.keepOnTop");
   return (
-    <IconButton
-      icon="layers"
-      size="sm"
-      className="cw-dock-tab__pin"
-      label={label}
-      title={label}
-      pressed={on}
-      onClick={() => {
-        void bridge.setPopoutOnTop?.(win.name, !on).then((applied) => {
-          if (!applied) return;
-          setKeptOnTop(win, !on);
-          rerender((n) => n + 1);
-        });
-      }}
-    />
+    <Tooltip label={label}>
+      <IconButton
+        icon="pin"
+        size="sm"
+        className="cw-dock-tab__pin"
+        label={label}
+        pressed={on}
+        onClick={() => {
+          void bridge.setPopoutOnTop?.(win.name, !on).then((applied) => {
+            if (!applied) return;
+            setKeptOnTop(win, !on);
+            rerender((n) => n + 1);
+          });
+        }}
+      />
+    </Tooltip>
   );
 }
 
-/** The actions at the end of a group's tab strip. */
+/** The actions at the end of a group's tab strip, with their tooltips in the group's window. */
 function GroupActions({ activePanel, group }: IDockviewHeaderActionsProps) {
+  const win = useLocationWindow(group.api as unknown as LocatedApi);
   return (
-    <>
+    <WindowLayers win={win}>
       <KeepOnTop group={group} />
       <CloseActivePanel activePanel={activePanel} />
-    </>
+    </WindowLayers>
   );
 }
 
@@ -170,8 +172,9 @@ export function Dock() {
   const activeWorkspace = useRef<string | null>(null);
   const pendingSave = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Each panel knows its window: its menus and tooltips open there once it is detached.
   const components = useMemo(
-    () => Object.fromEntries(registered.map((p) => [p.id, p.component])),
+    () => Object.fromEntries(registered.map((p) => [p.id, inPanelWindow(p.component)])),
     [registered],
   );
 

@@ -14,6 +14,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 // The timeline package's own test helpers (a fixed theme, a no-op 2D context): not part of its API.
 import { spyContext, testTheme } from "../../../timeline/src/test-support.ts";
 import { i18n } from "../i18n/index.ts";
+import { addPopoutWindow, removePopoutWindow, resetWindowRegistry } from "../shell/windows.ts";
 import { registerBuiltinMenus } from "./builtins.ts";
 import { requestForCanvasEvent, ZONE_SURFACE } from "./canvas.ts";
 import {
@@ -515,6 +516,74 @@ describe("the canvas path", () => {
     expect(contextMenuStore.getState().open).toBeNull();
     off();
     wrapper.remove();
+  });
+});
+
+// WP-2H.15: a detached panel's window (an iframe's here) has its own menus, opened there.
+describe("a detached panel's window", () => {
+  function detached(): { win: Window; doc: Document; done: () => void } {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    const win = frame.contentWindow as Window;
+    addPopoutWindow(win, ["panel.timeline"]);
+    return {
+      win,
+      doc: win.document,
+      done: () => {
+        removePopoutWindow(win);
+        frame.remove();
+      },
+    };
+  }
+
+  afterEach(() => resetWindowRegistry());
+
+  it("opens a right-click's menu in that window's document, at its point, and runs the choice", async () => {
+    render(page(setup()));
+    const { doc, done } = detached();
+    try {
+      // A surface in that window: a node its own document made (its realm, not the main one's).
+      const clip = doc.createElement("button");
+      clip.textContent = "b-roll.mov";
+      doc.body.append(clip);
+      const off = registerContextSurface(clip, () => ({
+        surface: "fixture.clip",
+        target: { ids: ["itm_b"], name: "b-roll.mov" },
+      }));
+      fireEvent.contextMenu(clip, { clientX: 70, clientY: 20 });
+      const menu = await waitFor(() => {
+        const found = doc.querySelector('[role="menu"]');
+        if (found === null) throw new Error("no menu in the detached window yet");
+        return found;
+      });
+      expect(menu.getAttribute("aria-label")).toBe("Text actions for b-roll.mov");
+      expect(doc.querySelector<HTMLElement>(".cw-menu__anchor")?.style.left).toBe("70px");
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+      const split = [...doc.querySelectorAll('[role="menuitem"]')].find((row) =>
+        row.textContent?.includes("Split at playhead"),
+      );
+      fireEvent.click(split as Element);
+      await waitFor(() =>
+        expect(call).toHaveBeenCalledWith("clip.split", { item: "itm_b", at: 0 }),
+      );
+      off();
+    } finally {
+      done();
+    }
+  });
+
+  it("opens a text field's menu there too, and closes a menu whose window closes", async () => {
+    render(page(setup()));
+    const { doc, done } = detached();
+    const field = doc.createElement("input");
+    field.type = "text";
+    field.setAttribute("aria-label", "Clip name");
+    doc.body.append(field);
+    fireEvent.contextMenu(field, { clientX: 5, clientY: 5 });
+    await waitFor(() => expect(doc.querySelector('[role="menu"]')).not.toBeNull());
+    expect(contextMenuStore.getState().open?.menu.context.target.surface).toBe("field.text");
+    done();
+    expect(contextMenuStore.getState().open).toBeNull();
   });
 });
 

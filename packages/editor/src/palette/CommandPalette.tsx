@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import type { TKey } from "../i18n/index.ts";
 import { useContextMenu } from "../menus/host.tsx";
+import { documentOf, framesOf, onDidRemoveWindow } from "../shell/windows.ts";
 import { type Field, type FieldValues, fieldsOf, initialValues, toArguments } from "./argForm.ts";
 import {
   buildEntries,
@@ -247,6 +248,16 @@ export function CommandPalette({ env: given }: CommandPaletteProps) {
   const open = useStore(paletteStore, (s) => s.open);
   const openCount = useStore(paletteStore, (s) => s.openCount);
   const pendingRun = useStore(paletteStore, (s) => s.pendingRun);
+  // It opens in the window it was asked for in (a detached panel's, WP-2H.15).
+  const openedIn = useStore(paletteStore, (s) => s.window);
+  const container = openedIn === null ? null : openedIn.document.body;
+  // Its window closing (the panel docked back) closes it too.
+  useEffect(() => {
+    if (openedIn === null) return undefined;
+    return onDidRemoveWindow((entry) => {
+      if (entry.window === openedIn) closePalette();
+    });
+  }, [openedIn]);
   const recent = useStore(recentsStore, (s) => s.keys);
   const env = useMemo(() => given ?? appPaletteEnv(), [given]);
 
@@ -278,7 +289,9 @@ export function CommandPalette({ env: given }: CommandPaletteProps) {
   const activeKey = shown[active]?.key;
   useEffect(() => {
     if (activeKey === undefined) return;
-    document.getElementById(optionId(base, activeKey))?.scrollIntoView?.({ block: "nearest" });
+    documentOf(input.current)
+      .getElementById(optionId(base, activeKey))
+      ?.scrollIntoView?.({ block: "nearest" });
   }, [activeKey, base]);
 
   const execute = (entry: PaletteEntry, args: Record<string, unknown>): void => {
@@ -336,7 +349,8 @@ export function CommandPalette({ env: given }: CommandPaletteProps) {
 
   const back = (): void => {
     setMode({ kind: "list" });
-    requestAnimationFrame(() => input.current?.focus());
+    // On the frames of the palette's own window (a hidden main window's frames stop).
+    framesOf(() => input.current ?? container).request(() => input.current?.focus());
   };
 
   const inForm = mode.kind === "form";
@@ -350,6 +364,7 @@ export function CommandPalette({ env: given }: CommandPaletteProps) {
       }}
       title={t("palette.title")}
       className="cw-dialog--palette"
+      container={container}
       // Esc (or a click outside) steps back first: out of the form, then out of the typed text.
       dirty={inForm || query !== ""}
       onDismissAttempt={() => {

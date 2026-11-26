@@ -357,7 +357,7 @@ describe("moving a panel into its own window (WP-2H.14)", () => {
     expect(opened).toHaveLength(2);
   });
 
-  it("offers Move to new window in the tab's menu, and Move back once a panel is out", async () => {
+  it("offers Move to new window in a docked tab's menu, and Move back in a detached one's", async () => {
     const user = userEvent.setup();
     render(h(EditorShell));
     await allPanelsShown();
@@ -368,13 +368,27 @@ describe("moving a panel into its own window (WP-2H.14)", () => {
     expect(await screen.findByText("Move to new window")).toBeTruthy();
     expect(screen.queryByText("Move back to main window")).toBeNull();
     await user.keyboard("{Escape}");
-    await detachInspector(user);
+    const win = await detachInspector(user);
+    // A docked tab still has no way back: it is not out (`panel.detached`, WP-2H.15).
     await user.pointer({
       keys: "[MouseRight]",
       target: screen.getByRole("tab", { name: "Preview" }),
     });
-    const back = (await screen.findByText("Move back to main window")).closest("[role='menuitem']");
-    expect(back?.getAttribute("aria-disabled")).toBe("true");
+    expect(await screen.findByText("Move to new window")).toBeTruthy();
+    expect(screen.queryByText("Move back to main window")).toBeNull();
+    await user.keyboard("{Escape}");
+    // The detached tab's menu opens in its own window: Move back, and no Move to new window.
+    const popout = within(win.document.body);
+    fireEvent.contextMenu(popout.getByRole("tab", { name: "Inspector" }), {
+      clientX: 20,
+      clientY: 10,
+    });
+    const back = (await popout.findByText("Move back to main window")).closest("[role='menuitem']");
+    expect(back?.getAttribute("aria-disabled")).toBeNull();
+    expect(popout.queryByText("Move to new window")).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(back as Element);
+    await waitFor(() => expect(isPanelDetached("inspector")).toBe(false));
   });
 
   it("toggles Keep on top in the detached window's header (desktop app only)", async () => {
@@ -391,6 +405,12 @@ describe("moving a panel into its own window (WP-2H.14)", () => {
     expect(setPopoutOnTop).toHaveBeenCalledWith(win.name, true);
     // The main window's groups have no such button.
     expect(screen.queryByRole("button", { name: "Keep on top" })).toBeNull();
+    // Its tooltip shows in the detached window, not the main one (WP-2H.15).
+    fireEvent.focus(pin);
+    await waitFor(() =>
+      expect(win.document.querySelector(".cw-tooltip")?.textContent).toContain("Keep on top"),
+    );
+    expect(document.querySelector(".cw-tooltip")).toBeNull();
   });
 
   it("opens a window where a tab dragged out of the main window was let go", async () => {

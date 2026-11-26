@@ -32,5 +32,43 @@
   },
   "javascript": {
     "formatter": { "quoteStyle": "double", "semicolons": "always" }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "packages/editor/src/**",
+        "packages/ui/src/**",
+        "packages/timeline/src/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.stories.tsx",
+        "!packages/editor/src/testing/**",
+        "!packages/editor/src/main.tsx",
+        "!packages/editor/src/shell/windows.ts",
+        "!packages/editor/src/shell/EditorShell.tsx",
+        "!packages/editor/src/shell/SettingsDialog.tsx",
+        "!packages/editor/src/settings/**",
+        "!packages/ui/src/components/MenuBar.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "document": "A panel can be in its own window (WP-2H.15): use documentOf(node) or activeDocument() from shell/windows.ts.",
+                  "window": "A panel can be in its own window (WP-2H.15): use windowOf(node), activeWindow() or forEveryWindow() from shell/windows.ts.",
+                  "ResizeObserver": "Observe from the element's own window (WP-2H.15): observeSize(el, ...) from shell/windows.ts.",
+                  "requestAnimationFrame": "Take frames from the element's own window (WP-2H.15): framesOf(() => el) from shell/windows.ts.",
+                  "cancelAnimationFrame": "Cancel in the window that gave the frame (WP-2H.15): framesOf(() => el) from shell/windows.ts.",
+                  "devicePixelRatio": "Read the density of the element's own window (WP-2H.15): windowOf(el).devicePixelRatio."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

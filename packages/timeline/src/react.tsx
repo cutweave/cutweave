@@ -21,6 +21,12 @@ export interface TimelineCanvasProps {
   readonly onViewChange?: (s: ViewState) => void;
   /** Receives the live view (null on unmount) for imperative calls such as `zoomToFit()`. */
   readonly onView?: (view: TimelineView | null) => void;
+  /**
+   * The window the timeline is shown in (a host that can move it into another window, such as a
+   * detached panel, passes it): when it changes, the view observes and draws there
+   * (`TimelineView.rehome`).
+   */
+  readonly ownerWindow?: Window | null;
   readonly "aria-label": string;
   readonly className?: string;
   readonly style?: CSSProperties;
@@ -78,6 +84,11 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
   useEffect(() => {
     if (props.loaders) viewRef.current?.setLoaders(props.loaders);
   }, [props.loaders]);
+
+  // Moved into another window (or back): listen, observe and draw there.
+  useEffect(() => {
+    if (props.ownerWindow !== undefined) viewRef.current?.rehome();
+  }, [props.ownerWindow]);
 
   return (
     <div

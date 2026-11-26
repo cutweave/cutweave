@@ -156,16 +156,31 @@ export function ownerOf(app: ElectronApplication): Promise<number> {
   return app.evaluate(() => process.pid);
 }
 
-/** A point in the editor window's page (CSS px = DIPs) as a physical screen point. */
-export async function screenPoint(app: ElectronApplication, page: Point): Promise<Point> {
-  return app.evaluate(({ BrowserWindow, screen }, p) => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (win === undefined) throw new Error("no window");
-    const content = win.getContentBounds();
-    const dip = { x: Math.round(content.x + p.x), y: Math.round(content.y + p.y) };
-    // Windows and Linux only; DIPs elsewhere are already screen points.
-    return typeof screen.dipToScreenPoint === "function" ? screen.dipToScreenPoint(dip) : dip;
-  }, page);
+/**
+ * A point in the editor window's page (CSS px = DIPs) as a physical screen point. `inWindow` is
+ * the title of a detached panel's window whose page the point is in (WP-2H.15); by default the
+ * editor window, whatever other windows are open.
+ */
+export async function screenPoint(
+  app: ElectronApplication,
+  page: Point,
+  inWindow?: string,
+): Promise<Point> {
+  return app.evaluate(
+    ({ BrowserWindow, screen }, { p, title }) => {
+      const win = BrowserWindow.getAllWindows().find((w) =>
+        title === null
+          ? !w.webContents.getURL().endsWith("/popout.html")
+          : w.webContents.getTitle() === title,
+      );
+      if (win === undefined) throw new Error("no window");
+      const content = win.getContentBounds();
+      const dip = { x: Math.round(content.x + p.x), y: Math.round(content.y + p.y) };
+      // Windows and Linux only; DIPs elsewhere are already screen points.
+      return typeof screen.dipToScreenPoint === "function" ? screen.dipToScreenPoint(dip) : dip;
+    },
+    { p: page, title: inWindow ?? null },
+  );
 }
 
 /**

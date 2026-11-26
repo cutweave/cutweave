@@ -13,6 +13,7 @@
 //
 // The endpoint is WP-1I.03's; until it exists `FrameFetcher` is the seam (tests use a fake).
 import { FLICKS_PER_SECOND, type FrameRate, snapToFrame } from "@cutweave/timeline";
+import { windowOf } from "../shell/windows.ts";
 import { type PlayheadSample, playheadAt, selectFrame, staleFrames } from "./presenter.ts";
 
 /** The fallback's ceiling (arch §10: "<= 15 fps"). */
@@ -60,11 +61,29 @@ export interface PreviewTicker {
   cancel(handle: number): void;
 }
 
-export const browserTicker: PreviewTicker = {
-  now: () => performance.now(),
-  schedule: (callback) => requestAnimationFrame(() => callback()),
-  cancel: (handle) => cancelAnimationFrame(handle),
-};
+/**
+ * The frames of the window `node()` is in (a detached Preview's own, WP-2H.15: a hidden main
+ * window's frames stop), read at each tick.
+ */
+export function windowTicker(node: () => Node | null): PreviewTicker {
+  let asked: Window = windowOf(null);
+  return {
+    now: () => performance.now(),
+    schedule: (callback) => {
+      asked = windowOf(node());
+      return asked.requestAnimationFrame(() => callback());
+    },
+    cancel: (handle) => {
+      try {
+        asked.cancelAnimationFrame(handle);
+      } catch {
+        // Its window closed, and the frame with it.
+      }
+    },
+  };
+}
+
+export const browserTicker: PreviewTicker = windowTicker(() => null);
 
 /** A failed frame request: the HTTP status (0 without one) and what went wrong. */
 export class FrameFetchError extends Error {

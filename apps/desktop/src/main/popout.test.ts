@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   fitPopout,
   isAllowedPopoutNavigation,
+  isFilledPopoutTitle,
   isPopoutUrl,
   livePopoutProblem,
   POPOUT_MIN,
@@ -95,6 +96,15 @@ describe("the popout window", () => {
       backgroundColor: "#1b1b1b",
     });
     expect(options.parent).toBeUndefined();
+    // WP-2H.15: hidden until the editor has moved its panels in.
+    expect(options.show).toBe(false);
+  });
+
+  it("is shown only once the editor titled it after its panels (it has content)", () => {
+    expect(isFilledPopoutTitle("Cutweave")).toBe(false);
+    expect(isFilledPopoutTitle("")).toBe(false);
+    expect(isFilledPopoutTitle("Inspector — Cutweave")).toBe(true);
+    expect(isFilledPopoutTitle("Timeline — My video — Cutweave")).toBe(true);
   });
 
   it("opens on a connected display at a usable size", () => {

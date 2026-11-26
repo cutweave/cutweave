@@ -7,7 +7,8 @@ import type { AttachCanvasResult, CutweaveApi, EngineStatus, MenuCommand } from 
 import { type InvokeChannel, type InvokeChannels, isMenuCommand } from "../shared/ipc-contract.ts";
 import type { BridgeAddon } from "./bridge-addon.ts";
 import {
-  browserLoopClock,
+  canvasLoopClock,
+  type FrameWindow,
   installedPresenter,
   type LoopClock,
   PresentLoop,
@@ -30,8 +31,11 @@ export const ERR_BRIDGE_UNAVAILABLE = "ERR_BRIDGE_UNAVAILABLE";
 export function createCutweaveApi(
   ipc: IpcRendererLike,
   addon: BridgeAddon | null,
-  /** Present-loop timing: the preload passes the browser's, tests a fake. */
-  loopClock: () => LoopClock = browserLoopClock,
+  /**
+   * Present-loop timing: by default the display frames of the window the attached canvas is in
+   * (a detached Preview's own, WP-2H.15), else the page's. Tests pass a fake.
+   */
+  loopClock?: (canvasWindow: () => FrameWindow | null) => LoopClock,
   /** `webUtils.getPathForFile` (the preload passes Electron's; it throws for a non-`File`). */
   getPathForFile: (file: File) => string = () => "",
   /** Builds the WebGPU presenter on the page's canvas (WP-1M.04); tests pass a fake. */
@@ -69,8 +73,13 @@ export function createCutweaveApi(
   };
 
   // The present loop runs here, in the preload's isolated world (Spike S1 finding 2); only its
-  // small stats cross the context bridge.
+  // small stats cross the context bridge. It ticks on the frames of the window the canvas is in,
+  // read at every tick, so a Preview detached into its own window (or docked back) keeps playing.
   let presenting: PresentLoop | null = null;
+  let attachedCanvas: HTMLCanvasElement | null = null;
+  const canvasWindow = (): FrameWindow | null =>
+    (attachedCanvas?.ownerDocument?.defaultView as FrameWindow | null | undefined) ?? null;
+  const clockFor = loopClock ?? canvasLoopClock;
   const stopPresenting = (): void => {
     presenting?.stop();
   };
@@ -85,6 +94,7 @@ export function createCutweaveApi(
     setFramePresenter(null);
     canvasPresenter?.destroy();
     canvasPresenter = null;
+    attachedCanvas = null;
   };
   const attachCanvas = async (canvas: HTMLCanvasElement): Promise<AttachCanvasResult> => {
     if (addon === null) {
@@ -104,6 +114,7 @@ export function createCutweaveApi(
         return { ok: false, reason: "device-failed", message: "superseded by a newer attach" };
       }
       canvasPresenter = presenter;
+      attachedCanvas = canvas;
       setFramePresenter(presenter);
       return { ok: true, adapter: presenter.adapter, upload: "writeTexture" };
     } catch (err) {
@@ -140,7 +151,7 @@ export function createCutweaveApi(
       startPresenting: (options) => {
         const bridge = requireAddon();
         stopPresenting();
-        presenting = new PresentLoop(bridge, installedPresenter, loopClock(), options);
+        presenting = new PresentLoop(bridge, installedPresenter, clockFor(canvasWindow), options);
         presenting.start();
       },
       stopPresenting,

@@ -8,12 +8,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closePalette, paletteStore } from "../palette/paletteStore.ts";
 import "../palette/index.ts";
 import { preferences } from "../prefs/prefsStore.ts";
+import { addPopoutWindow, removePopoutWindow, resetWindowRegistry } from "../shell/windows.ts";
 import { useKeymapDispatcher } from "./dispatch.ts";
 import { setKeyPlatform } from "./store.ts";
 
 beforeEach(() => setKeyPlatform("windows"));
 afterEach(async () => {
   cleanup();
+  resetWindowRegistry();
   closePalette();
   setKeyPlatform(null);
   await preferences.reset(["shortcuts.preset", "shortcuts.bindings"]);
@@ -100,6 +102,32 @@ describe("the global dispatcher", () => {
       window.dispatchEvent(press);
       expect(press.defaultPrevented, key).toBe(false);
     }
+  });
+
+  // WP-2H.15: a detached panel's window (an iframe's window here) has the same keys.
+  it("runs a binding pressed in a detached panel's window, and opens the palette there", () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    const popout = frame.contentWindow as Window;
+    renderHook(() => useKeymapDispatcher());
+    // Registered after the dispatcher mounted: it is installed as the window opens.
+    addPopoutWindow(popout, ["panel.timeline"]);
+    const target = popout.document.createElement("div");
+    target.tabIndex = 0;
+    popout.document.body.append(target);
+    fireEvent.keyDown(target, ctrl("k"));
+    expect(paletteStore.getState().open).toBe(true);
+    expect(paletteStore.getState().window).toBe(popout);
+    closePalette();
+    // Pressed in the main window, it opens in the main window.
+    fireEvent.keyDown(document.body, ctrl("k"));
+    expect(paletteStore.getState().window).toBeNull();
+    closePalette();
+    // A window that closed has no keys any more.
+    removePopoutWindow(popout);
+    fireEvent.keyDown(target, ctrl("k"));
+    expect(paletteStore.getState().open).toBe(false);
+    frame.remove();
   });
 
   it("takes nothing from an input method that is composing, and nothing from a held key", () => {
