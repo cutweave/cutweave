@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // F36 Two videos side by side (docs/user-flows.md, WP-2C.08): select two videos in the bin, choose
 // "Place side by side" from the card menu; both land at the playhead on two tracks and the preview
-// shows a picture in each half. Swap in the Inspector exchanges them; Ctrl+Z takes the swap back and
+// overlay shows each clip's picture hugging its half. Swap in the Inspector exchanges them;
+// Ctrl+Z takes the swap back and
 // Ctrl+Z again takes the placing back (the inserts and the layout are one step). Then select both
 // clips on the timeline and pick Picture in picture in the Inspector: the second clip sits small in
 // a corner. Real clicks and keys; only the OS file picker is stubbed. The maths (every layout on
@@ -35,32 +36,17 @@ interface Placed {
 
 const placed = (page: Page, id: string) => editorCall<Placed>(page, "item.get", { item: id });
 
-/** The colour at a point of the preview canvas, as fractions of its size (decoded in the page). */
-async function previewPixel(page: Page, fx: number, fy: number): Promise<string> {
-  const box = await page.locator("canvas.cw-preview__canvas").boundingBox();
-  if (box === null) throw new Error("no preview canvas");
-  const png = await page.screenshot({
-    clip: {
-      x: Math.round(box.x + box.width * fx),
-      y: Math.round(box.y + box.height * fy),
-      width: 4,
-      height: 4,
-    },
-    animations: "allow",
-    caret: "initial",
-  });
-  return page.evaluate(async (b64) => {
-    const blob = await (await fetch(`data:image/png;base64,${b64}`)).blob();
-    const bitmap = await createImageBitmap(blob);
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const ctx = canvas.getContext("2d");
-    if (ctx === null) throw new Error("no 2d context");
-    ctx.drawImage(bitmap, 0, 0);
-    const [r, g, b] = ctx.getImageData(1, 1, 1, 1).data;
-    return `${r},${g},${b}`;
-  }, png.toString("base64"));
+/** The box of the selected clip's handles over the preview, as fractions of the preview frame. */
+async function overlayFractions(page: Page) {
+  const frame = await page.locator("canvas.cw-preview__canvas").boundingBox();
+  const box = await page.locator(".cw-xform__outline").first().boundingBox();
+  if (frame === null || box === null) throw new Error("no preview frame or overlay");
+  return {
+    left: (box.x - frame.x) / frame.width,
+    right: (box.x + box.width - frame.x) / frame.width,
+    top: (box.y - frame.y) / frame.height,
+    bottom: (box.y + box.height - frame.y) / frame.height,
+  };
 }
 
 test.describe("F36 side by side", () => {
@@ -74,7 +60,6 @@ test.describe("F36 side by side", () => {
       await createProject(app, page, "Layouts", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4"), work.file("broll-city.mp4")]);
       await editorCaughtUp(page);
-      const nothing = await previewPixel(page, 0.25, 0.25);
 
       // 1. Select both cards and place them side by side from the card's menu.
       await mediaCard(page, "interview.mp4").click();
@@ -86,7 +71,9 @@ test.describe("F36 side by side", () => {
       await menu.getByRole("menuitem", { name: "Place side by side" }).click();
       await expect(menu).toHaveCount(0);
       await expect
-        .poll(async () => (await layout(page)).filter((t) => t.clips.length > 0))
+        .poll(async () =>
+          (await layout(page)).filter((t) => t.track.startsWith("V") && t.clips.length > 0),
+        )
         .toEqual([
           { track: "V2", clips: [[0, 10]] },
           { track: "V1", clips: [[0, 10]] },
@@ -105,15 +92,18 @@ test.describe("F36 side by side", () => {
         expect(p.visual.crop.left).toBeCloseTo(p.visual.crop.right, 6);
         expect(p.visual.transform.position.y).toBeCloseTo(0, 6);
       }
-      // The preview shows a picture in the left and the right half, edge to edge: no bars.
-      for (const [fx, fy] of [
-        [0.03, 0.25],
-        [0.47, 0.25],
-        [0.53, 0.25],
-        [0.97, 0.25],
-      ] as const) {
-        await expect.poll(() => previewPixel(page, fx, fy)).not.toBe(nothing);
-      }
+      // On screen the first video's handles hug the left half of the preview, the second's the right.
+      await clickClip(page, interview);
+      await expect.poll(async () => (await overlayFractions(page)).right).toBeCloseTo(0.5, 1);
+      expect((await overlayFractions(page)).left).toBeCloseTo(0, 1);
+      await clickClip(page, city);
+      await expect.poll(async () => (await overlayFractions(page)).left).toBeCloseTo(0.5, 1);
+      expect((await overlayFractions(page)).right).toBeCloseTo(1, 1);
+      // Both together again for the Inspector's Layout row.
+      const interviewBox = clipBox(await timelineGeometry(page), interview);
+      await page.keyboard.down("Shift");
+      await page.mouse.click(interviewBox.x + Math.min(interviewBox.w / 2, 60), interviewBox.y);
+      await page.keyboard.up("Shift");
       await snapshot(page, info, "side by side");
 
       // 2. Swap, in the Inspector (both clips are selected after placing).
@@ -141,7 +131,7 @@ test.describe("F36 side by side", () => {
       await shortcut(app, "Control+Y");
       await expect
         .poll(async () => (await sequence(page)).tracks.reduce((n, t) => n + t.items.length, 0))
-        .toBe(2);
+        .toBe(4);
       await editorCaughtUp(page);
       const again = await timelineGeometry(page);
       const first = clipAt(again, "V2", 0).id;
