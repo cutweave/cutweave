@@ -50,6 +50,13 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
     undoable: true,
   },
   { name: "job.cancel", label: "contextMenu.command.jobCancel" },
+  {
+    name: "item.duplicate",
+    label: "contextMenu.command.itemDuplicate",
+    labelMany: "contextMenu.command.itemDuplicateMany",
+    icon: "copy",
+    undoable: true,
+  },
 ];
 
 export const SURFACES: readonly MenuSurfaceDef[] = [
@@ -102,6 +109,9 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
   "chrome.save_now": "project.save",
   "export.open": "export.start",
   "timeline.rename_track": "track.rename",
+  "timeline.cut": "edit.text.cut",
+  "timeline.copy_clips": "edit.text.copy",
+  "timeline.paste_here": "edit.text.paste",
 };
 
 /** Puts the surface tables, UI commands, command texts and hints into `services`. */

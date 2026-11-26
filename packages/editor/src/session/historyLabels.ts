@@ -41,6 +41,8 @@ const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
   "clip.slip": "history.slip",
   "clip.slide": "history.slide",
   "item.duplicate": "history.duplicate",
+  [`${"timeline"}.paste`]: "history.paste",
+  [`${"clip"}.paste_attributes`]: "history.pasteAttributes",
   "item.link": "history.link",
   "item.unlink": "history.unlink",
   "item.attach": "history.attach",

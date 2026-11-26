@@ -24,6 +24,7 @@ import { layoutStore } from "../../media/layoutStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { initialViewState, viewStore } from "../../state/viewStore.ts";
+import { clipboardStore } from "../../timeline/clipboard.ts";
 import { buildMenu } from "../build.ts";
 import { registerBuiltinMenus } from "../builtins.ts";
 import { menuDialogStore } from "../dialogs.ts";
@@ -737,6 +738,89 @@ describe("the other surfaces", () => {
     });
     expect(m.item("Reset to default").disabledReason).toBe("Already the default");
     expect(m.item("Copy setting key")).toBeDefined();
+  });
+});
+
+describe("the clipboard rows (WP-2A.06)", () => {
+  const payload = (id: string) => ({
+    version: 1,
+    sequence: SEQ,
+    frame_rate: { num: 30, den: 1 },
+    span: 10 * F,
+    tracks: [{ kind: "video", row: 0, source: V1 }],
+    items: [{ track: 0, item: clip(id, MED_V, 0) }],
+  });
+
+  beforeEach(() => clipboardStore.getState().setPayload(null));
+
+  it("copies the clips with timeline.copy and keeps the payload for Paste here", async () => {
+    call.mockImplementation(async (name) =>
+      name === "timeline.copy" ? { clipboard: payload(C1) } : {},
+    );
+    await menuFor("timeline.clip", { ids: [C1] }).choose("Copy");
+    expect(call).toHaveBeenCalledWith("timeline.copy", { items: [C1] });
+    expect(clipboardStore.getState().payload?.items).toHaveLength(1);
+  });
+
+  it("cuts with timeline.copy, then one item.delete", async () => {
+    call.mockImplementation(async (name) =>
+      name === "timeline.copy" ? { clipboard: payload(C1) } : {},
+    );
+    await menuFor("timeline.clip", { ids: [C1, C2] }).choose(/^Cut/);
+    expect(call.mock.calls.map((c) => c[0])).toEqual(["timeline.copy", "item.delete"]);
+    expect(call).toHaveBeenLastCalledWith("item.delete", { items: [C1, C2] });
+  });
+
+  it("duplicates with item.duplicate and selects the copies", async () => {
+    call.mockImplementation(async () => ({ copies: [{ source: C1, copy: hex("itm", 9) }] }));
+    const m = menuFor("timeline.clip", { ids: [C1] });
+    expect(m.item("Duplicate").disabled).toBeUndefined();
+    await m.choose("Duplicate");
+    expect(call).toHaveBeenCalledWith("item.duplicate", { items: [C1] });
+    expect(schemaProblems("item.duplicate", { items: [C1] })).toEqual([]);
+  });
+
+  it("says why Cut and Duplicate cannot run on a locked track", () => {
+    const m = menuFor("timeline.clip", { ids: [CL] });
+    expect(m.item(/^Cut/).disabledReason).toBe("Track is locked");
+    expect(m.item("Duplicate").disabledReason).toBe("Track is locked");
+    expect(m.item("Copy").disabled).toBeUndefined();
+  });
+
+  it("offers Paste here only with something copied, at the click's time and track", async () => {
+    const lane = { place: { time: 7 * F, trackId: V1 } };
+    expect(menuFor("timeline.lane", lane).item("Paste here").disabledReason).toBe(
+      "Copy clips first",
+    );
+    clipboardStore.getState().setPayload(payload(C1) as never);
+    const m = menuFor("timeline.lane", lane);
+    expect(m.item("Paste here").disabled).toBeUndefined();
+    call.mockImplementation(async () => ({ copies: [{ source: C1, copy: hex("itm", 9) }] }));
+    await m.choose("Paste here");
+    const [name, args] = call.mock.calls[0] ?? [];
+    expect(name).toBe("timeline.paste");
+    expect(args).toMatchObject({ at: 7 * F, track: V1 });
+    expect(schemaProblems("timeline.paste", args)).toEqual([]);
+    expect(
+      menuFor("timeline.lane", { place: { time: 0, trackId: LOCKED } }).item("Paste here")
+        .disabledReason,
+    ).toBe("Track is locked");
+  });
+
+  it("asks which attributes to paste, from the copied clip that is still in the project", async () => {
+    const m = menuFor("timeline.clip", { ids: [C2] });
+    expect(m.item("Paste attributes…").disabledReason).toBe("Copy a clip from this project first");
+    clipboardStore.getState().setPayload(payload(C1) as never);
+    const after = menuFor("timeline.clip", { ids: [C2] });
+    expect(after.item("Paste attributes…").disabled).toBeUndefined();
+    await after.choose("Paste attributes…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "paste-attributes",
+      from: C1,
+      to: [C2],
+    });
+    // The copied clip itself is no target.
+    expect(menuFor("timeline.clip", { ids: [C1] }).item("Paste attributes…").disabled).toBe(true);
   });
 });
 

@@ -22,6 +22,15 @@ const ACTION_OF = new Map(
   ]),
 );
 
+/** The timeline commands the editor runs itself (not the interaction machine): Duplicate. */
+const EDITOR_COMMANDS: ReadonlySet<string> = new Set(["item.duplicate"]);
+
+/** The editor-side timeline command a key press is (`item.duplicate`), or `null`. */
+export function timelineEditorCommandOf(e: KeyEventLike): string | null {
+  const binding = matchEvent(e, ["timeline"]);
+  return binding !== null && EDITOR_COMMANDS.has(binding.command) ? binding.command : null;
+}
+
 /** The timeline action a key press is, or `null`. */
 export function timelineActionOf(e: KeyEventLike): TimelineKeyAction | null {
   const binding = matchEvent(e, ["timeline"]);

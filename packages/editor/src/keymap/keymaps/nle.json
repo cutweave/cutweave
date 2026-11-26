@@ -135,6 +135,10 @@
       "keys": ["Delete", "Backspace"]
     },
     {
+      "command": "item.duplicate",
+      "keys": ["Mod+D"]
+    },
+    {
       "command": "timeline.cancel",
       "keys": ["Escape"]
     },

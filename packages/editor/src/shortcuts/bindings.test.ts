@@ -238,7 +238,9 @@ describe("the timeline's keys", () => {
         }
       }
     }
-    expect(listed.length).toBe(TIMELINE_KEYS.length);
+    // Plus Duplicate (WP-2A.06): the editor runs it itself, the interaction machine has no key for it.
+    expect(listed.length).toBe(TIMELINE_KEYS.length + 1);
+    expect(byCommand.get("item.duplicate")?.combos.map((c) => c.key.toLowerCase())).toEqual(["d"]);
   });
 });
 

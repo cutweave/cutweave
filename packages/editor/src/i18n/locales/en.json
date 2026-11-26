@@ -459,6 +459,8 @@
       "deleteHelp": "Timeline. Removes the selected clips.",
       "snapping": "Turn snapping on or off",
       "snappingHelp": "Timeline. Makes clips and the playhead stick to edges, or not.",
+      "duplicate": "Duplicate the clips",
+      "duplicateHelp": "Timeline. Copies the selected clips right after themselves. Cut, Copy and Paste work with the Edit menu keys while the timeline has the focus.",
       "renameTrack": "Rename the track",
       "renameTrackHelp": "Timeline. Edits the name of the selected track in its header. Double-click the name does the same."
     },
@@ -1073,6 +1075,8 @@
     "slip": "Slip clip",
     "slide": "Slide clip",
     "duplicate": "Duplicate clip",
+    "paste": "Paste clips",
+    "pasteAttributes": "Paste attributes",
     "link": "Link clips",
     "unlink": "Unlink clips",
     "attach": "Attach clips",
@@ -1243,7 +1247,11 @@
       "split": "Clip not split",
       "delete": "Clip not deleted",
       "insert": "Clip not added",
-      "rename": "Track not renamed"
+      "rename": "Track not renamed",
+      "copy": "Clips not copied",
+      "cut": "Clips not cut",
+      "paste": "Clips not pasted",
+      "duplicate": "Clips not duplicated"
     },
     "rename": {
       "label": "Track name",
@@ -1440,6 +1448,8 @@
       "notLinked": "These clips are not linked",
       "notAttached": "Not attached to a main-track clip",
       "noMainClip": "Place the clips inside a main-track clip",
+      "clipboardEmpty": "Copy clips first",
+      "noCopiedClip": "Copy a clip from this project first",
       "noGap": "No gap next to this edge",
       "noTrack": "No track takes this",
       "noFile": "No file on disk",
@@ -1466,6 +1476,8 @@
       "itemUnlink": "Unlink clips",
       "itemAttach": "Attach to main clip",
       "itemDetach": "Detach from main clip",
+      "itemDuplicate": "Duplicate",
+      "itemDuplicateMany": "Duplicate {{count}} clips",
       "itemDelete": "Delete clip",
       "itemDeleteMany": "Delete {{count}} clips",
       "itemSetProps": "Change clip",
@@ -1518,6 +1530,9 @@
       "engine": "Engine actions"
     },
     "item": {
+      "cut": "Cut",
+      "pasteHere": "Paste here",
+      "pasteAttributes": "Paste attributes…",
       "maximize": "Maximize panel",
       "restore": "Restore panel size",
       "float": "Float panel",
@@ -1609,7 +1624,17 @@
       "deleteTrackTitle": "Delete track {{name}}?",
       "deleteTrackBody": "Clips on this track: {{count}}.",
       "deleteTrackNote": "They are deleted with it. Undo brings them back.",
-      "deleteTrack": "Delete track"
+      "deleteTrack": "Delete track",
+      "pasteAttributesTitle": "Paste attributes",
+      "pasteAttributesBody": "Choose what to copy from the copied clip onto the selected clips. Keyframes come along.",
+      "paste": "Paste",
+      "attribute": {
+        "transform": "Position, scale, rotation and anchor",
+        "crop": "Crop",
+        "flip": "Flip",
+        "compositing": "Opacity and blend mode",
+        "audio": "Volume, pan and fades"
+      }
     },
     "diagnostics": {
       "connection": "Engine connection",

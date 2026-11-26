@@ -147,6 +147,13 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
     "shortcuts.timeline.deleteHelp",
   ),
   cmd(
+    "item.duplicate",
+    "timeline",
+    "timeline",
+    "shortcuts.timeline.duplicate",
+    "shortcuts.timeline.duplicateHelp",
+  ),
+  cmd(
     "timeline.toggle_snapping",
     "timeline",
     "timeline",

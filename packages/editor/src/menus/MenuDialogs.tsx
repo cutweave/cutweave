@@ -3,10 +3,11 @@
 // a track with clips on it, confirm removing a media asset clips use. Each sends exactly one
 // command when the person agrees, through the same call every menu choice uses.
 import type { FolderId, MediaId } from "@cutweave/protocol";
-import { Button, Dialog, Icon, TextField } from "@cutweave/ui";
+import { Button, Dialog, Icon, Switch, TextField } from "@cutweave/ui";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
+import type { TKey } from "../i18n/index.ts";
 import { deleteFolder, moveTiles } from "../media/binActions.ts";
 import { selectMediaCards, selectMediaUsage } from "../media/cards.ts";
 import { canDrop, planFolderDelete, selectFolders } from "../media/folders.ts";
@@ -15,6 +16,7 @@ import { removeMedia } from "../media/remove.ts";
 import { requestFolderDelete } from "../media/requestDelete.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
+import { ATTRIBUTE_GROUPS, type AttributeGroup } from "../timeline/clipboard.ts";
 import { translator } from "../timeline/errors.ts";
 import { menuServices } from "./defaults.ts";
 import { menuDialogStore, useMenuDialog } from "./dialogs.ts";
@@ -308,6 +310,73 @@ function MoveTo({
   );
 }
 
+const ATTRIBUTE_LABEL: Readonly<Record<AttributeGroup, TKey>> = {
+  transform: "contextMenu.dialog.attribute.transform",
+  crop: "contextMenu.dialog.attribute.crop",
+  flip: "contextMenu.dialog.attribute.flip",
+  compositing: "contextMenu.dialog.attribute.compositing",
+  audio: "contextMenu.dialog.attribute.audio",
+};
+
+function PasteAttributes({ from, to }: { readonly from: string; readonly to: readonly string[] }) {
+  const { t } = useTranslation();
+  const [chosen, setChosen] = useState<ReadonlySet<AttributeGroup>>(new Set(ATTRIBUTE_GROUPS));
+  const close = () => menuDialogStore.getState().close();
+  const submit = () => {
+    if (chosen.size === 0) return;
+    close();
+    void menuServices
+      .call("clip.paste_attributes", {
+        from,
+        to: to.filter((id) => id !== from),
+        which: ATTRIBUTE_GROUPS.filter((group) => chosen.has(group)),
+      })
+      .catch((error: unknown) => menuServices.report(error));
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+      title={t("contextMenu.dialog.pasteAttributesTitle")}
+      description={t("contextMenu.dialog.pasteAttributesBody")}
+      onSubmit={submit}
+      footer={
+        <>
+          <Button variant="ghost" size="lg" onClick={close}>
+            {t("contextMenu.dialog.cancel")}
+          </Button>
+          <Button variant="primary" size="lg" disabled={chosen.size === 0} onClick={submit}>
+            {t("contextMenu.dialog.paste")}
+          </Button>
+        </>
+      }
+    >
+      {ATTRIBUTE_GROUPS.map((group) => {
+        const id = `paste-attribute-${group}`;
+        return (
+          <div className="cw-row" key={group}>
+            <label className="body" htmlFor={id}>
+              {t(ATTRIBUTE_LABEL[group])}
+            </label>
+            <Switch
+              id={id}
+              checked={chosen.has(group)}
+              onCheckedChange={(on) => {
+                const next = new Set(chosen);
+                if (on) next.add(group);
+                else next.delete(group);
+                setChosen(next);
+              }}
+            />
+          </div>
+        );
+      })}
+    </Dialog>
+  );
+}
+
 /** Mounted once in the shell, next to the menu host. */
 export function MenuDialogs() {
   const dialog = useMenuDialog();
@@ -330,5 +399,7 @@ export function MenuDialogs() {
       return <DeleteFolder key={dialog.folder} folder={dialog.folder} rest={dialog.rest} />;
     case "move-to":
       return <MoveTo media={dialog.media} folders={dialog.folders} />;
+    case "paste-attributes":
+      return <PasteAttributes key={dialog.from} from={dialog.from} to={dialog.to} />;
   }
 }
