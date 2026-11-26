@@ -190,7 +190,7 @@ fn a_missing_number_shows_the_picture_before_it_flagged() {
     assert_eq!(decoder.index().frame_count(), 40);
     let mut shown = Vec::new();
     while let Some(frame) = decoder.next_frame().unwrap() {
-        let n = shown.len() as i64;
+        let n = i64::try_from(shown.len()).unwrap();
         assert_eq!(frame.pts, fps.frame_to_time(n).unwrap(), "frame {n}");
         shown.push((number_of(&frame), frame.damaged));
     }

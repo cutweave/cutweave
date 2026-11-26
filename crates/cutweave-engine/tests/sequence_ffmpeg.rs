@@ -16,7 +16,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::too_many_lines
 )]
 
 mod engine_support;
@@ -222,7 +223,10 @@ fn a_300_frame_png_sequence_imports_fast_plays_exact_and_exports() {
     {
         let snapshot = engine.handle().snapshot().unwrap();
         let asset = snapshot.doc.media.values().next().unwrap();
-        assert_eq!(asset.probe.duration.map(|d| d.flicks()), Some(10 * SEC));
+        assert_eq!(
+            asset.probe.duration.map(cutweave_model::Duration::flicks),
+            Some(10 * SEC)
+        );
         assert_eq!(
             asset.path_abs.as_deref(),
             Some(render.join("shot_0001.png").to_string_lossy().as_ref())
