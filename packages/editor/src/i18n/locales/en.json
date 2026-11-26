@@ -611,6 +611,15 @@
       "reopen": "Reopen panels"
     }
   },
+  "windows": {
+    "popoutTitle": "{{panels}} — {{name}} — Cutweave",
+    "popoutTitleNoProject": "{{panels}} — Cutweave",
+    "keepOnTop": "Keep on top",
+    "popoutFailed": {
+      "title": "The panel could not open in a new window",
+      "body": "It stays in the main window. Try again, or use Float panel."
+    }
+  },
   "theme": {
     "dark": "Dark",
     "light": "Light",
@@ -1475,7 +1484,9 @@
       "nothingToRedo": "Nothing to redo",
       "onlyOneToast": "No other notices",
       "layoutAssets": "Select 2 to 4 videos or images",
-      "layoutSwap": "Apply a layout to the two clips first"
+      "layoutSwap": "Apply a layout to the two clips first",
+      "inOwnWindow": "The panel is already in its own window",
+      "inMainWindow": "The panel is in the main window"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -1550,6 +1561,8 @@
       "maximize": "Maximize panel",
       "restore": "Restore panel size",
       "float": "Float panel",
+      "moveToWindow": "Move to new window",
+      "moveToMain": "Move back to main window",
       "moveTo": "Move to",
       "left": "Left",
       "right": "Right",

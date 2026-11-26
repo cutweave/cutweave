@@ -143,4 +143,66 @@ describe("layoutProblem", () => {
     delete missing.panels.timeline;
     expect(layoutProblem(missing, known)).toMatch(/timeline/);
   });
+
+  describe("with detached panels' windows (WP-2H.14)", () => {
+    /** The Inspector in its own window; its old group stays hidden and empty in the grid. */
+    const popout = (extra: Record<string, unknown> = {}) => ({
+      data: { id: "7", views: ["inspector"], activeView: "inspector" },
+      gridReferenceGroup: "g-inspector",
+      position: { left: 1200, top: 80, width: 320, height: 600 },
+      url: "/popout.html",
+      ...extra,
+    });
+    const withPopouts = (popoutGroups: unknown) => ({ ...layout, popoutGroups });
+
+    it("accepts one, and a layout saved before there were any", () => {
+      expect(layoutProblem(withPopouts([popout()]), known)).toBeNull();
+      expect(layoutProblem(withPopouts([popout({ position: null, url: undefined })]), known)).toBe(
+        null,
+      );
+      expect(layoutProblem(withPopouts([]), known)).toBeNull();
+      expect("popoutGroups" in layout).toBe(false);
+      expect(layoutProblem(layout, known)).toBeNull();
+    });
+
+    it("accepts a window holding a nested grid of groups", () => {
+      const grid = {
+        root: { type: "branch", data: [leaf("inspector", 300), leaf("assets", 300)] },
+        orientation: "HORIZONTAL",
+        width: 600,
+        height: 400,
+      };
+      expect(layoutProblem(withPopouts([{ grid, url: "/popout.html" }]), known)).toBeNull();
+    });
+
+    it("checks its panels like the grid's, and its page and position", () => {
+      const ghost = popout({ data: { id: "7", views: ["ghost"] } });
+      expect(layoutProblem(withPopouts([ghost]), known)).toBe("no state for ghost");
+      expect(layoutProblem(withPopouts([popout({ url: "https://example.com/" })]), known)).toBe(
+        "bad popout page",
+      );
+      expect(layoutProblem(withPopouts([popout({ url: "/index.html" })]), known)).toBe(
+        "bad popout page",
+      );
+      expect(layoutProblem(withPopouts([popout({ position: { left: "x", top: 0 } })]), known)).toBe(
+        "bad popout position",
+      );
+      expect(layoutProblem(withPopouts([{ url: "/popout.html" }]), known)).toBe("bad popout group");
+      expect(layoutProblem(withPopouts("nope"), known)).toBe("bad popout groups");
+      expect(layoutProblem(withPopouts([7]), known)).toBe("bad popout group");
+    });
+
+    it("keeps them through the layout's own block", () => {
+      const saved = withLayoutMeta(withPopouts([popout()]) as unknown as SerializedDockview, {
+        ...EMPTY_META,
+        lastDock: { inspector: { ref: "preview", direction: "right", size: 240 } },
+      });
+      expect(dockviewPart(saved).popoutGroups).toEqual([popout()]);
+      expect(readLayoutMeta(saved).lastDock.inspector).toEqual({
+        ref: "preview",
+        direction: "right",
+        size: 240,
+      });
+    });
+  });
 });

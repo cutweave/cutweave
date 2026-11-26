@@ -38,6 +38,7 @@ describe("createHandlers", () => {
     quit: vi.fn(),
     toggleFullScreen: vi.fn(),
     setTheme: vi.fn(),
+    setPopoutOnTop: vi.fn((frame: string, _on: boolean) => frame === "1-4"),
     editCommand: vi.fn(),
     prefs: {
       snapshot: vi.fn(() => ({ values: {}, defaults: {} }) as never),
@@ -180,6 +181,13 @@ describe("createHandlers", () => {
     expect(dev.reload).toHaveBeenCalledTimes(1);
     expect(dev.toggleDevTools).toHaveBeenCalledTimes(1);
     expect(dev.inspectElement).toHaveBeenCalledWith(12, 34);
+  });
+
+  it("keeps a detached panel's window on top by its name, if the editor has it (ADR-0031)", () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    expect(h["window:setPopoutOnTop"]({ frame: "1-4", on: true })).toBe(true);
+    expect(base.setPopoutOnTop).toHaveBeenLastCalledWith("1-4", true);
+    expect(h["window:setPopoutOnTop"]({ frame: "1-9", on: false })).toBe(false);
   });
 
   it("refuses Reload and developer tools in packaged builds", () => {

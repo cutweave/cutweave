@@ -4,7 +4,7 @@
 
 import { createServer } from "node:net";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { ElectronApplication, Page } from "@playwright/test";
 import { desktopDir, expect, launchApp, test } from "./fixtures.ts";
 
 const waitForEngine = (page: Page) =>
@@ -259,6 +259,20 @@ test.describe("navigation and windows", () => {
   });
 
   test("the factory refuses a non-sandboxed or preloaded non-main window", async ({ app }) => {
+    // A popout window exists only as an editor window's `window.open` (ADR-0031).
+    expect(
+      await app.evaluate(({ BrowserWindow }) => {
+        const before = BrowserWindow.getAllWindows().length;
+        try {
+          globalThis.__cutweaveTest?.createWindow("popout");
+          return "created";
+        } catch (err) {
+          return `${(err as Error).name}: ${(err as Error).message} (${BrowserWindow.getAllWindows().length - before} new)`;
+        }
+      }),
+    ).toBe(
+      "WindowPolicyError: popout window: only an editor window opens one (window.open) (0 new)",
+    );
     const attempt = (prefs: Record<string, unknown>, kind = "auxiliary") =>
       app.evaluate(
         ({ BrowserWindow }, [k, p]) => {
@@ -305,6 +319,179 @@ test.describe("navigation and windows", () => {
     );
     // The plugin scheme passes the CSP; main's stub handler answers 404 until P6.
     expect(await violationOf(page, { iframe: "cutweave-plugin://captions/index.html" })).toBeNull();
+  });
+});
+
+/**
+ * Opens a detached panel's window the way the dock does (dockview's `window.open` of
+ * `popout.html` under its `<dock>-<group>` name) and resolves with its page.
+ */
+async function openPopout(app: ElectronApplication, page: Page, name = "1-99"): Promise<Page> {
+  const [child] = await Promise.all([
+    app.waitForEvent("window"),
+    page.evaluate((target) => {
+      const opened = window.open(
+        "/popout.html",
+        target,
+        "popup,left=40,top=40,width=320,height=240",
+      );
+      (window as unknown as { __popout?: Window | null }).__popout = opened;
+    }, name),
+  ]);
+  await child.waitForLoadState("domcontentloaded");
+  await expect.poll(() => child.url()).toBe("app://cutweave/popout.html");
+  return child;
+}
+
+/**
+ * What main knows of each window: its URL, renderer process, sandbox (Electron's record of the
+ * webPreferences it applied; it does not keep the preload) and Keep on top.
+ */
+const windowsInMain = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().map((w) => {
+      const prefs = (
+        w.webContents as unknown as {
+          getLastWebPreferences?: () => { sandbox?: boolean } | null;
+        }
+      ).getLastWebPreferences?.();
+      return {
+        url: w.webContents.getURL(),
+        pid: w.webContents.getOSProcessId(),
+        sandbox: prefs?.sandbox ?? null,
+        onTop: w.isAlwaysOnTop(),
+      };
+    }),
+  );
+
+test.describe("detached panels' windows (ADR-0031)", () => {
+  test("a popout shares the editor's process with no preload, no bridge and no Node", async ({
+    app,
+    page,
+  }) => {
+    const child = await openPopout(app, page);
+    // No preload ran in it: every run of the editor's (the only one there is) exposes `cutweave`.
+    expect(
+      await child.evaluate(() => ({
+        cutweave: typeof (window as { cutweave?: unknown }).cutweave,
+        require: typeof (window as { require?: unknown }).require,
+        process: typeof (window as { process?: unknown }).process,
+      })),
+    ).toEqual({ cutweave: "undefined", require: "undefined", process: "undefined" });
+    // Nor could one: the editor's preload is its own window's setting (main refuses a popout
+    // whose options name one), and no preload is registered for the whole session.
+    expect(
+      await app.evaluate(
+        ({ session }) =>
+          (
+            session.defaultSession as unknown as { getPreloadScripts?: () => unknown[] }
+          ).getPreloadScripts?.().length ?? 0,
+      ),
+    ).toBe(0);
+    // The editor reaches its document: it is the same agent, which is what the dock needs.
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __popout?: Window | null }).__popout?.document.URL,
+      ),
+    ).toBe("app://cutweave/popout.html");
+
+    // It runs in the editor's renderer process, unsandboxed like it (Electron 45 requires it).
+    const windows = await windowsInMain(app);
+    const editor = windows.find((w) => w.url === "app://cutweave/");
+    const popout = windows.find((w) => w.url === "app://cutweave/popout.html");
+    expect(popout).toMatchObject({ sandbox: false, pid: editor?.pid });
+    // So the addon is loaded once, by the editor's preload in that process, and still answers.
+    expect(await page.evaluate(() => window.cutweave.preview.isAvailable())).toBe(true);
+  });
+
+  test("a popout's document has the app CSP", async ({ app, page }) => {
+    const child = await openPopout(app, page);
+    expect(await violationOf(child, { fetch: "http://example.com/" })).toBe(
+      "connect-src http://example.com/",
+    );
+    const refused = await child.evaluate(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => {
+            try {
+              // biome-ignore lint/security/noGlobalEval: asserting the CSP blocks it
+              eval("1 + 1");
+              resolve("ran");
+            } catch (err) {
+              resolve((err as Error).name);
+            }
+          }, 0),
+        ),
+    );
+    expect(refused).toBe("EvalError");
+  });
+
+  test("a popout cannot navigate or open windows of its own", async ({ app, page, mainLog }) => {
+    const child = await openPopout(app, page);
+    expect(
+      await child.evaluate(() => ({
+        popout: window.open("/popout.html", "1-98", "popup") === null,
+        app: window.open("app://cutweave/") === null,
+      })),
+    ).toEqual({ popout: true, app: true });
+    // Not to the web, and not to the editor's own page either.
+    for (const target of ["https://example.com/", "app://cutweave/"]) {
+      await navigateFromPage(child, target);
+      await expect
+        .poll(() => mainLog.some((l) => l.includes(`navigation blocked: ${target}`)))
+        .toBe(true);
+      expect(child.url()).toBe("app://cutweave/popout.html");
+    }
+    expect((await windowsInMain(app)).length).toBe(2);
+  });
+
+  test("only an editor window may open popout.html, and only under the dock's names", async ({
+    app,
+    page,
+  }) => {
+    const refused = await page.evaluate(() => ({
+      name: window.open("/popout.html", "popout", "popup") === null,
+      blank: window.open("/popout.html", "_blank", "popup") === null,
+      query: window.open("/popout.html?x=1", "1-5", "popup") === null,
+      page: window.open("/index.html", "1-5", "popup") === null,
+      foreign: window.open("https://example.com/popout.html", "1-5", "popup") === null,
+    }));
+    expect(refused).toEqual({ name: true, blank: true, query: true, page: true, foreign: true });
+
+    // A sandboxed window from the factory loads the app origin too, and is refused.
+    const [aux] = await Promise.all([
+      app.waitForEvent("window"),
+      app.evaluate(() => globalThis.__cutweaveTest?.createWindow("auxiliary")),
+    ]);
+    await aux.waitForLoadState("domcontentloaded");
+    expect(await aux.evaluate(() => window.open("/popout.html", "1-6", "popup") === null)).toBe(
+      true,
+    );
+    expect(app.windows()).toHaveLength(2);
+  });
+
+  test("Keep on top reaches only a popout this editor opened, by its name", async ({
+    app,
+    page,
+  }) => {
+    const setOnTop = (frame: string, on: boolean) =>
+      page.evaluate(
+        ([f, o]) =>
+          window.cutweave.window.setPopoutOnTop(f as string, o as boolean).then(
+            (found) => found,
+            (err: Error) => err.message,
+          ),
+        [frame, on] as const,
+      );
+    expect(await setOnTop("1-99", true)).toBe(false);
+    expect(await setOnTop("main", true)).toMatch(
+      /IpcValidationError: invalid IPC call on window:setPopoutOnTop/,
+    );
+    await openPopout(app, page, "1-99");
+    expect(await setOnTop("1-99", true)).toBe(true);
+    const popout = (await windowsInMain(app)).find((w) => w.url.endsWith("/popout.html"));
+    expect(popout?.onTop).toBe(true);
+    expect(await setOnTop("1-99", false)).toBe(true);
   });
 });
 
@@ -399,6 +586,7 @@ test.describe("IPC", () => {
       "cutweave.window.onCloseRequested",
       "cutweave.window.reload",
       "cutweave.window.setDirty",
+      "cutweave.window.setPopoutOnTop",
       "cutweave.window.setTheme",
       "cutweave.window.toggleDevTools",
       "cutweave.window.toggleFullScreen",

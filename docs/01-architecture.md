@@ -836,6 +836,7 @@ Cutweave is also a **harness for video-creation agents**. MCP gives agents hands
   - Right: a context inspector (schema-driven).
   - Bottom: the timeline.
   - The layout is fully dockable; saved workspaces are "Short-form" and "Long-form". Panels can be closed and reopened from View > Panels (WP-2H.01); optional panels include the History panel (WP-2H.11).
+  - A panel can move into an OS window of its own and back (dockview popout groups in the editor's renderer, ADR-0031, WP-2H.14). Its window, bounds and panels are part of the workspace's saved layout, and `shell/windows.ts` registers every window so per-window behaviour (theme, keys, menus) reaches it.
   - The preview shows the timeline or, as its Source view, one media asset (§10, WP-1M.15); the bin's cards hover-scrub and the Inspector previews a selected asset (WP-1M.14).
 - **Schema-driven inspector:** one renderer turns any JSON Schema with UI hints (slider, color, angle, font, curve, enum, asset-ref, keyframeable) into controls. It is used by core props, effects, compositions, AI model forms and plugins alike.
 - **Keyboard-first:** every command can be bound, and the defaults match common NLEs (J/K/L, I/O, B, A, Q/W ripple trims) plus CapCut's shortcuts. Shortcut presets can be switched.

@@ -191,6 +191,16 @@ describe("createCutweaveApi", () => {
     expect(Object.keys(api.edit)).toEqual(["run"]);
   });
 
+  it("asks main to keep a detached panel's window on top by its window name (ADR-0031)", async () => {
+    const { ipc } = fakeIpc();
+    vi.mocked(ipc.invoke).mockResolvedValueOnce(true);
+    const api = createCutweaveApi(ipc, null);
+    expect(await api.window.setPopoutOnTop("1-4", true)).toBe(true);
+    expect(vi.mocked(ipc.invoke).mock.calls).toEqual([
+      ["window:setPopoutOnTop", { frame: "1-4", on: true }],
+    ]);
+  });
+
   it("filters menu events to known commands and unsubscribes", () => {
     const { ipc, emit, listeners } = fakeIpc();
     const api = createCutweaveApi(ipc, null);

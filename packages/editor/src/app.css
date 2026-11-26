@@ -196,10 +196,15 @@ body {
   align-items: center;
 }
 /* The close button at the end of a group's tab strip (the active panel's). */
-.cw-dock-tab__close {
+.cw-dock-tab__close,
+.cw-dock-tab__pin {
   flex: none;
   align-self: center;
   margin-inline: var(--space-1);
+}
+/* Keep on top sits next to the close button in a detached panel's window (WP-2H.14). */
+.cw-dock-tab__pin {
+  margin-inline-end: 0;
 }
 /* Every panel closed: the dock's own empty state, centred. */
 .cw-dock-empty {

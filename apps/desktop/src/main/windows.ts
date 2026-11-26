@@ -29,11 +29,40 @@ export interface CreateWindowOptions
 
 const kinds = new Map<number, WindowKind>();
 
-/** Kind of the window owning `contents`, if the factory created it. */
+/** Each popout window (by its webContents id): the editor that opened it and dockview's name. */
+const popouts = new Map<number, { readonly opener: number; readonly frameName: string }>();
+
+/** Kind of the window owning `contents`, if the factory (or `registerPopout`) recorded it. */
 export function windowKindOf(contents: unknown): WindowKind | undefined {
   if (typeof contents !== "object" || contents === null || !("id" in contents)) return undefined;
   const { id } = contents as WebContents;
   return typeof id === "number" ? kinds.get(id) : undefined;
+}
+
+/**
+ * Records a popout (ADR-0031): a window Electron created for an editor window's allowed
+ * `window.open` (popout.ts), never through `createWindow`. Main checked its policy first.
+ */
+export function registerPopout(child: BrowserWindow, opener: WebContents, frameName: string): void {
+  const id = child.webContents.id;
+  kinds.set(id, "popout");
+  popouts.set(id, { opener: opener.id, frameName });
+  child.webContents.once("destroyed", () => {
+    kinds.delete(id);
+    popouts.delete(id);
+  });
+}
+
+/** The live popouts `opener` opened. */
+export function popoutsOf(opener: WebContents): BrowserWindow[] {
+  return windowsOfKind("popout").filter(
+    (win) => popouts.get(win.webContents.id)?.opener === opener.id,
+  );
+}
+
+/** The popout `opener` opened under dockview's window name `frameName`, if it is open. */
+export function popoutNamed(opener: WebContents, frameName: string): BrowserWindow | undefined {
+  return popoutsOf(opener).find((win) => popouts.get(win.webContents.id)?.frameName === frameName);
 }
 
 /** Every live window the factory created as `kind`. */
@@ -49,6 +78,10 @@ export function createWindow(
   ctx: WindowFactoryContext,
 ): BrowserWindow {
   const { url, webPreferences, ...rest } = options;
+  // A popout exists only as an editor window's `window.open` (hardening.ts, popout.ts).
+  if (kind === "popout") {
+    throw new WindowPolicyError("popout window: only an editor window opens one (window.open)");
+  }
   const prefs = resolveWebPreferences(kind, ctx, webPreferences);
   if (!isTrustedOrigin(url, ctx)) {
     throw new WindowPolicyError(`${kind} window: may only load the app origin`);
