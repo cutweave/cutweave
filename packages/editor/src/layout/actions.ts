@@ -148,7 +148,7 @@ export function placeable(media: readonly string[]): boolean {
     media.length <= MAX_LAYOUT_CLIPS &&
     media.every((id) => {
       const kind = project?.media[id as MediaId]?.kind;
-      return kind === "video" || kind === "image";
+      return kind === "video" || kind === "image" || kind === "image_sequence";
     })
   );
 }

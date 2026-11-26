@@ -19590,6 +19590,11 @@ expression: text
                       "type": "string"
                     },
                     {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
                       "const": "sequence_ref",
                       "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                       "type": "string"
@@ -19691,6 +19696,233 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Import media files: probe and register them now, return media ids and analysis job ids",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that\nplays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:\nthe run is every file of that folder whose name differs only in the number at its end.\nFewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a\nsequence). Only the first picture is read, so a long run imports at once; the files are\nreferenced, not copied.\n\nNumbers without a file are allowed: they are listed in `image_sequence.missing`, named in\n`warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame\nrate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes\non video tracks only (it has no sound). One undo removes it. Agents and headless callers\nmay only import from the project folder and user-approved folders.",
+        "properties": {
+          "folder": {
+            "default": null,
+            "description": "Bin folder (default: top level).",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fps": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Frames per second, as a fraction (`{\"num\": 24000, \"den\": 1001}`). Default: the frame\nrate of the sequence the editor shows, 30 without one.",
+            "properties": {
+              "den": {
+                "description": "Seconds.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "num": {
+                "description": "Frames.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Absolute path of one picture of the run, or of the folder that holds the run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "MediaImportSequence",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_import_sequence",
+      "name": "media.import_sequence",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.import_sequence`.",
+        "properties": {
+          "duplicate": {
+            "description": "`true` when the run was already in the project and nothing was added.",
+            "type": "boolean"
+          },
+          "image_sequence": {
+            "description": "The run as stored on the asset: pattern, first number, count, frame rate and the\nnumbers that have no file.",
+            "properties": {
+              "count": {
+                "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "first": {
+                "description": "The number of the first file.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "fps": {
+                "additionalProperties": false,
+                "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "missing": {
+                "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                "items": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "pattern": {
+                "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "pattern",
+              "first",
+              "count",
+              "fps",
+              "missing"
+            ],
+            "type": "object"
+          },
+          "job_ids": {
+            "description": "Background analysis jobs queued for the new asset (wait with `job.wait`).",
+            "items": {
+              "description": "A job id: `^job_[0-9a-f]{32}$`.",
+              "pattern": "^job_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "description": "`image_sequence`.",
+            "oneOf": [
+              {
+                "const": "video",
+                "description": "A video file (may also carry audio).",
+                "type": "string"
+              },
+              {
+                "const": "audio",
+                "description": "An audio-only file.",
+                "type": "string"
+              },
+              {
+                "const": "image",
+                "description": "A still image (no duration).",
+                "type": "string"
+              },
+              {
+                "const": "image_sequence",
+                "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                "type": "string"
+              },
+              {
+                "const": "sequence_ref",
+                "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                "type": "string"
+              }
+            ]
+          },
+          "media_id": {
+            "description": "The asset; an existing one if the same run was imported before.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the first picture of the run.",
+            "type": "string"
+          },
+          "proxy": {
+            "description": "Whether a proxy was queued for it, or is already in the cache.",
+            "oneOf": [
+              {
+                "const": "none",
+                "description": "None is made (the policy does not want one, or the file cannot have one).",
+                "type": "string"
+              },
+              {
+                "const": "queued",
+                "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                "type": "string"
+              },
+              {
+                "const": "ready",
+                "description": "One is already in the cache (the same content was imported before).",
+                "type": "string"
+              }
+            ]
+          },
+          "warnings": {
+            "description": "One sentence per stretch of missing numbers; empty when the run has no gaps.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media_id",
+          "kind",
+          "duplicate",
+          "path",
+          "image_sequence",
+          "warnings",
+          "job_ids",
+          "proxy"
+        ],
+        "title": "MediaImportSequenceOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Import a numbered run of pictures as one image sequence that plays like video",
       "undoable": false,
       "view": false
     },
@@ -20083,6 +20315,71 @@ expression: text
               "null"
             ]
           },
+          "image_sequence": {
+            "default": null,
+            "description": "For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`\nthe picture with the run's duration and frame rate; the asset's kind is\n`image_sequence`. Absent for every other file.",
+            "properties": {
+              "count": {
+                "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "first": {
+                "description": "The number of the first file.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "fps": {
+                "additionalProperties": false,
+                "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "missing": {
+                "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                "items": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "pattern": {
+                "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "pattern",
+              "first",
+              "count",
+              "fps",
+              "missing"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "media_id": {
             "default": null,
             "description": "ID for the new asset; minted by the engine when absent. Must not exist yet.",
@@ -20439,6 +20736,11 @@ expression: text
                 "type": "string"
               },
               {
+                "const": "image_sequence",
+                "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                "type": "string"
+              },
+              {
                 "const": "sequence_ref",
                 "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                 "type": "string"
@@ -20503,6 +20805,71 @@ expression: text
                       "pattern": "^fld_[0-9a-f]{32}$",
                       "type": [
                         "string",
+                        "null"
+                      ]
+                    },
+                    "image_sequence": {
+                      "default": null,
+                      "description": "For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`\nthe picture with the run's duration and frame rate; the asset's kind is\n`image_sequence`. Absent for every other file.",
+                      "properties": {
+                        "count": {
+                          "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "first": {
+                          "description": "The number of the first file.",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "fps": {
+                          "additionalProperties": false,
+                          "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                          "properties": {
+                            "den": {
+                              "description": "Seconds.",
+                              "maximum": 4294967295,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "num": {
+                              "description": "Frames.",
+                              "maximum": 4294967295,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "num",
+                            "den"
+                          ],
+                          "type": "object"
+                        },
+                        "missing": {
+                          "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                          "items": {
+                            "format": "uint32",
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "pattern": {
+                          "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pattern",
+                        "first",
+                        "count",
+                        "fps",
+                        "missing"
+                      ],
+                      "type": [
+                        "object",
                         "null"
                       ]
                     },
@@ -20895,6 +21262,11 @@ expression: text
                     {
                       "const": "image",
                       "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
                       "type": "string"
                     },
                     {

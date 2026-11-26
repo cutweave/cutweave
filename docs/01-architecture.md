@@ -179,8 +179,11 @@ Project
  ├─ assets: { fonts, luts, packs (plugin refs) }
  └─ markers, tags, custom (plugin-namespaced data)
 
-MediaAsset { id, kind(video|audio|image|sequence-ref), name?: display name, folder?: FolderId,
+MediaAsset { id, kind(video|audio|image|image-sequence|sequence-ref), name?: display name, folder?: FolderId,
              path_abs, path_rel, content_hash,
+             image_sequence?: { pattern, first, count, fps, missing[] },   # a numbered run of pictures as one
+                                                                         # asset that plays like video; the paths
+                                                                         # name its first file (ADR-0035, schema v3)
              probe{streams, duration, fps, vfr, rotation, color{primaries,transfer,matrix,range}, audio{rate,channels}},
              proxy?: ProxyRef, analysis{scenes?, beats?, loudness?, waveform_ref}, provenance?: Provenance }
 

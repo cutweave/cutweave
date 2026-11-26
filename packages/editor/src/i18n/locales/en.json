@@ -400,6 +400,12 @@
         "since": "Connected at {{time}}",
         "last": "Last: {{command}} at {{time}}",
         "lastNone": "No command yet"
+      },
+      "imageSequenceFps": {
+        "label": "Frame rate for image sequences",
+        "description": "The frame rate a numbered run of pictures gets when you import it as an image sequence. Sequences you have already imported keep theirs.",
+        "keywords": "image sequence, frames, fps, frame rate, numbered pictures, render, time-lapse, png, exr, import",
+        "sequence": "The sequence's frame rate"
       }
     },
     "cache": {
@@ -737,7 +743,8 @@
       "video": "Video",
       "audio": "Audio",
       "image": "Image",
-      "sequenceRef": "Sequence"
+      "sequenceRef": "Sequence",
+      "imageSequence": "Image sequence"
     },
     "card": {
       "fps": "{{fps}} fps",
@@ -884,6 +891,22 @@
       "deleteNote": "Keep media lifts everything into the parent folder. Files on disk are never touched, and Undo brings it all back.",
       "deleteAll": "Delete folder and media",
       "deleteKeep": "Keep media"
+    },
+    "sequence": {
+      "offerTitle": "Import as an image sequence?",
+      "offerBody": "You chose {{count}} numbered pictures, {{first}} to {{last}}.",
+      "offerNote": "As an image sequence, the numbered pictures in that folder become one item that plays like video. The files stay where they are.",
+      "asSequence": "Import as image sequence",
+      "asSeparate": "Import as separate pictures",
+      "cancel": "Cancel",
+      "working": "Importing an image sequence",
+      "doneTitle": "Image sequence imported",
+      "doneBody": "{{count}} pictures at {{fps}} fps.",
+      "duplicate": "This sequence was in the project already.",
+      "gapsTitle": "Some pictures are missing",
+      "gapsOne": "1 number in the run has no file. It shows the picture before it.",
+      "gapsMany": "{{count}} numbers in the run have no file. Each shows the picture before it.",
+      "failedTitle": "The image sequence was not imported"
     }
   },
   "preview": {
@@ -1015,7 +1038,8 @@
         "video": "Video",
         "audio": "Audio",
         "image": "Image",
-        "sequence": "Sequence"
+        "sequence": "Sequence",
+        "imageSequence": "Image sequence"
       },
       "duration": "Duration",
       "resolution": "Resolution",

@@ -65,6 +65,24 @@ export type ClientProfile = (typeof CLIENT_PROFILES)[number];
 /** The most folders "Folders agents can use" holds (the engine takes no more, WP-1J.05). */
 export const MAX_AGENT_FOLDERS = 64;
 
+/**
+ * The frame rate a new image sequence gets (WP-2F.05c, ADR-0035): the frame rate of the sequence
+ * the editor shows, or a fixed one. Stored on the asset at import; changing the setting never
+ * changes an imported sequence.
+ */
+export const IMAGE_SEQUENCE_FPS_CHOICES = [
+  "sequence",
+  "23.976",
+  "24",
+  "25",
+  "29.97",
+  "30",
+  "50",
+  "59.94",
+  "60",
+] as const;
+export type ImageSequenceFps = (typeof IMAGE_SEQUENCE_FPS_CHOICES)[number];
+
 /** The History panel lists its steps newest first or oldest first (#171). */
 export const HISTORY_ORDERS = ["oldest", "newest"] as const;
 export type HistoryOrder = (typeof HISTORY_ORDERS)[number];
@@ -132,6 +150,8 @@ export interface PreferenceValues {
   "media.hover_scrub": boolean;
   /** Folders in an import keep their directories as bin folders (WP-2F.09). */
   "media.keep_structure": boolean;
+  /** The frame rate of a new image sequence (WP-2F.05c); `"sequence"` is the sequence's own. */
+  "media.image_sequence_fps": ImageSequenceFps;
   /** The History panel's sort order (#171), the person's, not the project's. */
   "history.order": HistoryOrder;
   // Keyboard shortcuts (WP-2H.05)
@@ -281,6 +301,12 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
   "media.keep_structure": { type: "boolean", scope: "app", default: true },
+  "media.image_sequence_fps": {
+    type: "enum",
+    scope: "app",
+    options: IMAGE_SEQUENCE_FPS_CHOICES,
+    default: "sequence",
+  },
   // Keyboard shortcuts (WP-2H.05)
   "history.order": { type: "enum", scope: "app", options: HISTORY_ORDERS, default: "oldest" },
   "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },

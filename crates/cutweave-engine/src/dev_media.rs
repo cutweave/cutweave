@@ -15,7 +15,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use cutweave_model::{
-    AudioInfo, Duration, Extra, FrameRate, ProbeInfo, SampleRate, StreamInfo, StreamKind,
+    AudioInfo, Duration, Extra, FrameRate, ImageSequence, ProbeInfo, SampleRate, StreamInfo,
+    StreamKind,
 };
 use cutweave_ops::media::{MediaProbe, ProbeError, Probed};
 use serde_json::Value;
@@ -52,6 +53,40 @@ pub struct StubMediaBackend;
 
 impl MediaProbe for StubMediaBackend {
     fn probe(&self, path: &str) -> Result<Probed, ProbeError> {
+        if let Some((dir, run)) = ImageSequence::parse_locator(path) {
+            // An image sequence (`media.import_sequence`, ADR-0035): its first picture, with
+            // the run's duration and frame rate and a content hash of its own.
+            let first = format!("{dir}{}", run.file_name(run.first).unwrap_or_default());
+            let mut probed = self.probe(&first)?;
+            if probed.probe.duration.is_some() {
+                return Err(ProbeError::Unsupported {
+                    path: first,
+                    reason: "an image sequence is made of pictures, and this is not one".into(),
+                });
+            }
+            probed.probe.duration = run.duration();
+            probed.probe.fps = Some(run.fps);
+            let mut sha = Sha256::new();
+            sha.update(probed.content_hash.as_bytes());
+            sha.update(
+                format!(
+                    "image-sequence;{};{};{};{}x{}",
+                    run.pattern,
+                    run.first,
+                    run.count,
+                    run.fps.num(),
+                    run.fps.den()
+                )
+                .as_bytes(),
+            );
+            let mut hash = String::from("stub-sha256:");
+            for b in sha.finalize() {
+                // Writing to a `String` cannot fail.
+                let _ = write!(hash, "{b:02x}");
+            }
+            probed.content_hash = hash;
+            return Ok(probed);
+        }
         let io = |e: std::io::Error| ProbeError::Io {
             path: path.to_owned(),
             reason: e.to_string(),

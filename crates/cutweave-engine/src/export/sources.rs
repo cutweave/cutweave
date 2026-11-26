@@ -138,8 +138,9 @@ fn assets(doc: &Project) -> HashMap<MediaId, Asset> {
     doc.media
         .values()
         .filter_map(|m| {
-            let path = m.path_abs.as_ref()?;
-            let key = m.content_hash.as_deref().unwrap_or(path);
+            // The file, or the locator of an image sequence (ADR-0035).
+            let path = m.source_path()?;
+            let key = m.content_hash.as_deref().unwrap_or(&path);
             let target = m
                 .probe
                 .streams
@@ -150,8 +151,8 @@ fn assets(doc: &Project) -> HashMap<MediaId, Asset> {
             Some((
                 m.id,
                 Asset {
-                    path: PathBuf::from(path),
                     identity: media_identity(key),
+                    path: PathBuf::from(&path),
                     target,
                 },
             ))

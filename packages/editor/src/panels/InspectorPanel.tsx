@@ -28,6 +28,7 @@ import { SequenceSection } from "../inspector/SequenceSection.tsx";
 import { SpeedSection } from "../inspector/SpeedSection.tsx";
 import { TrackSection } from "../inspector/TrackSection.tsx";
 import { VideoSections } from "../inspector/VideoSections.tsx";
+import { isMovingPicture } from "../media/kinds.ts";
 import { ContextSurface } from "../menus/host.tsx";
 import { useDocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId, selectSequenceSummary } from "../state/selectors.ts";
@@ -48,6 +49,7 @@ const MEDIA_KIND: Record<MediaAsset["kind"], TKey> = {
   video: "inspector.media.kinds.video",
   audio: "inspector.media.kinds.audio",
   image: "inspector.media.kinds.image",
+  image_sequence: "inspector.media.kinds.imageSequence",
   sequence_ref: "inspector.media.kinds.sequence",
 };
 
@@ -305,7 +307,7 @@ function SourceRows({ clip }: { readonly clip: SelectedClip }) {
   const media = project?.media[clip.item.media as keyof typeof project.media];
   const [proxy, setProxy] = useState<ProxyStatus | null>(null);
   const mediaId = clip.item.media;
-  const isVideo = media?.kind === "video";
+  const isVideo = isMovingPicture(media?.kind);
   useEffect(() => {
     setProxy(null);
     if (rpc === null || !isVideo) return;

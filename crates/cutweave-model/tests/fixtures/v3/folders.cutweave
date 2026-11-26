@@ -1,0 +1,329 @@
+{
+  "meta": {
+    "schema_version": 3,
+    "name": "Folders",
+    "created": "2026-11-22T09:30:00Z",
+    "app_version": "0.1.0"
+  },
+  "settings": {
+    "default_format": {
+      "width": 1920,
+      "height": 1080,
+      "frame_rate": {
+        "num": 30,
+        "den": 1
+      },
+      "sample_rate": 48000,
+      "color_space": "rec709",
+      "background": "#000000"
+    }
+  },
+  "media": {
+    "med_0000000000067f14a41525f167e5145f": {
+      "id": "med_0000000000067f14a41525f167e5145f",
+      "kind": "video",
+      "name": "Coastline aerial",
+      "folder": "fld_00000000000376f9942fdbfd68a4036c",
+      "path_abs": "/media/DJI_0042.mp4",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "kind": "video",
+            "codec": "h264",
+            "profile": "High",
+            "width": 1920,
+            "height": 1080,
+            "pixel_format": "yuv420p",
+            "sample_rate": null,
+            "channels": null,
+            "language": null
+          },
+          {
+            "index": 1,
+            "kind": "audio",
+            "codec": "aac",
+            "profile": "LC",
+            "width": null,
+            "height": null,
+            "pixel_format": null,
+            "sample_rate": 48000,
+            "channels": 2,
+            "language": "eng"
+          }
+        ],
+        "duration": 21168000000,
+        "fps": {
+          "num": 30,
+          "den": 1
+        },
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": "bt709",
+          "transfer": "bt709",
+          "matrix": "bt709",
+          "range": "limited"
+        },
+        "audio": {
+          "rate": 48000,
+          "channels": 2
+        }
+      },
+      "custom": {}
+    },
+    "med_0000000000077d7c915d2d0e46698852": {
+      "id": "med_0000000000077d7c915d2d0e46698852",
+      "kind": "video",
+      "name": null,
+      "folder": "fld_0000000000017bee941b88406d64f43d",
+      "path_abs": "/media/walk.mov",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "kind": "video",
+            "codec": "h264",
+            "profile": "High",
+            "width": 1920,
+            "height": 1080,
+            "pixel_format": "yuv420p",
+            "sample_rate": null,
+            "channels": null,
+            "language": null
+          },
+          {
+            "index": 1,
+            "kind": "audio",
+            "codec": "aac",
+            "profile": "LC",
+            "width": null,
+            "height": null,
+            "pixel_format": null,
+            "sample_rate": 48000,
+            "channels": 2,
+            "language": "eng"
+          }
+        ],
+        "duration": 8467200000,
+        "fps": {
+          "num": 30,
+          "den": 1
+        },
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": "bt709",
+          "transfer": "bt709",
+          "matrix": "bt709",
+          "range": "limited"
+        },
+        "audio": {
+          "rate": 48000,
+          "channels": 2
+        }
+      },
+      "custom": {}
+    },
+    "med_00000000000877dbb08e1101edc9f6d8": {
+      "id": "med_00000000000877dbb08e1101edc9f6d8",
+      "kind": "audio",
+      "name": "Theme (final mix)",
+      "folder": "fld_0000000000057c3492b40e41f14e6d8b",
+      "path_abs": "/media/song.wav",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [],
+        "duration": 63504000000,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": {
+          "rate": 44100,
+          "channels": 2
+        }
+      },
+      "custom": {}
+    },
+    "med_0000000000097cb49c5d5559d93f067e": {
+      "id": "med_0000000000097cb49c5d5559d93f067e",
+      "kind": "image",
+      "name": "Logo ✨",
+      "folder": null,
+      "path_abs": "/stills/logo.png",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [],
+        "duration": null,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": null
+      },
+      "custom": {}
+    }
+  },
+  "folders": {
+    "fld_0000000000017bee941b88406d64f43d": {
+      "id": "fld_0000000000017bee941b88406d64f43d",
+      "name": "B-roll",
+      "parent": null,
+      "custom": {
+        "com.example.bin": {
+          "color": "teal"
+        }
+      }
+    },
+    "fld_000000000002738282a885bfde4e1b46": {
+      "id": "fld_000000000002738282a885bfde4e1b46",
+      "name": "Drone",
+      "parent": "fld_0000000000017bee941b88406d64f43d",
+      "custom": {}
+    },
+    "fld_00000000000376f9942fdbfd68a4036c": {
+      "id": "fld_00000000000376f9942fdbfd68a4036c",
+      "name": "Día 1 — 日本",
+      "parent": "fld_000000000002738282a885bfde4e1b46",
+      "custom": {},
+      "x_future_folder": {
+        "sort": "name"
+      }
+    },
+    "fld_00000000000473768235ded7627b8d32": {
+      "id": "fld_00000000000473768235ded7627b8d32",
+      "name": "Empty",
+      "parent": null,
+      "custom": {}
+    },
+    "fld_0000000000057c3492b40e41f14e6d8b": {
+      "id": "fld_0000000000057c3492b40e41f14e6d8b",
+      "name": "Music",
+      "parent": null,
+      "custom": {}
+    }
+  },
+  "sequences": {
+    "seq_00000000000a703b87f8e2b31ff7e176": {
+      "id": "seq_00000000000a703b87f8e2b31ff7e176",
+      "name": "Main",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": {
+          "num": 30,
+          "den": 1
+        },
+        "sample_rate": 48000,
+        "color_space": "rec709",
+        "background": "#000000"
+      },
+      "tracks": {
+        "trk_00000000000b788083418540227d71f0": {
+          "id": "trk_00000000000b788083418540227d71f0",
+          "kind": "video",
+          "name": "V1",
+          "items": {
+            "itm_00000000000c77aeba98e2b28b699b0f": {
+              "kind": "clip",
+              "id": "itm_00000000000c77aeba98e2b28b699b0f",
+              "name": null,
+              "start": 0,
+              "duration": 2822400000,
+              "enabled": true,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_0000000000067f14a41525f167e5145f",
+              "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
+              "audio": {
+                "gain": 0.0,
+                "pan": 0.0,
+                "fade_in": {
+                  "duration": 0,
+                  "curve": "linear"
+                },
+                "fade_out": {
+                  "duration": 0,
+                  "curve": "linear"
+                }
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
+              },
+              "custom": {}
+            }
+          },
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        }
+      },
+      "track_order": [
+        "trk_00000000000b788083418540227d71f0"
+      ],
+      "markers": {},
+      "in_out": null,
+      "custom": {}
+    }
+  },
+  "custom": {}
+}
