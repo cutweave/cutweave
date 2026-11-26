@@ -11,6 +11,13 @@ export interface CspOptions {
    * inline scripts/styles that Vite's HMR and React refresh inject. Never set when packaged.
    */
   readonly devServerOrigin?: string | undefined;
+  /**
+   * Allow `'wasm-unsafe-eval'` in `script-src` (ADR-0033). Defaults to true: `buildCsp` is the
+   * editor window's policy, and popouts load from the same origin under it. Only the strict
+   * policy for any other kind of page passes false; plugin frames never get this policy at all
+   * (they load from the plugin scheme, arch §15).
+   */
+  readonly wasm?: boolean | undefined;
 }
 
 /** Throws unless `port` is a valid TCP port. */
@@ -26,7 +33,10 @@ function checkPort(port: number): void {
  * - `default-src 'none'`, then only what the editor needs: scripts, styles and fonts from the app
  *   origin; images and media also from `data:`/`blob:` and the engine's `/media` HTTP routes.
  * - `connect-src`: the engine origin only (`http://127.0.0.1:P` and `ws://127.0.0.1:P`).
- * - No `'unsafe-eval'`, no `'unsafe-inline'`, no `'wasm-unsafe-eval'` in production.
+ * - No `'unsafe-eval'` and no `'unsafe-inline'` in production. `'wasm-unsafe-eval'` is allowed in
+ *   `script-src` and nowhere else (ADR-0033): the editor and its popouts compile the bundled math
+ *   module (arch §10). It permits compiling WebAssembly only, not `eval`; the module itself is
+ *   bundled into a script from the app origin, so no `data:` or `blob:` source is needed.
  * - `frame-src`: the dedicated plugin scheme only; `object-src`, `base-uri`, `form-action`,
  *   `frame-ancestors`: none.
  */
@@ -49,10 +59,11 @@ export function buildCsp(enginePort: number | null, options: CspOptions = {}): s
     devInline.push("'unsafe-inline'");
   }
 
+  const wasm = options.wasm === false ? [] : ["'wasm-unsafe-eval'"];
   const connect = [...engine, ...engineWs, ...dev, ...devWs];
   const directives: [string, string[]][] = [
     ["default-src", ["'none'"]],
-    ["script-src", ["'self'", ...dev, ...devInline]],
+    ["script-src", ["'self'", ...wasm, ...dev, ...devInline]],
     ["style-src", ["'self'", ...dev, ...devInline]],
     ["img-src", ["'self'", "data:", "blob:", ...engine, ...dev]],
     ["font-src", ["'self'", ...dev]],

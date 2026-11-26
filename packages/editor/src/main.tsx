@@ -11,6 +11,8 @@ import { engineStore } from "./engine/engineStore.ts";
 import { bridgeFromWindow, startEngineRuntime } from "./engine/runtime.ts";
 import { appBridgeFromWindow, installTestHandleIfEnabled } from "./engine/testHandle.ts";
 import { i18n } from "./i18n/index.ts";
+import { MathStartupError } from "./math/MathStartupError.tsx";
+import { startMath } from "./math/startup.ts";
 import { binStore } from "./media/binStore.ts";
 import { mediaStore } from "./media/mediaStore.ts";
 import { startMediaHttp } from "./media/mediaWiring.ts";
@@ -38,6 +40,18 @@ function localStorageOrNull(): Storage | null {
 async function boot(): Promise<void> {
   const root = document.getElementById("root");
   if (!root) throw new Error("index.html is missing #root");
+
+  // The shared math module before anything that converts a time, draws a curve or snaps (arch
+  // §10, ADR-0033). A module that does not match this build stops the editor here.
+  const math = await startMath(() => import("virtual:cutweave-math-wasm"));
+  if (!math.ok) {
+    createRoot(root).render(
+      <StrictMode>
+        <MathStartupError failure={math} />
+      </StrictMode>,
+    );
+    return;
+  }
 
   // The preferences come first: the shell paints in the person's theme, and the engine hears the
   // saving preferences with its first handshake. Main answers from memory, so this is quick; a

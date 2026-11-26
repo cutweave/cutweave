@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // F1 First launch (docs/user-flows.md): start the app and see the editor ready to work.
-import { editorCall, expect, test } from "../fixtures.ts";
+import { editorCall, editorHandle, editorMath, expect, test } from "../fixtures.ts";
 import {
   dirtyDot,
   engineChip,
@@ -44,6 +44,13 @@ test.describe("F1 first launch", () => {
       );
       expect(project.media_count).toBe(0);
       expect(project.sequences).toEqual([]);
+      // The editor runs the engine's own math in the page (ADR-0033): the bundled wasm module is
+      // loaded under the CSP, and a conversion matches the engine's (one frame at 24 fps is
+      // 705,600,000 / 24 = 29,400,000 flicks).
+      await editorHandle(page);
+      const math = await editorMath(page);
+      expect(math.version).not.toBe("");
+      expect(math.frameToTime24).toBe(29_400_000);
       // Nothing went wrong on the way up.
       expect(logProblems(mainLog)).toEqual([]);
     } finally {

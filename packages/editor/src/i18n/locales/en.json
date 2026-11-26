@@ -1205,6 +1205,12 @@
     "applyLayout": "Apply layout",
     "placeLayout": "Place side by side"
   },
+  "mathStartup": {
+    "versionTitle": "Cutweave can't start: its math module is out of date",
+    "versionBody": "The editor's time and animation math does not match this build, so starting would show wrong values. Reinstall Cutweave, or when building from source run `just wasm` and restart.",
+    "loadTitle": "Cutweave can't start: its math module did not load",
+    "loadBody": "The editor needs its bundled math module to run. Reinstall Cutweave, or when building from source run `just wasm` and restart."
+  },
   "projectUi": {
     "untitled": "Untitled project",
     "windowTitle": "{{name}} — Cutweave",

@@ -37,6 +37,7 @@ declare global {
     | {
         call(method: string, params?: Record<string, unknown>): Promise<unknown>;
         state(): unknown;
+        math(): { version: string; frameToTime24: number };
       }
     | undefined;
 }
@@ -59,6 +60,15 @@ export interface EditorState {
 /** Waits until the editor installed its e2e handle (after `app.getInfo()` reports test hooks). */
 export async function editorHandle(page: Page): Promise<void> {
   await page.waitForFunction(() => globalThis.__cutweaveEditor !== undefined);
+}
+
+/** The editor page's shared math module (ADR-0033): its version and one conversion it computed. */
+export function editorMath(page: Page): Promise<{ version: string; frameToTime24: number }> {
+  return page.evaluate(() => {
+    const handle = globalThis.__cutweaveEditor;
+    if (handle === undefined) throw new Error("no editor handle");
+    return handle.math();
+  });
 }
 
 export function editorState(page: Page): Promise<EditorState> {
