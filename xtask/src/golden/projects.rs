@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The golden projects (WP-1O.01, WP-2C.04): synthetic sources and the eight `.cutweave` projects
+//! The golden projects (WP-1O.01, WP-2C.04): synthetic sources and the nine `.cutweave` projects
 //! built from them with real commands (`cargo xtask golden-projects`).
 //!
 //! **Sources** are FFmpeg `lavfi` test patterns (project-generated, no licensing question),
@@ -100,9 +100,9 @@ pub struct Golden {
     pub sources: &'static [&'static str],
 }
 
-/// The golden projects: the six of WP-1O.01 and two of WP-2C.04 (flip with a display rotation;
-/// a keyframed screen-mode layer), 24 frames.
-pub const PROJECTS: [Golden; 8] = [
+/// The golden projects: the six of WP-1O.01, two of WP-2C.04 (flip with a display rotation;
+/// a keyframed screen-mode layer) and one of WP-2C.08 (a layout), 27 frames.
+pub const PROJECTS: [Golden; 9] = [
     Golden {
         name: "bars_100",
         about: "one SMPTE HD colour-bars clip at 100% (fills the canvas)",
@@ -154,6 +154,13 @@ pub const PROJECTS: [Golden; 8] = [
                 rotation keyframed from left to right over the 4 s",
         frames: [0, 45, 110],
         sources: &["bars", "testsrc"],
+    },
+    Golden {
+        name: "side_by_side",
+        about: "two colour-bars clips arranged by item.apply_layout (side by side, fill with a \
+                centred crop): each half of the frame is filled, with no bars",
+        frames: [0, 60, 119],
+        sources: &["bars"],
     },
 ];
 
@@ -380,6 +387,18 @@ fn timeline_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Value 
             {"cmd": "keyframe.set", "args": {
                 "item": {"$ref": "steps[2].output.clips[0]"}, "prop": "transform.rotation",
                 "keys": [{"at": "f:0", "value": -20.0}, {"at": "f:119", "value": 25.0}]
+            }},
+        ]),
+        "side_by_side" => json!([
+            insert(v1.clone(), &media[0], at_0.clone()),
+            new_track,
+            insert(track_of(1), &media[0], at_0),
+            {"cmd": "item.apply_layout", "args": {
+                "items": [
+                    {"$ref": "steps[0].output.clips[0]"},
+                    {"$ref": "steps[2].output.clips[0]"}
+                ],
+                "layout": "side_by_side", "fill": "crop"
             }},
         ]),
         other => json!([{"cmd": "no.such.golden.project", "args": {"name": other}}]),
@@ -614,10 +633,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn eight_projects_and_twenty_four_frames() {
-        assert_eq!(PROJECTS.len(), 8);
+    fn nine_projects_and_twenty_seven_frames() {
+        assert_eq!(PROJECTS.len(), 9);
         let frames: usize = PROJECTS.iter().map(|p| p.frames.len()).sum();
-        assert_eq!(frames, 24);
+        assert_eq!(frames, 27);
         let mut names: Vec<_> = PROJECTS.iter().map(|p| p.name).collect();
         names.sort_unstable();
         names.dedup();
