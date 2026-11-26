@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { cx } from "./cx.ts";
-import { clamp, modifierScale, parseNumber, stepValue } from "./numberMath.ts";
+import { clamp, modifierScale, parseEntry, stepValue } from "./numberMath.ts";
 
 export interface NumberScrubberProps {
   /** Short visible label; doubles as the accessible name unless `aria-label` is given. */
@@ -125,7 +125,7 @@ export function NumberScrubber({
     restoreFocus.current = true;
     setEditing(false);
     if (!commit) return;
-    const n = parseNumber(draft, unit);
+    const n = parseEntry(draft, value, unit);
     if (Number.isNaN(n)) return;
     const next = clamp(n, min, max);
     if (!mixed && next === value) return;

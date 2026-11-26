@@ -387,7 +387,7 @@ test.describe("F18 window and menu", () => {
       await card.click();
       await page.keyboard.press("Enter");
       await expect.poll(() => timelineItems(page)).toBe(2 * inserted);
-      const nameField = page.getByTestId("clip-inspector").getByLabel("Name");
+      const nameField = page.getByTestId("clip-inspector").getByLabel("Name", { exact: true });
       await expect(nameField).toBeVisible();
       const name = "Opening shot";
       await nameField.click();

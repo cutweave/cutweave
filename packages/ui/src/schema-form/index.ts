@@ -17,6 +17,6 @@ export {
   type UiHints,
   type WidgetName,
 } from "./types.ts";
-export { getPath, mergeSelection, setPath } from "./values.ts";
+export { deepEqual, getPath, humanize, mergeSelection, setPath } from "./values.ts";
 
 import "./schema-form.css";

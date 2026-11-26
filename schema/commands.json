@@ -8446,7 +8446,15 @@
                 "type": [
                   "number",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "audio",
+                  "keyframeable": true,
+                  "order": 0,
+                  "precision": 1,
+                  "step": 0.5,
+                  "unit": "dB"
+                }
               },
               "audio_pan": {
                 "description": "Stereo position, `-1` (left) to `1` (right).",
@@ -8456,7 +8464,13 @@
                 "type": [
                   "number",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "audio",
+                  "keyframeable": true,
+                  "order": 1,
+                  "step": 0.05
+                }
               },
               "blend_mode": {
                 "description": "How the item combines with what is below.",
@@ -8474,7 +8488,11 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "compositing",
+                  "order": 1
+                }
               },
               "crop": {
                 "additionalProperties": false,
@@ -8488,7 +8506,14 @@
                     "type": [
                       "number",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true,
+                      "scale": 100.0,
+                      "step": 0.01,
+                      "unit": "%",
+                      "widget": "number"
+                    }
                   },
                   "left": {
                     "description": "Fraction removed from the left edge.",
@@ -8498,7 +8523,14 @@
                     "type": [
                       "number",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true,
+                      "scale": 100.0,
+                      "step": 0.01,
+                      "unit": "%",
+                      "widget": "number"
+                    }
                   },
                   "right": {
                     "description": "Fraction removed from the right edge.",
@@ -8508,7 +8540,14 @@
                     "type": [
                       "number",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true,
+                      "scale": 100.0,
+                      "step": 0.01,
+                      "unit": "%",
+                      "widget": "number"
+                    }
                   },
                   "top": {
                     "description": "Fraction removed from the top edge.",
@@ -8518,20 +8557,35 @@
                     "type": [
                       "number",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true,
+                      "scale": 100.0,
+                      "step": 0.01,
+                      "unit": "%",
+                      "widget": "number"
+                    }
                   }
                 },
                 "type": [
                   "object",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "crop",
+                  "order": 2
+                }
               },
               "enabled": {
                 "description": "Rendered and heard (`true`) or kept but skipped (`false`).",
                 "type": [
                   "boolean",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "clip",
+                  "order": 1
+                }
               },
               "flip": {
                 "additionalProperties": false,
@@ -8542,27 +8596,41 @@
                     "type": [
                       "boolean",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true
+                    }
                   },
                   "vertical": {
                     "description": "Mirror top-bottom.",
                     "type": [
                       "boolean",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true
+                    }
                   }
                 },
                 "type": [
                   "object",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "flip",
+                  "order": 3
+                }
               },
               "name": {
                 "description": "Display name; an empty string clears it (the media name is shown again).",
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "clip",
+                  "order": 0
+                }
               },
               "opacity": {
                 "description": "Opacity `0.0..=1.0`.",
@@ -8572,7 +8640,16 @@
                 "type": [
                   "number",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "compositing",
+                  "keyframeable": true,
+                  "order": 0,
+                  "scale": 100.0,
+                  "step": 0.01,
+                  "unit": "%",
+                  "widget": "slider"
+                }
               },
               "transform": {
                 "additionalProperties": false,
@@ -8600,7 +8677,13 @@
                     "type": [
                       "object",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "advanced": true,
+                      "keyframeable": true,
+                      "step": 1.0,
+                      "widget": "vec2"
+                    }
                   },
                   "position": {
                     "additionalProperties": false,
@@ -8624,7 +8707,13 @@
                     "type": [
                       "object",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true,
+                      "step": 1.0,
+                      "unit": "px",
+                      "widget": "vec2"
+                    }
                   },
                   "rotation": {
                     "description": "Clockwise rotation in degrees.",
@@ -8632,7 +8721,13 @@
                     "type": [
                       "number",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true,
+                      "step": 1.0,
+                      "unit": "°",
+                      "widget": "number"
+                    }
                   },
                   "scale": {
                     "additionalProperties": false,
@@ -8656,13 +8751,26 @@
                     "type": [
                       "object",
                       "null"
-                    ]
+                    ],
+                    "x-ui": {
+                      "keyframeable": true,
+                      "linked": true,
+                      "min": 0.0,
+                      "scale": 100.0,
+                      "step": 0.01,
+                      "unit": "%",
+                      "widget": "vec2"
+                    }
                   }
                 },
                 "type": [
                   "object",
                   "null"
-                ]
+                ],
+                "x-ui": {
+                  "group": "transform",
+                  "order": 1
+                }
               }
             },
             "type": "object"

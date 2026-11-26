@@ -7,31 +7,15 @@
 // `item.move` and Duration sends `clip.trim` on the end edge, so every timeline edit also has a
 // path without a pointer.
 
-import type {
-  Animatable,
-  Item,
-  ItemId,
-  ItemProps,
-  SequenceId,
-  TrackId,
-  TransformPatch,
-} from "@cutweave/protocol";
+import type { Animatable, Item, ItemId, ItemProps, SequenceId, TrackId } from "@cutweave/protocol";
 import type { FrameRate } from "@cutweave/timeline";
 import type { TKey } from "../i18n/index.ts";
 import type { GestureUpdate } from "../timeline/gesture.ts";
 
-export type FieldId =
-  | "name"
-  | "start"
-  | "duration"
-  | "opacity"
-  | "positionX"
-  | "positionY"
-  | "scale"
-  | "rotation"
-  | "gain";
+export type FieldId = "name" | "start" | "duration" | "gain";
 
-export type SectionId = "clip" | "timing" | "transform" | "audio";
+/** The sections of hand-built rows. The Video sections come from the schema (`video.ts`). */
+export type SectionId = "clip" | "timing" | "audio";
 
 /** A selected clip with what its edits need to know. */
 export interface SelectedClip {
@@ -101,18 +85,10 @@ export function propsUpdate(item: ItemId, patch: Partial<ItemProps>): GestureUpd
   };
 }
 
-function transformUpdate(item: ItemId, patch: Partial<TransformPatch>): GestureUpdate {
-  return propsUpdate(item, {
-    transform: { position: null, scale: null, rotation: null, anchor: null, ...patch },
-  });
-}
-
-const PERCENT = 100;
-
 /**
  * The value of a property that may be animated: the static value, or the first key's (what the
- * engine's `Animatable::value` returns). The Inspector edits static values until WP-2H.03 wires
- * keyframes.
+ * engine's `Animatable::value` returns). The Video sections show the value at the playhead
+ * instead (`video.ts`); this is for the rows that are not animated yet (Gain, WP-2H.03b).
  */
 export function staticValue<T>(value: Animatable<T>): T {
   if (typeof value === "object" && value !== null && "keyframes" in value) {
@@ -154,80 +130,6 @@ export const FIELDS: readonly FieldDef[] = [
     ],
   },
   {
-    id: "opacity",
-    section: "transform",
-    control: "slider",
-    label: "inspector.fields.opacity",
-    history: "inspector.history.opacity",
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: "%",
-    read: (item) => Math.round(staticValue(item.visual.opacity) * PERCENT),
-    updates: ({ item }, value) => [propsUpdate(item.id, { opacity: value / PERCENT })],
-  },
-  {
-    id: "positionX",
-    section: "transform",
-    control: "scrub",
-    label: "inspector.fields.positionX",
-    history: "inspector.history.positionX",
-    min: -100_000,
-    max: 100_000,
-    step: 1,
-    read: (item) => staticValue(item.visual.transform.position).x,
-    updates: ({ item }, value) => [
-      transformUpdate(item.id, {
-        position: { x: value, y: staticValue(item.visual.transform.position).y },
-      }),
-    ],
-  },
-  {
-    id: "positionY",
-    section: "transform",
-    control: "scrub",
-    label: "inspector.fields.positionY",
-    history: "inspector.history.positionY",
-    min: -100_000,
-    max: 100_000,
-    step: 1,
-    read: (item) => staticValue(item.visual.transform.position).y,
-    updates: ({ item }, value) => [
-      transformUpdate(item.id, {
-        position: { x: staticValue(item.visual.transform.position).x, y: value },
-      }),
-    ],
-  },
-  {
-    id: "scale",
-    section: "transform",
-    control: "scrub",
-    label: "inspector.fields.scale",
-    history: "inspector.history.scale",
-    min: 0,
-    max: 1000,
-    step: 1,
-    unit: "%",
-    // One uniform value; the engine keeps x and y apart for later (P2 "link" toggle).
-    read: (item) => Math.round(staticValue(item.visual.transform.scale).x * PERCENT),
-    updates: ({ item }, value) => [
-      transformUpdate(item.id, { scale: { x: value / PERCENT, y: value / PERCENT } }),
-    ],
-  },
-  {
-    id: "rotation",
-    section: "transform",
-    control: "scrub",
-    label: "inspector.fields.rotation",
-    history: "inspector.history.rotation",
-    min: -3600,
-    max: 3600,
-    step: 1,
-    unit: "°",
-    read: (item) => staticValue(item.visual.transform.rotation),
-    updates: ({ item }, value) => [transformUpdate(item.id, { rotation: value })],
-  },
-  {
     id: "gain",
     section: "audio",
     control: "scrub",
@@ -246,7 +148,6 @@ export const FIELDS: readonly FieldDef[] = [
 export const SECTIONS: readonly { readonly id: SectionId; readonly label: TKey }[] = [
   { id: "clip", label: "inspector.clip" },
   { id: "timing", label: "inspector.timing" },
-  { id: "transform", label: "inspector.transform" },
   { id: "audio", label: "inspector.audio" },
 ];
 

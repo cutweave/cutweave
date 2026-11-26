@@ -38,24 +38,24 @@ The macro checks keys and value types at compile time (an unknown key or widget 
 
 The widget is chosen from the hint, else from the schema:
 
-| Widget             | Chosen for                                                                  | Value                                                                                                        |
-| ------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `number`           | `number`, `integer`                                                         | number; drag the label, arrow keys, or type (`+10`-style expressions arrive with the Inspector wiring)       |
-| `slider`           | hint, with `min` and `max`                                                  | number                                                                                                       |
-| `angle`            | hint                                                                        | number in degrees; a dial plus a numeric field, Shift snaps the dial to 15°                                  |
-| `color`            | hint on a string                                                            | `"#rrggbb"` or `"#rrggbbaa"`; picker, hex field and alpha. The 8-digit form is kept once a value has alpha   |
-| `toggle`           | `boolean`                                                                   | bool                                                                                                         |
-| `segmented`        | an enum of at most 4 short values                                           | the enum value                                                                                               |
-| `select`           | any other enum (`enum`, or `oneOf` / `anyOf` of `const`)                    | the enum value; a nullable enum offers "None"                                                                |
-| `vec2`             | an object with exactly numeric `x`, `y`; an array of 2 numbers; or the hint | `{x, y}` or `[x, y]`, reported whole so one command carries both axes                                        |
-| `tuple`            | an array of a fixed length other than 2, of numbers                         | the whole array                                                                                              |
-| `array`            | any other array                                                             | the whole array (add, remove); respects `minItems` / `maxItems`                                              |
-| `object`           | an object with properties                                                   | a titled group; fields report `parent.child` paths                                                           |
-| `text`, `textarea` | `string`; a number-or-string union (a time) is `text`                       | string, or the number when the union allows it and the text is an integer                                    |
-| `font`             | hint                                                                        | family name as text (placeholder until the font picker, P3)                                                  |
-| `asset`            | hint                                                                        | an asset id string, picked from the `assets` prop (text when none is passed)                                 |
-| `curve`            | hint on an enum                                                             | the easing name; a host `renderers.curve` slot replaces the default select (the curve editor plugs in there) |
-| `hidden`           | hint                                                                        | not rendered                                                                                                 |
+| Widget             | Chosen for                                                                  | Value                                                                                                                              |
+| ------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `number`           | `number`, `integer`                                                         | number; drag the label, arrow keys, or type; `+10`, `*2`, `/2` and `50%` (of the shown value, unless the unit is `%`) are relative |
+| `slider`           | hint, with `min` and `max`                                                  | number                                                                                                                             |
+| `angle`            | hint                                                                        | number in degrees; a dial plus a numeric field, Shift snaps the dial to 15°                                                        |
+| `color`            | hint on a string                                                            | `"#rrggbb"` or `"#rrggbbaa"`; picker, hex field and alpha. The 8-digit form is kept once a value has alpha                         |
+| `toggle`           | `boolean`                                                                   | bool                                                                                                                               |
+| `segmented`        | an enum of at most 4 short values                                           | the enum value                                                                                                                     |
+| `select`           | any other enum (`enum`, or `oneOf` / `anyOf` of `const`)                    | the enum value; a nullable enum offers "None"                                                                                      |
+| `vec2`             | an object with exactly numeric `x`, `y`; an array of 2 numbers; or the hint | `{x, y}` or `[x, y]`, reported whole so one command carries both axes                                                              |
+| `tuple`            | an array of a fixed length other than 2, of numbers                         | the whole array                                                                                                                    |
+| `array`            | any other array                                                             | the whole array (add, remove); respects `minItems` / `maxItems`                                                                    |
+| `object`           | an object with properties                                                   | a titled group; fields report `parent.child` paths                                                                                 |
+| `text`, `textarea` | `string`; a number-or-string union (a time) is `text`                       | string, or the number when the union allows it and the text is an integer                                                          |
+| `font`             | hint                                                                        | family name as text (placeholder until the font picker, P3)                                                                        |
+| `asset`            | hint                                                                        | an asset id string, picked from the `assets` prop (text when none is passed)                                                       |
+| `curve`            | hint on an enum                                                             | the easing name; a host `renderers.curve` slot replaces the default select (the curve editor plugs in there)                       |
+| `hidden`           | hint                                                                        | not rendered                                                                                                                       |
 
 A shape with no editor (a map with `additionalProperties`, a union of unrelated types) is shown read-only, never silently dropped.
 

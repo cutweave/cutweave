@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it } from "vitest";
-import { clamp, decimalsOf, modifierScale, parseNumber, roundTo, stepValue } from "./numberMath.ts";
+import {
+  clamp,
+  decimalsOf,
+  modifierScale,
+  parseEntry,
+  parseNumber,
+  roundTo,
+  stepValue,
+} from "./numberMath.ts";
 
 describe("numberMath", () => {
   it("counts decimals, including exponent forms", () => {
@@ -51,5 +59,23 @@ describe("numberMath", () => {
     expect(parseNumber("")).toBeNaN();
     expect(parseNumber("abc")).toBeNaN();
     expect(parseNumber("Infinity")).toBeNaN();
+  });
+
+  it("reads relative entries against the shown value", () => {
+    expect(parseEntry("+10", 25)).toBe(35);
+    expect(parseEntry("+0.1", 0.2)).toBe(0.3);
+    expect(parseEntry("*2", 7.5)).toBe(15);
+    expect(parseEntry("/4", 10)).toBe(2.5);
+    expect(parseEntry("50%", 80)).toBe(40);
+    expect(parseEntry("+5 dB", -6, "dB")).toBe(-1);
+    // A field whose own unit is % takes 50% as 50.
+    expect(parseEntry("50%", 80, "%")).toBe(50);
+    expect(parseEntry("+10%", 20, "%")).toBe(30);
+    // Plain numbers and a leading minus stay absolute.
+    expect(parseEntry("-10", 5)).toBe(-10);
+    expect(parseEntry("12,5", 5)).toBe(12.5);
+    expect(parseEntry("/0", 5)).toBeNaN();
+    expect(parseEntry("*", 5)).toBeNaN();
+    expect(parseEntry("two", 5)).toBeNaN();
   });
 });

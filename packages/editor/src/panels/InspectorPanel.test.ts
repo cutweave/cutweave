@@ -71,10 +71,10 @@ describe("InspectorPanel", () => {
     expect(screen.getByRole("slider", { name: "Opacity" }).getAttribute("aria-valuenow")).toBe(
       "100",
     );
-    for (const name of ["Position X", "Position Y", "Scale", "Rotation", "Gain"]) {
+    for (const name of ["Position X", "Position Y", "Scale X", "Rotation", "Gain"]) {
       expect(screen.getByRole("spinbutton", { name }), name).toBeTruthy();
     }
-    expect(screen.getByRole("spinbutton", { name: "Scale" }).getAttribute("aria-valuenow")).toBe(
+    expect(screen.getByRole("spinbutton", { name: "Scale X" }).getAttribute("aria-valuenow")).toBe(
       "100",
     );
   });
@@ -132,6 +132,57 @@ describe("InspectorPanel", () => {
     expect(engine.calls).toEqual([]);
   });
 
+  it("after an opacity key press the slider follows the document again (an undo)", async () => {
+    selectItems("itm_v");
+    renderPanel();
+    const thumb = screen.getByRole("slider", { name: "Opacity" });
+    act(() => thumb.focus());
+    fireEvent.keyDown(thumb, { key: "ArrowLeft" });
+    await waitFor(() => expect(engine.names()).toContain("edit.commit_tx"));
+    const opacity = (value: number) => ({
+      visual: {
+        transform: {
+          position: { x: 0, y: 0 },
+          scale: { x: 1, y: 1 },
+          rotation: 0,
+          anchor: { x: 0, y: 0 },
+        },
+        opacity: value,
+      },
+    });
+    act(() => load({ itm_v: opacity(0.99) }));
+    await waitFor(() =>
+      expect(screen.getByRole("slider", { name: "Opacity" }).getAttribute("aria-valuenow")).toBe(
+        "99",
+      ),
+    );
+    // The edit is undone: the document says 100 again, and the slider must show it.
+    act(() => load({ itm_v: opacity(1) }));
+    await waitFor(() =>
+      expect(screen.getByRole("slider", { name: "Opacity" }).getAttribute("aria-valuenow")).toBe(
+        "100",
+      ),
+    );
+  });
+
+  it("a second key press starts from the first one's result, before the document catches up", async () => {
+    selectItems("itm_v");
+    renderPanel();
+    const rotation = screen.getByRole("spinbutton", { name: "Rotation" });
+    act(() => rotation.focus());
+    fireEvent.keyDown(rotation, { key: "ArrowUp" });
+    fireEvent.keyDown(rotation, { key: "ArrowUp", shiftKey: true });
+    await waitFor(() =>
+      expect(engine.names().filter((n) => n === "edit.commit_tx")).toHaveLength(2),
+    );
+    const sent = engine.calls
+      .filter((c) => c.name === "item.set_props")
+      .map(
+        (c) => (c.input as { props: { transform: { rotation: number } } }).props.transform.rotation,
+      );
+    expect(sent).toEqual([1, 11]);
+  });
+
   it("renames a clip with item.set_props", async () => {
     selectItems("itm_v");
     renderPanel();
@@ -158,7 +209,7 @@ describe("InspectorPanel", () => {
     expect(engine.calls[0]?.input).toEqual({ kind: "batch", label: "Change opacity" });
     expect(engine.calls[1]).toMatchObject({
       name: "item.set_props",
-      input: { item: "itm_v", props: { opacity: 0.99 } },
+      input: { items: ["itm_v"], props: { opacity: 0.99 }, at: 0 },
       meta: { tx: expect.stringMatching(/^tx_/) },
     });
   });
@@ -190,13 +241,13 @@ describe("InspectorPanel", () => {
   it("scale scrubs both axes together, as a percentage", async () => {
     selectItems("itm_v");
     renderPanel();
-    const scale = screen.getByRole("spinbutton", { name: "Scale" });
+    const scale = screen.getByRole("spinbutton", { name: "Scale X" });
     act(() => scale.focus());
     fireEvent.keyDown(scale, { key: "ArrowUp" });
     await waitFor(() => expect(engine.names()).toContain("edit.commit_tx"));
     expect(engine.calls[1]).toMatchObject({
       name: "item.set_props",
-      input: { item: "itm_v", props: { transform: { scale: { x: 1.01, y: 1.01 } } } },
+      input: { items: ["itm_v"], props: { transform: { scale: { x: 1.01, y: 1.01 } } } },
     });
   });
 
@@ -218,7 +269,7 @@ describe("InspectorPanel", () => {
     renderPanel();
     expect(screen.getByText(/2 clips selected/)).toBeTruthy();
     expect(screen.getByRole("slider", { name: "Opacity" }).getAttribute("aria-valuetext")).toBe(
-      "Mixed",
+      "—",
     );
     const start = screen.getByRole("textbox", { name: "Start" }) as HTMLInputElement;
     expect(start.disabled).toBe(true);
@@ -233,7 +284,9 @@ describe("InspectorPanel", () => {
     fireEvent.keyDown(rotation, { key: "ArrowUp" });
     await waitFor(() => expect(engine.names()).toContain("edit.commit_tx"));
     const sets = engine.calls.filter((c) => c.name === "item.set_props");
-    expect(sets.map((c) => (c.input as { item: string }).item).sort()).toEqual(["itm_a", "itm_v"]);
+    // One command for both clips.
+    expect(sets).toHaveLength(1);
+    expect((sets[0]?.input as { items: string[] } | undefined)?.items).toEqual(["itm_v", "itm_a"]);
     expect(engine.names().filter((n) => n === "edit.begin_tx")).toHaveLength(1);
   });
 
@@ -282,5 +335,25 @@ describe("InspectorPanel", () => {
       title: "Change not applied",
     });
     expect(engine.names()).toContain("edit.cancel_tx");
+  });
+
+  it("scrubbing one axis of the position is one gesture that sends both axes", async () => {
+    selectItems("itm_v");
+    renderPanel();
+    const y = screen.getByRole("spinbutton", { name: "Position Y" });
+    fireEvent.pointerDown(y, { clientX: 100, button: 0, pointerId: 1 });
+    for (const x of [110, 120, 130, 140, 150]) {
+      fireEvent.pointerMove(y, { clientX: x, pointerId: 1 });
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    fireEvent.pointerUp(y, { clientX: 150, pointerId: 1 });
+    await waitFor(() => expect(engine.names()).toContain("edit.commit_tx"));
+    expect(engine.calls[0]?.input).toEqual({ kind: "gesture", label: "Change position" });
+    const sets = engine.calls.filter((c) => c.name === "item.set_props");
+    const last = sets.at(-1)?.input as {
+      props: { transform: { position: { x: number; y: number } } };
+    };
+    expect(last.props.transform.position.x).toBe(0);
+    expect(last.props.transform.position.y).toBeGreaterThan(0);
   });
 });

@@ -267,7 +267,7 @@ fn validation_only(schema: &Value) -> Value {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
             for (key, value) in map {
-                if matches!(key.as_str(), "description" | "title")
+                if matches!(key.as_str(), "description" | "title" | "x-ui")
                     || (key == "default" && value.is_null())
                     // `format: "uint32"` names a Rust width; it does not validate.
                     || (key == "format"

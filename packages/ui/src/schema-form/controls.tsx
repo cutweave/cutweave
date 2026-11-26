@@ -90,6 +90,10 @@ export function NumberControl({
 
 export function SliderControl({ node, label, value, mixed, disabled, live, commit }: ControlProps) {
   const c = displayConverters(node);
+  // A key press reports its commit, and the slider then echoes the same value as a change when
+  // its value prop moves. The echo is not an edit: taken as one it would leave a draft that hides
+  // every later value of the document (an undo).
+  const committed = useRef<number | null>(null);
   const v = num(value, numberFallback(node));
   const unit = node.unit;
   const format = (d: number) => {
@@ -107,8 +111,15 @@ export function SliderControl({ node, label, value, mixed, disabled, live, commi
       step={c.step}
       format={format}
       disabled={disabled}
-      onChange={(d) => live(c.fromDisplay(d))}
-      onCommit={(d) => commit(c.fromDisplay(d))}
+      onChange={(d) => {
+        if (committed.current === d) return;
+        committed.current = null;
+        live(c.fromDisplay(d));
+      }}
+      onCommit={(d) => {
+        committed.current = d;
+        commit(c.fromDisplay(d));
+      }}
     />
   );
 }

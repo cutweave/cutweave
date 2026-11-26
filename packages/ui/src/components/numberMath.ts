@@ -56,3 +56,32 @@ export function parseNumber(text: string, unit?: string): number {
   const n = Number(t);
   return Number.isFinite(n) ? n : Number.NaN;
 }
+
+/**
+ * Parses what a person typed into a number field, where `current` is the value shown. Besides a
+ * plain number it takes a relative entry: `+10` adds, `*2` multiplies, `/2` divides, and `50%`
+ * is half of the current value, unless the field's own unit is `%` (then `50%` is just 50). A
+ * leading `-` stays a negative number. Returns NaN when it is none of these.
+ */
+export function parseEntry(text: string, current: number, unit?: string): number {
+  const t = text.trim();
+  const op = t[0];
+  if (op === "+" || op === "*" || op === "/") {
+    const operand = parseNumber(t.slice(1), unit);
+    if (Number.isNaN(operand) || !Number.isFinite(current)) return Number.NaN;
+    if (op === "+") return roundTo(current + operand, relativePlaces(current, operand));
+    if (op === "*") return roundTo(current * operand, relativePlaces(current, operand));
+    return operand === 0 ? Number.NaN : roundTo(current / operand, 6);
+  }
+  if (unit !== "%" && t.endsWith("%")) {
+    const percent = parseNumber(t.slice(0, -1));
+    if (Number.isNaN(percent) || !Number.isFinite(current)) return Number.NaN;
+    return roundTo((current * percent) / 100, 6);
+  }
+  return parseNumber(t, unit);
+}
+
+/** Decimals that keep a sum or product of two shown numbers exact. */
+function relativePlaces(a: number, b: number): number {
+  return Math.min(decimalsOf(a) + decimalsOf(b), 10);
+}
