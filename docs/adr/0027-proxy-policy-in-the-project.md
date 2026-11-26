@@ -1,6 +1,6 @@
 # ADR-0027: Store the proxy policy in the project and a proxy mode per asset
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-26)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers, on the review of WP-2F.01 (before the follow-up that adds the fields)
 - **Supersedes:** none
@@ -26,6 +26,8 @@ Both are project-format changes, which ADR-0006 says need an ADR. The proxy mach
 3. **Keep the policy outside the document** (an engine or app preference only): no format change, but a project would behave differently on each machine and an agent could not see or change the project's intent through the document.
 
 ## Decision
+
+Accepted by the product owner on 2026-11-26: the project stores `settings.proxy_policy` and each asset a `proxy_mode`, with `media.set_proxy_policy` and `media.set_proxy_mode` (the follow-up to WP-2F.01 adds them).
 
 **Decided by:** the maintainers' review of WP-2F.01. Pass criteria: the round-trip test (an older document opens with `auto`; a document with the fields opens in an older build and keeps them in `extra`); the two commands are undoable with a parity test; the WP-2F.01 engine reads the policy from the document instead of its fixed `auto` (`cutweave_ops::media::proxy::DEFAULT_POLICY`), and a policy or mode change re-runs the engine's reconcile (queues what is now wanted, never deletes).
 
