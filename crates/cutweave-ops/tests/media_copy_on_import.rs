@@ -184,7 +184,7 @@ fn without_the_flag_nothing_is_copied() {
     w.import(&h, json!({"paths": [other], "copy_to_project": false}))
         .unwrap();
 
-    assert!(w.files("p").is_empty());
+    assert_eq!(w.files("p"), Vec::<String>::new());
     assert_eq!(asset_paths(&h), [w.path("src/a.mp4"), w.path("src/b.mp4")]);
 }
 
@@ -203,14 +203,14 @@ fn an_untitled_document_is_told_to_save_first_and_nothing_is_imported() {
         Access::STANDARD,
     );
 
-    let message = refused.as_ref().unwrap_err().message().to_owned();
+    let message = refused.as_ref().unwrap_err().message().clone();
     assert!(
         message.contains("save the project first"),
         "the message says what to do: {message}"
     );
     assert_invalid(refused, "/copy_to_project");
     assert!(h.doc().media.is_empty());
-    assert!(w.files("p").is_empty());
+    assert_eq!(w.files("p"), Vec::<String>::new());
 }
 
 #[test]
@@ -223,10 +223,10 @@ fn files_that_do_not_fit_are_refused_before_anything_is_copied() {
 
     let refused = w.import(&h, json!({"paths": [a, b], "copy_to_project": true}));
 
-    let message = refused.as_ref().unwrap_err().message().to_owned();
+    let message = refused.as_ref().unwrap_err().message().clone();
     assert!(message.contains("not enough space"), "{message}");
     assert_invalid(refused, "/copy_to_project");
-    assert!(w.files("p").is_empty(), "nothing was copied");
+    assert_eq!(w.files("p"), Vec::<String>::new(), "nothing was copied");
     assert!(h.doc().media.is_empty(), "nothing was imported");
 }
 

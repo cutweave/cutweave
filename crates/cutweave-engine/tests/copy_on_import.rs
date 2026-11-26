@@ -162,7 +162,7 @@ fn an_untitled_document_is_told_to_save_first() {
     );
 
     assert!(msg.contains("save the project first"), "{msg}");
-    assert!(asset_paths(&conn).is_empty());
+    assert_eq!(asset_paths(&conn), Vec::<String>::new());
     // Without the flag the same import works.
     must(&conn, "media.import", json!({ "paths": [path_str(&file)] }));
     assert_eq!(asset_paths(&conn), [path_str(&file)]);
