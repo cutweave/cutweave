@@ -40,6 +40,24 @@ const CONTRACT: &[Row] = &[
         true,
     ),
     (
+        "media.import_images_as_slideshow",
+        EntryKind::Engine,
+        McpExposure::Catalog,
+        false,
+        false,
+        false,
+        false,
+    ),
+    (
+        "media.import_frame",
+        EntryKind::Engine,
+        McpExposure::Catalog,
+        false,
+        false,
+        false,
+        false,
+    ),
+    (
         "media.register",
         EntryKind::Command,
         McpExposure::Hidden,
@@ -866,6 +884,8 @@ fn optional_params_are_not_required_in_the_input_schema() {
     );
     assert_eq!(required("media.list"), Vec::<String>::new());
     assert_eq!(required("media.import"), ["paths"]);
+    assert_eq!(required("media.import_images_as_slideshow"), ["files"]);
+    assert_eq!(required("media.import_frame"), ["source", "at"]);
     assert_eq!(required("media.create_folder"), Vec::<String>::new());
     assert_eq!(required("media.rename_folder"), ["folder", "name"]);
     assert_eq!(required("media.rename"), ["media"]);

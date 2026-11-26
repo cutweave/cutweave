@@ -52,6 +52,10 @@ pub use folders::{
     MediaListFoldersOutput, MediaMove, MediaMoved, MediaRename, MediaRenameFolder, MediaRenamed,
     OnConflict, find_folder, unique_folder_name,
 };
+pub use frame::{
+    FrameGrabber, FrameOf, FrameRegistered, GrabbedFrame, MediaImportFrame, MediaImportFrameOutput,
+    frame_label, register_frame,
+};
 pub use policy::{
     AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy,
     OUTSIDE_ROOTS_HINT,
@@ -63,10 +67,6 @@ pub use relink::{
     MediaFindMissingOutput, MediaLocationSet, MediaRelink, MediaRelinkFolder,
     MediaRelinkFolderOutput, MediaSetLocation, MediaStatus, MemoryFiles, MissingMedia, RelinkCtx,
     RelinkFiles, RelinkMatch, RelinkSink, Relinked, relocate_batch,
-};
-pub use frame::{
-    FrameGrabber, FrameOf, FrameRegistered, GrabbedFrame, MediaImportFrame,
-    MediaImportFrameOutput, frame_label, register_frame,
 };
 pub use slideshow::{
     MediaImportImagesAsSlideshow, MediaSlideshowOutput, SlideshowBatch, SlideshowOrder,

@@ -320,7 +320,8 @@ fn natural(a: &str, b: &str) -> Ordering {
             (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
                 let (run_a, run_b) = (digits(a), digits(b));
                 let strip = |s: &[u8]| s.iter().take_while(|c| **c == b'0').count();
-                let (value_a, value_b) = (&a[strip(&a[..run_a])..run_a], &b[strip(&b[..run_b])..run_b]);
+                let (value_a, value_b) =
+                    (&a[strip(&a[..run_a])..run_a], &b[strip(&b[..run_b])..run_b]);
                 let by_value = value_a
                     .len()
                     .cmp(&value_b.len())

@@ -22,8 +22,7 @@ use cutweave_model::{
 };
 
 use super::{
-    ImportCtx, MediaRegister, MediaRegistered, MediaRename, asset_name, policy,
-    slideshow::announce,
+    ImportCtx, MediaRegister, MediaRegistered, MediaRename, asset_name, policy, slideshow::announce,
 };
 use crate::util::check_name;
 
@@ -202,9 +201,7 @@ impl MediaImportFrame {
                 "the saved frame was not read back as a still picture",
             ));
         }
-        let registered = ctx
-            .sink
-            .register_frame(register.clone(), name.to_owned())?;
+        let registered = ctx.sink.register_frame(register.clone(), name.to_owned())?;
         Ok((register, registered))
     }
 }

@@ -113,9 +113,10 @@ impl crate::media::FrameGrabber for FakeFrames {
                 )
             }
             crate::media::FrameOf::Media(id) => {
-                let asset = self.doc.media.get(&id).ok_or_else(|| {
-                    CmdError::not_found(cutweave_model::EntityKind::Media, id)
-                })?;
+                let asset =
+                    self.doc.media.get(&id).ok_or_else(|| {
+                        CmdError::not_found(cutweave_model::EntityKind::Media, id)
+                    })?;
                 if asset.kind != MediaKind::Video {
                     return Err(CmdError::invalid(
                         "/source/media",
@@ -885,7 +886,8 @@ fn media_slideshow(p: &Pools) -> BoxedStrategy<Value> {
             any::<(u8, u32)>(),
         )
             .prop_map(|(t, named, past_end, (form, jitter))| {
-                let at = past_end.map_or(Value::Null, |n| time_json(t.fpf, t.end + n, form, jitter));
+                let at =
+                    past_end.map_or(Value::Null, |n| time_json(t.fpf, t.end + n, form, jitter));
                 if named {
                     (json!(t.seq), json!(t.id), at)
                 } else {

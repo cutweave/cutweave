@@ -87,7 +87,12 @@ fn a_slideshow_places_the_pictures_one_after_the_other_in_one_transaction() {
     assert_eq!(out["failed"], json!([]));
     let placed: Vec<ItemId> = out["clips"].as_array().unwrap().iter().map(id).collect();
     assert_eq!(placed.len(), 3);
-    let media: Vec<MediaId> = out["media_ids"].as_array().unwrap().iter().map(id).collect();
+    let media: Vec<MediaId> = out["media_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(id)
+        .collect();
     for (clip, media) in placed.iter().zip(&media) {
         let (_, item) = doc.sequences[&p.sequence].find_item(clip).unwrap();
         assert_eq!(item.media(), Some(*media));
@@ -114,12 +119,11 @@ fn per_image_sets_the_length_and_follows_the_project_default_when_absent() {
         ]
     );
     // A length between two frames snaps to whole frames (30 fps: 0.51 s is 15 frames).
-    let out = slideshow(
-        &h,
-        json!({"files": ["/p/Beach.png"], "per_image": "0.51s"}),
-    )
-    .unwrap();
-    assert_eq!(out["per_image"], json!(Duration::from_flicks(705_600_000 / 2).unwrap()));
+    let out = slideshow(&h, json!({"files": ["/p/Beach.png"], "per_image": "0.51s"})).unwrap();
+    assert_eq!(
+        out["per_image"],
+        json!(Duration::from_flicks(705_600_000 / 2).unwrap())
+    );
     // A project with its own still duration: the next slideshow uses it.
     let mut doc = h.doc();
     doc.settings.still_duration = Some(dur(3));
@@ -130,7 +134,12 @@ fn per_image_sets_the_length_and_follows_the_project_default_when_absent() {
 
 #[test]
 fn the_order_is_given_by_name_or_by_name_with_numbers() {
-    let files = json!(["/p/img10.png", "/p/img2.png", "/p/Beach.png", "/p/apple.png"]);
+    let files = json!([
+        "/p/img10.png",
+        "/p/img2.png",
+        "/p/Beach.png",
+        "/p/apple.png"
+    ]);
     let names = |order: Value| -> Vec<String> {
         let (h, p) = H::project();
         let mut params = json!({"files": files, "per_image": "1s"});
@@ -177,7 +186,11 @@ fn pictures_already_in_the_project_are_reused_by_content() {
     assert_eq!(out["media"][0]["duplicate"], true);
     assert_eq!(out["media"][1]["duplicate"], false);
     assert_eq!(out["media"][2]["duplicate"], true);
-    assert_eq!(clips(&doc, &p, p.video).len(), 3, "three clips all the same");
+    assert_eq!(
+        clips(&doc, &p, p.video).len(),
+        3,
+        "three clips all the same"
+    );
 }
 
 #[test]
@@ -300,10 +313,7 @@ fn bad_requests_are_refused_with_the_field_at_fault() {
         run(json!({"files": ["/p/img2.png"], "track": p.audio})),
         "/track",
     );
-    assert_invalid(
-        run(json!({"files": ["/p/img2.png"], "at": "-1s"})),
-        "/at",
-    );
+    assert_invalid(run(json!({"files": ["/p/img2.png"], "at": "-1s"})), "/at");
     assert_code(
         run(json!({"files": ["/p/img2.png"], "track": TrackId::from_u128(9)})),
         "not_found",
@@ -366,7 +376,10 @@ fn a_frame_becomes_a_picture_in_the_bin_named_after_its_source_and_time() {
     assert_eq!(path, format!("/project/generated/frames/{media_id}.png"));
     assert_eq!(out["path"], json!(path));
     assert_eq!(out["duplicate"], false);
-    assert_eq!(out["time"], json!(Time::from_flicks(705_600_000 / 30 * 72).unwrap()));
+    assert_eq!(
+        out["time"],
+        json!(Time::from_flicks(705_600_000 / 30 * 72).unwrap())
+    );
     assert_eq!(out["name"], "Sequence 1 00:00:02:12");
     assert_eq!(asset.name.as_deref(), Some("Sequence 1 00:00:02:12"));
     assert!(frames.discarded().is_empty());
@@ -394,12 +407,7 @@ fn a_frame_of_a_video_asset_is_named_after_the_asset() {
     let (mut h, _) = H::project();
     let video = h.add_video("/p/Holiday.mp4", 10, true);
     let frames = Arc::new(FakeFrames::new(h.doc()));
-    let out = import_frame(
-        &h,
-        &frames,
-        json!({"source": {"media": video}, "at": "1s"}),
-    )
-    .unwrap();
+    let out = import_frame(&h, &frames, json!({"source": {"media": video}, "at": "1s"})).unwrap();
     assert_eq!(out["name"], "Holiday.mp4 00:00:01:00");
     assert_eq!(out["time"], json!(secs(1)));
     assert_eq!(h.doc().media.len(), 2);
@@ -421,7 +429,10 @@ fn the_same_picture_twice_is_one_asset_and_the_second_file_is_removed() {
     .unwrap();
     assert_eq!(again["media_id"], first["media_id"]);
     assert_eq!(again["duplicate"], true);
-    assert_eq!(again["name"], first["name"], "the existing asset keeps its name");
+    assert_eq!(
+        again["name"], first["name"],
+        "the existing asset keeps its name"
+    );
     assert_eq!(again["path"], first["path"]);
     assert_eq!(h.doc().media.len(), 1);
     assert_eq!(h.commits(), commits, "nothing changed");
@@ -439,14 +450,23 @@ fn import_frame_refuses_what_it_cannot_do_and_removes_the_file_it_wrote() {
     );
     assert_invalid(run(&h, json!({"source": "sequence", "at": "-1s"})), "/at");
     assert_code(
-        run(&h, json!({"source": {"media": MediaId::from_u128(5)}, "at": 0})),
+        run(
+            &h,
+            json!({"source": {"media": MediaId::from_u128(5)}, "at": 0}),
+        ),
         "not_found",
     );
-    assert!(frames.discarded().is_empty(), "nothing was written for those");
+    assert!(
+        frames.discarded().is_empty(),
+        "nothing was written for those"
+    );
     // An unknown bin folder is found only when registering: the file is removed again.
     let missing = cutweave_model::FolderId::from_u128(77);
     assert_code(
-        run(&h, json!({"source": "sequence", "at": 0, "folder": missing})),
+        run(
+            &h,
+            json!({"source": "sequence", "at": 0, "folder": missing}),
+        ),
         "not_found",
     );
     assert_eq!(frames.discarded().len(), 1);

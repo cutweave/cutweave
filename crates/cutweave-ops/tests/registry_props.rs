@@ -66,11 +66,12 @@ use cutweave_ops::{
         presets::{PresetCtx, PresetStore},
     },
     media::{
-        FakeProbe, ImportCtx, ImportPolicy, MediaRegister, MediaRegisterTree, MediaRegistered,
-        MediaSetLocation, MediaSink, MediaTreeRegistered, RelinkCtx, RelinkSink, proxy::ProxyCall,
+        FakeProbe, FrameRegistered, ImportCtx, ImportPolicy, MediaRegister, MediaRegisterTree,
+        MediaRegistered, MediaSetLocation, MediaSink, MediaTreeRegistered, RelinkCtx, RelinkSink,
+        SlideshowBatch, SlideshowPlaced, SlideshowSteps, place_slideshow, proxy::ProxyCall,
     },
     testing::{
-        self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
+        self, AGENT_LABEL, FakeFrames, JsonMirror, analyzer, arb_command_from, check_invariants,
         check_linked_edit, fake_probe, job_manager, replay_events,
     },
 };
@@ -337,6 +338,112 @@ impl MediaSink for ImportSink {
             }
         }
     }
+
+    fn slideshow(&mut self, batch: SlideshowBatch) -> Result<SlideshowPlaced, CmdError> {
+        let mut s = self.state.lock().unwrap();
+        let tx = s.begin_tx(&self.ctx, TxKind::Batch, "Import slideshow")?.id;
+        let mut steps = TxSteps {
+            state: &mut s,
+            ctx: &self.ctx,
+            tx,
+        };
+        match place_slideshow(&mut steps, &batch) {
+            Ok(placed) => {
+                if let Err(e) = s.commit_tx(&self.ctx, tx) {
+                    let _ = s.cancel_tx(&self.ctx, tx);
+                    return Err(e);
+                }
+                Ok(placed)
+            }
+            Err(e) => {
+                s.cancel_tx(&self.ctx, tx).unwrap();
+                Err(e)
+            }
+        }
+    }
+
+    fn register_frame(
+        &mut self,
+        register: MediaRegister,
+        name: String,
+    ) -> Result<FrameRegistered, CmdError> {
+        let mut s = self.state.lock().unwrap();
+        let tx = s
+            .begin_tx(&self.ctx, TxKind::Batch, "Add frame to media bin")?
+            .id;
+        let mut steps = TxSteps {
+            state: &mut s,
+            ctx: &self.ctx,
+            tx,
+        };
+        let done = steps
+            .run::<MediaRegistered>("media.register", &register)
+            .and_then(|registered| {
+                if registered.created {
+                    steps.run::<Value>(
+                        "media.rename",
+                        &json!({"media": registered.media_id, "name": name}),
+                    )?;
+                }
+                Ok(registered)
+            });
+        match done {
+            Ok(registered) => {
+                if let Err(e) = s.commit_tx(&self.ctx, tx) {
+                    let _ = s.cancel_tx(&self.ctx, tx);
+                    return Err(e);
+                }
+                let media = &s.doc().media[&registered.media_id];
+                Ok(FrameRegistered {
+                    registered,
+                    path: media.path_abs.clone().unwrap_or_default(),
+                    name: cutweave_ops::media::asset_name(media).into_owned(),
+                })
+            }
+            Err(e) => {
+                s.cancel_tx(&self.ctx, tx).unwrap();
+                Err(e)
+            }
+        }
+    }
+}
+
+/// The document commands of an import that is more than registrations, submitted into one open
+/// transaction of the importing actor (as the engine does).
+struct TxSteps<'a> {
+    state: &'a mut DocState,
+    ctx: &'a ActorCtx,
+    tx: cutweave_commands::TxId,
+}
+
+impl TxSteps<'_> {
+    fn run<T: serde::de::DeserializeOwned>(
+        &mut self,
+        name: &str,
+        params: &impl serde::Serialize,
+    ) -> Result<T, CmdError> {
+        let params = serde_json::to_value(params).unwrap();
+        let submit = Submit::new(self.ctx.clone(), name, params).in_tx(self.tx);
+        let applied = self.state.submit(submit)?;
+        Ok(serde_json::from_value(applied.output).unwrap())
+    }
+}
+
+impl SlideshowSteps for TxSteps<'_> {
+    fn doc(&self) -> Project {
+        self.state.doc().clone()
+    }
+
+    fn register(&mut self, register: &MediaRegister) -> Result<MediaRegistered, CmdError> {
+        self.run("media.register", register)
+    }
+
+    fn insert(
+        &mut self,
+        insert: &cutweave_ops::timeline::TimelineInsert,
+    ) -> Result<cutweave_ops::timeline::TimelineInsertOutput, CmdError> {
+        self.run("timeline.insert", insert)
+    }
 }
 
 /// The relink commands' sink: `media.set_location` for each asset in one transaction on a
@@ -518,7 +625,7 @@ impl<'s> Harness<'s> {
         }
     }
 
-    fn import(&self, ctx: &ActorCtx, params: &Value) -> Result<Value, CmdError> {
+    fn import(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let importer = if *ctx.actor() == cutweave_commands::Actor::User {
             ActorCtx::ui(ConnId::new(1001))
         } else {
@@ -528,10 +635,13 @@ impl<'s> Harness<'s> {
             state: Arc::clone(&self.state),
             ctx: importer,
         };
+        // `media.import_frame` takes its frames from a store that sees the live document.
+        let frames = Arc::new(FakeFrames::new(self.lock().doc().clone()));
         let mut ctx_any = ImportCtx::new(Arc::new(fake_probe()), Box::new(sink))
-            .with_analysis(analyzer(&self.jobs));
+            .with_analysis(analyzer(&self.jobs))
+            .with_frames(frames);
         self.registry
-            .invoke_engine_json("media.import", params.clone(), &mut ctx_any, ctx.access())
+            .invoke_engine_json(name, params.clone(), &mut ctx_any, ctx.access())
     }
 
     /// Runs `export.start` against the committed document (the starter queues nothing).
@@ -696,7 +806,7 @@ impl<'s> Harness<'s> {
         };
         let result = match context {
             Some(c) if c == TypeId::of::<ImportCtx>() => {
-                self.import(ctx, params).map(|output| Done {
+                self.import(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })
