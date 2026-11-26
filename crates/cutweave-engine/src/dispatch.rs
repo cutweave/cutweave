@@ -47,6 +47,8 @@ pub struct Call {
     pub expected_rev: Option<Rev>,
     /// Run inside this open transaction of the connection.
     pub tx: Option<TxId>,
+    /// A gesture update that replaces the earlier ones (`_meta.replace`, WP-2A.12).
+    pub replace: bool,
 }
 
 impl Call {
@@ -59,6 +61,7 @@ impl Call {
             request_id: None,
             expected_rev: None,
             tx: None,
+            replace: false,
         }
     }
 
@@ -80,6 +83,13 @@ impl Call {
     #[must_use]
     pub fn in_tx(mut self, tx: TxId) -> Call {
         self.tx = Some(tx);
+        self
+    }
+
+    /// As a gesture update that replaces the earlier ones (`_meta.replace`).
+    #[must_use]
+    pub fn replacing(mut self) -> Call {
+        self.replace = true;
         self
     }
 }
@@ -183,7 +193,15 @@ impl Connection {
             request_id,
             expected_rev,
             tx,
+            replace,
         } = call;
+        if replace && tx.is_none() {
+            // Also for queries that never reach the doc actor (which checks it too).
+            return Err(CmdError::invalid(
+                "/_meta/replace",
+                "needs `_meta.tx`: only an update inside an open gesture replaces the earlier ones",
+            ));
+        }
         let registry = Arc::clone(&core.deps.registry);
         let entry = registry
             .get(&name)
@@ -221,6 +239,9 @@ impl Connection {
             }
             if let Some(tx) = tx {
                 submit = submit.in_tx(tx);
+            }
+            if replace {
+                submit = submit.replacing();
             }
             // The session stays read-locked until the reply: a document swap waits for
             // requests already submitted.

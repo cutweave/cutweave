@@ -85,6 +85,8 @@ pub struct RpcCall {
     pub expected_rev: Option<Rev>,
     /// `_meta.tx`.
     pub tx: Option<TxId>,
+    /// `_meta.replace`: this gesture update replaces the earlier ones (WP-2A.12).
+    pub replace: bool,
 }
 
 /// What a call returned.

@@ -77,6 +77,8 @@ impl DispatchConn for Connection {
                 request_id,
                 expected_rev,
                 tx,
+                // Gesture updates come from the editor over RPC; MCP has no gestures.
+                replace: false,
             },
         )?;
         Ok(DispatchReply {

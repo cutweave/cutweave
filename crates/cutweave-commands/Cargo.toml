@@ -45,5 +45,9 @@ specta-serde.workspace = true
 name = "doc_actor"
 harness = false
 
+[[bench]]
+name = "soft_lock"
+harness = false
+
 [lints]
 workspace = true

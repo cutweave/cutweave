@@ -614,3 +614,144 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
         exemptions.len()
     );
 }
+
+/// The engine's error object as a surface reported it: the MCP tool error's `error`, the
+/// JSON-RPC error's `data`, the CLI's stderr JSON.
+fn engine_error(raw: &Value) -> Value {
+    raw.get("error")
+        .filter(|e| e.is_object())
+        .or_else(|| raw.get("data").filter(|d| d.is_object()))
+        .unwrap_or(raw)
+        .clone()
+}
+
+/// WP-2A.12 acceptance "Parity test: identical error over RPC, MCP and CLI": an agent's
+/// `item.move` on a clip another actor is dragging (an open gesture of a copilot connection)
+/// fails with the same `Conflict{reason: item_in_gesture, holder, retry_after_ms}` on every
+/// surface (code, reason, holder, hint, revision, detail and message), and the same call
+/// succeeds once the gesture is committed. The child-process MCP surface runs its engine in
+/// another process, where the harness cannot hold a gesture; it is the same MCP handler.
+#[test]
+fn a_soft_lock_conflict_is_the_same_error_on_cli_mcp_and_rpc() {
+    let root = tempfile::tempdir().unwrap();
+    let root_path = strip_verbatim(&std::fs::canonicalize(root.path()).unwrap());
+    let media = root_path.join("media");
+    std::fs::create_dir_all(&media).unwrap();
+    std::fs::write(media.join("a.mp4"), vec![1_u8; 4096]).unwrap();
+    let registry = std::sync::Arc::new(cutweave_engine::build_registry().unwrap());
+    let mut refusals: Vec<(Surface, Value)> = Vec::new();
+    for surface in [Surface::Cli, Surface::Mcp, Surface::Rpc] {
+        let run_dir = root_path.join(format!("lock-run-{}", surface.name()));
+        let kind = if surface == Surface::Mcp {
+            EngineKind::Stdio
+        } else {
+            EngineKind::Server
+        };
+        let engine = ParityEngine::start(kind, &root_path, &run_dir);
+        // A copilot opens a project with a clip and starts dragging it.
+        let holder = engine
+            .engine
+            .handle()
+            .connect(&cutweave_api::creds::Credential::Agent("copilot".into()))
+            .unwrap();
+        let call = |name: &str, params: Value| {
+            holder
+                .call(cutweave_engine::Call::new(name, params))
+                .unwrap_or_else(|e| panic!("{name}: {e}"))
+                .output
+        };
+        let project = call("project.new", json!({ "name": "Locks" }));
+        let imported = call(
+            "media.import",
+            json!({ "paths": [media.join("a.mp4").to_string_lossy()] }),
+        );
+        let inserted = call(
+            "timeline.insert",
+            json!({
+                "sequence": project["sequence"],
+                "track": project["video_track"],
+                "media": imported["media_ids"][0],
+                "at": 0
+            }),
+        );
+        let item = inserted["clips"][0].clone();
+        let tx = call(
+            "edit.begin_tx",
+            json!({ "kind": "gesture", "label": "Move clip" }),
+        )["tx"]
+            .clone();
+        let gesture: cutweave_commands::TxId = serde_json::from_value(tx.clone()).unwrap();
+        holder
+            .call(
+                cutweave_engine::Call::new("item.move", json!({ "item": item, "start": "2s" }))
+                    .in_tx(gesture)
+                    .replacing(),
+            )
+            .unwrap();
+
+        let mut driver = match surface {
+            Surface::Cli => Driver::Cli(Cli {
+                run_dir: &run_dir,
+                registry: &registry,
+            }),
+            Surface::Mcp => Driver::Mcp(Box::new(Mcp::connect(&engine.engine, Revision::Stateful))),
+            _ => Driver::Rpc(Box::new(Rpc::connect(
+                engine.port(),
+                &engine.token("rpc"),
+                &registry,
+            ))),
+        };
+        let agent_move = Call {
+            cmd: "item.move".into(),
+            args: json!({ "item": item, "start": "5s" }),
+        };
+        let refused = driver
+            .call(&agent_move)
+            .expect_err("the agent's move of a clip in another actor's gesture is refused");
+        assert_eq!(
+            refused.code,
+            "conflict",
+            "{}: {}",
+            surface.name(),
+            refused.raw
+        );
+        refusals.push((surface, engine_error(&refused.raw)));
+        // Retry semantics: after the holder commits, the same call succeeds.
+        call("edit.commit_tx", json!({ "tx": tx }));
+        driver
+            .call(&agent_move)
+            .unwrap_or_else(|e| panic!("{}: the retry failed: {}", surface.name(), e.raw));
+        driver.close();
+        drop(holder);
+        engine.shutdown();
+    }
+
+    let comparable = |e: &Value| {
+        json!({
+            "code": e["code"], "reason": e["reason"], "holder": e["holder"],
+            "retry_after_ms": e["retry_after_ms"], "current_rev": e["current_rev"],
+            "detail": e["detail"], "message": e["message"],
+        })
+    };
+    let (first, reference) = &refusals[0];
+    assert_eq!(reference["reason"], "item_in_gesture", "{reference}");
+    assert_eq!(reference["holder"], "agent:copilot", "{reference}");
+    // The deterministic engine's clock stands still: the whole idle budget is left.
+    assert_eq!(reference["retry_after_ms"], 30_000, "{reference}");
+    for (surface, error) in &refusals[1..] {
+        assert_eq!(
+            comparable(error),
+            comparable(reference),
+            "{} and {} report different errors",
+            surface.name(),
+            first.name()
+        );
+    }
+    // MCP adds the retry hint to the tool error.
+    let mcp = &refusals.iter().find(|(s, _)| *s == Surface::Mcp).unwrap().1;
+    let hint = mcp["hint"].as_str().unwrap_or_default();
+    assert!(
+        hint.starts_with("agent:copilot is editing that item") && hint.contains("30000 ms"),
+        "{hint}"
+    );
+}

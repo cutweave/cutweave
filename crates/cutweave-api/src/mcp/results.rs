@@ -14,7 +14,7 @@
 //! - **Untrusted text** (arch §14, §18): strings that come from media files rather than from
 //!   the user or the agent are wrapped as `{"untrusted": true, "text": "..."}`.
 
-use cutweave_commands::{CmdError, ConflictReason, ResourceKind, Rev};
+use cutweave_commands::{Actor, CmdError, ConflictReason, ResourceKind, Rev};
 use rmcp::model::{CallToolResult, ContentBlock, MetaObject};
 use serde_json::{Value, json};
 
@@ -252,8 +252,38 @@ pub fn error_json(error: &CmdError, args: Option<&Value>, prefix: &str) -> Value
     {
         v["path"] = json!(format!("{prefix}{path}"));
     }
-    v["hint"] = json!(hint(error));
+    v["hint"] = json!(soft_lock_hint(error).unwrap_or_else(|| hint(error).to_owned()));
     v
+}
+
+/// The retry hint of an `item_in_gesture` conflict (WP-2A.12): who holds the item and when a
+/// retry may succeed. Agents may retry once after `retry_after_ms`; never in a tight loop.
+#[must_use]
+pub fn soft_lock_hint(error: &CmdError) -> Option<String> {
+    let CmdError::Conflict {
+        reason: ConflictReason::ItemInGesture,
+        holder,
+        retry_after_ms,
+        ..
+    } = error
+    else {
+        return None;
+    };
+    let who = match holder {
+        Some(Actor::User) => "The user".to_owned(),
+        Some(actor) => actor.to_string(),
+        None => "Another actor".to_owned(),
+    };
+    Some(match retry_after_ms {
+        Some(ms) => format!(
+            "{who} is editing that item right now. Work on other items, or retry once after \
+             retry_after_ms ({ms} ms); edit.locks (cutweave_query) lists who holds what"
+        ),
+        None => format!(
+            "{who} holds that item in an open proposal until it is accepted or rejected. Work \
+             on other items or ask the user; edit.locks (cutweave_query) lists who holds what"
+        ),
+    })
 }
 
 /// The JSON Pointer of the first string equal to `needle` in `value`.
@@ -430,6 +460,45 @@ mod tests {
         );
         assert!(v.get("path").is_none());
         assert!(v["hint"].as_str().unwrap().contains("search"));
+    }
+
+    #[test]
+    fn soft_lock_conflicts_say_who_and_when_to_retry() {
+        let in_use = |holder: Actor, retry_after_ms| CmdError::Conflict {
+            reason: ConflictReason::ItemInGesture,
+            current_rev: Some(Rev(7)),
+            retry_after_ms,
+            holder: Some(holder),
+            detail: "item `itm_1` is being edited".into(),
+        };
+        let v = error_json(&in_use(Actor::User, Some(28_500)), None, "");
+        assert_eq!(v["code"], "conflict");
+        assert_eq!(v["reason"], "item_in_gesture");
+        assert_eq!(v["holder"], "user");
+        assert_eq!(v["retry_after_ms"], 28_500);
+        let hint = v["hint"].as_str().unwrap();
+        assert!(hint.starts_with("The user is editing that item"), "{hint}");
+        assert!(hint.contains("28500 ms"), "{hint}");
+        let proposal = in_use(Actor::agent("copilot").unwrap(), None);
+        let hint = soft_lock_hint(&proposal).unwrap();
+        assert!(hint.starts_with("agent:copilot holds that item"), "{hint}");
+        assert!(hint.contains("accepted or rejected"), "{hint}");
+        // The tool result's summary line carries the code, the message and the hint.
+        let r = failure("item_move", error_json(&proposal, None, ""), &[]);
+        let ContentBlock::Text(summary) = &r.content[0] else {
+            panic!("{:?}", r.content);
+        };
+        assert!(
+            summary.text.contains("item_move failed (conflict)"),
+            "{}",
+            summary.text
+        );
+        assert!(
+            summary.text.contains("Hint: agent:copilot holds"),
+            "{}",
+            summary.text
+        );
+        assert_eq!(soft_lock_hint(&CmdError::internal("x")), None);
     }
 
     #[test]

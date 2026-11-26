@@ -110,6 +110,8 @@ pub(crate) struct Meta {
     pub expected_rev: Option<Rev>,
     /// Run inside this open transaction of the connection.
     pub tx: Option<TxId>,
+    /// A gesture update that replaces the earlier ones (spec INV-301, WP-2A.12).
+    pub replace: bool,
 }
 
 /// A parsed request.
@@ -243,6 +245,16 @@ fn parse_meta(meta: Value) -> Result<Meta, CmdError> {
             ));
         }
     }
+    match meta.get("replace") {
+        None | Some(Value::Null) => {}
+        Some(Value::Bool(replace)) => out.replace = *replace,
+        Some(_) => {
+            return Err(CmdError::invalid(
+                "/_meta/replace",
+                "must be a boolean (true: this gesture update replaces the earlier ones)",
+            ));
+        }
+    }
     Ok(out)
 }
 
@@ -298,7 +310,7 @@ mod tests {
         let req = parse_request(json!({
             "jsonrpc": "2.0", "id": 7, "method": "clip.split",
             "params": {"item": "itm_1", "at": 5, "_meta": {
-                "request_id": RID, "expected_rev": 4, "tx": "tx_9", "actor": "user"
+                "request_id": RID, "expected_rev": 4, "tx": "tx_9", "replace": true, "actor": "user"
             }}
         }))
         .unwrap();
@@ -308,6 +320,7 @@ mod tests {
         assert_eq!(req.meta.request_id.unwrap().to_string(), RID);
         assert_eq!(req.meta.expected_rev, Some(Rev(4)));
         assert_eq!(req.meta.tx, Some(TxId::new(9)));
+        assert!(req.meta.replace);
     }
 
     #[test]
@@ -352,6 +365,7 @@ mod tests {
             (json!({"expected_rev": -1}), "/_meta/expected_rev"),
             (json!({"expected_rev": "3"}), "/_meta/expected_rev"),
             (json!({"tx": "9"}), "/_meta/tx"),
+            (json!({"replace": "yes"}), "/_meta/replace"),
         ] {
             let r = parse_request(
                 json!({"jsonrpc": "2.0", "id": 1, "method": "a.b", "params": {"_meta": meta}}),
