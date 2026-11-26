@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // F6 Inspector (docs/user-flows.md): select a clip; edit its name, start and duration (typed
-// timecodes), opacity, position, scale, rotation and gain, by typing, dragging and keys. The
+// timecodes), opacity, position, scale, rotation, by typing, dragging and keys. The
 // timeline follows timing changes, and input that is not a time is refused with a message.
 // Second test (WP-2H.03a): two clips edited at once (one undo step), typed expressions, keyframes
 // from the diamond (add, next, previous, remove, reset) and the Track section.
@@ -165,7 +165,7 @@ test.describe("F6 inspector", () => {
       const scrubbed = (await item(page, id)).visual.transform.position.y;
       await expect(f.positionY).toHaveAttribute("aria-valuenow", String(scrubbed));
 
-      // Scale typed; rotation by keys (Up = 1°, Shift+Up = 10°); gain typed in dB.
+      // Scale typed; rotation by keys (Up = 1°, Shift+Up = 10°).
       await f.scale.dblclick();
       await page.keyboard.type("150");
       await page.keyboard.press("Enter");
@@ -175,11 +175,6 @@ test.describe("F6 inspector", () => {
       await page.keyboard.press("ArrowUp");
       await page.keyboard.press("Shift+ArrowUp");
       await expect.poll(async () => (await item(page, id)).visual.transform.rotation).toBe(11);
-      await f.gain.dblclick();
-      await page.keyboard.type("-6");
-      await page.keyboard.press("Enter");
-      await expect.poll(async () => (await item(page, id)).audio.gain).toBe(-6);
-      await expect(f.gain).toHaveAttribute("aria-valuetext", "-6.0 dB");
       await snapshot(page, info, "inspector edited");
     } finally {
       await close();

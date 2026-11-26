@@ -935,33 +935,32 @@
     "emptyTitle": "Nothing selected",
     "emptyBody": "Select a clip on the timeline to edit its position, scale, opacity and effects.",
     "project": "Project",
-    "resolution": "Resolution",
-    "resolutionValue": "{{width}} × {{height}}",
-    "frameRate": "Frame rate",
-    "frameRateValue": "{{fps}} fps",
     "duration": "Duration",
     "clip": "Clip",
     "timing": "Timing",
-    "audio": "Audio",
     "mixed": "Mixed",
     "multiple": "{{count}} clips selected. Mixed values stay as they are until you change them.",
     "multipleTime": "Select one clip to change its start or duration.",
     "fields": {
       "name": "Name",
       "start": "Start",
-      "duration": "Duration",
-      "gain": "Gain"
+      "duration": "Duration"
     },
     "history": {
       "name": "Rename clip",
-      "gain": "Change gain",
       "start": "Move clip",
       "duration": "Trim clip",
       "change": "Change {{name}}",
       "reset": "Reset {{name}}",
       "addKey": "Add keyframe for {{name}}",
       "removeKey": "Remove keyframe for {{name}}",
-      "track": "Change track {{name}}"
+      "track": "Change track {{name}}",
+      "fade": "Change {{name}}",
+      "speed": "Change speed",
+      "reverse": "Reverse clip",
+      "resetSpeed": "Reset speed",
+      "freeze": "Freeze frame",
+      "sequence": "Change sequence {{name}}"
     },
     "time": {
       "invalid": "Not a time. Try 00:00:02:00, 2.5s or f:60.",
@@ -999,9 +998,12 @@
       "crop": "Crop",
       "flip": "Flip",
       "compositing": "Compositing",
-      "video": "Video"
+      "video": "Video",
+      "audio": "Audio"
     },
     "props": {
+      "audioGain": "volume",
+      "audioPan": "pan",
       "transformPosition": "position",
       "transformScale": "scale",
       "transformRotation": "rotation",
@@ -1016,6 +1018,8 @@
       "flipVertical": "flip vertical"
     },
     "labels": {
+      "audioGain": "Volume",
+      "audioPan": "Pan",
       "transformPosition": "Position",
       "transformScale": "Scale",
       "transformRotation": "Rotation",
@@ -1042,6 +1046,54 @@
         "failed": "Failed"
       },
       "unknownSource": "Unknown file"
+    },
+    "audio": {
+      "fadeIn": "Fade in",
+      "fadeOut": "Fade out",
+      "fadeShape": "Fade shape",
+      "fadeInName": "fade in",
+      "fadeOutName": "fade out",
+      "fadeShapeName": "fade shape",
+      "curves": {
+        "linear": "Linear",
+        "log": "Logarithmic",
+        "equalPower": "Equal power",
+        "sCurve": "S-curve"
+      }
+    },
+    "speed": {
+      "title": "Speed",
+      "rate": "Speed",
+      "placeholder": "2x, 50% or 1/3",
+      "reverse": "Reverse",
+      "length": "Clip length",
+      "lengthChanges": "Changes",
+      "lengthStays": "Stays",
+      "scaleKeys": "Scale keyframes",
+      "ripple": "Move what follows",
+      "freeze": "Freeze frame at playhead",
+      "freezeNeedsOne": "Select one clip to freeze a frame",
+      "freezeNeedsPlayhead": "Move the playhead inside the clip",
+      "actions": "Speed actions"
+    },
+    "sequence": {
+      "title": "Sequence",
+      "width": "Width",
+      "height": "Height",
+      "frameRate": "Frame rate",
+      "background": "Background",
+      "reframe": "Reframe clips",
+      "rateValue": "{{fps}} fps",
+      "widthName": "width",
+      "heightName": "height",
+      "frameRateName": "frame rate",
+      "backgroundName": "background",
+      "reframes": {
+        "fit": "Fit",
+        "fill": "Fill",
+        "keepScale": "Keep scale",
+        "none": "None"
+      }
     },
     "track": {
       "title": "Track",

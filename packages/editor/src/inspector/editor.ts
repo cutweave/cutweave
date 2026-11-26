@@ -11,10 +11,14 @@
 // Several selected clips are edited inside the same transaction: one undo entry for all.
 
 import type {
+  FadeCurve,
   ItemProps,
   PropId,
   ResetGroup,
   RpcClient,
+  SequenceId,
+  SequenceSetFormat,
+  SpeedKeep,
   TrackId,
   TrackSet,
   TxId,
@@ -65,6 +69,16 @@ export interface PropEdit {
   readonly name: string;
   /** Per clip, the value now: a drag that ends here leaves no undo entry. */
   readonly current: readonly unknown[];
+}
+
+/** What a speed change keeps and moves (`clip.set_speed` options). */
+export interface SpeedOptions {
+  /** `in_point`: same media, the clip's length changes; `duration`: same length, other media. */
+  readonly keep: SpeedKeep;
+  /** Keyframes stretch with the speed instead of staying at their item times. */
+  readonly scaleKeys: boolean;
+  /** On a free track, move what follows instead of failing at the next item. */
+  readonly ripple: boolean;
 }
 
 interface OpenDrag {
@@ -389,6 +403,99 @@ export class InspectorEditor {
     return this.#batch(this.#deps.t("inspector.history.track", { name }), name, async (rpc, tx) => {
       await rpc.call("track.set", { track, ...patch }, { tx });
     });
+  }
+
+  /** Fade lengths (seconds) and shape of the clips' fades (`audio.set_fade`): one undo entry. */
+  setFades(
+    clips: readonly SelectedClip[],
+    fade: { readonly in?: number; readonly out?: number; readonly curve?: FadeCurve },
+    name: string,
+  ): Promise<void> {
+    if (clips.length === 0) return Promise.resolve();
+    return this.#batch(this.#deps.t("inspector.history.fade", { name }), name, async (rpc, tx) => {
+      await rpc.call(
+        "audio.set_fade",
+        {
+          items: clips.map((c) => c.item.id),
+          ...(fade.in !== undefined && { in: `${fade.in}s` }),
+          ...(fade.out !== undefined && { out: `${fade.out}s` }),
+          ...(fade.curve !== undefined && { curve: fade.curve }),
+        },
+        { tx },
+      );
+    });
+  }
+
+  /**
+   * A new speed (`clip.set_speed`). `speed` is what the person typed: the engine parses it
+   * (`2x`, `50%`, `1/3`) and a refusal reaches the toast with its own words.
+   */
+  setSpeed(
+    clips: readonly SelectedClip[],
+    speed: string,
+    options: SpeedOptions,
+    name: string,
+  ): Promise<void> {
+    if (clips.length === 0) return Promise.resolve();
+    return this.#batch(this.#deps.t("inspector.history.speed"), name, async (rpc, tx) => {
+      await rpc.call(
+        "clip.set_speed",
+        {
+          items: clips.map((c) => c.item.id),
+          speed,
+          keep: options.keep,
+          keyframes: options.scaleKeys ? "scale" : "keep",
+          ripple: options.ripple,
+        },
+        { tx },
+      );
+    });
+  }
+
+  /** Plays the clips backwards or forwards (`clip.reverse`). */
+  setReverse(clips: readonly SelectedClip[], reverse: boolean, name: string): Promise<void> {
+    if (clips.length === 0) return Promise.resolve();
+    return this.#batch(this.#deps.t("inspector.history.reverse"), name, async (rpc, tx) => {
+      await rpc.call("clip.reverse", { items: clips.map((c) => c.item.id), reverse }, { tx });
+    });
+  }
+
+  /** Normal speed, forwards, same media (`clip.reset_speed`). */
+  resetSpeed(clips: readonly SelectedClip[], options: SpeedOptions, name: string): Promise<void> {
+    if (clips.length === 0) return Promise.resolve();
+    return this.#batch(this.#deps.t("inspector.history.resetSpeed"), name, async (rpc, tx) => {
+      await rpc.call(
+        "clip.reset_speed",
+        {
+          items: clips.map((c) => c.item.id),
+          keyframes: options.scaleKeys ? "scale" : "keep",
+          ripple: options.ripple,
+        },
+        { tx },
+      );
+    });
+  }
+
+  /** A still of the frame at `at` (sequence time) goes in at the playhead (`clip.freeze_frame`). */
+  freezeFrame(clip: SelectedClip, at: number, name: string): Promise<void> {
+    return this.#batch(this.#deps.t("inspector.history.freeze"), name, async (rpc, tx) => {
+      await rpc.call("clip.freeze_frame", { item: clip.item.id, at }, { tx });
+    });
+  }
+
+  /** The sequence's canvas, frame rate or background (`sequence.set_format`): one undo entry. */
+  setSequenceFormat(
+    sequence: SequenceId,
+    patch: Omit<SequenceSetFormat, "sequence">,
+    name: string,
+  ): Promise<void> {
+    return this.#batch(
+      this.#deps.t("inspector.history.sequence", { name }),
+      name,
+      async (rpc, tx) => {
+        await rpc.call("sequence.set_format", { sequence, ...patch }, { tx });
+      },
+    );
   }
 
   /** The panel unmounts or the selection moves on: roll back an open drag. */
