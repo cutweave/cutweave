@@ -205,6 +205,50 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                       "string",
                       "null"
                     ]
+                  },
+                  "frame": {
+                    "description": "Units done so far (an export: frames handed to the encoder).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint64",
+                    "minimum": 0
+                  },
+                  "frames": {
+                    "description": "Units in all (an export: frames in the file).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint64",
+                    "minimum": 0
+                  },
+                  "fps": {
+                    "description": "Speed in units per second.",
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "format": "double"
+                  },
+                  "eta_ms": {
+                    "description": "Estimated time left, in milliseconds.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint64",
+                    "minimum": 0
+                  },
+                  "bytes": {
+                    "description": "Bytes written so far.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint64",
+                    "minimum": 0
                   }
                 },
                 "additionalProperties": false,
@@ -441,6 +485,50 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "string",
                     "null"
                   ]
+                },
+                "frame": {
+                  "description": "Units done so far (an export: frames handed to the encoder).",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "frames": {
+                  "description": "Units in all (an export: frames in the file).",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "fps": {
+                  "description": "Speed in units per second.",
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double"
+                },
+                "eta_ms": {
+                  "description": "Estimated time left, in milliseconds.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "bytes": {
+                  "description": "Bytes written so far.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
                 }
               },
               "additionalProperties": false,

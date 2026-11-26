@@ -317,6 +317,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         | "edit.locks"
         | "edit.list_checkpoints"
         | "export.list_presets"
+        | "export.queue"
         | "media.list_folders" => (1, no_params()),
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
         "media.register_tree" => (if no_media { 3 } else { 1 }, media_register_tree(p)),
@@ -401,7 +402,10 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "job.status" | "job.cancel" => (1, job_ref("id")),
         "job.list" => (1, job_list(p)),
         "job.wait" => (1, job_wait()),
-        "export.start" => (1, export_start(p)),
+        "export.start" | "export.enqueue" => (1, export_start(p)),
+        "export.cancel" | "export.retry" | "export.remove" => (2, export_job_ref()),
+        "export.pause_queue" => (1, pause_queue()),
+        "export.reorder" => (1, export_reorder()),
         "export.resolve_preset" => (1, preset_ref("preset")),
         "export.save_preset" => (1, preset_save()),
         "export.delete_preset" => (1, preset_ref("id")),
@@ -2643,6 +2647,53 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
     mix(valid, invalid)
 }
 
+/// `export.pause_queue`: `{paused}`, sometimes malformed.
+fn pause_queue() -> BoxedStrategy<Value> {
+    let valid = any::<bool>()
+        .prop_map(|paused| json!({"paused": paused}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({})),
+        Just(json!({"paused": "yes"})),
+        Just(json!({"paused": true, "parallel": 2})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// One of the exports [`export_queue`] starts with (the 4th to 6th job IDs), usually, or any
+/// job the `job.*` strategies name.
+fn export_job_id() -> BoxedStrategy<Value> {
+    let queued = select(known_job_ids()[3..6].to_vec())
+        .prop_map(|id| Value::String(id.to_string()))
+        .boxed();
+    prop_oneof![4 => queued, 1 => job_id()].boxed()
+}
+
+/// `{id: export}` (`export.cancel`, `export.retry`, `export.remove`).
+fn export_job_ref() -> BoxedStrategy<Value> {
+    let valid = export_job_id().prop_map(|id| json!({"id": id})).boxed();
+    let invalid = prop_oneof![
+        Just(json!({"id": "job_1"})),
+        fresh::<MediaId>().prop_map(|id| json!({"id": id})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// `export.reorder`: a job before another one, or to the end.
+fn export_reorder() -> BoxedStrategy<Value> {
+    let valid = (export_job_id(), option::weighted(0.3, export_job_id()))
+        .prop_map(|(id, before)| json!({"id": id, "before": before}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"before": "job_1"})),
+        export_job_id().prop_map(|id| json!({"id": id, "before": 3})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
 /// The job id [`export_ctx`]'s starter returns for every export it is given.
 pub const EXPORT_JOB_ID: JobId = JobId::from_u128(0xE0);
 
@@ -2710,13 +2761,112 @@ pub fn preset_ctx(
 }
 
 /// The engine context of `export.start` in a harness: `snapshot` (the committed document), no
-/// path allowlist, and a starter that queues nothing and answers [`EXPORT_JOB_ID`].
+/// path allowlist, and a starter that queues nothing and answers [`EXPORT_JOB_ID`] (the queue
+/// commands answer `Unsupported`).
 #[must_use]
 pub fn export_ctx(snapshot: Arc<DocSnapshot>) -> ExportCtx {
     ExportCtx {
         snapshot,
         allowed_roots: None,
         starter: Box::new(QueueNothing),
+        presets: Arc::default(),
+    }
+}
+
+/// An export queue for a harness (WP-2G.03a) on `jobs`: never started, so its exports wait in
+/// line (deterministically) until cancelled or removed; nothing is rendered or written. It
+/// starts with three exports of an empty document, so the `export.*` strategies (which name
+/// the first job IDs of [`JOB_ID_SEED`]) find some: the 4th ID waits, the 5th was cancelled
+/// (it can be retried), the 6th waits.
+#[must_use]
+pub fn export_queue(jobs: &JobManager) -> cutweave_jobs::ExportQueue<ExportPlan> {
+    let queue = cutweave_jobs::ExportQueue::new(
+        jobs.clone(),
+        Arc::new(|_: &ExportPlan, ctx: &JobCtx| ctx.check()),
+        Arc::new(crate::export::queue::PlanCodec),
+        1,
+    );
+    let plan = || ExportPlan {
+        snapshot: Arc::new(DocSnapshot {
+            rev: cutweave_commands::Rev::ZERO,
+            committed_rev: cutweave_commands::Rev::ZERO,
+            doc: Project::new("Queued"),
+        }),
+        sequence: SequenceId::from_u128(1),
+        path: std::env::temp_dir().join(EXPORT_FILE_NAME),
+        overwrite: true,
+        start: cutweave_model::Time::ZERO,
+        end: cutweave_model::Time::from_secs(1).unwrap_or(cutweave_model::Time::ZERO),
+        width: 64,
+        height: 36,
+        frame_rate: FrameRate::FPS_30,
+        frames: 30,
+        duration: cutweave_model::Duration::from_secs(1).unwrap_or_default(),
+        quality: crate::export::ExportQuality::Low,
+        hw: crate::export::ExportHw::Off,
+        rate: None,
+        warnings: Vec::new(),
+    };
+    let mut ids = Vec::new();
+    for _ in 0..3 {
+        let item = cutweave_jobs::QueueItem {
+            label: "export".to_owned(),
+            output: None,
+            task: plan(),
+        };
+        if let Ok(id) = queue.enqueue(item, false) {
+            ids.push(id);
+        }
+    }
+    if let Some(id) = ids.get(1) {
+        let _ = queue.cancel(*id);
+    }
+    queue
+}
+
+/// Adds exports to a harness's queue without claiming their output (the strategies name one
+/// file).
+struct QueueInLine(cutweave_jobs::ExportQueue<ExportPlan>);
+
+impl QueueInLine {
+    fn add(&self, plan: ExportPlan, resume: bool) -> Result<JobId, cutweave_commands::CmdError> {
+        let item = cutweave_jobs::QueueItem {
+            label: "export".to_owned(),
+            output: None,
+            task: plan,
+        };
+        self.0
+            .enqueue(item, resume)
+            .map_err(|e| crate::export::queue::queue_error(e, "/path"))
+    }
+}
+
+impl ExportStarter for QueueInLine {
+    fn start(&mut self, plan: ExportPlan) -> Result<JobId, cutweave_commands::CmdError> {
+        self.add(plan, true)
+    }
+
+    fn enqueue(&mut self, plan: ExportPlan) -> Result<JobId, cutweave_commands::CmdError> {
+        self.add(plan, false)
+    }
+
+    fn queue(
+        &mut self,
+    ) -> Result<cutweave_jobs::ExportQueue<ExportPlan>, cutweave_commands::CmdError> {
+        Ok(self.0.clone())
+    }
+}
+
+/// The engine context of the `export.*` commands in a harness with an [`export_queue`].
+#[must_use]
+pub fn queue_ctx(
+    snapshot: Arc<DocSnapshot>,
+    queue: &cutweave_jobs::ExportQueue<ExportPlan>,
+) -> ExportCtx {
+    ExportCtx {
+        snapshot,
+        allowed_roots: None,
+        starter: Box::new(QueueInLine(queue.clone())),
         presets: Arc::default(),
     }
 }

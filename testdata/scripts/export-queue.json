@@ -1,0 +1,16 @@
+{
+  "description": "The export queue's commands (WP-2G.03a) reach the engine the same way on every surface: export.queue lists the (empty) queue, export.pause_queue pauses and resumes it, and export.cancel, export.retry, export.remove and export.reorder name jobs the queue does not have (not_found) or malformed params (invalid). Nothing is exported, so no step depends on timing.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Export queue" } },
+    { "cmd": "export.queue" },
+    { "cmd": "export.pause_queue", "args": { "paused": true } },
+    { "cmd": "export.queue" },
+    { "cmd": "export.cancel", "args": { "id": "job_0000000000000000000000000000beef" }, "expect": { "error": "not_found" } },
+    { "cmd": "export.retry", "args": { "id": "job_0000000000000000000000000000beef" }, "expect": { "error": "not_found" } },
+    { "cmd": "export.remove", "args": { "id": "job_0000000000000000000000000000beef" }, "expect": { "error": "not_found" } },
+    { "cmd": "export.reorder", "args": { "id": "job_0000000000000000000000000000beef", "before": "job_0000000000000000000000000000cafe" }, "expect": { "error": "not_found" } },
+    { "cmd": "export.pause_queue", "args": { "paused": "yes" }, "expect": { "error": "invalid" } },
+    { "cmd": "export.pause_queue", "args": { "paused": false } },
+    { "cmd": "project.rename", "args": { "name": "Export queue, resumed" } }
+  ]
+}

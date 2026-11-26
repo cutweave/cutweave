@@ -5099,6 +5099,253 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Cancels a queued or running export: a queued one ends at once, a running one stops within a\nsecond and its partial file is deleted; the next export in line then starts. Cancelling a\nfinished export changes nothing. Returns the export.",
+        "properties": {
+          "id": {
+            "description": "The export's job (from export.start, export.enqueue or export.queue).",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ExportCancel",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_cancel",
+      "name": "export.cancel",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "One export of the queue.",
+        "properties": {
+          "cancel_requested": {
+            "description": "Whether a cancel was asked and the export has not stopped yet.",
+            "type": "boolean"
+          },
+          "duration": {
+            "description": "Length of the file.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "description": "Why it failed or was cancelled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_rate": {
+            "additionalProperties": false,
+            "description": "Frame rate of the file.",
+            "properties": {
+              "den": {
+                "description": "Seconds.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "num": {
+                "description": "Frames.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "type": "object"
+          },
+          "frames": {
+            "description": "Video frames the file will hold.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Frame height in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "in": {
+            "description": "Range start (sequence time, flicks).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "out": {
+            "description": "Range end, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "path": {
+            "description": "The output file.",
+            "type": "string"
+          },
+          "progress": {
+            "additionalProperties": false,
+            "description": "Done fraction, frames, speed, time left and bytes written.",
+            "properties": {
+              "bytes": {
+                "description": "Bytes written so far.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "eta_ms": {
+                "description": "Estimated time left, in milliseconds.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "fps": {
+                "description": "Speed in units per second.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "fraction": {
+                "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                "format": "double",
+                "type": "number"
+              },
+              "frame": {
+                "description": "Units done so far (an export: frames handed to the encoder).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "frames": {
+                "description": "Units in all (an export: frames in the file).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "message": {
+                "description": "What it is doing, for status lines.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "fraction",
+              "message"
+            ],
+            "type": "object"
+          },
+          "rev": {
+            "description": "The document revision it renders (later edits are not in the file).",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The exported sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "state": {
+            "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
+            "oneOf": [
+              {
+                "const": "queued",
+                "description": "Waiting for the jobs it depends on or for a budget slot.",
+                "type": "string"
+              },
+              {
+                "const": "running",
+                "description": "Running.",
+                "type": "string"
+              },
+              {
+                "const": "succeeded",
+                "description": "Finished its work.",
+                "type": "string"
+              },
+              {
+                "const": "failed",
+                "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                "type": "string"
+              },
+              {
+                "const": "cancelled",
+                "description": "Cancelled before or while running.",
+                "type": "string"
+              }
+            ]
+          },
+          "width": {
+            "description": "Frame width in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "progress",
+          "cancel_requested",
+          "error",
+          "path",
+          "sequence",
+          "in",
+          "out",
+          "width",
+          "height",
+          "frame_rate",
+          "frames",
+          "duration",
+          "rev"
+        ],
+        "title": "ExportQueueJob",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Cancel a queued or running export; the queue goes on with the next one",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -5143,6 +5390,406 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Delete one of your export presets",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Adds an export of a sequence (or a range of it) to an MP4 file (H.264 + AAC) to the end of\nthe export queue and returns its job. It runs when its turn comes; while the queue is paused\nit waits (`export.start` adds and resumes). It renders the project as it is now; later edits\ndo not change it. The same params and path rules as `export.start`.",
+        "properties": {
+          "hw": {
+            "anyOf": [
+              {
+                "description": "Whether to use a hardware video encoder.",
+                "oneOf": [
+                  {
+                    "const": "auto",
+                    "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "off",
+                    "description": "Software (x264) only.",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "This hardware encoder and no other, e.g. \"h264_nvenc\" (the `implementation` names of\nthe machine's hardware encoders); fails instead of falling back.",
+                    "properties": {
+                      "force": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "force"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"h264_nvenc\"}."
+          },
+          "overwrite": {
+            "default": null,
+            "description": "Replace an existing file at `path` (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Absolute path of the output file (`.mp4`).",
+            "type": "string"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "h264-mp4-1080p",
+                    "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality.",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "MP4, H.264 + AAC at a custom size, frame rate and quality.",
+                    "properties": {
+                      "custom": {
+                        "additionalProperties": false,
+                        "description": "Custom output settings; absent fields take the sequence's value (quality: high).",
+                        "properties": {
+                          "fps": {
+                            "additionalProperties": false,
+                            "default": null,
+                            "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
+                            "properties": {
+                              "den": {
+                                "description": "Seconds.",
+                                "maximum": 4294967295,
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "num": {
+                                "description": "Frames.",
+                                "maximum": 4294967295,
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "num",
+                              "den"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "height": {
+                            "default": null,
+                            "description": "Frame height in pixels: even, 16-8192.",
+                            "format": "uint32",
+                            "minimum": 0,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "preset": {
+                            "default": null,
+                            "description": "Base preset id; the other fields replace its values.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "quality": {
+                            "anyOf": [
+                              {
+                                "description": "How hard the encoder works for picture quality (and file size).",
+                                "oneOf": [
+                                  {
+                                    "const": "low",
+                                    "description": "Small files, visible compression.",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "medium",
+                                    "description": "Balanced.",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "high",
+                                    "description": "Close to the original (the default).",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null,
+                            "description": "\"low\", \"medium\" or \"high\"."
+                          },
+                          "width": {
+                            "default": null,
+                            "description": "Frame width in pixels: even, 16-8192.",
+                            "format": "uint32",
+                            "minimum": 0,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "custom"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "description": "A preset id (export.list_presets).",
+                    "type": "string"
+                  }
+                ],
+                "description": "What to make: the preset, or custom settings."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "\"h264-mp4-1080p\" (default), a preset id or {\"custom\": {...}}, as in export.start."
+          },
+          "range": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Part of the sequence to export (default: all of it).",
+            "properties": {
+              "in": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode."
+              },
+              "out": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "End, exclusive: at most the sequence end."
+              }
+            },
+            "required": [
+              "in",
+              "out"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "sequence": {
+            "default": null,
+            "description": "Sequence; optional when the project has one.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "ExportEnqueue",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_enqueue",
+      "name": "export.enqueue",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `export.start`: the job and what it will write.",
+        "properties": {
+          "duration": {
+            "description": "Length of the file.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "frame_rate": {
+            "additionalProperties": false,
+            "description": "Frame rate of the file.",
+            "properties": {
+              "den": {
+                "description": "Seconds.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "num": {
+                "description": "Frames.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "type": "object"
+          },
+          "frames": {
+            "description": "Video frames the file will hold.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Frame height in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "in": {
+            "description": "Exported range start (sequence time, flicks).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "job_id": {
+            "description": "The export job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "out": {
+            "description": "Exported range end, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "path": {
+            "description": "The output file.",
+            "type": "string"
+          },
+          "rev": {
+            "description": "The document revision exported (edits made later are not in the file).",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The exported sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "warnings": {
+            "description": "Platform-limit and fit warnings of a preset (never errors; the export runs).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One warning about a preset on a sequence.",
+              "properties": {
+                "code": {
+                  "description": "What kind.",
+                  "oneOf": [
+                    {
+                      "const": "AspectMismatch",
+                      "description": "The sequence's aspect is not the preset's.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "DurationOverLimit",
+                      "description": "The exported part is longer than the platform accepts.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SizeOverLimit",
+                      "description": "The estimated file is larger than the platform accepts.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "FrameRateCapped",
+                      "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "message": {
+                  "description": "A sentence for the person.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "width": {
+            "description": "Frame width in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "path",
+          "sequence",
+          "in",
+          "out",
+          "width",
+          "height",
+          "frame_rate",
+          "frames",
+          "duration",
+          "rev",
+          "warnings"
+        ],
+        "title": "ExportStartOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add an export to the export queue (waits while the queue is paused); returns job_id",
       "undoable": false,
       "view": false
     },
@@ -5825,6 +6472,1095 @@
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Pauses the export queue (no export starts; a running one finishes) or resumes it. The pause\nis kept with the project. Returns the queue.",
+        "properties": {
+          "paused": {
+            "description": "true pauses, false resumes.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "title": "ExportPauseQueue",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_pause_queue",
+      "name": "export.pause_queue",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The export queue: result of `export.queue` and the queue commands.",
+        "properties": {
+          "jobs": {
+            "description": "The exports, first in line first; finished ones stay until `export.remove`.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One export of the queue.",
+              "properties": {
+                "cancel_requested": {
+                  "description": "Whether a cancel was asked and the export has not stopped yet.",
+                  "type": "boolean"
+                },
+                "duration": {
+                  "description": "Length of the file.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "error": {
+                  "description": "Why it failed or was cancelled.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "frame_rate": {
+                  "additionalProperties": false,
+                  "description": "Frame rate of the file.",
+                  "properties": {
+                    "den": {
+                      "description": "Seconds.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "num": {
+                      "description": "Frames.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "num",
+                    "den"
+                  ],
+                  "type": "object"
+                },
+                "frames": {
+                  "description": "Video frames the file will hold.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "description": "Frame height in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "in": {
+                  "description": "Range start (sequence time, flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "out": {
+                  "description": "Range end, exclusive.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "The output file.",
+                  "type": "string"
+                },
+                "progress": {
+                  "additionalProperties": false,
+                  "description": "Done fraction, frames, speed, time left and bytes written.",
+                  "properties": {
+                    "bytes": {
+                      "description": "Bytes written so far.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "eta_ms": {
+                      "description": "Estimated time left, in milliseconds.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "fps": {
+                      "description": "Speed in units per second.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "fraction": {
+                      "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    "frame": {
+                      "description": "Units done so far (an export: frames handed to the encoder).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "frames": {
+                      "description": "Units in all (an export: frames in the file).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "description": "What it is doing, for status lines.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "fraction",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "rev": {
+                  "description": "The document revision it renders (later edits are not in the file).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sequence": {
+                  "description": "The exported sequence.",
+                  "pattern": "^seq_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
+                  "oneOf": [
+                    {
+                      "const": "queued",
+                      "description": "Waiting for the jobs it depends on or for a budget slot.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "running",
+                      "description": "Running.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "succeeded",
+                      "description": "Finished its work.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cancelled",
+                      "description": "Cancelled before or while running.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "width": {
+                  "description": "Frame width in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "state",
+                "progress",
+                "cancel_requested",
+                "error",
+                "path",
+                "sequence",
+                "in",
+                "out",
+                "width",
+                "height",
+                "frame_rate",
+                "frames",
+                "duration",
+                "rev"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "parallel": {
+            "description": "How many exports run at once.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "paused": {
+            "description": "Whether the queue is paused: no export starts (a running one finishes).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused",
+          "parallel",
+          "jobs"
+        ],
+        "title": "ExportQueueOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Pause or resume the export queue (a running export finishes)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the export queue in order: each export's state, progress (fraction, frames, fps, time\nleft, bytes), output file and what it renders, and whether the queue is paused.",
+        "title": "ExportQueue",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_queue",
+      "name": "export.queue",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The export queue: result of `export.queue` and the queue commands.",
+        "properties": {
+          "jobs": {
+            "description": "The exports, first in line first; finished ones stay until `export.remove`.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One export of the queue.",
+              "properties": {
+                "cancel_requested": {
+                  "description": "Whether a cancel was asked and the export has not stopped yet.",
+                  "type": "boolean"
+                },
+                "duration": {
+                  "description": "Length of the file.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "error": {
+                  "description": "Why it failed or was cancelled.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "frame_rate": {
+                  "additionalProperties": false,
+                  "description": "Frame rate of the file.",
+                  "properties": {
+                    "den": {
+                      "description": "Seconds.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "num": {
+                      "description": "Frames.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "num",
+                    "den"
+                  ],
+                  "type": "object"
+                },
+                "frames": {
+                  "description": "Video frames the file will hold.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "description": "Frame height in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "in": {
+                  "description": "Range start (sequence time, flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "out": {
+                  "description": "Range end, exclusive.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "The output file.",
+                  "type": "string"
+                },
+                "progress": {
+                  "additionalProperties": false,
+                  "description": "Done fraction, frames, speed, time left and bytes written.",
+                  "properties": {
+                    "bytes": {
+                      "description": "Bytes written so far.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "eta_ms": {
+                      "description": "Estimated time left, in milliseconds.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "fps": {
+                      "description": "Speed in units per second.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "fraction": {
+                      "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    "frame": {
+                      "description": "Units done so far (an export: frames handed to the encoder).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "frames": {
+                      "description": "Units in all (an export: frames in the file).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "description": "What it is doing, for status lines.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "fraction",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "rev": {
+                  "description": "The document revision it renders (later edits are not in the file).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sequence": {
+                  "description": "The exported sequence.",
+                  "pattern": "^seq_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
+                  "oneOf": [
+                    {
+                      "const": "queued",
+                      "description": "Waiting for the jobs it depends on or for a budget slot.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "running",
+                      "description": "Running.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "succeeded",
+                      "description": "Finished its work.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cancelled",
+                      "description": "Cancelled before or while running.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "width": {
+                  "description": "Frame width in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "state",
+                "progress",
+                "cancel_requested",
+                "error",
+                "path",
+                "sequence",
+                "in",
+                "out",
+                "width",
+                "height",
+                "frame_rate",
+                "frames",
+                "duration",
+                "rev"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "parallel": {
+            "description": "How many exports run at once.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "paused": {
+            "description": "Whether the queue is paused: no export starts (a running one finishes).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused",
+          "parallel",
+          "jobs"
+        ],
+        "title": "ExportQueueOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the export queue: each export's state, progress and output file",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Takes an export off the queue: a finished one is forgotten (its file stays), a queued one is\ncancelled first; a running one must be cancelled first. Returns the queue.",
+        "properties": {
+          "id": {
+            "description": "The export.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ExportRemove",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_remove",
+      "name": "export.remove",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The export queue: result of `export.queue` and the queue commands.",
+        "properties": {
+          "jobs": {
+            "description": "The exports, first in line first; finished ones stay until `export.remove`.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One export of the queue.",
+              "properties": {
+                "cancel_requested": {
+                  "description": "Whether a cancel was asked and the export has not stopped yet.",
+                  "type": "boolean"
+                },
+                "duration": {
+                  "description": "Length of the file.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "error": {
+                  "description": "Why it failed or was cancelled.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "frame_rate": {
+                  "additionalProperties": false,
+                  "description": "Frame rate of the file.",
+                  "properties": {
+                    "den": {
+                      "description": "Seconds.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "num": {
+                      "description": "Frames.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "num",
+                    "den"
+                  ],
+                  "type": "object"
+                },
+                "frames": {
+                  "description": "Video frames the file will hold.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "description": "Frame height in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "in": {
+                  "description": "Range start (sequence time, flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "out": {
+                  "description": "Range end, exclusive.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "The output file.",
+                  "type": "string"
+                },
+                "progress": {
+                  "additionalProperties": false,
+                  "description": "Done fraction, frames, speed, time left and bytes written.",
+                  "properties": {
+                    "bytes": {
+                      "description": "Bytes written so far.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "eta_ms": {
+                      "description": "Estimated time left, in milliseconds.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "fps": {
+                      "description": "Speed in units per second.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "fraction": {
+                      "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    "frame": {
+                      "description": "Units done so far (an export: frames handed to the encoder).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "frames": {
+                      "description": "Units in all (an export: frames in the file).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "description": "What it is doing, for status lines.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "fraction",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "rev": {
+                  "description": "The document revision it renders (later edits are not in the file).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sequence": {
+                  "description": "The exported sequence.",
+                  "pattern": "^seq_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
+                  "oneOf": [
+                    {
+                      "const": "queued",
+                      "description": "Waiting for the jobs it depends on or for a budget slot.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "running",
+                      "description": "Running.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "succeeded",
+                      "description": "Finished its work.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cancelled",
+                      "description": "Cancelled before or while running.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "width": {
+                  "description": "Frame width in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "state",
+                "progress",
+                "cancel_requested",
+                "error",
+                "path",
+                "sequence",
+                "in",
+                "out",
+                "width",
+                "height",
+                "frame_rate",
+                "frames",
+                "duration",
+                "rev"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "parallel": {
+            "description": "How many exports run at once.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "paused": {
+            "description": "Whether the queue is paused: no export starts (a running one finishes).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused",
+          "parallel",
+          "jobs"
+        ],
+        "title": "ExportQueueOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Take a finished or queued export off the queue (its file stays)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves a queued export (one waiting for its turn) before another export of the queue, or to\nthe end. Returns the queue.",
+        "properties": {
+          "before": {
+            "default": null,
+            "description": "The export to put it before; absent: the end of the queue.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The export to move (it must be waiting for its turn).",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ExportReorder",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_reorder",
+      "name": "export.reorder",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The export queue: result of `export.queue` and the queue commands.",
+        "properties": {
+          "jobs": {
+            "description": "The exports, first in line first; finished ones stay until `export.remove`.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One export of the queue.",
+              "properties": {
+                "cancel_requested": {
+                  "description": "Whether a cancel was asked and the export has not stopped yet.",
+                  "type": "boolean"
+                },
+                "duration": {
+                  "description": "Length of the file.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "error": {
+                  "description": "Why it failed or was cancelled.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "frame_rate": {
+                  "additionalProperties": false,
+                  "description": "Frame rate of the file.",
+                  "properties": {
+                    "den": {
+                      "description": "Seconds.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "num": {
+                      "description": "Frames.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "num",
+                    "den"
+                  ],
+                  "type": "object"
+                },
+                "frames": {
+                  "description": "Video frames the file will hold.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "description": "Frame height in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "in": {
+                  "description": "Range start (sequence time, flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "out": {
+                  "description": "Range end, exclusive.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "The output file.",
+                  "type": "string"
+                },
+                "progress": {
+                  "additionalProperties": false,
+                  "description": "Done fraction, frames, speed, time left and bytes written.",
+                  "properties": {
+                    "bytes": {
+                      "description": "Bytes written so far.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "eta_ms": {
+                      "description": "Estimated time left, in milliseconds.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "fps": {
+                      "description": "Speed in units per second.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "fraction": {
+                      "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    "frame": {
+                      "description": "Units done so far (an export: frames handed to the encoder).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "frames": {
+                      "description": "Units in all (an export: frames in the file).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "description": "What it is doing, for status lines.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "fraction",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "rev": {
+                  "description": "The document revision it renders (later edits are not in the file).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sequence": {
+                  "description": "The exported sequence.",
+                  "pattern": "^seq_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
+                  "oneOf": [
+                    {
+                      "const": "queued",
+                      "description": "Waiting for the jobs it depends on or for a budget slot.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "running",
+                      "description": "Running.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "succeeded",
+                      "description": "Finished its work.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cancelled",
+                      "description": "Cancelled before or while running.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "width": {
+                  "description": "Frame width in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "state",
+                "progress",
+                "cancel_requested",
+                "error",
+                "path",
+                "sequence",
+                "in",
+                "out",
+                "width",
+                "height",
+                "frame_rate",
+                "frames",
+                "duration",
+                "rev"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "parallel": {
+            "description": "How many exports run at once.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "paused": {
+            "description": "Whether the queue is paused: no export starts (a running one finishes).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused",
+          "parallel",
+          "jobs"
+        ],
+        "title": "ExportQueueOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move a queued export before another one, or to the end of the queue",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": true
       },
       "input_schema": {
@@ -6124,6 +7860,253 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Show what an export preset does to a sequence (size, rate, warnings) without exporting",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Queues a failed or cancelled export again, in its place and with its job id, rendering the\nsame snapshot as before. Returns the export.",
+        "properties": {
+          "id": {
+            "description": "The failed or cancelled export.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ExportRetry",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_retry",
+      "name": "export.retry",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "One export of the queue.",
+        "properties": {
+          "cancel_requested": {
+            "description": "Whether a cancel was asked and the export has not stopped yet.",
+            "type": "boolean"
+          },
+          "duration": {
+            "description": "Length of the file.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "description": "Why it failed or was cancelled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_rate": {
+            "additionalProperties": false,
+            "description": "Frame rate of the file.",
+            "properties": {
+              "den": {
+                "description": "Seconds.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "num": {
+                "description": "Frames.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "type": "object"
+          },
+          "frames": {
+            "description": "Video frames the file will hold.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Frame height in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "in": {
+            "description": "Range start (sequence time, flicks).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "out": {
+            "description": "Range end, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "path": {
+            "description": "The output file.",
+            "type": "string"
+          },
+          "progress": {
+            "additionalProperties": false,
+            "description": "Done fraction, frames, speed, time left and bytes written.",
+            "properties": {
+              "bytes": {
+                "description": "Bytes written so far.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "eta_ms": {
+                "description": "Estimated time left, in milliseconds.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "fps": {
+                "description": "Speed in units per second.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "fraction": {
+                "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                "format": "double",
+                "type": "number"
+              },
+              "frame": {
+                "description": "Units done so far (an export: frames handed to the encoder).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "frames": {
+                "description": "Units in all (an export: frames in the file).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "message": {
+                "description": "What it is doing, for status lines.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "fraction",
+              "message"
+            ],
+            "type": "object"
+          },
+          "rev": {
+            "description": "The document revision it renders (later edits are not in the file).",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The exported sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "state": {
+            "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
+            "oneOf": [
+              {
+                "const": "queued",
+                "description": "Waiting for the jobs it depends on or for a budget slot.",
+                "type": "string"
+              },
+              {
+                "const": "running",
+                "description": "Running.",
+                "type": "string"
+              },
+              {
+                "const": "succeeded",
+                "description": "Finished its work.",
+                "type": "string"
+              },
+              {
+                "const": "failed",
+                "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                "type": "string"
+              },
+              {
+                "const": "cancelled",
+                "description": "Cancelled before or while running.",
+                "type": "string"
+              }
+            ]
+          },
+          "width": {
+            "description": "Frame width in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "progress",
+          "cancel_requested",
+          "error",
+          "path",
+          "sequence",
+          "in",
+          "out",
+          "width",
+          "height",
+          "frame_rate",
+          "frames",
+          "duration",
+          "rev"
+        ],
+        "title": "ExportQueueJob",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Queue a failed or cancelled export again (same job id, same snapshot)",
       "undoable": false,
       "view": false
     },
@@ -6745,7 +8728,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). The export uses the project as it is now; later\nedits do not change it. Agents and headless callers may only write inside the project\nfolder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
+        "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
         "properties": {
           "hw": {
             "anyOf": [
@@ -10134,10 +12117,54 @@
             "additionalProperties": false,
             "description": "How far it got.",
             "properties": {
+              "bytes": {
+                "description": "Bytes written so far.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "eta_ms": {
+                "description": "Estimated time left, in milliseconds.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "fps": {
+                "description": "Speed in units per second.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
               "fraction": {
                 "description": "Done fraction, `0..=1` (1 once the job succeeded).",
                 "format": "double",
                 "type": "number"
+              },
+              "frame": {
+                "description": "Units done so far (an export: frames handed to the encoder).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "frames": {
+                "description": "Units in all (an export: frames in the file).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "message": {
                 "description": "What it is doing, for status lines.",
@@ -10378,10 +12405,54 @@
                   "additionalProperties": false,
                   "description": "How far it got.",
                   "properties": {
+                    "bytes": {
+                      "description": "Bytes written so far.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "eta_ms": {
+                      "description": "Estimated time left, in milliseconds.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "fps": {
+                      "description": "Speed in units per second.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
                     "fraction": {
                       "description": "Done fraction, `0..=1` (1 once the job succeeded).",
                       "format": "double",
                       "type": "number"
+                    },
+                    "frame": {
+                      "description": "Units done so far (an export: frames handed to the encoder).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "frames": {
+                      "description": "Units in all (an export: frames in the file).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
                     },
                     "message": {
                       "description": "What it is doing, for status lines.",
@@ -10540,10 +12611,54 @@
             "additionalProperties": false,
             "description": "How far it got.",
             "properties": {
+              "bytes": {
+                "description": "Bytes written so far.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "eta_ms": {
+                "description": "Estimated time left, in milliseconds.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "fps": {
+                "description": "Speed in units per second.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
               "fraction": {
                 "description": "Done fraction, `0..=1` (1 once the job succeeded).",
                 "format": "double",
                 "type": "number"
+              },
+              "frame": {
+                "description": "Units done so far (an export: frames handed to the encoder).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "frames": {
+                "description": "Units in all (an export: frames in the file).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "message": {
                 "description": "What it is doing, for status lines.",
@@ -10703,10 +12818,54 @@
             "additionalProperties": false,
             "description": "How far it got.",
             "properties": {
+              "bytes": {
+                "description": "Bytes written so far.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "eta_ms": {
+                "description": "Estimated time left, in milliseconds.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "fps": {
+                "description": "Speed in units per second.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
               "fraction": {
                 "description": "Done fraction, `0..=1` (1 once the job succeeded).",
                 "format": "double",
                 "type": "number"
+              },
+              "frame": {
+                "description": "Units done so far (an export: frames handed to the encoder).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "frames": {
+                "description": "Units in all (an export: frames in the file).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "message": {
                 "description": "What it is doing, for status lines.",

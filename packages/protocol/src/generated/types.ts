@@ -1039,6 +1039,37 @@ export type EvalSample = {
 	in_item: boolean,
 };
 
+/**
+ *  Cancels a queued or running export: a queued one ends at once, a running one stops within a
+ *  second and its partial file is deleted; the next export in line then starts. Cancelling a
+ *  finished export changes nothing. Returns the export.
+ */
+export type ExportCancel = {
+	/**  The export's job (from export.start, export.enqueue or export.queue). */
+	id: JobId,
+};
+
+/**
+ *  Adds an export of a sequence (or a range of it) to an MP4 file (H.264 + AAC) to the end of
+ *  the export queue and returns its job. It runs when its turn comes; while the queue is paused
+ *  it waits (`export.start` adds and resumes). It renders the project as it is now; later edits
+ *  do not change it. The same params and path rules as `export.start`.
+ */
+export type ExportEnqueue = {
+	/**  Sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  Absolute path of the output file (`.mp4`). */
+	path: string,
+	/**  Part of the sequence to export (default: all of it). */
+	range?: ExportRange | null,
+	/**  "h264-mp4-1080p" (default), a preset id or {"custom": {...}}, as in export.start. */
+	preset?: ExportPreset | null,
+	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
+	hw?: ExportHw | null,
+	/**  Replace an existing file at `path` (default false). */
+	overwrite?: boolean | null,
+};
+
 /**  Whether to use a hardware video encoder. */
 export type ExportHw = 
 /**
@@ -1053,6 +1084,15 @@ export type ExportHw =
  *  the machine's hardware encoders); fails instead of falling back.
  */
 { force: string };
+
+/**
+ *  Pauses the export queue (no export starts; a running one finishes) or resumes it. The pause
+ *  is kept with the project. Returns the queue.
+ */
+export type ExportPauseQueue = {
+	/**  true pauses, false resumes. */
+	paused: boolean,
+};
 
 /**  What to make: the preset, or custom settings. */
 export type ExportPreset = 
@@ -1116,6 +1156,56 @@ export type ExportQuality =
 /**  Close to the original (the default). */
 "high";
 
+/**
+ *  Lists the export queue in order: each export's state, progress (fraction, frames, fps, time
+ *  left, bytes), output file and what it renders, and whether the queue is paused.
+ */
+export type ExportQueue = Record<string, never>;
+
+/**  One export of the queue. */
+export type ExportQueueJob = {
+	/**  The job (`job.status`, `job.wait`, `export.cancel`, …). */
+	id: JobId,
+	/**  `queued`, `running`, `succeeded`, `failed` or `cancelled`. */
+	state: JobState,
+	/**  Done fraction, frames, speed, time left and bytes written. */
+	progress: JobProgress,
+	/**  Whether a cancel was asked and the export has not stopped yet. */
+	cancel_requested: boolean,
+	/**  Why it failed or was cancelled. */
+	error: string | null,
+	/**  The output file. */
+	path: string,
+	/**  The exported sequence. */
+	sequence: SequenceId,
+	/**  Range start (sequence time, flicks). */
+	in: Time,
+	/**  Range end, exclusive. */
+	out: Time,
+	/**  Frame width in pixels. */
+	width: number,
+	/**  Frame height in pixels. */
+	height: number,
+	/**  Frame rate of the file. */
+	frame_rate: FrameRate,
+	/**  Video frames the file will hold. */
+	frames: number,
+	/**  Length of the file. */
+	duration: Duration,
+	/**  The document revision it renders (later edits are not in the file). */
+	rev: Rev,
+};
+
+/**  The export queue: result of `export.queue` and the queue commands. */
+export type ExportQueueOutput = {
+	/**  Whether the queue is paused: no export starts (a running one finishes). */
+	paused: boolean,
+	/**  How many exports run at once. */
+	parallel: number,
+	/**  The exports, first in line first; finished ones stay until `export.remove`. */
+	jobs: ExportQueueJob[],
+};
+
 /**  The part of the sequence to export: `[in, out)`, both snapped to the nearest frame. */
 export type ExportRange = {
 	/**  Start: flicks, "2.5s", "f:60" or a timecode. */
@@ -1125,11 +1215,41 @@ export type ExportRange = {
 };
 
 /**
+ *  Takes an export off the queue: a finished one is forgotten (its file stays), a queued one is
+ *  cancelled first; a running one must be cancelled first. Returns the queue.
+ */
+export type ExportRemove = {
+	/**  The export. */
+	id: JobId,
+};
+
+/**
+ *  Moves a queued export (one waiting for its turn) before another export of the queue, or to
+ *  the end. Returns the queue.
+ */
+export type ExportReorder = {
+	/**  The export to move (it must be waiting for its turn). */
+	id: JobId,
+	/**  The export to put it before; absent: the end of the queue. */
+	before?: JobId | null,
+};
+
+/**
+ *  Queues a failed or cancelled export again, in its place and with its job id, rendering the
+ *  same snapshot as before. Returns the export.
+ */
+export type ExportRetry = {
+	/**  The failed or cancelled export. */
+	id: JobId,
+};
+
+/**
  *  Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a
  *  background job and returns the job id at once; wait with `job.wait`, stop with
- *  `job.cancel` (the partial file is deleted). The export uses the project as it is now; later
- *  edits do not change it. Agents and headless callers may only write inside the project
- *  folder and folders the user approved. An existing file is replaced only with
+ *  `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
+ *  also resumes a paused queue (`export.queue` lists it). The export uses the project as it is
+ *  now; later edits do not change it. Agents and headless callers may only write inside the
+ *  project folder and folders the user approved. An existing file is replaced only with
  *  `overwrite: true`.
  */
 export type ExportStart = {
@@ -2254,12 +2374,25 @@ export type JobListOutput = {
 	active: number,
 };
 
-/**  How far a job got. */
+/**
+ *  How far a job got. The counters are reported by jobs that have them (exports: frames,
+ *  speed, time left and bytes written, WP-2G.03a) and left out otherwise.
+ */
 export type JobProgress = {
 	/**  Done fraction, `0..=1` (1 once the job succeeded). */
 	fraction: number | null,
 	/**  What it is doing, for status lines. */
 	message: string | null,
+	/**  Units done so far (an export: frames handed to the encoder). */
+	frame?: number | null,
+	/**  Units in all (an export: frames in the file). */
+	frames?: number | null,
+	/**  Speed in units per second. */
+	fps?: number | null,
+	/**  Estimated time left, in milliseconds. */
+	eta_ms?: number | null,
+	/**  Bytes written so far. */
+	bytes?: number | null,
 };
 
 /**  Where a job is in its lifecycle. `succeeded`, `failed` and `cancelled` are final. */

@@ -39,6 +39,7 @@ FIELDS = {
 }
 EXECUTORS = ("sonnet", "opus", "human")
 HEADING_RE = re.compile(r"^### (WP-[^\s]+)\s+[—–-]\s+(.+?)\s*$")
+# A WP split after it was filed keeps its number plus a letter (WP-2G.03a, WP-2G.03b).
 ID_RE = re.compile(r"^WP-(\d)([A-Z])\.(\d{2})([a-z]?)$")
 FIELD_RE = re.compile(r"^- \*\*([A-Za-z ]+?)(?: \([^)]*\))?:\*\*\s*(.*)$")
 OPTIONAL = {"interfaces", "tests", "out_of_scope"}  # missing => warning, not error
@@ -169,8 +170,9 @@ DEP_RE = re.compile(
 
 
 def parse_deps(raw: str) -> tuple[list[str], list[str]]:
-    """Return (explicit WP ids, epic codes). Accepts WP-1A.01, bare 5A.02, ranges such as
-    `5A.02–5A.06`, and epic codes `E1B` / `epic 1B`. Parenthetical remarks are ignored."""
+    """Return (explicit WP ids, epic codes). Accepts WP-1A.01, bare 5A.02, split WPs such as
+    WP-2G.03a, ranges such as `5A.02–5A.06`, and epic codes `E1B` / `epic 1B`. Parenthetical
+    remarks are ignored."""
     s = strip_parens(raw).replace("*", "").replace("`", "")
     wps: list[str] = []
     epics: list[str] = []
@@ -203,7 +205,7 @@ def load_wbs() -> list[dict]:
 
 def wp_key(wid: str):
     m = ID_RE.match(wid)
-    return (m.group(1), m.group(2), m.group(3)) if m else (wid,)
+    return (m.group(1), m.group(2), m.group(3), m.group(4)) if m else (wid,)
 
 
 def expand_deps(wps: list[dict]) -> list[str]:

@@ -34,7 +34,7 @@ Parallel tracks that must land before the dogfood edits:
 - Keyframes: `2C.01` → `2C.02` → `2C.06 (wasm module)` → `2A.07` / `2C.05` / `2C.07`; and `2C.02` → `2C.04`. Also gates the 9:16 reframe in the short.
 - Audio: `2E.01` → `2E.02` → `2E.05`.
 - Media: `2F.01` → `2F.02`.
-- Export: `2G.01` → `2G.03` → `2G.04`.
+- Export: `2G.01` → `2G.03a` → `2G.03b` → `2G.04`.
 - UI shell: `2H.01` → `2H.02` → `2H.03a` → `2H.03b`.
 - Gates: `2J.01` → `2J.04` (benchmarks) and `2J.05` (crash harness) run in parallel with the dogfood prep.
 
@@ -1071,31 +1071,45 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Tests:** ffprobe matrix, PSNR checks, HW nightly.
 - **Out of scope:** VP9/WebM beyond what ffmpeg already exposes (listed as optional, not preset), ProRes RAW, DNxHR.
 
-### WP-2G.03 — Background export queue, range and marker-set export
-- **Area:** crates/cutweave-jobs, crates/cutweave-ops/src/export/queue.rs
-- **Depends on:** E1E, WP-2G.01, WP-2A.02
+### WP-2G.03a — Background export queue
+- **Area:** crates/cutweave-jobs, crates/cutweave-ops/src/export/queue.rs, crates/cutweave-engine (export job runner, queue store), docs/reference
+- **Depends on:** E1E, WP-2G.01
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
-  - Persistent export queue (sqlite via cutweave-jobs): `export.enqueue{sequence, preset, range, output, overrides}` snapshots the sequence at enqueue time (immutable snapshot reference at the current `rev`, so later edits do not alter queued jobs) and runs jobs serially by default (parallel limit setting, default 1 for GPU exports). Jobs survive engine restart (interrupted job restarts from the beginning, with partial output cleaned; documented).
-  - Operations: `export.start` (enqueue + start), `export.cancel`, `export.pause_queue`, `export.reorder`, `export.retry`, `export.remove`, queries `export.queue`, `job_status` (common). Progress: percent, fps, ETA, current frame, bytes. Events `job.progress`.
+  - (Split from WP-2G.03 on 2026-11-25; ranges, marker sets, collisions and the disk check are WP-2G.03b.)
+  - Persistent export queue (sqlite via cutweave-jobs, in `<project>/.cutweave/exports.sqlite`; in memory for an untitled project; ADR-0030, Proposed): `export.enqueue{sequence, preset, range, path, overrides}` snapshots the sequence at enqueue time (immutable snapshot reference at the current `rev`, so later edits do not alter queued jobs) and runs jobs serially by default (parallel limit `JobConfig.export_slots`, default 1 for GPU exports). Jobs survive engine restart (interrupted job restarts from the beginning, with partial output cleaned; documented). Switching projects suspends the old project's exports; they resume when it is reopened.
+  - Operations: `export.enqueue` (adds; waits while the queue is paused), `export.start` (adds and resumes the queue), `export.cancel`, `export.pause_queue`, `export.reorder`, `export.retry`, `export.remove`, queries `export.queue`, `job_status` (common). Progress: percent, fps, ETA, current frame, bytes. Events `job.progress`.
   - Export doesn't block editing; the preview may degrade (GPU budget `jobs` rule: preview priority above export, with a documented throttle). Offline media rules from 2F.03.
-  - Range export: `range = {kind: sequence | in_out | custom{start,end} | markers{ids[]|all, pair_mode}}`: a marker-set range export renders one file per marker region (marker `duration` or pairs of consecutive markers, naming template `{seq}_{marker_label}_{n}`).
-  - Output file collision policy (`rename|overwrite|fail`), disk space precheck.
   - MCP core: `export_start`, `job_status`; queue management catalog.
 - **Interfaces:** commands above; `ExportJob` state machine `queued→running→done|failed|canceled`.
 - **Acceptance criteria:**
   - Enqueue 3 jobs, kill the engine during job 2 and restart: job 1 `done`, job 2 restarts and completes, job 3 completes; outputs valid (ffprobe).
   - Editing the timeline during an export does not change the exported output (frame hash vs. snapshot render).
-  - Marker-set export of 4 markers produces 4 files with the right durations (±1 frame).
   - Cancel mid-export leaves no partial file and the queue proceeds.
-  - Editing UI command RTT p95 stays < 16 ms during an export (measured in 2J.01 harness).
+  - Editing command RTT p95 stays < 16 ms during an export (an in-process engine test here; the gate is 2J.01's harness).
 - **Tests:** integration with the kill harness, unit for the state machine.
-- **Out of scope:** distributed export, `cutweave worker` parallel chunking (P7/post-1.0), publishing.
+- **Out of scope:** range kinds, marker sets, the collision policy and the disk check (WP-2G.03b); distributed export, `cutweave worker` parallel chunking (P7/post-1.0), publishing.
+
+### WP-2G.03b — Export ranges, marker sets, file collisions and disk check
+- **Area:** crates/cutweave-ops/src/export/, crates/cutweave-engine/src/export/, docs/reference
+- **Depends on:** WP-2G.03a, WP-2A.02
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - (Split from WP-2G.03 on 2026-11-25.)
+  - Range export: `range = {kind: sequence | in_out | custom{start,end} | markers{ids[]|all, pair_mode}}`: a marker-set range export queues one job per marker region (marker `duration` or pairs of consecutive markers, naming template `{seq}_{marker_label}_{n}`).
+  - Output file collision policy (`rename|overwrite|fail`; today's `overwrite: true` keeps working), disk space precheck.
+- **Interfaces:** the `range` and collision params of `export.start` / `export.enqueue`.
+- **Acceptance criteria:**
+  - Marker-set export of 4 markers produces 4 files with the right durations (±1 frame).
+  - Each collision policy is covered: `rename` picks a free name, `fail` returns `Invalid` at `/path`, `overwrite` replaces the file only when the export succeeds.
+- **Tests:** integration (ffprobe durations), unit for ranges, naming and collisions.
+- **Out of scope:** the queue itself (WP-2G.03a); the dialog's range selector (WP-2G.04).
 
 ### WP-2G.04 — Export dialog and queue panel
 - **Area:** packages/editor/src/export/, apps/desktop/e2e/flows, docs/user-flows.md
-- **Depends on:** WP-2G.03, WP-2G.05, WP-2H.02, E1M
+- **Depends on:** WP-2G.03a (queue panel), WP-2G.03b (range selector and the "file exists" choice), WP-2G.05, WP-2H.02, E1M
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
@@ -1528,7 +1542,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2I.01 — Core tool set: mapping, annotations and completion (~30 tools)
 - **Area:** crates/cutweave-api/src/mcp/, crates/cutweave-ops (`mcp = ` attributes), docs/reference/mcp-core-tools.md (generated)
-- **Depends on:** E1J, WP-2A.03, WP-2A.04, WP-2B.01, WP-2C.03, WP-2E.01, WP-2G.03, WP-2F.03
+- **Depends on:** E1J, WP-2A.03, WP-2A.04, WP-2B.01, WP-2C.03, WP-2E.01, WP-2G.03a, WP-2F.03
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
@@ -1623,7 +1637,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2I.06 — Scripted-agent e2e: YouTube edit and 9:16 short via MCP only
 - **Area:** crates/cutweave-cli/tests/agent_e2e/, testdata manifests
-- **Depends on:** WP-2I.01, WP-2I.02, WP-2I.03, WP-2I.04, WP-2G.03, WP-2C.03, WP-2E.03
+- **Depends on:** WP-2I.01, WP-2I.02, WP-2I.03, WP-2I.04, WP-2G.03a, WP-2C.03, WP-2E.03
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
@@ -1708,7 +1722,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2J.05 — Crash-injection harness: 20 forced crashes, no data loss
 - **Area:** crates/cutweave-bench/src/crash/, apps/desktop/e2e/crash/
-- **Depends on:** E1C, E1L, WP-2A.10, WP-2G.03, WP-2I.03
+- **Depends on:** E1C, E1L, WP-2A.10, WP-2G.03a, WP-2I.03
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
@@ -1841,8 +1855,8 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | Export: presets (YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes; product owner request: Instagram Stories and feed, X, dated limits, safe areas) | 2G.01, 2G.02, 2G.04, 2H.06 |
 | Export: HEVC/AV1 | 2G.02 |
 | Export: advanced controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate) | 2G.05, 2G.04 |
-| Export: background queue | 2G.03, 2G.04 |
-| Export: range or marker set | 2G.03, 2G.04 |
+| Export: background queue | 2G.03a, 2G.04 |
+| Export: range or marker set | 2G.03b, 2G.04 |
 | UI: dockable workspace, Short-form/Long-form | 2H.01 |
 | (product owner requests, 2026-11-24) UI: close and reopen panels (View > Panels); History panel | 2H.01, 2H.11 |
 | UI: schema-driven inspector | 2H.02, 2H.03a, 2H.03b |

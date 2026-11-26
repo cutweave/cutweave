@@ -14,6 +14,9 @@
 //! - [`CancelToken`] / [`JobCtx`]: what a body polls and reports progress through.
 //! - [`JobHistory`]: where finished jobs go. [`MemoryHistory`] for now; the `jobs` table of
 //!   `cache.sqlite` arrives with WP-1D.05.
+//! - [`ExportQueue`] (WP-2G.03a): the background export queue on top of the manager: ordered,
+//!   pausable, one export at a time by default, kept in `<project>/.cutweave/exports.sqlite`
+//!   ([`SqliteQueueStore`]) so queued exports survive an engine restart.
 //! - The engine exposes it through the `job.*` commands of `cutweave-ops` (`job.status`,
 //!   `job.list`, `job.wait`, `job.cancel`); the MCP tools `job_status` / `job_wait` are core
 //!   (arch §14).
@@ -22,16 +25,24 @@
 
 mod cancel;
 mod history;
+mod hold;
 mod id;
 mod manager;
+pub mod queue;
 mod types;
 
 pub use cancel::CancelToken;
 pub use history::{DEFAULT_HISTORY_CAPACITY, JobHistory, MemoryHistory};
+pub use hold::Hold;
 pub use id::{JOB_ID_PATTERN, JobId, JobIdError};
 pub use manager::{
     DEFAULT_EVENT_CAPACITY, DEFAULT_EXPORT_SLOTS, DEFAULT_PROXY_SLOTS, JobConfig, JobCtx,
-    JobHandle, JobManager, JobManagerBuilder, PROGRESS_EVENT_STEP, default_decode_slots,
+    JobHandle, JobManager, JobManagerBuilder, OnDone, PROGRESS_EVENT_STEP, Submit, SubmitError,
+    default_decode_slots,
+};
+pub use queue::{
+    Attach, ExportQueue, MemoryQueueStore, QueueEntry, QueueError, QueueItem, QueueStore,
+    QueueView, Runner, SqliteQueueStore, TaskCodec,
 };
 pub use types::{
     Budget, JobError, JobEvent, JobFilter, JobInfo, JobKind, JobProgress, JobSpec, JobState,

@@ -38,7 +38,8 @@ use cutweave_commands::{
     Access, Actor, ActorCtx, Clock, CmdError, ConnId, DocHandle, DocSnapshot, ManualClock,
     Registry, RegistryError, Rev, SystemClock, WallTime,
 };
-use cutweave_jobs::JobManager;
+use cutweave_jobs::queue::Attach;
+use cutweave_jobs::{JobKind, JobManager};
 use cutweave_model::{SeededGen, Time};
 use cutweave_ops::export::ExportCtx;
 use cutweave_ops::export::presets::{PresetCtx, PresetStore};
@@ -56,7 +57,7 @@ use crate::autosave::AutosavePreference;
 use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
-use crate::export::{ActiveExports, Starter};
+use crate::export::{ExportJobs, Starter, export_queue, queue_store};
 use crate::full::MediaState;
 use crate::import::{BusAnalysisSink, ImportSink, NoMediaBackend, ctx_for};
 use crate::journal::{IdState, StopReason};
@@ -212,8 +213,9 @@ pub(crate) struct Core {
     next_conn: AtomicU64,
     stopping: AtomicBool,
     pub(crate) has_ui: bool,
-    /// Output files of queued and running exports.
-    exports: ActiveExports,
+    /// The export queue (WP-2G.03a): its store follows the session (the project's
+    /// `.cutweave/exports.sqlite`, or memory for an untitled one).
+    pub(crate) exports: ExportJobs,
     /// The export presets: built-in and the user's (WP-2G.01).
     presets: Arc<PresetStore>,
     /// The run-file, once the server runs (its `shm` follows the preview ring).
@@ -241,6 +243,24 @@ fn stopped() -> CmdError {
 }
 
 impl Core {
+    /// The export queue on `deps`' job manager, `slots` exports at a time (WP-2G.03a).
+    fn new_exports(deps: &Deps, slots: usize) -> ExportJobs {
+        export_queue(deps.jobs.clone(), Arc::clone(&deps.subsystems), slots)
+    }
+
+    /// Points the export queue at `session`'s store (see [`crate::export`]).
+    fn attach_exports(&self, session: &Session, mode: Attach) {
+        self.exports
+            .attach(queue_store(session.export_meta_dir().as_deref()), mode);
+    }
+
+    /// Installs the engine's first session, with its export queue.
+    fn install_first(&self, first: Session) {
+        self.settle_state(&first);
+        self.attach_exports(&first, Attach::Suspend);
+        *self.session.write().unwrap_or_else(PoisonError::into_inner) = Some(first);
+    }
+
     fn set_state(&self, s: SessionState) {
         self.state.store(state_code(s), Ordering::Release);
     }
@@ -511,11 +531,7 @@ impl Core {
                 self.path_roots(ctx, session),
             )
         };
-        let starter = Starter::new(
-            self.deps.jobs.clone(),
-            self.deps.subsystems.export_services(),
-            self.exports.clone(),
-        );
+        let starter = Starter::new(self.exports.clone(), Arc::clone(&self.deps.subsystems));
         let mut export = ExportCtx {
             snapshot,
             allowed_roots,
@@ -713,13 +729,23 @@ impl Core {
         self.set_state(SessionState::Closing);
         let prev_rev = old.handle().snapshot().rev;
         let ids = old.ids();
-        self.deps.jobs.cancel_all();
+        // Exports are the queue's: an untitled document's move into the next project, a
+        // project's stay behind in it (suspended) and run again when it is opened again.
+        let exports = if old.project_root().is_none() {
+            Attach::Carry
+        } else {
+            Attach::Suspend
+        };
+        self.deps
+            .jobs
+            .cancel_matching(|j| j.kind != JobKind::Export);
         let closed = old.close(&self.deps);
         let (next, error) = match build(&self.deps, ids) {
             Ok(next) => (next, None),
             // Keep a document either way.
             Err(e) => (Session::untitled(&self.deps, ids)?, Some(e)),
         };
+        self.attach_exports(&next, exports);
         self.settle_state(&next);
         if let Some(path) = &closed {
             session::announce_closed(&self.deps, path);
@@ -850,6 +876,7 @@ impl Core {
         };
         if current.can_save_as_in_place()? {
             let rev = current.save_as_in_place(&self.deps, folder)?;
+            self.attach_exports(current, Attach::Carry); // the queue moves with the project
             let status = current.status();
             let path = status.path.clone().unwrap_or_default();
             session::announce_opened(&self.deps, status);
@@ -1170,13 +1197,12 @@ impl Engine {
             stopping: AtomicBool::new(false),
             has_ui: config.mode == EngineMode::Gui,
             session: RwLock::new(None),
-            exports: ActiveExports::default(),
+            exports: Core::new_exports(&deps, config.jobs.export_slots),
             presets: Arc::new(PresetStore::open(config.presets_dir.clone())),
             run_file: Mutex::new(None),
             deps,
         });
-        core.settle_state(&first);
-        *core.session.write().unwrap_or_else(PoisonError::into_inner) = Some(first);
+        core.install_first(first);
         let mut engine = Engine {
             core: Arc::clone(&core),
             runtime,
@@ -1189,6 +1215,7 @@ impl Engine {
         engine.forward_job_events();
         engine.prepare_run_file(&config);
         core.start_subsystems(&config)?;
+        core.exports.start(); // queued exports (restored ones too) need the subsystems
         phases.mark("subsystems");
         engine.serve(&mut config, &mut phases)?;
         phases.mark("server");
@@ -1357,6 +1384,9 @@ impl Engine {
             RunFile::discard_prepared(&dir);
         }
         core.deps.subsystems.shutdown();
+        // The queue stops writing first, so its exports keep their stored state and run again
+        // next time.
+        core.exports.shutdown();
         core.deps.jobs.cancel_all();
         let session = core
             .session

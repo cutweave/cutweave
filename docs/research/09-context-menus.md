@@ -377,7 +377,7 @@ Group, Link, Speed, Detach, Replace, Compound and Reset show only when the WP th
 **Ruler** (`timeline.ruler`): Add marker here (M), Set in point here (I), Set out point here (O), Clear in and out, Go to marker ▸, Time display: Timecode / Frames / Seconds, Zoom to fit, Zoom to selection [WP-2A.02 marker and in/out commands; display [WP-2A.13]; zoom [E] `view.set_zoom`].
 **Playhead** (`timeline.playhead`): Split at playhead, Add marker at playhead, Set in/out here, Copy timecode [H], Go to start/end [E] `view.seek`.
 **Marker** (`timeline.marker`): Edit… (label, color, duration), Go to marker, Delete marker, Convert to chapter [WP-2A.02 `timeline.move_marker`/`remove_marker`; edit is a form, label/color through `timeline.add_marker` update variant: [M] `timeline.update_marker`].
-**In/out range bar**: Clear in and out, Export this range… [WP-2G.03], Lift, Extract [WP-2A.03].
+**In/out range bar**: Clear in and out, Export this range… [WP-2G.03b], Lift, Extract [WP-2A.03].
 **Keyframe diamond** (`timeline.keyframe`): Interpolation ▸ (Linear, Hold, Ease, Bezier…), Copy, Delete keyframe, Go to keyframe [WP-2C.03 `keyframe.*`, WP-2C.05].
 **Below tracks / tool strip**: tool strip: none. **Sequence tab**: Rename, Duplicate, Settings…, Close, Close others [WP-2B.03].
 

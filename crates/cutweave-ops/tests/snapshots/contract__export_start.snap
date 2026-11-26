@@ -252,7 +252,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "required": [
         "path"
       ],
-      "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). The export uses the project as it is now; later\nedits do not change it. Agents and headless callers may only write inside the project\nfolder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
+      "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
       "title": "ExportStart"
     },
     "output_schema": {
@@ -634,7 +634,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "required": [
       "path"
     ],
-    "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). The export uses the project as it is now; later\nedits do not change it. Agents and headless callers may only write inside the project\nfolder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
+    "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
     "title": "ExportStart"
   },
   "output": {

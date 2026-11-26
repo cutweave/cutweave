@@ -972,10 +972,12 @@ name = "cutweave-jobs"
 version = "0.0.0"
 dependencies = [
  "cutweave-model",
+ "rusqlite",
  "schemars",
  "serde",
  "serde_json",
  "specta",
+ "specta-typescript",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

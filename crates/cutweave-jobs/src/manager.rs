@@ -34,6 +34,7 @@ use tokio::{
 use crate::{
     cancel::CancelToken,
     history::{DEFAULT_HISTORY_CAPACITY, JobHistory, MemoryHistory},
+    hold::Hold,
     id::JobId,
     types::{Budget, JobError, JobEvent, JobFilter, JobInfo, JobProgress, JobSpec, JobState},
 };
@@ -85,12 +86,53 @@ impl Default for JobConfig {
 
 type Body = Box<dyn FnOnce(&JobCtx) -> Result<(), JobError> + Send + 'static>;
 
+/// Called once with a job's final state (see [`Submit::on_done`]).
+pub type OnDone = Box<dyn FnOnce(&JobInfo) + Send + 'static>;
+
+/// Options of [`JobManager::submit_with`] beyond the [`JobSpec`].
+#[derive(Default)]
+pub struct Submit {
+    /// The job's ID instead of a fresh one (a job queued again after a restart or a retry).
+    /// It must not belong to a queued or running job.
+    pub id: Option<JobId>,
+    /// The job waits for this to be released before it takes a budget slot (after its
+    /// dependencies). It can be cancelled while it waits.
+    pub hold: Option<Hold>,
+    /// Called once with the job's final state, as soon as it is final: outside the manager's
+    /// lock, before [`JobManager::wait`] returns for it. It must not block for long.
+    pub on_done: Option<OnDone>,
+}
+
+impl fmt::Debug for Submit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Submit")
+            .field("id", &self.id)
+            .field("hold", &self.hold)
+            .field("on_done", &self.on_done.is_some())
+            .finish()
+    }
+}
+
+/// Why [`JobManager::submit_with`] refused a job.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum SubmitError {
+    /// The requested ID belongs to a job that is queued or running.
+    #[error("job `{0}` is already queued or running")]
+    InUse(JobId),
+}
+
 struct Active {
     info: JobInfo,
     token: CancelToken,
     /// Progress last broadcast, to rate-limit `job.progress`.
     sent: JobProgress,
+    /// Called once the job is final.
+    on_done: Option<OnDone>,
 }
+
+/// A job that just became final: its state and its completion callback.
+type Finished = (JobInfo, Option<OnDone>);
 
 type Table = BTreeMap<JobId, Active>;
 
@@ -141,14 +183,14 @@ impl Shared {
     }
 
     /// Moves job `id` to its final `state` (under the caller's lock). The caller then calls
-    /// [`notify_finished`](Self::notify_finished) after unlocking.
+    /// [`done`](Self::done) after unlocking.
     fn finish_locked(
         &self,
         table: &mut Table,
         id: JobId,
         state: JobState,
         error: Option<String>,
-    ) -> Option<JobInfo> {
+    ) -> Option<Finished> {
         let mut job = table.remove(&id)?;
         job.info.state = state;
         if state == JobState::Succeeded {
@@ -160,22 +202,27 @@ impl Shared {
         job.info.cancel_requested |= job.token.is_cancelled();
         self.history.record(&job.info);
         self.emit(&job.info);
-        Some(job.info)
+        Some((job.info, job.on_done))
     }
 
-    fn notify_finished(&self) {
+    /// Runs the completion callback of a job that just became final (outside the lock), then
+    /// wakes the waiters.
+    fn done(&self, finished: Option<Finished>) -> Option<JobInfo> {
+        let (info, on_done) = finished?;
+        if let Some(on_done) = on_done {
+            on_done(&info);
+        }
         self.finished.notify_all();
         self.finished_async.notify_waiters();
+        Some(info)
     }
 
     fn finish(&self, id: JobId, state: JobState, error: Option<String>) {
-        let done = {
+        let finished = {
             let mut table = self.lock();
             self.finish_locked(&mut table, id, state, error)
         };
-        if done.is_some() {
-            self.notify_finished();
-        }
+        self.done(finished);
     }
 
     /// Marks a queued job running; `false` if it was cancelled (and finished) meanwhile.
@@ -191,11 +238,12 @@ impl Shared {
         }
     }
 
-    fn progress(&self, id: JobId, fraction: f64, message: Option<&str>) {
-        if !fraction.is_finite() {
+    fn progress(&self, id: JobId, mut progress: JobProgress) {
+        if !progress.fraction.is_finite() {
             return;
         }
-        let fraction = fraction.clamp(0.0, 1.0);
+        progress.fraction = progress.fraction.clamp(0.0, 1.0);
+        progress.fps = progress.fps.filter(|f| f.is_finite() && *f >= 0.0);
         let mut table = self.lock();
         let Some(job) = table.get_mut(&id) else {
             return;
@@ -203,11 +251,11 @@ impl Shared {
         if job.info.state != JobState::Running {
             return;
         }
-        let message = message.map(str::to_owned);
-        let changed_message = message != job.sent.message;
+        let fraction = progress.fraction;
+        let changed_message = progress.message != job.sent.message;
         let moved = (fraction - job.sent.fraction).abs() >= PROGRESS_EVENT_STEP
             || (fraction >= 1.0 && job.sent.fraction < 1.0);
-        job.info.progress = JobProgress { fraction, message };
+        job.info.progress = progress;
         if changed_message || moved {
             job.sent = job.info.progress.clone();
             self.emit(&job.info);
@@ -228,10 +276,9 @@ impl Shared {
             return Some(job.info.clone());
         }
         // Not started yet: it ends now, and its task notices when it wakes.
-        let info = self.finish_locked(&mut table, id, JobState::Cancelled, None);
+        let finished = self.finish_locked(&mut table, id, JobState::Cancelled, None);
         drop(table);
-        self.notify_finished();
-        info
+        self.done(finished)
     }
 
     fn wait(&self, id: JobId, timeout: Duration) -> Option<JobInfo> {
@@ -297,7 +344,16 @@ impl Shared {
     }
 
     fn cancel_all(&self) {
-        let ids: Vec<JobId> = self.lock().keys().copied().collect();
+        self.cancel_matching(&|_| true);
+    }
+
+    fn cancel_matching(&self, pred: &dyn Fn(&JobInfo) -> bool) {
+        let ids: Vec<JobId> = self
+            .lock()
+            .values()
+            .filter(|j| pred(&j.info))
+            .map(|j| j.info.id)
+            .collect();
         for id in ids {
             self.cancel(id);
         }
@@ -318,6 +374,7 @@ async fn run(
     id: JobId,
     budget: Budget,
     after: Vec<JobId>,
+    hold: Option<Hold>,
     token: CancelToken,
     body: Body,
 ) {
@@ -334,6 +391,16 @@ async fn run(
     if let Some((state, why)) = shared.blocked_by(&after) {
         shared.finish(id, state, Some(why));
         return;
+    }
+    if let Some(hold) = hold {
+        tokio::select! {
+            biased;
+            () = token.cancelled() => {
+                shared.finish(id, JobState::Cancelled, None);
+                return;
+            }
+            () = hold.released() => {}
+        }
     }
     let semaphore = Arc::clone(shared.semaphore(budget));
     let permit = tokio::select! {
@@ -461,7 +528,16 @@ impl JobCtx {
     /// optional status message. Broadcast as `job.progress` when the message changes or the
     /// fraction moves by at least [`PROGRESS_EVENT_STEP`].
     pub fn progress(&self, fraction: f64, message: Option<&str>) {
-        self.shared.progress(self.id, fraction, message);
+        self.shared.progress(
+            self.id,
+            JobProgress::new(fraction, message.map(str::to_owned)),
+        );
+    }
+
+    /// Reports progress with counters (frames, speed, time left, bytes), broadcast like
+    /// [`progress`](Self::progress).
+    pub fn report(&self, progress: JobProgress) {
+        self.shared.progress(self.id, progress);
     }
 
     /// Sleeps for `duration` in short slices, returning `Err(JobError::Cancelled)` within a
@@ -688,14 +764,29 @@ impl JobManager {
     where
         F: FnOnce(&JobCtx) -> Result<(), JobError> + Send + 'static,
     {
-        let id = {
-            let mut ids = self
-                .shared
-                .ids
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            JobId::mint(&mut **ids)
-        };
+        match self.submit_with(spec, Submit::default(), body) {
+            Ok(handle) => handle,
+            // A fresh ID is never in use.
+            Err(SubmitError::InUse(id)) => unreachable!("fresh job id {id} in use"),
+        }
+    }
+
+    /// [`submit`](Self::submit) with [`Submit`] options: a given ID, a [`Hold`] and a
+    /// completion callback. A given ID may be one of a finished job (it is queued again and
+    /// its history entry is superseded when it finishes).
+    ///
+    /// # Errors
+    /// [`SubmitError::InUse`] when the given ID belongs to a queued or running job.
+    pub fn submit_with<F>(
+        &self,
+        spec: JobSpec,
+        options: Submit,
+        body: F,
+    ) -> Result<JobHandle, SubmitError>
+    where
+        F: FnOnce(&JobCtx) -> Result<(), JobError> + Send + 'static,
+    {
+        let Submit { id, hold, on_done } = options;
         let token = CancelToken::new();
         let JobSpec {
             kind,
@@ -703,18 +794,37 @@ impl JobManager {
             media_id,
             after,
         } = spec;
-        let info = JobInfo {
-            id,
-            kind,
-            label,
-            media_id,
-            state: JobState::Queued,
-            progress: JobProgress::default(),
-            cancel_requested: false,
-            error: None,
-        };
-        {
+        let id = {
+            // Lock order: the ID generator, then the table.
+            let mut ids = self
+                .shared
+                .ids
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
             let mut table = self.shared.lock();
+            let id = match id {
+                Some(id) if table.contains_key(&id) => return Err(SubmitError::InUse(id)),
+                Some(id) => id,
+                // Skip IDs still known: restored jobs keep theirs, and a seeded generator
+                // starts over in a new engine.
+                None => loop {
+                    let id = JobId::mint(&mut **ids);
+                    if !table.contains_key(&id) && self.shared.history.get(id).is_none() {
+                        break id;
+                    }
+                },
+            };
+            drop(ids);
+            let info = JobInfo {
+                id,
+                kind,
+                label,
+                media_id,
+                state: JobState::Queued,
+                progress: JobProgress::default(),
+                cancel_requested: false,
+                error: None,
+            };
             self.shared.emit(&info);
             table.insert(
                 id,
@@ -722,20 +832,54 @@ impl JobManager {
                     info,
                     token: token.clone(),
                     sent: JobProgress::default(),
+                    on_done,
                 },
             );
-        }
+            id
+        };
         self.runtime.spawn(run(
             Arc::clone(&self.shared),
             id,
             kind.budget(),
             after,
+            hold,
             token,
             Box::new(body),
         ));
-        JobHandle {
+        Ok(JobHandle {
             id,
             shared: Arc::clone(&self.shared),
+        })
+    }
+
+    /// A fresh job ID that no known job has, to [`submit_with`](Self::submit_with) later (a
+    /// queue that records the job before it submits it).
+    #[must_use]
+    pub fn mint(&self) -> JobId {
+        let mut ids = self
+            .shared
+            .ids
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let table = self.shared.lock();
+        loop {
+            let id = JobId::mint(&mut **ids);
+            if !table.contains_key(&id) && self.shared.history.get(id).is_none() {
+                return id;
+            }
+        }
+    }
+
+    /// Remembers a job that finished elsewhere (a queue restored after a restart) as if it had
+    /// finished here: `status`, `list` and `wait` find it. A queued or running job with that
+    /// ID is left alone.
+    pub fn record(&self, info: &JobInfo) {
+        if !info.state.is_terminal() {
+            return;
+        }
+        let table = self.shared.lock();
+        if !table.contains_key(&info.id) {
+            self.shared.history.record(info);
         }
     }
 
@@ -797,6 +941,11 @@ impl JobManager {
     /// Cancels every unfinished job.
     pub fn cancel_all(&self) {
         self.shared.cancel_all();
+    }
+
+    /// Cancels the unfinished jobs for which `pred` holds.
+    pub fn cancel_matching(&self, pred: impl Fn(&JobInfo) -> bool) {
+        self.shared.cancel_matching(&pred);
     }
 
     /// Blocks the calling thread until job `id` is final or `timeout` passes, and returns its

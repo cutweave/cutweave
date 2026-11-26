@@ -12,6 +12,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "edit.list_checkpoints",
   "edit.locks",
   "export.list_presets",
+  "export.queue",
   "export.resolve_preset",
   "item.get",
   "item.group_select",

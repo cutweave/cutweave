@@ -11,10 +11,15 @@ publish = false
 [dependencies]
 # `IdGen` (job IDs come from the engine's injected generator, ADR-0015) and `MediaId`.
 cutweave-model = { path = "../cutweave-model" }
+# The export queue's store, `<project>/.cutweave/exports.sqlite` (WP-2G.03a, ADR-0030): the
+# workspace's bundled SQLite, already used by cutweave-cache for `cache.sqlite` (no new crate).
+rusqlite.workspace = true
 # Wire types of the `job.*` commands and the `job.progress` event (JSON Schema, TS types).
 schemars.workspace = true
 serde.workspace = true
 specta.workspace = true
+# Only for the TS `number` override of the 64-bit progress counters (`specta_typescript::Number`).
+specta-typescript.workspace = true
 thiserror.workspace = true
 # Worker pool (`spawn_blocking`), the budget semaphores, `job.progress` broadcast and async
 # waits. Pinned exactly like cutweave-api's (already in Cargo.lock; no new crate). Not wasm32:
