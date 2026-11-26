@@ -10,6 +10,8 @@
 //! - [`VideoDecoder`]: frame-exact seek through the index and sequential decode;
 //!   [`AudioDecoder`]: sample ranges at the native rate. [`DecoderPool`]: the bounded, reused
 //!   decoders of one file; [`CancelToken`] cancels pending requests.
+//! - [`still_orientation`]: the EXIF orientation of a still image file (WP-2F.05a), which a
+//!   backend's probe reports as the display rotation.
 //! - [`MediaError`]: typed failures; bad or damaged files never panic.
 //! - [`testing`]: [`FakeBackend`] (synthetic pictures and tones, no FFmpeg) and the backend
 //!   contract ([`backend_contract!`]) every backend passes.
@@ -43,6 +45,7 @@ mod log_filter;
 mod path;
 mod pool;
 mod readback;
+mod still;
 pub mod testing;
 mod version;
 
@@ -68,6 +71,7 @@ pub use index::{
 };
 pub use pool::{DecoderLease, DecoderPool};
 pub use readback::ReadBack;
+pub use still::{StillOrientation, read_orientation, still_orientation};
 pub use testing::FakeBackend;
 pub use version::{LibVersion, LinkedLibrary, PINNED_FFMPEG, Release};
 

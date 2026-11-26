@@ -29,6 +29,10 @@
 //! explicit `target_size` (proxies, WP-2F.01) go through swscale with the stream's matrix and
 //! range.
 //!
+//! **Stills** (WP-2F.05a): frames are in coded orientation, like video; the probe reports a
+//! photo's EXIF quarter turn as the display rotation. A mirrored EXIF orientation is the one
+//! thing applied here (`still_mirror`), because a rotation cannot carry it.
+//!
 //! **Hardware** (WP-1D.04, S3 H1-H10): under [`HwMode::Auto`] an eligible stream decodes with a
 //! device `hwdec` verified for its codec, on one thread (S3 H3: frame threads only add delay with
 //! a hwaccel). The hwaccel only replaces slice decoding inside libavcodec, so the seek rule,
@@ -59,6 +63,7 @@ use super::sys::{self, HwDecode, Scaler};
 use super::{index, input, probe};
 use crate::backend::{DecodeMode, DecodeOpts, HwMode, VideoDecoder};
 use crate::cancel;
+use crate::frame::Mirror;
 use crate::path::display as shown;
 use crate::{CancelToken, FrameIndex, MediaError, PixelFormat, Plane, VideoFrame};
 
@@ -136,6 +141,7 @@ fn open_opened(
 ) -> Result<Box<dyn VideoDecoder>, MediaError> {
     let sw_threads = threading_for(opts, &index);
     let end = index.end_time();
+    let mirror = still_mirror(path, &input);
     let mut d = FfmpegVideoDecoder {
         path: path.to_path_buf(),
         input,
@@ -152,6 +158,7 @@ fn open_opened(
         scratch: frame::Video::empty(),
         sw: frame::Video::empty(),
         out: Output::new(opts.target_pixfmt, opts.target_size),
+        mirror,
         stream_color: info.color,
         pending: None,
         next_idx: Some(0),
@@ -179,6 +186,24 @@ fn open_opened(
         );
     }
     Ok(Box::new(d))
+}
+
+/// The mirror a still image's EXIF orientation asks for (orientations 2, 4, 5 and 7), as an axis
+/// of the coded picture (WP-2F.05a). The probe reports the orientation's quarter turn as the
+/// display rotation and the compositor applies it; a turn cannot express the mirror, so the
+/// decoder mirrors the picture itself: left to right when the turn is 0° or 180°, top to bottom
+/// when it is 90° or 270° (a mirror after a quarter turn is a mirror along the other axis before
+/// it). `None` for video and for stills that are not mirrored.
+fn still_mirror(path: &Path, input: &Input) -> Option<Mirror> {
+    if !probe::is_image_container(input.format().name()) {
+        return None;
+    }
+    let orientation = crate::still_orientation(path).filter(|o| o.mirrored)?;
+    Some(if orientation.rotation % 180 == 0 {
+        Mirror::Horizontal
+    } else {
+        Mirror::Vertical
+    })
 }
 
 /// Frame threads for throughput and long-GOP seeks; slice threads for seeks in intra-only
@@ -392,6 +417,9 @@ struct FfmpegVideoDecoder {
     /// The system-memory copy of a hardware `frame` (buffers reused from copy to copy).
     sw: frame::Video,
     out: Output,
+    /// A still whose EXIF orientation is mirrored: the axis its frames are mirrored along
+    /// before they are returned ([`still_mirror`]).
+    mirror: Option<Mirror>,
     /// The stream's tags, for fields a frame leaves unspecified.
     stream_color: ColorTags,
     /// A packet read but not yet sent (the landing keyframe, or one the decoder refused).
@@ -872,13 +900,16 @@ impl FfmpegVideoDecoder {
                 .map_err(|e| Fail::Hardware(format!("copying the frame to memory failed: {e}")))?;
         }
         let src = if surface { &self.sw } else { &self.frame };
-        let frame = self
+        let mut frame = self
             .out
             .convert(src, pts, color, damaged)
             .map_err(|e| match e {
                 Fault::Ffmpeg(e) => media_error(&self.path, e),
                 Fault::Media(e) => e,
             })?;
+        if let Some(axis) = self.mirror {
+            frame.mirror(axis);
+        }
         if damaged {
             self.stats.damaged += 1;
         }
