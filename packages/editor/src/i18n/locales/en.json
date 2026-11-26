@@ -884,6 +884,29 @@
       "deleteNote": "Keep media lifts everything into the parent folder. Files on disk are never touched, and Undo brings it all back.",
       "deleteAll": "Delete folder and media",
       "deleteKeep": "Keep media"
+    },
+    "slideshow": {
+      "title": "Import as slideshow",
+      "body": "{{count}} pictures go onto the timeline one after the other. Undo removes them in one step.",
+      "seconds": "Seconds per picture",
+      "order": "Order",
+      "orderGiven": "As selected",
+      "orderName": "By name",
+      "orderNumber": "By number",
+      "confirm": "Import",
+      "tooFewTitle": "Choose two or more pictures",
+      "tooFewBody": "A slideshow needs at least two pictures. Use Import… for a single one.",
+      "failed": "The slideshow was not imported",
+      "notPicture": "This file is not a still picture, so it was left out of the slideshow.",
+      "doneTitle": "Slideshow imported",
+      "doneBody": "{{count}} pictures are on the timeline."
+    },
+    "frame": {
+      "doneTitle": "Frame added to the media bin",
+      "doneBody": "{{name}} is in the media bin.",
+      "duplicateTitle": "This frame is already in the media bin",
+      "duplicateBody": "{{name}} shows the same picture.",
+      "failed": "The frame was not added"
     }
   },
   "preview": {
@@ -1944,7 +1967,9 @@
       "layout": "Layout",
       "swapLayout": "Swap",
       "placeSideBySide": "Place side by side",
-      "placeAs": "Place as"
+      "placeAs": "Place as",
+      "importSlideshow": "Import as slideshow…",
+      "addFrameToBin": "Add frame to media bin"
     },
     "dialog": {
       "cancel": "Cancel",

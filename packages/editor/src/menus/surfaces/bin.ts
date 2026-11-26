@@ -408,6 +408,13 @@ export const BIN_BACKGROUND: MenuSurfaceDef = {
       reason: "contextMenu.reason.noEngine",
       args: () => ({}),
     },
+    {
+      command: "bin.import_slideshow",
+      group: "add",
+      order: 3,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+    },
     { command: "bin.select_all", group: "select", order: 0 },
     {
       id: "sort",

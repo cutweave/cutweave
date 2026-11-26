@@ -30,6 +30,8 @@ export type MenuDialog =
   | { readonly kind: "paste-attributes"; readonly from: string; readonly to: readonly string[] }
   // Replace clip… (WP-2A.11): which media takes the clip's place, and how long the clip stays.
   | { readonly kind: "replace-clip"; readonly item: string }
+  // Import as slideshow… (WP-2F.05d): seconds per picture and the order, for the files chosen.
+  | { readonly kind: "slideshow"; readonly files: readonly string[] }
   // The folder picker of "Move to…" for the assets and folders chosen.
   | {
       readonly kind: "move-to";

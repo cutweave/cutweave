@@ -19,10 +19,12 @@ import { layoutStore, type MediaLayout } from "../../media/layoutStore.ts";
 import { openRelinkDialog } from "../../media/RelinkDialog.tsx";
 import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
+import { addFrameToBin, MIN_SLIDESHOW_PICTURES } from "../../media/slideshow.ts";
 import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
 import { projectController } from "../../session/useProject.ts";
 import { openSettings } from "../../settings/settingsStore.ts";
+import { playbackStore } from "../../state/playbackStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
 import { activeTimelineController } from "../../timeline/activeController.ts";
@@ -74,6 +76,29 @@ async function pickAndImport(what: "files" | "folders" = "files"): Promise<void>
     currentOpenFolder(),
     { keepStructure: preferences.get("media.keep_structure") },
   );
+}
+
+/**
+ * The native picker, then the slideshow dialog for the pictures chosen (WP-2F.05d). The dialog
+ * sends the one `media.import_images_as_slideshow`.
+ */
+async function pickSlideshow(): Promise<void> {
+  const pick = mediaFilesBridge().pickMediaFiles;
+  if (pick === undefined) {
+    toastStore.getState().push({ tone: "info", title: i18n.t("mediaBin.import.desktopOnly") });
+    return;
+  }
+  const files = pickedPaths(await pick().catch(() => null));
+  if (files.length === 0) return;
+  if (files.length < MIN_SLIDESHOW_PICTURES) {
+    toastStore.getState().push({
+      tone: "info",
+      title: i18n.t("mediaBin.slideshow.tooFewTitle"),
+      message: i18n.t("mediaBin.slideshow.tooFewBody"),
+    });
+    return;
+  }
+  menuDialogStore.getState().open({ kind: "slideshow", files });
 }
 
 const selectIds = (kind: SelectionRef["kind"], ids: readonly string[]): void => {
@@ -183,6 +208,31 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     icon: "folder-open",
     host: true,
     run: () => pickAndImport("folders"),
+  },
+  {
+    id: "bin.import_slideshow",
+    label: "contextMenu.item.importSlideshow",
+    icon: "film",
+    host: true,
+    when: "engine.live",
+    run: () => pickSlideshow(),
+  },
+  // The frame on screen as a picture in the bin (WP-2F.05d): the Source view's while a source
+  // plays, else the Preview's at the playhead. One `media.import_frame`.
+  {
+    id: "preview.add_frame_to_bin",
+    label: "contextMenu.item.addFrameToBin",
+    icon: "image",
+    when: "engine.live",
+    run: async () => {
+      const playback = playbackStore.getState();
+      await addFrameToBin(
+        { engine: engineStore, toasts: toastStore, t: tr() },
+        playback.source === null
+          ? { kind: "sequence", at: viewStore.getState().playhead }
+          : { kind: "media", media: playback.source.media, at: playback.sourcePlayhead },
+      );
+    },
   },
   {
     id: "bin.relink",
