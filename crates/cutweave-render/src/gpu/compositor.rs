@@ -546,6 +546,10 @@ struct DeviceState {
     map_state: Arc<AtomicU8>,
     /// Staging buffers of asynchronous readbacks.
     readbacks: ReadbackPool,
+    /// The backdrop copies of extended composites, one per canvas size (at most
+    /// [`POOL_PER_KEY`]: the preview, scrub and export sizes). Kept rather than pooled, so a
+    /// backdrop never swaps roles with a canvas and the bind groups naming it stay cached.
+    backdrops: Vec<(TexKey, wgpu::Texture)>,
     binds: BindCache,
     frame_no: u64,
 }
@@ -587,9 +591,30 @@ impl DeviceState {
             staging: None,
             map_state: Arc::new(AtomicU8::new(MAP_PENDING)),
             readbacks: ReadbackPool::new(readback_slots),
+            backdrops: Vec::new(),
             binds: BindCache::default(),
             frame_no: 0,
         })
+    }
+
+    /// The backdrop texture for a canvas of `key`'s size (made on first use).
+    fn backdrop(
+        &mut self,
+        device: &wgpu::Device,
+        key: TexKey,
+        stats: &mut FrameStats,
+    ) -> wgpu::Texture {
+        if let Some((_, t)) = self.backdrops.iter().find(|(k, _)| *k == key) {
+            return t.clone();
+        }
+        if self.backdrops.len() >= POOL_PER_KEY {
+            let (_, old) = self.backdrops.remove(0);
+            self.binds.forget(&old);
+            in_wgpu(|| drop(old));
+        }
+        let texture = self.take(device, key, stats);
+        self.backdrops.push((key, texture.clone()));
+        texture
     }
 
     fn take(
@@ -1930,8 +1955,8 @@ impl Compositor {
     ) -> Result<(), GraphError> {
         let device = self.ctx.device().clone();
         let output = graph.target.size();
-        // One backdrop texture serves every extended layer of the run (each copies its
-        // rectangle just before it draws); back to the pool after submit.
+        // One backdrop texture (kept per canvas size) serves every extended layer of the run:
+        // each copies its rectangle just before it draws.
         let needs_backdrop = run.iter().any(|&pi| {
             matches!(&graph.passes[pi].op, PassOp::Composite(c) if extended(c) && !empty(c.rect))
         });
@@ -1941,9 +1966,7 @@ impl Compositor {
                 width: canvas.key.width,
                 height: canvas.key.height,
             };
-            let texture = self.dev.take(&device, key, &mut f.stats);
-            f.scratch.uploads.push((key, texture.clone()));
-            (texture, key)
+            (self.dev.backdrop(&device, key, &mut f.stats), key)
         });
         let mut draws = std::mem::take(&mut f.scratch.draws);
         draws.clear();
