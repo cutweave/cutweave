@@ -62,6 +62,7 @@ use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
 use crate::export::{ExportJobs, Starter, export_queue, queue_store};
+use crate::frame_import::EngineFrames;
 use crate::full::MediaState;
 use crate::import::{BusAnalysisSink, ImportSink, NoMediaBackend, ctx_for};
 use crate::journal::{IdState, StopReason};
@@ -513,6 +514,13 @@ impl Core {
             None => ImportPolicy::default(),
             Some(roots) => ImportPolicy::restricted(roots),
         };
+        // `media.import_frame` renders the document of the moment into the project's folder.
+        let frames = Arc::new(EngineFrames {
+            snapshot: handle.snapshot(),
+            backend: self.deps.subsystems.frame_backend(),
+            project_root: session.project_root().map(Path::to_path_buf),
+            seed: self.deps.seed,
+        });
         let sink = ImportSink::new(handle, ctx_for(ctx.actor(), self.next_conn()));
         let prober = self
             .deps
@@ -529,7 +537,8 @@ impl Core {
         let mut import = ImportCtx::new(prober, Box::new(sink))
             .with_policy(policy)
             .with_analysis(analyzer)
-            .with_events(bus);
+            .with_events(bus)
+            .with_frames(frames);
         if let Some(proxies) = self.deps.subsystems.proxy_service() {
             import = import.with_proxies(proxies);
         }

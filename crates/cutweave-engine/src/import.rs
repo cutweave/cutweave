@@ -7,17 +7,22 @@
 //!   undo step and never collides with a transaction the caller has open. The connection is
 //!   closed afterwards (a failure rolls back).
 //!   With folders (WP-2F.09) it submits one `media.register_tree` instead, in the same kind of
-//!   transaction.
+//!   transaction. A slideshow (WP-2F.05d) is its registrations followed by one
+//!   `timeline.insert` per picture, and an imported frame its registration followed by
+//!   `media.rename`, each again in one transaction: one undo step.
 //! - [`BusAnalysisSink`]: forwards `media.indexed` / `media.analysis_failed` from analysis jobs
 //!   and `media.import_progress` from the import itself into the event fan-out.
 //! - [`NoMediaBackend`]: the prober of a core engine without the media subsystem (WP-1I.05):
 //!   every file is reported in `failed[]`.
 
-use cutweave_commands::{Actor, ActorCtx, CmdError, ConnId, DocHandle, Submit, TxKind};
+use cutweave_commands::{Actor, ActorCtx, CmdError, ConnId, DocHandle, Submit, TxId, TxKind};
+use cutweave_model::Project;
 use cutweave_ops::media::{
-    AnalysisSink, MediaEvent, MediaProbe, MediaRegister, MediaRegisterTree, MediaRegistered,
-    MediaSink, MediaTreeRegistered, ProbeError, Probed,
+    AnalysisSink, FrameRegistered, MediaEvent, MediaProbe, MediaRegister, MediaRegisterTree,
+    MediaRegistered, MediaSink, MediaTreeRegistered, ProbeError, Probed, SlideshowBatch,
+    SlideshowPlaced, SlideshowSteps, asset_name, place_slideshow,
 };
+use cutweave_ops::timeline::{TimelineInsert, TimelineInsertOutput};
 
 use crate::events::{EngineEvent, EventBus};
 
@@ -117,6 +122,64 @@ impl ImportSink {
     }
 }
 
+/// The document commands of an import that is more than registrations, submitted into one open
+/// transaction of the sink's connection.
+struct OpenTx<'a> {
+    sink: &'a ImportSink,
+    tx: TxId,
+}
+
+impl OpenTx<'_> {
+    fn run<T: serde::de::DeserializeOwned>(
+        &self,
+        name: &str,
+        params: &impl serde::Serialize,
+    ) -> Result<T, CmdError> {
+        let params = serde_json::to_value(params)
+            .map_err(|e| CmdError::internal(format!("cannot encode {name}: {e}")))?;
+        let submit = Submit::new(self.sink.ctx.clone(), name, params).in_tx(self.tx);
+        let applied = self.sink.handle.submit(submit).wait()?;
+        serde_json::from_value(applied.output)
+            .map_err(|e| CmdError::internal(format!("unexpected {name} output: {e}")))
+    }
+}
+
+impl SlideshowSteps for OpenTx<'_> {
+    fn doc(&self) -> Project {
+        self.sink.handle.snapshot().doc.clone()
+    }
+
+    fn register(&mut self, register: &MediaRegister) -> Result<MediaRegistered, CmdError> {
+        self.run("media.register", register)
+    }
+
+    fn insert(&mut self, insert: &TimelineInsert) -> Result<TimelineInsertOutput, CmdError> {
+        self.run("timeline.insert", insert)
+    }
+}
+
+impl ImportSink {
+    /// Runs `steps` in one batch transaction labelled `label`: committed when they succeed,
+    /// cancelled (nothing changes) when they fail.
+    fn in_tx<T>(
+        &self,
+        label: &str,
+        steps: impl FnOnce(&mut OpenTx<'_>) -> Result<T, CmdError>,
+    ) -> Result<T, CmdError> {
+        let tx = self
+            .handle
+            .begin_tx(&self.ctx, TxKind::Batch, label)
+            .wait()?
+            .id;
+        let done = steps(&mut OpenTx { sink: self, tx })
+            .and_then(|out| self.handle.commit_tx(&self.ctx, tx).wait().map(|_| out));
+        if done.is_err() {
+            let _ = self.handle.cancel_tx(&self.ctx, tx).wait();
+        }
+        done
+    }
+}
+
 impl MediaSink for ImportSink {
     fn register(&mut self, batch: Vec<MediaRegister>) -> Result<Vec<MediaRegistered>, CmdError> {
         self.register_all(&batch)
@@ -124,6 +187,38 @@ impl MediaSink for ImportSink {
 
     fn register_tree(&mut self, tree: MediaRegisterTree) -> Result<MediaTreeRegistered, CmdError> {
         self.register_folders(&tree)
+    }
+
+    fn slideshow(&mut self, batch: SlideshowBatch) -> Result<SlideshowPlaced, CmdError> {
+        self.in_tx("Import slideshow", |tx| place_slideshow(tx, &batch))
+    }
+
+    fn register_frame(
+        &mut self,
+        register: MediaRegister,
+        name: String,
+    ) -> Result<FrameRegistered, CmdError> {
+        let registered = self.in_tx("Add frame to media bin", |tx| {
+            let registered: MediaRegistered = tx.run("media.register", &register)?;
+            if registered.created {
+                let _: serde_json::Value = tx.run(
+                    "media.rename",
+                    &serde_json::json!({ "media": registered.media_id, "name": name }),
+                )?;
+            }
+            Ok(registered)
+        })?;
+        let snapshot = self.handle.snapshot();
+        let media = snapshot
+            .doc
+            .media
+            .get(&registered.media_id)
+            .ok_or_else(|| CmdError::internal("the registered frame is not in the document"))?;
+        Ok(FrameRegistered {
+            registered,
+            path: media.path_abs.clone().unwrap_or_default(),
+            name: asset_name(media).into_owned(),
+        })
     }
 }
 
