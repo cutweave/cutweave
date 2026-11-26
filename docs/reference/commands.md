@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (122 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (124 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -42,12 +42,14 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | export | `export.retry` | Queue a failed or cancelled export again (same job id, same snapshot) | engine, destructive | catalog |
 | export | `export.save_preset` | Save your own export preset (replaces your preset with the same id) | engine, idempotent | catalog |
 | export | `export.start` | Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id | engine, destructive | core |
+| item | `item.apply_layout` | Arrange 2-4 clips in a layout: side by side, top and bottom, picture in picture, columns, grid | command, undoable, idempotent | catalog |
 | item | `item.attach` | Attach items to a parent item so they follow it | command, undoable, idempotent | catalog |
 | item | `item.delete` | Delete items and their linked partners (the main track closes up) | command, undoable, destructive | core |
 | item | `item.detach` | Detach items from their parent item | command, undoable, idempotent | catalog |
 | item | `item.duplicate` | Duplicate items and their linked partners after the selection (inserted on the main track) | command, undoable | catalog |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
 | item | `item.group_select` | The items and every member of their linked groups (what a click selects) | query | catalog |
+| item | `item.layouts` | List the layouts item.apply_layout offers | query | catalog |
 | item | `item.link` | Link aligned items into one group (they edit together) | command, undoable | catalog |
 | item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
 | item | `item.reset_props` | Reset an item's properties (a group, some properties, or all) to their defaults | command, undoable, idempotent | catalog |

@@ -4,7 +4,7 @@ Reference frames for the render pipeline, stored per GPU adapter class and compa
 
 | Folder | Suite | Run |
 |---|---|---|
-| `expected/<adapter>/<project>/f<frame>.png` | **Golden projects** (WP-1O.01, WP-2C.04): eight `.cutweave` projects rendered headless by `cutweave render`, 24 frames | `just golden` |
+| `expected/<adapter>/<project>/f<frame>.png` | **Golden projects** (WP-1O.01, WP-2C.04, WP-2C.08): nine `.cutweave` projects rendered headless by `cutweave render`, 27 frames | `just golden` |
 | `render/<adapter>/*.png` | Compositor scenes of WP-1F.02 and WP-2C.04 (`cutweave-render` tests; `CUTWEAVE_UPDATE_GOLDENS=1` rewrites the sets of every adapter present) | `cargo nextest run -p cutweave-render` |
 
 The PNGs are in Git LFS. Worktrees and LFS-less checkouts hold pointer files; `cargo xtask golden` runs `git lfs checkout` on the set it needs, and `git lfs pull --include "testdata/golden/**"` fetches objects that are not in the local store.
@@ -42,6 +42,7 @@ A frame is only ever compared with the reference of **the adapter it rendered on
 | `cut_at_45` | a split at frame 45, the right half replaced: frames 44 and 45 straddle the cut | 20, 44, 45 |
 | `flipped_phone` | the rotated phone clip cropped, flipped and turned another 90° by its transform (WP-2C.04) | 0, 45, 110 |
 | `screen_keyframed` | a half-size pattern in screen mode over bars, its position and rotation keyframed (WP-2C.04) | 0, 45, 110 |
+| `side_by_side` | two colour-bars clips arranged by `item.apply_layout` (side by side, fill): each half filled, no bars (WP-2C.08) | 0, 60, 119 |
 
 ## What a run checks
 

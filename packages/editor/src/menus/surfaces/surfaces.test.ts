@@ -18,6 +18,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { engineStore } from "../../engine/engineStore.ts";
 import { i18n } from "../../i18n/index.ts";
 import { sectionsStore } from "../../inspector/sections.ts";
+import { forgetAppliedLayouts } from "../../layout/actions.ts";
 import { binStore } from "../../media/binStore.ts";
 import { currentOpenFolder, folderUiStore } from "../../media/folderUi.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
@@ -924,5 +925,90 @@ describe("the folder menus (WP-2F.08)", () => {
     expect(folderUiStore.getState().folders).toEqual([FLD_B, FLD_A]);
     expect(viewStore.getState().selection.map((r) => r.id)).toEqual([MED_V, MED_A, MED_U]);
     folderUiStore.getState().setFolders([]);
+  });
+});
+
+describe("layouts (WP-2C.08)", () => {
+  const rpcCalls = () => {
+    const engineCall = vi.fn(async (name: string) => {
+      if (name === "item.apply_layout") return { cells: [{ item: C1 }, { item: C2 }] };
+      if (name === "edit.begin_tx") return { tx: "tx_1" };
+      if (name === "timeline.insert") return { clips: [C3] };
+      return {};
+    });
+    engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+    return engineCall;
+  };
+  beforeEach(() => forgetAppliedLayouts());
+  afterEach(() => engineStore.setState({ rpc: null, connection: "none" }));
+
+  it("offers the layouts for two video clips in a Layout submenu and applies one", async () => {
+    const engineCall = rpcCalls();
+    const m = menuFor("timeline.clip", { ids: [C1, C2] });
+    const names = m.items.map((i) => i.label);
+    expect(names).toContain("Side by side");
+    expect(names).toContain("Picture in picture, top right");
+    expect(names).not.toContain("2 × 2 grid");
+    await m.choose("Side by side");
+    expect(engineCall).toHaveBeenCalledWith("item.apply_layout", {
+      items: [C1, C2],
+      layout: "side_by_side",
+      fill: "crop",
+      at: 5 * F,
+    });
+  });
+
+  it("offers no layout for one clip, three columns for three", () => {
+    const one = menuFor("timeline.clip", { ids: [C1] });
+    expect(one.items.map((i) => i.label)).not.toContain("Side by side");
+    const three = menuFor("timeline.clip", { ids: [C1, C2, C3] });
+    expect(three.items.map((i) => i.label)).toContain("Three columns");
+    expect(three.items.map((i) => i.label)).not.toContain("Side by side");
+  });
+
+  it("Swap says why it cannot run until a layout was applied, then reverses the order", async () => {
+    const engineCall = rpcCalls();
+    const before = menuFor("timeline.clip", { ids: [C1, C2] }).item("Swap");
+    expect(before.disabled).toBe(true);
+    expect(before.disabledReason).toBe("Apply a layout to the two clips first");
+    await menuFor("timeline.clip", { ids: [C1, C2] }).choose("Side by side");
+    expect(menuFor("timeline.clip", { ids: [C1, C2] }).item("Swap").disabled).toBeUndefined();
+    engineCall.mockClear();
+    await menuFor("timeline.clip", { ids: [C1, C2] }).choose("Swap");
+    expect(engineCall).toHaveBeenCalledWith("item.apply_layout", {
+      items: [C1, C2],
+      layout: "side_by_side",
+      fill: "crop",
+      order: [C2, C1],
+      at: 5 * F,
+    });
+  });
+
+  it("places two videos from the bin side by side in one transaction", async () => {
+    const engineCall = rpcCalls();
+    const m = menuFor("bin.card", { ids: [MED_V, MED_U] });
+    expect(m.item("Place side by side").disabled).toBeUndefined();
+    expect(m.items.map((i) => i.label)).toContain("Side by side");
+    await m.choose("Place side by side");
+    expect(engineCall.mock.calls.map((c) => c[0])).toEqual([
+      "edit.begin_tx",
+      "timeline.insert",
+      "timeline.insert",
+      "item.apply_layout",
+      "edit.commit_tx",
+    ]);
+    const apply = engineCall.mock.calls[3] as unknown as [string, Record<string, unknown>];
+    expect(apply[1]).toMatchObject({ layout: "side_by_side", fill: "crop" });
+  });
+
+  it("does not offer Place side by side for one asset, and refuses sound", () => {
+    expect(
+      menuFor("bin.card", { ids: [MED_V] })
+        .items.map((i) => i.label)
+        .join("|"),
+    ).not.toContain("Place side by side");
+    const mixed = menuFor("bin.card", { ids: [MED_V, MED_A] }).item("Place side by side");
+    expect(mixed.disabled).toBe(true);
+    expect(mixed.disabledReason).toBe("Select 2 to 4 videos or images");
   });
 });

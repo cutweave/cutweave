@@ -10,6 +10,9 @@
 // TODO(WP-2C.05): the keyframe menu. The edge menu (WP-2A.04) trims, ripple trims and rolls the
 // edge to the playhead, and extends it to the next clip.
 import { formatTimecode } from "@cutweave/timeline";
+import { canSwap, visualClipIds } from "../../layout/actions.ts";
+import { LAYOUT_NAMES } from "../../layout/names.ts";
+import { LAYOUTS } from "../../layout/table.ts";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
 import type { ContextValues } from "../when.ts";
@@ -33,6 +36,7 @@ export function clipKeys(target: MenuTarget): ContextValues {
     "track.locked": facts.some((f) => f.track.locked),
     "item.enabled": facts.length > 0 && facts.every((f) => f.clip.enabled),
     "item.linked": facts.some((f) => f.clip.linked_group !== null),
+    "selection.videoCount": facts.filter((f) => f.track.kind === "video").length,
   };
 }
 
@@ -108,6 +112,28 @@ const splitReason = (ctx: MenuContext) =>
       ? "contextMenu.reason.oneClip"
       : "contextMenu.reason.playheadOutside";
 
+// ----- layouts (WP-2C.08) ------------------------------------------------------------------------
+
+/** One row per layout of the table for each clip count; only the rows for the selection show. */
+const layoutRows: readonly MenuRow[] = LAYOUTS.flatMap((layout, order) => {
+  const name = LAYOUT_NAMES[layout.id];
+  return name === undefined
+    ? []
+    : [
+        {
+          id: `layout-${layout.id}`,
+          command: "layout.apply",
+          group: "layout",
+          order,
+          visible: `selection.videoCount == ${layout.count}`,
+          label: { key: name },
+          enabledIf: (ctx: MenuContext) => ctx.keys["track.locked"] !== true,
+          reason: LOCKED,
+          args: (ctx: MenuContext) => ({ ids: visualClipIds(ctx.ids), layout: layout.id }),
+        } satisfies MenuRow,
+      ];
+});
+
 const clipRows: readonly MenuRow[] = [
   {
     command: "clip.split",
@@ -166,6 +192,22 @@ const clipRows: readonly MenuRow[] = [
     reason: (ctx) =>
       ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.notAttached" as const),
     args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
+    id: "layout",
+    group: "layout",
+    order: 0,
+    submenu: { label: { key: "contextMenu.item.layout" }, rows: layoutRows },
+  },
+  {
+    id: "layout-swap",
+    command: "layout.swap",
+    group: "layout",
+    order: 1,
+    visible: "selection.videoCount == 2",
+    enabledIf: (ctx) => ctx.keys["track.locked"] !== true && canSwap(ctx.ids),
+    reason: (ctx) => (ctx.keys["track.locked"] === true ? LOCKED : "contextMenu.reason.layoutSwap"),
+    args: (ctx) => ({ ids: visualClipIds(ctx.ids) }),
   },
   {
     id: "enabled",
@@ -237,7 +279,7 @@ const clipName = (target: MenuTarget) =>
 export const TIMELINE_CLIP: MenuSurfaceDef = {
   id: "timeline.clip",
   name: clipName,
-  groups: ["edit", "link", "state", "reveal"],
+  groups: ["edit", "link", "layout", "state", "reveal"],
   selection: itemSelection,
   keys: clipKeys,
   rows: clipRows,

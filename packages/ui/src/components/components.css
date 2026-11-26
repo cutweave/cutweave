@@ -134,6 +134,36 @@
   color: var(--text-disabled);
   cursor: not-allowed;
 }
+/* ---------- Layout picker (WP-2C.08) ---------- */
+.cw-layoutpicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.cw-layoutpicker__btn {
+  width: auto;
+  padding: 0 var(--space-1);
+}
+.cw-layoutpicker__svg {
+  display: block;
+  width: var(--icon-lg);
+  height: auto;
+  overflow: visible;
+}
+.cw-layoutpicker__frame {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.cw-layoutpicker__cell {
+  fill: currentColor;
+  opacity: 0.45;
+}
+.cw-layoutpicker__cell--first {
+  fill: var(--marigold);
+  opacity: 1;
+}
 .cw-toolbar {
   display: inline-flex;
   align-items: center;

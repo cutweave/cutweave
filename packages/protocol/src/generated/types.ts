@@ -287,6 +287,30 @@ export type CancelTx = {
 	tx?: TxId | null,
 };
 
+/**  A cell in fractions of the canvas. */
+export type CellFraction = {
+	/**  Left edge. */
+	x: number | null,
+	/**  Top edge. */
+	y: number | null,
+	/**  Width. */
+	w: number | null,
+	/**  Height. */
+	h: number | null,
+};
+
+/**  A rectangle in sequence pixels. */
+export type CellRect = {
+	/**  Left edge. */
+	x: number | null,
+	/**  Top edge. */
+	y: number | null,
+	/**  Width. */
+	w: number | null,
+	/**  Height. */
+	h: number | null,
+};
+
 /**
  *  Captures the committed document as a restore point (cheap: snapshots share structure).
  *  Open transactions are not included. At most 50 are kept, 20 of them named (least recently
@@ -1994,6 +2018,45 @@ export type Item =
 } & Clip;
 
 /**
+ *  Places 2 to 4 clips in the cells of a layout, in one undo step. Example:
+ *  `{items:[a,b], layout:"side_by_side"}`.
+ * 
+ *  `layout` is one of `item.layouts`. Only video clips count (the audio of a linked clip is
+ *  ignored); their number must be what the layout takes, else `Invalid`. `order` lists the clips
+ *  for the cells (without it the clip on the top track comes first, ties by start time).
+ *  `fill` is `crop` (the default: every cell is filled, the overhang cropped) or `fit` (the
+ *  whole picture inside the cell). `gap` is the space between cells in sequence pixels (grid
+ *  layouts only). The result is ordinary properties (transform and crop) that can be adjusted
+ *  afterwards; animated ones are keyed at `at`.
+ */
+export type ItemApplyLayout = {
+	/**  The clips to arrange. */
+	items: ItemId[],
+	/**  A layout ID from `item.layouts`. */
+	layout: string,
+	/**  `crop` (default) or `fit`. */
+	fill?: LayoutFill | null,
+	/**  Space between cells, in sequence pixels (default 0). */
+	gap?: number | null,
+	/**  The clips in cell order (default: top track first). */
+	order?: ItemId[] | null,
+	/**  Sequence time (the playhead) to key animated properties at. */
+	at?: TimeInput | null,
+};
+
+/**  Result of `item.apply_layout`. */
+export type ItemApplyLayoutOutput = {
+	/**  The layout that was applied. */
+	layout: string,
+	/**  Where each item went, in cell order. */
+	cells: PlacedCell[],
+	/**  The properties whose value changed on any item. */
+	changed: string[],
+	/**  The keys written on animated properties. */
+	keyed: KeyedProp[],
+};
+
+/**
  *  Attaches items (and their linked partners) to a parent item, so they follow it when it moves
  *  (timeline spec §1.4). Every child must start inside the parent, be on another track than it
  *  and not in its linked group; the parent must not be attached itself, and a child must not be
@@ -2136,6 +2199,18 @@ export type ItemGroupSelectOutput = {
  *  Serialized as a string, exported to TypeScript as `string`.
  */
 export type ItemId = string & { readonly __brand: "ItemId" };
+
+/**  Lists the layouts `item.apply_layout` knows, with how many clips each takes. */
+export type ItemLayouts = {
+	/**  Only the layouts for this many clips. */
+	count?: number | null,
+};
+
+/**  Result of `item.layouts`. */
+export type ItemLayoutsOutput = {
+	/**  The layouts, in table order. */
+	layouts: LayoutInfo[],
+};
 
 /**
  *  Links items into one group, so they move, trim, split, are deleted and duplicated together.
@@ -2757,6 +2832,25 @@ export type LatestTop = {
 	label: string,
 	/**  For undo, the actor that made the change; for redo, the actor that undid it. */
 	actor: Actor,
+};
+
+/**  How a picture meets its cell. */
+export type LayoutFill = 
+/**  Fill the cell: the picture covers it and a centred crop removes the overhang. */
+"crop" | 
+/**  Fit the picture whole inside the cell (bars where the shapes differ). */
+"fit";
+
+/**  A layout, as `item.layouts` lists it. */
+export type LayoutInfo = {
+	/**  The ID to give `item.apply_layout`. */
+	id: string,
+	/**  English name. */
+	label: string,
+	/**  How many clips the layout takes. */
+	count: number,
+	/**  The cells in fractions of the canvas at gap 0, in cell order (for diagrams). */
+	cells: CellFraction[],
 };
 
 /**  Every checkpoint, oldest first. */
@@ -3538,6 +3632,14 @@ path: string };
  *  refuses `serde_json::Value`'s 64-bit integers). Only its type definition is used.
  */
 export type PatchValue = null | boolean | number | string | PatchValue[] | { [key in string]: PatchValue };
+
+/**  The cell of one item after the layout. */
+export type PlacedCell = {
+	/**  The item. */
+	item: ItemId,
+	/**  Its cell, in sequence pixels. */
+	cell: CellRect,
+};
 
 /**
  *  How a placement treats what is already on the target range (timeline spec §3.6):

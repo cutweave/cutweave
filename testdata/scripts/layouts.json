@@ -1,0 +1,70 @@
+{
+  "description": "Layouts (WP-2C.08): list the layouts, arrange two clips side by side with a crop, again as picture in picture and fit with a gap and an explicit order, a layout that takes another number of clips fails with Invalid, and an unknown layout fails. (No undo steps: the catalog commands run in their own transactions over MCP, so history ids differ by design.)",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.mp4" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0,
+        "link": false
+      }
+    },
+    { "cmd": "track.add", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "video" } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[3].output.track" },
+        "media": { "$ref": "steps[1].output.media_ids[1]" },
+        "at": 0,
+        "link": false
+      }
+    },
+    { "cmd": "item.layouts", "args": { "count": 2 } },
+    {
+      "cmd": "item.apply_layout",
+      "args": {
+        "items": [{ "$ref": "steps[2].output.clips[0]" }, { "$ref": "steps[4].output.clips[0]" }],
+        "layout": "side_by_side",
+        "fill": "crop"
+      }
+    },
+    {
+      "cmd": "item.apply_layout",
+      "args": {
+        "items": [{ "$ref": "steps[2].output.clips[0]" }, { "$ref": "steps[4].output.clips[0]" }],
+        "layout": "pip_bottom_right",
+        "fill": "fit",
+        "order": [{ "$ref": "steps[4].output.clips[0]" }, { "$ref": "steps[2].output.clips[0]" }]
+      }
+    },
+    {
+      "cmd": "item.apply_layout",
+      "args": {
+        "items": [{ "$ref": "steps[2].output.clips[0]" }, { "$ref": "steps[4].output.clips[0]" }],
+        "layout": "top_bottom",
+        "gap": 24
+      }
+    },
+    {
+      "cmd": "item.apply_layout",
+      "args": {
+        "items": [{ "$ref": "steps[2].output.clips[0]" }, { "$ref": "steps[4].output.clips[0]" }],
+        "layout": "grid_2x2"
+      },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "item.apply_layout",
+      "args": {
+        "items": [{ "$ref": "steps[2].output.clips[0]" }, { "$ref": "steps[4].output.clips[0]" }],
+        "layout": "no_such_layout"
+      },
+      "expect": { "error": "invalid" }
+    }
+  ]
+}

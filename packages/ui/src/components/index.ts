@@ -22,6 +22,13 @@ export {
   type KeyframeToggleProps,
 } from "./KeyframeToggle.tsx";
 export {
+  type LayoutCell,
+  LayoutDiagram,
+  type LayoutOption,
+  LayoutPicker,
+  type LayoutPickerProps,
+} from "./LayoutPicker.tsx";
+export {
   type BreadcrumbSegment,
   MediaBreadcrumb,
   type MediaBreadcrumbProps,

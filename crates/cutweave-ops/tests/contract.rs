@@ -513,6 +513,24 @@ const CONTRACT: &[Row] = &[
         true,
     ),
     (
+        "item.apply_layout",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.layouts",
+        EntryKind::Query,
+        McpExposure::Catalog,
+        true,
+        false,
+        true,
+        false,
+    ),
+    (
         "audio.set",
         EntryKind::Command,
         McpExposure::Core,
@@ -842,6 +860,8 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("keyframe.move"), ["item", "keys"]);
     assert_eq!(required("keyframe.eval"), ["item", "prop"]);
     assert_eq!(required("item.reset_props"), Vec::<String>::new());
+    assert_eq!(required("item.apply_layout"), ["items", "layout"]);
+    assert_eq!(required("item.layouts"), Vec::<String>::new());
     assert_eq!(required("item.get"), ["item"]);
     assert_eq!(required("project.new"), ["name"]);
     assert_eq!(required("job.status"), ["id"]);

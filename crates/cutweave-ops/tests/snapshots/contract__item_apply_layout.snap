@@ -1,0 +1,472 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.apply_layout",
+    "summary": "Arrange 2-4 clips in a layout: side by side, top and bottom, picture in picture, columns, grid",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The clips to arrange."
+        },
+        "layout": {
+          "type": "string",
+          "description": "A layout ID from `item.layouts`."
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "crop",
+                  "description": "Fill the cell: the picture covers it and a centred crop removes the overhang."
+                },
+                {
+                  "type": "string",
+                  "const": "fit",
+                  "description": "Fit the picture whole inside the cell (bars where the shapes differ)."
+                }
+              ],
+              "description": "How a picture meets its cell."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`crop` (default) or `fit`.",
+          "default": null
+        },
+        "gap": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "description": "Space between cells, in sequence pixels (default 0).",
+          "default": null
+        },
+        "order": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The clips in cell order (default: top track first).",
+          "default": null
+        },
+        "at": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Sequence time (the playhead) to key animated properties at.",
+          "default": null
+        }
+      },
+      "required": [
+        "items",
+        "layout"
+      ],
+      "description": "Places 2 to 4 clips in the cells of a layout, in one undo step. Example:\n`{items:[a,b], layout:\"side_by_side\"}`.\n\n`layout` is one of `item.layouts`. Only video clips count (the audio of a linked clip is\nignored); their number must be what the layout takes, else `Invalid`. `order` lists the clips\nfor the cells (without it the clip on the top track comes first, ties by start time).\n`fill` is `crop` (the default: every cell is filled, the overhang cropped) or `fit` (the\nwhole picture inside the cell). `gap` is the space between cells in sequence pixels (grid\nlayouts only). The result is ordinary properties (transform and crop) that can be adjusted\nafterwards; animated ones are keyed at `at`.",
+      "title": "ItemApplyLayout"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layout": {
+          "type": "string",
+          "description": "The layout that was applied."
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "description": "The cell of one item after the layout.",
+            "type": "object",
+            "properties": {
+              "item": {
+                "description": "The item.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "cell": {
+                "description": "Its cell, in sequence pixels.",
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "description": "Left edge.",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "y": {
+                    "description": "Top edge.",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "w": {
+                    "description": "Width.",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "h": {
+                    "description": "Height.",
+                    "type": "number",
+                    "format": "double"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "cell"
+            ]
+          },
+          "description": "Where each item went, in cell order."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The properties whose value changed on any item."
+        },
+        "keyed": {
+          "type": "array",
+          "items": {
+            "description": "A key `item.set_props` wrote on an animated property.",
+            "type": "object",
+            "properties": {
+              "item": {
+                "description": "The item.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "prop": {
+                "description": "The property.",
+                "type": "string",
+                "enum": [
+                  "transform.position",
+                  "transform.scale",
+                  "transform.rotation",
+                  "transform.anchor",
+                  "opacity",
+                  "crop.left",
+                  "crop.top",
+                  "crop.right",
+                  "crop.bottom",
+                  "flip.horizontal",
+                  "flip.vertical",
+                  "audio_gain",
+                  "audio_pan"
+                ]
+              },
+              "t": {
+                "description": "Item time of the key, after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "at": {
+                "description": "Sequence time of the key, after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "prop",
+              "t",
+              "at"
+            ]
+          },
+          "description": "The keys written on animated properties."
+        }
+      },
+      "required": [
+        "layout",
+        "cells",
+        "changed",
+        "keyed"
+      ],
+      "description": "Result of `item.apply_layout`.",
+      "title": "ItemApplyLayoutOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The clips to arrange."
+      },
+      "layout": {
+        "type": "string",
+        "description": "A layout ID from `item.layouts`."
+      },
+      "fill": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "crop",
+                "description": "Fill the cell: the picture covers it and a centred crop removes the overhang."
+              },
+              {
+                "type": "string",
+                "const": "fit",
+                "description": "Fit the picture whole inside the cell (bars where the shapes differ)."
+              }
+            ],
+            "description": "How a picture meets its cell."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "`crop` (default) or `fit`.",
+        "default": null
+      },
+      "gap": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "format": "double",
+        "description": "Space between cells, in sequence pixels (default 0).",
+        "default": null
+      },
+      "order": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The clips in cell order (default: top track first).",
+        "default": null
+      },
+      "at": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Sequence time (the playhead) to key animated properties at.",
+        "default": null
+      }
+    },
+    "required": [
+      "items",
+      "layout"
+    ],
+    "description": "Places 2 to 4 clips in the cells of a layout, in one undo step. Example:\n`{items:[a,b], layout:\"side_by_side\"}`.\n\n`layout` is one of `item.layouts`. Only video clips count (the audio of a linked clip is\nignored); their number must be what the layout takes, else `Invalid`. `order` lists the clips\nfor the cells (without it the clip on the top track comes first, ties by start time).\n`fill` is `crop` (the default: every cell is filled, the overhang cropped) or `fit` (the\nwhole picture inside the cell). `gap` is the space between cells in sequence pixels (grid\nlayouts only). The result is ordinary properties (transform and crop) that can be adjusted\nafterwards; animated ones are keyed at `at`.",
+    "title": "ItemApplyLayout"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "layout": {
+        "type": "string",
+        "description": "The layout that was applied."
+      },
+      "cells": {
+        "type": "array",
+        "items": {
+          "description": "The cell of one item after the layout.",
+          "type": "object",
+          "properties": {
+            "item": {
+              "description": "The item.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "cell": {
+              "description": "Its cell, in sequence pixels.",
+              "type": "object",
+              "properties": {
+                "x": {
+                  "description": "Left edge.",
+                  "type": "number",
+                  "format": "double"
+                },
+                "y": {
+                  "description": "Top edge.",
+                  "type": "number",
+                  "format": "double"
+                },
+                "w": {
+                  "description": "Width.",
+                  "type": "number",
+                  "format": "double"
+                },
+                "h": {
+                  "description": "Height.",
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "w",
+                "h"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "cell"
+          ]
+        },
+        "description": "Where each item went, in cell order."
+      },
+      "changed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The properties whose value changed on any item."
+      },
+      "keyed": {
+        "type": "array",
+        "items": {
+          "description": "A key `item.set_props` wrote on an animated property.",
+          "type": "object",
+          "properties": {
+            "item": {
+              "description": "The item.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "prop": {
+              "description": "The property.",
+              "type": "string",
+              "enum": [
+                "transform.position",
+                "transform.scale",
+                "transform.rotation",
+                "transform.anchor",
+                "opacity",
+                "crop.left",
+                "crop.top",
+                "crop.right",
+                "crop.bottom",
+                "flip.horizontal",
+                "flip.vertical",
+                "audio_gain",
+                "audio_pan"
+              ]
+            },
+            "t": {
+              "description": "Item time of the key, after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "at": {
+              "description": "Sequence time of the key, after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "prop",
+            "t",
+            "at"
+          ]
+        },
+        "description": "The keys written on animated properties."
+      }
+    },
+    "required": [
+      "layout",
+      "cells",
+      "changed",
+      "keyed"
+    ],
+    "description": "Result of `item.apply_layout`.",
+    "title": "ItemApplyLayoutOutput"
+  }
+}

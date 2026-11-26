@@ -31,6 +31,7 @@
 //! * **Edit reports.** Every edit returns `report`: exactly what changed.
 
 pub mod edit;
+pub mod layout;
 pub mod link;
 mod reset;
 
@@ -44,6 +45,9 @@ use cutweave_model::{
     TimeInput, Track, TrackId, Vec2, VisualProps,
 };
 
+pub use layout::{
+    ItemApplyLayout, ItemApplyLayoutOutput, ItemLayouts, ItemLayoutsOutput, LayoutFill,
+};
 pub use link::{
     GroupMember, ItemAttach, ItemAttachOutput, ItemDetach, ItemGroupSelect, ItemGroupSelectOutput,
     ItemLink, ItemLinkOutput, ItemUnlink, ItemUnlinkOutput,
@@ -78,6 +82,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ItemGroupSelect>()?
         .register::<ItemSetProps>()?
         .register::<ItemResetProps>()?
+        .register::<ItemApplyLayout>()?
+        .register::<ItemLayouts>()?
         .register::<ItemGet>()?;
     Ok(())
 }
