@@ -306,6 +306,7 @@ fn item_keys(item: &cutweave_model::Item) -> Vec<(&'static str, i64)> {
 
 /// The weight and the param strategy of `name` against `p`, or `None` if this table has no
 /// strategy for it.
+#[allow(clippy::too_many_lines)]
 pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Value>)> {
     let edits: u32 = if p.items.is_empty() { 1 } else { 6 };
     let empty = p.seqs.is_empty() && p.media.is_empty();

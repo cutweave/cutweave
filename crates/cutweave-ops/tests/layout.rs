@@ -8,7 +8,9 @@
     clippy::expect_used,
     clippy::too_many_lines,
     clippy::float_cmp,
-    clippy::needless_range_loop
+    clippy::needless_range_loop,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation
 )]
 
 mod common;

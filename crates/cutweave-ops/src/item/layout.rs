@@ -88,9 +88,7 @@ struct Table {
 
 /// The parsed table. A malformed table is a build defect, caught by the unit tests.
 static LAYOUTS: LazyLock<Vec<LayoutDef>> = LazyLock::new(|| {
-    serde_json::from_str::<Table>(TABLE)
-        .map(|t| t.layouts)
-        .unwrap_or_default()
+    serde_json::from_str::<Table>(TABLE).map_or_else(|_| Vec::new(), |t| t.layouts)
 });
 
 fn find(id: &str) -> Result<&'static LayoutDef, CmdError> {
@@ -260,7 +258,8 @@ impl Query for ItemLayouts {
 fn cells_of(layout: &LayoutDef, canvas: Canvas, gap: f64) -> Vec<[f64; 4]> {
     let tracks = |weights: &[f64], total: f64| -> Vec<(f64, f64)> {
         let n = weights.len();
-        let avail = total - gap * (n.saturating_sub(1)) as f64;
+        let gaps = u32::try_from(n.saturating_sub(1)).map_or(0.0, f64::from);
+        let avail = total - gap * gaps;
         let sum: f64 = weights.iter().sum();
         let mut at = 0.0;
         weights
@@ -332,7 +331,10 @@ fn place(a: f64, canvas: Canvas, cell: [f64; 4], fill: LayoutFill) -> ItemProps 
     };
     let fit_w = reframe::fit_size(a, canvas).0;
     let s = dw / fit_w;
-    let centre = ((cell[0] + cell[2]) / 2.0, (cell[1] + cell[3]) / 2.0);
+    let centre = (
+        f64::midpoint(cell[0], cell[2]),
+        f64::midpoint(cell[1], cell[3]),
+    );
     let (cx, cy) = (tidy(crop_x.clamp(0.0, 1.0)), tidy(crop_y.clamp(0.0, 1.0)));
     ItemProps {
         name: None,
