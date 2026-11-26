@@ -2,7 +2,7 @@
 // Immutable spatial layout built from a `TimelineModel`: structure-of-arrays item data, per-track
 // interval indexes and track geometry. The renderer and hit-testing both read this one structure,
 // so what is drawn is what is hit.
-import { IntervalIndex } from "./interval-index.ts";
+import { type IndexList, IntervalIndex } from "./interval-index.ts";
 import type { Rect, TimelineItem, TimelineMarker, TimelineModel, TrackSize } from "./model.ts";
 import { FLICKS_PER_SECOND } from "./time.ts";
 import type { Viewport } from "./viewport.ts";
@@ -134,6 +134,16 @@ export class TimelineLayout {
       return out;
     }
     return idx.query(t0, t1, out);
+  }
+
+  /** {@link query} into a reused {@link IndexList} (the draw loop's form). */
+  queryInto(track: number, t0: number, t1: number, out: IndexList): IndexList {
+    const idx = this.indexes[track];
+    if (!idx) {
+      out.clear();
+      return out;
+    }
+    return idx.queryInto(t0, t1, out);
   }
 
   /** Clip height of a track (lane height minus padding). */

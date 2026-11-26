@@ -4,6 +4,42 @@
 const NO_OUT: number[] = [];
 
 /**
+ * A growable list of item indices that is cleared without giving up its storage: the draw loop
+ * refills the same lists every frame (a JS array emptied with `length = 0` drops its backing
+ * store, so refilling it allocates).
+ */
+export class IndexList {
+  data: Int32Array;
+  length = 0;
+
+  constructor(capacity = 64) {
+    this.data = new Int32Array(capacity);
+  }
+
+  clear(): void {
+    this.length = 0;
+  }
+
+  push(v: number): void {
+    if (this.length === this.data.length) {
+      const grown = new Int32Array(this.data.length * 2);
+      grown.set(this.data);
+      this.data = grown;
+    }
+    this.data[this.length++] = v;
+  }
+
+  at(i: number): number {
+    return this.data[i] ?? -1;
+  }
+
+  includes(v: number): boolean {
+    for (let i = 0; i < this.length; i++) if (this.data[i] === v) return true;
+    return false;
+  }
+}
+
+/**
  * Static interval tree over a set of items, used for visibility culling and hit-testing.
  *
  * Items are sorted by start; the sorted array is read as an implicit balanced binary tree (node =
@@ -21,6 +57,7 @@ export class IntervalIndex {
   private readonly ends: Float64Array;
   private readonly maxEnd: Float64Array;
   private out: number[] = NO_OUT;
+  private list: IndexList | null = null;
   private qa = 0;
   private qb = 0;
 
@@ -58,6 +95,17 @@ export class IntervalIndex {
     return out;
   }
 
+  /** {@link query} into an {@link IndexList} (cleared first): allocation-free once it is big enough. */
+  queryInto(a: number, b: number, out: IndexList): IndexList {
+    out.clear();
+    this.list = out;
+    this.qa = a;
+    this.qb = b;
+    this.walk(0, this.size);
+    this.list = null;
+    return out;
+  }
+
   /** Ids of items containing time `t`. */
   stab(t: number, out: number[]): number[] {
     return this.query(t, t, out);
@@ -69,7 +117,11 @@ export class IntervalIndex {
     if ((this.maxEnd[mid] ?? 0) < this.qa) return;
     this.walk(lo, mid);
     if ((this.starts[mid] ?? 0) > this.qb) return;
-    if ((this.ends[mid] ?? 0) >= this.qa) this.out.push(this.ids[mid] ?? 0);
+    if ((this.ends[mid] ?? 0) >= this.qa) {
+      const id = this.ids[mid] ?? 0;
+      if (this.list !== null) this.list.push(id);
+      else this.out.push(id);
+    }
     this.walk(mid + 1, hi);
   }
 }

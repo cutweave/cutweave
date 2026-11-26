@@ -6,6 +6,7 @@
 // with nothing cached a placeholder shade is drawn. Nothing here allocates on a cache hit.
 import { bucketPxPerSec, MAX_TILE_INDEX, type WaveformPeaks, zoomBucket } from "../cache.ts";
 import { BODY_MEDIA_MIN_PX, TILE_ASPECT } from "../geometry.ts";
+import type { IndexList } from "../interval-index.ts";
 import type { MediaSlice } from "../model.ts";
 import { FLICKS_PER_SECOND } from "../time.ts";
 import type { RenderState } from "./state.ts";
@@ -82,12 +83,7 @@ function forEachTile(
  * Draws the filmstrip tiles of `bucket`'s items into the body area `[areaY, areaY + areaH)`.
  * Placeholders for tiles not loaded yet go into one batched shade.
  */
-export function drawTiles(
-  s: RenderState,
-  bucket: readonly number[],
-  areaY: number,
-  areaH: number,
-): void {
+export function drawTiles(s: RenderState, bucket: IndexList, areaY: number, areaH: number): void {
   const { ctx, f, k, rx0, rx1 } = s;
   const { layout, vp, theme: th, caches } = f;
   const bk = zoomBucket(vp.pxPerSec);
@@ -97,7 +93,7 @@ export function drawTiles(
   let placeholders = false;
   ctx.beginPath(); // the placeholder batch
   for (let n = 0; n < bucket.length; n++) {
-    const i = bucket[n] as number;
+    const i = bucket.data[n] as number;
     const slice = layout.items[i]?.thumbnails;
     if (slice === undefined) continue;
     const start = layout.start[i] ?? 0;
@@ -223,7 +219,7 @@ function tile(
 /** Draws the waveforms of `bucket`'s items into the body area as one stroked path. */
 export function drawWaveforms(
   s: RenderState,
-  bucket: readonly number[],
+  bucket: IndexList,
   color: string,
   areaY: number,
   areaH: number,
@@ -236,7 +232,7 @@ export function drawWaveforms(
   let any = false;
   ctx.beginPath();
   for (let n = 0; n < bucket.length; n++) {
-    const i = bucket[n] as number;
+    const i = bucket.data[n] as number;
     const slice = layout.items[i]?.waveform;
     if (slice === undefined) continue;
     const start = layout.start[i] ?? 0;

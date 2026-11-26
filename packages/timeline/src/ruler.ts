@@ -30,19 +30,58 @@ export function tickCandidates(fps: FrameRate): number[] {
   return out;
 }
 
+/** Time-based steps subdivide by the first of these that keeps minor ticks apart. */
+const TIME_DIVISIONS = [10, 5, 4, 2];
+
+/** The candidates of the last frame rate asked for (the ruler asks every frame). */
+let lastFps: FrameRate | null = null;
+let lastCandidates: number[] = [];
+
+function candidatesFor(fps: FrameRate): number[] {
+  if (lastFps === null || lastFps.num !== fps.num || lastFps.den !== fps.den) {
+    lastFps = { num: fps.num, den: fps.den };
+    lastCandidates = tickCandidates(fps);
+  }
+  return lastCandidates;
+}
+
 /**
  * Smallest candidate step whose spacing is at least `minLabelPx` (room for one timecode label),
- * plus the largest subdivision that keeps minor ticks at least `MIN_MINOR_PX` apart.
+ * plus the largest subdivision that keeps minor ticks at least `MIN_MINOR_PX` apart. Written into
+ * `out` when given (the draw loop reuses one plan), else into a new object.
  */
-export function chooseTickPlan(pxPerSec: number, fps: FrameRate, minLabelPx: number): TickPlan {
+export function chooseTickPlan(
+  pxPerSec: number,
+  fps: FrameRate,
+  minLabelPx: number,
+  out: { step: number; divisions: number } = { step: 1, divisions: 1 },
+): TickPlan {
   const pxPerFlick = pxPerSec / FLICKS_PER_SECOND;
-  const candidates = tickCandidates(fps);
-  const step =
-    candidates.find((s) => s * pxPerFlick >= minLabelPx) ?? candidates[candidates.length - 1] ?? 1;
+  const candidates = candidatesFor(fps);
+  let step = candidates[candidates.length - 1] ?? 1;
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i] as number;
+    if (c * pxPerFlick >= minLabelPx) {
+      step = c;
+      break;
+    }
+  }
   const stepPx = step * pxPerFlick;
-  const frame = frameDurationFlicks(fps);
   // Frame-based steps subdivide per frame; time-based steps by 10, 5, 4 or 2.
-  const options = step < FLICKS_PER_SECOND ? [Math.round(step / frame)] : [10, 5, 4, 2];
-  const divisions = options.find((n) => n > 1 && stepPx / n >= MIN_MINOR_PX) ?? 1;
-  return { step, divisions };
+  let divisions = 1;
+  if (step < FLICKS_PER_SECOND) {
+    const n = Math.round(step / frameDurationFlicks(fps));
+    if (n > 1 && stepPx / n >= MIN_MINOR_PX) divisions = n;
+  } else {
+    for (let i = 0; i < TIME_DIVISIONS.length; i++) {
+      const n = TIME_DIVISIONS[i] as number;
+      if (stepPx / n >= MIN_MINOR_PX) {
+        divisions = n;
+        break;
+      }
+    }
+  }
+  out.step = step;
+  out.divisions = divisions;
+  return out;
 }

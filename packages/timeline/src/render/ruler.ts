@@ -44,7 +44,7 @@ export function drawRuler(s: RenderState): void {
   const flagShown = phx + fw / 2 >= vp.headerWidth && phx - fw / 2 <= vp.width;
   const fx = flagX(phx, fw, vp);
 
-  const plan = chooseTickPlan(vp.pxPerSec, f.fps, s.timecodeWidth + th.space4);
+  const plan = chooseTickPlan(vp.pxPerSec, f.fps, s.timecodeWidth + th.space4, s.tickPlan);
   const from = Math.max(rx0, vp.headerWidth);
   const t0 = vp.scrollX + (from - vp.headerWidth) / s.k;
   const t1 = vp.scrollX + (rx1 - vp.headerWidth) / s.k;

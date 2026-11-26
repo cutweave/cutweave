@@ -11,6 +11,7 @@ import {
   labelBand,
   showsKeyframes,
 } from "../geometry.ts";
+import type { IndexList } from "../interval-index.ts";
 import {
   FLAG_DISABLED,
   FLAG_PROPOSED,
@@ -65,7 +66,7 @@ export function drawTrack(
   stats.drawCalls++;
 
   const trackFlags = layout.trackFlags[ti] ?? 0;
-  const ids = layout.query(ti, t0, t1, s.ids);
+  const ids = layout.queryInto(ti, t0, t1, s.ids);
   if (ids.length > 0) {
     stats.visibleItems += ids.length;
     const cy = laneTop + layout.pad;
@@ -73,16 +74,16 @@ export function drawTrack(
 
     // Partition by (state group, kind) so every bucket is one batch.
     const buckets = s.buckets;
-    for (let b = 0; b < buckets.length; b++) (buckets[b] as number[]).length = 0;
-    s.selected.length = 0;
+    for (let b = 0; b < buckets.length; b++) (buckets[b] as IndexList).clear();
+    s.selected.clear();
     const sel = view.selection;
     for (let n = 0; n < ids.length; n++) {
-      const i = ids[n] as number;
+      const i = ids.data[n] as number;
       const fl = layout.flags[i] ?? 0;
       const item = layout.items[i];
       if (item === undefined) continue;
       const group = fl & FLAG_PROPOSED ? 2 : fl & FLAG_DISABLED ? 1 : 0;
-      (buckets[group * 5 + KIND_INDEX[item.kind]] as number[]).push(i);
+      (buckets[group * 5 + KIND_INDEX[item.kind]] as IndexList).push(i);
       if (fl & FLAG_SELECTED || (sel.size > 0 && sel.has(item.id))) s.selected.push(i);
     }
 
@@ -91,7 +92,7 @@ export function drawTrack(
     for (let group = 0; group < 3; group++) {
       ctx.globalAlpha = group === 1 || dimmed ? th.opacityDisabled : 1;
       for (let kind = 0; kind < 5; kind++) {
-        const bucket = buckets[group * 5 + kind] as number[];
+        const bucket = buckets[group * 5 + kind] as IndexList;
         if (bucket.length > 0) drawBucket(s, bucket, group, KINDS[kind] as ItemKind, cy, ch);
       }
     }
@@ -133,7 +134,7 @@ function drawLocked(s: RenderState, laneTop: number, laneH: number, color: strin
 
 function drawBucket(
   s: RenderState,
-  bucket: readonly number[],
+  bucket: IndexList,
   group: number,
   kind: ItemKind,
   cy: number,
@@ -150,7 +151,7 @@ function drawBucket(
   // Bodies: one rounded rect per clip in one path (fill, then 1px border stroke).
   ctx.beginPath();
   for (let n = 0; n < bucket.length; n++) {
-    const i = bucket[n] as number;
+    const i = bucket.data[n] as number;
     const x = edgeX(layout, vp, i, k, 0);
     const w = edgeX(layout, vp, i, k, 1) - x;
     ctx.roundRect(x + bw / 2, cy + bw / 2, Math.max(1, w - bw), ch - bw, r);
@@ -182,7 +183,7 @@ function drawBucket(
   // Header strips: 3px lines in the strong color, inset from the rounded corners.
   ctx.beginPath();
   for (let n = 0; n < bucket.length; n++) {
-    const i = bucket[n] as number;
+    const i = bucket.data[n] as number;
     const x = edgeX(layout, vp, i, k, 0);
     const w = edgeX(layout, vp, i, k, 1) - x;
     if (w < 2 * r + 1) continue;
@@ -210,7 +211,7 @@ function drawBucket(
 }
 
 /** Linked badge (a chain of two links) and the label in each clip's label band. */
-function drawLabels(s: RenderState, bucket: readonly number[], cy: number, band: number): void {
+function drawLabels(s: RenderState, bucket: IndexList, cy: number, band: number): void {
   const { ctx, f, k } = s;
   const { layout, vp, theme: th } = f;
   const stats = s.stats;
@@ -223,7 +224,7 @@ function drawLabels(s: RenderState, bucket: readonly number[], cy: number, band:
   let badges = false;
   ctx.beginPath();
   for (let n = 0; n < bucket.length; n++) {
-    const i = bucket[n] as number;
+    const i = bucket.data[n] as number;
     if (layout.items[i]?.linkedGroup === undefined) continue;
     const x = edgeX(layout, vp, i, k, 0);
     const w = edgeX(layout, vp, i, k, 1) - x;
@@ -246,7 +247,7 @@ function drawLabels(s: RenderState, bucket: readonly number[], cy: number, band:
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   for (let n = 0; n < bucket.length && s.labelsLeft > 0; n++) {
-    const i = bucket[n] as number;
+    const i = bucket.data[n] as number;
     const item = layout.items[i];
     if (item === undefined) continue;
     const x = edgeX(layout, vp, i, k, 0);
@@ -267,7 +268,7 @@ function drawLabels(s: RenderState, bucket: readonly number[], cy: number, band:
   }
 }
 
-function drawKeyframes(s: RenderState, ids: readonly number[], cy: number, ch: number): void {
+function drawKeyframes(s: RenderState, ids: IndexList, cy: number, ch: number): void {
   const { ctx, f, k, rx0, rx1 } = s;
   const { layout, vp, theme: th } = f;
   const rowY = keyframeRowY(th, cy, ch);
@@ -277,7 +278,7 @@ function drawKeyframes(s: RenderState, ids: readonly number[], cy: number, ch: n
   let any = false;
   ctx.beginPath();
   for (let n = 0; n < ids.length; n++) {
-    const i = ids[n] as number;
+    const i = ids.data[n] as number;
     const kfs = layout.items[i]?.keyframes;
     if (kfs === undefined || kfs.length === 0) continue;
     if (((layout.end[i] ?? 0) - (layout.start[i] ?? 0)) * k < KEYFRAME_MIN_PX) continue;
@@ -319,7 +320,7 @@ function drawSelection(s: RenderState, ti: number, cy: number, ch: number): void
   ctx.beginPath();
   const o = th.borderThin;
   for (let n = 0; n < selected.length; n++) {
-    const i = selected[n] as number;
+    const i = selected.data[n] as number;
     const x = edgeX(layout, vp, i, k, 0);
     const w = edgeX(layout, vp, i, k, 1) - x;
     ctx.roundRect(x + o, cy + o, Math.max(1, w - 2 * o), ch - 2 * o, Math.max(0, th.radiusSm - o));
@@ -330,7 +331,7 @@ function drawSelection(s: RenderState, ti: number, cy: number, ch: number): void
   s.stats.drawCalls++;
   // Trim handles: short marigold bars inside each edge.
   ctx.beginPath();
-  for (let n = 0; n < selected.length; n++) handleBars(s, selected[n] as number, cy, ch);
+  for (let n = 0; n < selected.length; n++) handleBars(s, selected.data[n] as number, cy, ch);
   if (hoverHere) handleBars(s, hover, cy, ch);
   ctx.strokeStyle = th.marigold;
   ctx.lineWidth = th.space0_5 + 1;

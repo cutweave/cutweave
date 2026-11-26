@@ -204,7 +204,7 @@ export const Selected = {
           snapGuides: [
             { kind: "edge", t: s(12) },
             { kind: "playhead", t: s(7) },
-            { kind: "marker", t: s(14) },
+            { kind: "marker", t: s(9.5) },
           ],
           marquee: { x: 700, y: 150, w: 140, h: 70 },
         }}

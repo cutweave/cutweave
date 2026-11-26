@@ -4,6 +4,7 @@
 import type { SnapKindName } from "@cutweave/protocol/wasm";
 import type { MediaCaches } from "../cache.ts";
 import type { MutableRect } from "../geometry.ts";
+import { IndexList } from "../interval-index.ts";
 import type { TimelineLayout } from "../layout.ts";
 import type { Rect, TimelineDisplay, ViewState } from "../model.ts";
 import type { Theme } from "../theme.ts";
@@ -95,10 +96,12 @@ export class RenderState {
   guideStyle: GuideStyle[] = [];
 
   // Reused buffers.
-  readonly ids: number[] = [];
+  readonly ids = new IndexList();
   /** Item indices per (state group x kind): 3 groups x 5 kinds. */
-  readonly buckets: number[][] = Array.from({ length: 15 }, () => []);
-  readonly selected: number[] = [];
+  readonly buckets: IndexList[] = Array.from({ length: 15 }, () => new IndexList());
+  readonly selected = new IndexList();
+  /** The ruler's tick plan, filled in each frame. */
+  readonly tickPlan = { step: 1, divisions: 1 };
   /** The repainted region of this frame (canvas CSS px). */
   readonly region: MutableRect = { x: 0, y: 0, w: 0, h: 0 };
   /** Scratch rectangle for geometry helpers. */
