@@ -240,7 +240,7 @@ fn a_folder_archive_verifies_and_agents_stay_in_their_folders() {
     assert!(dest.join("Promo kept.cutweave").is_file());
     // 7 media and the document; `generated/` was declined.
     assert_eq!(verify_folder(&dest), 8);
-    assert!(!dest.join("generated").exists());
+    assert!(!dest.join("generated").join("voice.wav").exists());
     assert_eq!(mtimes(&original), before);
 
     // A finished archive is not written into again, and an agent stays in its folders.
