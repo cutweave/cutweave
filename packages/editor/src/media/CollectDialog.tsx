@@ -114,7 +114,15 @@ export function CollectDialog() {
         <JobList aria-label={t("collect.jobLabel")}>
           <JobProgress
             name={t("collect.jobName", { name: state.name.trim() })}
-            state={job?.state ?? "queued"}
+            state={
+              phase === "done"
+                ? "done"
+                : phase === "running"
+                  ? job?.state === "running"
+                    ? "running"
+                    : "queued"
+                  : "failed"
+            }
             progress={percent}
             error={phase === "failed" ? (job?.error ?? undefined) : undefined}
             onCancel={phase === "running" ? () => void cancelCollect(deps) : undefined}
