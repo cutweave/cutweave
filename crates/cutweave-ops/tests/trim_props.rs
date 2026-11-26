@@ -62,6 +62,7 @@ const NAMES: &[&str] = &[
     "clip.reverse",
     "clip.reset_speed",
     "clip.freeze_frame",
+    "clip.replace",
 ];
 
 /// The speed commands (WP-2D.01).
@@ -90,7 +91,7 @@ fn splitmix(mut x: u64) -> u64 {
 }
 
 /// The request `seed` picks for `doc`.
-fn generate(h: &H, doc: &Project, seed: u64) -> (String, Value) {
+fn generate(h: &H, doc: &Project, seed: u64, names: &[&str]) -> (String, Value) {
     let mut bytes = [0_u8; 32];
     let mut s = seed;
     for chunk in bytes.chunks_mut(8) {
@@ -103,7 +104,7 @@ fn generate(h: &H, doc: &Project, seed: u64) -> (String, Value) {
     };
     let mut runner =
         TestRunner::new_with_rng(config, TestRng::from_seed(RngAlgorithm::ChaCha, &bytes));
-    arb_command_among(&h.registry, doc, NAMES)
+    arb_command_among(&h.registry, doc, names)
         .new_tree(&mut runner)
         .expect("the strategies never reject")
         .current()
@@ -278,12 +279,12 @@ fn check_grid_and_durations(doc: &Project) -> Result<(), String> {
 }
 
 /// Runs one sequence; how many trim-family and speed commands succeeded.
-fn run_case(s: &Start, seeds: &[u64]) -> (usize, usize) {
+fn run_case(s: &Start, seeds: &[u64], names: &[&str]) -> (usize, usize) {
     let mut h = start(s);
     let (mut ok, mut sped) = (0, 0);
     for (n, seed) in seeds.iter().enumerate() {
         let before = h.doc();
-        let (name, params) = generate(&h, &before, *seed);
+        let (name, params) = generate(&h, &before, *seed, names);
         let result = h.run(&name, params.clone());
         let after = h.doc();
         let what = format!("step {n}: {name} {params}");
@@ -294,7 +295,7 @@ fn run_case(s: &Start, seeds: &[u64]) -> (usize, usize) {
                 if FAMILY.contains(&name.as_str()) {
                     ok += 1;
                 }
-                if SPEED.contains(&name.as_str()) {
+                if SPEED.contains(&name.as_str()) || name == "clip.replace" {
                     sped += 1;
                 }
                 check_linked_edit(&name, &params, &out, &before, &after)
@@ -322,7 +323,7 @@ fn random_trims_keep_every_invariant() {
     let applied = std::cell::Cell::new(0_usize);
     let sped = std::cell::Cell::new(0_usize);
     let result = runner.run(&(arb_start(), vec(any::<u64>(), 1..=10)), |(s, seeds)| {
-        let (trims, speeds) = run_case(&s, &seeds);
+        let (trims, speeds) = run_case(&s, &seeds, NAMES);
         applied.set(applied.get() + trims);
         sped.set(sped.get() + speeds);
         Ok(())
@@ -340,5 +341,68 @@ fn random_trims_keep_every_invariant() {
         sped.get() >= cases as usize / 2,
         "only {} speed commands succeeded in {cases} sequences",
         sped.get()
+    );
+}
+
+/// WP-2A.11 acceptance: `clip.replace` among the edits that reshape timelines (1,000 sequences
+/// by default). A replace never overlaps, keeps a magnetic track gapless, keeps everything but
+/// `media`, `source_in` and `duration` (`check_linked_edit`), and undoes exactly (`H::run`).
+#[test]
+fn random_replaces_keep_every_invariant() {
+    const REPLACE_NAMES: &[&str] = &[
+        "clip.replace",
+        "clip.replace",
+        "clip.replace",
+        "clip.split",
+        "item.move",
+        "clip.set_speed",
+        "clip.trim",
+    ];
+    let cases = std::env::var("PROPTEST_CASES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1000);
+    let config = Config {
+        cases,
+        failure_persistence: None,
+        ..Config::default()
+    };
+    let mut runner =
+        TestRunner::new_with_rng(config, TestRng::deterministic_rng(RngAlgorithm::ChaCha));
+    let replaced = std::cell::Cell::new(0_usize);
+    let result = runner.run(&(arb_start(), vec(any::<u64>(), 1..=10)), |(s, seeds)| {
+        let mut h = start(&s);
+        for (n, seed) in seeds.iter().enumerate() {
+            let before = h.doc();
+            let (name, params) = generate(&h, &before, *seed, REPLACE_NAMES);
+            let result = h.run(&name, params.clone());
+            let after = h.doc();
+            let what = format!("step {n}: {name} {params}");
+            check_invariants(&after).unwrap_or_else(|e| panic!("{what}: {e}"));
+            check_grid_and_durations(&after).unwrap_or_else(|e| panic!("{what}: {e}"));
+            match result {
+                Ok(out) => {
+                    if name == "clip.replace" {
+                        replaced.set(replaced.get() + 1);
+                    }
+                    check_linked_edit(&name, &params, &out, &before, &after).unwrap_or_else(|e| {
+                        panic!(
+                            "{what}: {e}
+output {out}"
+                        )
+                    });
+                }
+                Err(_) => assert_eq!(before, after, "{what}: failed but changed the document"),
+            }
+        }
+        Ok(())
+    });
+    if let Err(e) = result {
+        panic!("{e}");
+    }
+    assert!(
+        replaced.get() >= cases as usize / 2,
+        "only {} replaces succeeded in {cases} sequences",
+        replaced.get()
     );
 }
