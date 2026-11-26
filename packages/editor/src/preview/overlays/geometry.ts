@@ -194,8 +194,7 @@ export function valueAt<T>(prop: Animatable<T>, t: number, lerp: Lerp<T>): T {
     const u = span > 0 ? (t - prev.t) / span : 1;
     if (prev.interp.kind === "hold") return prev.value;
     const i2 = prev.interp;
-    const p =
-      i2.kind === "bezier" ? bezier(i2.x1 ?? 0, i2.y1 ?? 0, i2.x2 ?? 1, i2.y2 ?? 1, u) : u;
+    const p = i2.kind === "bezier" ? bezier(i2.x1 ?? 0, i2.y1 ?? 0, i2.x2 ?? 1, i2.y2 ?? 1, u) : u;
     return lerp(prev.value, next.value, p);
   }
   return keys[keys.length - 1]?.value ?? first.value;

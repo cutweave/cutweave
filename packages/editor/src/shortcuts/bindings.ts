@@ -28,6 +28,7 @@ export const BINDING_GROUPS: readonly {
   { id: "menu", title: "shortcuts.groups.menu" },
   { id: "playback", title: "shortcuts.groups.playback" },
   { id: "timeline", title: "shortcuts.groups.timeline" },
+  { id: "preview", title: "shortcuts.groups.preview" },
   { id: "bin", title: "shortcuts.groups.bin" },
   { id: "dialogs", title: "shortcuts.groups.dialogs" },
 ];

@@ -151,7 +151,8 @@ export function rotateDrag(
   pointer: Pt,
   snap: boolean,
 ): number {
-  const angle = (p: Pt) => (Math.atan2(p.y - geom.anchorAt.y, p.x - geom.anchorAt.x) * 180) / Math.PI;
+  const angle = (p: Pt) =>
+    (Math.atan2(p.y - geom.anchorAt.y, p.x - geom.anchorAt.x) * 180) / Math.PI;
   const turned = start.rotation + wrap(angle(pointer) - angle(from));
   return snap ? Math.round(turned / ROTATE_STEP) * ROTATE_STEP : turned;
 }

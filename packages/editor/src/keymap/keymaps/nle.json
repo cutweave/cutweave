@@ -147,6 +147,26 @@
       "keys": ["F2"]
     },
     {
+      "command": "preview.nudge_left",
+      "keys": ["ArrowLeft"]
+    },
+    {
+      "command": "preview.nudge_right",
+      "keys": ["ArrowRight"]
+    },
+    {
+      "command": "preview.nudge_up",
+      "keys": ["ArrowUp"]
+    },
+    {
+      "command": "preview.nudge_down",
+      "keys": ["ArrowDown"]
+    },
+    {
+      "command": "preview.toggle_crop",
+      "keys": ["C"]
+    },
+    {
       "command": "bin.move_next",
       "keys": ["ArrowRight"]
     },

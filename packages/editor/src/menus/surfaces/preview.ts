@@ -3,13 +3,17 @@
 // the volume and the quality badge.
 // TODO(render.frame): "Copy frame" and "Save frame as…" need `render.frame` in the command
 // catalog and an image clipboard / save dialog in the desktop host; neither exists yet.
-// TODO(WP-2H.06): grid, center cross and zoom choices. TODO(WP-2A.14): the Source view's
+// The grid, center cross and zoom choices are the preview bar's Guides menu (WP-2H.06).
+// TODO(WP-2A.14): the Source view's
 // Insert, Overwrite and marks.
 import type { PreviewQuality } from "@cutweave/protocol";
 import { formatTimecode } from "@cutweave/timeline";
+import { flipArgs, placeArgs } from "../../preview/overlays/placement.ts";
+import { docStore } from "../../state/docStore.ts";
 import { playbackStore } from "../../state/playbackStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.ts";
+import { clipFact } from "./facts.ts";
 import { sequenceRate } from "./shared.ts";
 
 const playLabel = (): LabelSpec => ({
@@ -156,4 +160,79 @@ export const TRANSPORT_QUALITY: MenuSurfaceDef = {
   name: () => ({ key: "contextMenu.name.transportQuality" }),
   groups: ["quality"],
   rows: qualityRows("quality"),
+};
+
+// ---- the picture of a selected clip (WP-2H.06) ---------------------------------------------------
+
+const LOCKED = "contextMenu.reason.trackLocked" as const;
+
+/** The playhead the menu acts on: where the picture on screen is. */
+const playheadOf = (ctx: MenuContext): number => ctx.playhead ?? viewStore.getState().playhead;
+
+const unlocked = (ctx: MenuContext): boolean => ctx.keys["track.locked"] !== true;
+const oneAndUnlocked = (ctx: MenuContext): boolean => ctx.ids.length === 1 && unlocked(ctx);
+const oneReason = (ctx: MenuContext) =>
+  ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.oneClip" as const);
+
+const placeRow = (
+  id: string,
+  mode: "fit" | "fill" | "center",
+  label:
+    | "contextMenu.item.fitCanvas"
+    | "contextMenu.item.fillCanvas"
+    | "contextMenu.item.centerCanvas",
+  order: number,
+): MenuRow => ({
+  id,
+  command: "item.set_props",
+  group: "place",
+  order,
+  label: { key: label },
+  enabledIf: oneAndUnlocked,
+  reason: oneReason,
+  args: (ctx) => placeArgs(docStore.getState().project, ctx.ids[0] ?? "", playheadOf(ctx), mode),
+});
+
+const flipRow = (axis: "horizontal" | "vertical", order: number): MenuRow => ({
+  id: `flip-${axis}`,
+  command: "item.set_props",
+  group: "flip",
+  order,
+  label: {
+    key:
+      axis === "horizontal" ? "contextMenu.item.flipHorizontal" : "contextMenu.item.flipVertical",
+  },
+  enabledIf: (ctx) => ctx.ids.length > 0 && unlocked(ctx),
+  reason: LOCKED,
+  args: (ctx) => flipArgs(docStore.getState().project, ctx.ids, playheadOf(ctx), axis),
+});
+
+/** Right-click on the selected clip's picture: where it sits, its mirror and its reset. */
+export const PREVIEW_ITEM: MenuSurfaceDef = {
+  id: "preview.item",
+  name: (target) => ({
+    key: "contextMenu.name.previewItem",
+    vars: { name: target.name ?? "" },
+  }),
+  groups: ["place", "flip", "reset"],
+  keys: (target) => ({
+    "track.locked": target.ids.some((id) => clipFact(id)?.track.locked === true),
+  }),
+  rows: [
+    placeRow("fit", "fit", "contextMenu.item.fitCanvas", 0),
+    placeRow("fill", "fill", "contextMenu.item.fillCanvas", 1),
+    placeRow("center", "center", "contextMenu.item.centerCanvas", 2),
+    flipRow("horizontal", 0),
+    flipRow("vertical", 1),
+    {
+      id: "reset-transform",
+      command: "item.reset_props",
+      group: "reset",
+      order: 0,
+      label: { key: "contextMenu.item.resetTransform" },
+      enabledIf: (ctx) => ctx.ids.length > 0 && unlocked(ctx),
+      reason: LOCKED,
+      args: (ctx) => ({ items: ctx.ids, group: "transform" }),
+    },
+  ],
 };

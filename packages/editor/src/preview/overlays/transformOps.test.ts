@@ -4,9 +4,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyAffine,
+  type CanvasView,
   canvasToLocal,
   canvasToNormalized,
-  type CanvasView,
   clientToCanvas,
   DEFAULT_LAYER,
   type LayerState,
@@ -81,18 +81,21 @@ describe("layer geometry", () => {
   });
 
   it("is null for nothing visible or a zero scale", () => {
-    expect(layerGeometry(state({ crop: { left: 0.5, top: 0, right: 0.5, bottom: 0 } }), pic, canvas)).toBe(null);
+    expect(
+      layerGeometry(state({ crop: { left: 0.5, top: 0, right: 0.5, bottom: 0 } }), pic, canvas),
+    ).toBe(null);
     expect(layerGeometry(state({ scale: { x: 0, y: 1 } }), pic, canvas)).toBe(null);
   });
 });
 
 describe("evaluating animated values", () => {
-  const keys = (a: number, b: number, interp = { kind: "linear" }) => ({
-    keyframes: [
-      { t: 0, value: a, interp },
-      { t: 100, value: b, interp },
-    ],
-  });
+  const keys = (a: number, b: number, interp: { kind: string } = { kind: "linear" }): never =>
+    ({
+      keyframes: [
+        { t: 0, value: a, interp },
+        { t: 100, value: b, interp },
+      ],
+    }) as never;
   const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
   it("interpolates, holds and clamps", () => {
     expect(valueAt(keys(0, 10), 50, lerp)).toBe(5);
@@ -143,7 +146,10 @@ describe("scale", () => {
       const fixed = handleCanvasPoint(g, "tl");
       const grab = handleCanvasPoint(g, "br");
       // Drag the bottom-right corner outwards along the diagonal by 50 %.
-      const pointer = { x: fixed.x + (grab.x - fixed.x) * 1.5, y: fixed.y + (grab.y - fixed.y) * 1.5 };
+      const pointer = {
+        x: fixed.x + (grab.x - fixed.x) * 1.5,
+        y: fixed.y + (grab.y - fixed.y) * 1.5,
+      };
       const out = scaleDrag(s, g, c, "br", pointer, false);
       near(out.scale.x, 1.5);
       near(out.scale.y, 1.5);
@@ -185,9 +191,16 @@ describe("rotate", () => {
     const r = (15 * Math.PI) / 180;
     const to = { x: g.anchorAt.x + 400 * Math.cos(r), y: g.anchorAt.y + 400 * Math.sin(r) };
     near(rotateDrag(state(), g, from, to, false), 15, 1e-9);
-    near(rotateDrag(state({ rotation: 10 }), geomOf(state({ rotation: 10 })), from, to, false), 25, 1e-9);
+    near(
+      rotateDrag(state({ rotation: 10 }), geomOf(state({ rotation: 10 })), from, to, false),
+      25,
+      1e-9,
+    );
     // Shift rounds to 15-degree steps.
-    const slightly = { x: g.anchorAt.x + 400 * Math.cos(0.3), y: g.anchorAt.y + 400 * Math.sin(0.3) };
+    const slightly = {
+      x: g.anchorAt.x + 400 * Math.cos(0.3),
+      y: g.anchorAt.y + 400 * Math.sin(0.3),
+    };
     expect(rotateDrag(state(), g, from, slightly, true)).toBe(15);
   });
 });
@@ -228,7 +241,13 @@ describe("crop", () => {
     const c = cropDrag(state(), g, ["left", "top"], { x: 960, y: 540 }, false);
     expect(c.left).toBe(0.5);
     expect(c.top).toBe(0.5);
-    const all = cropDrag(state({ crop: { left: 0, top: 0, right: 0.4, bottom: 0 } }), geomOf(state({ crop: { left: 0, top: 0, right: 0.4, bottom: 0 } })), ["left"], { x: 1900, y: 0 }, false);
+    const all = cropDrag(
+      state({ crop: { left: 0, top: 0, right: 0.4, bottom: 0 } }),
+      geomOf(state({ crop: { left: 0, top: 0, right: 0.4, bottom: 0 } })),
+      ["left"],
+      { x: 1900, y: 0 },
+      false,
+    );
     expect(1 - all.left - all.right).toBeGreaterThan(0.01);
   });
 });
@@ -248,7 +267,10 @@ describe("fit, fill, center", () => {
     near(fitted.bounds[3], 1080, 1e-6);
   });
   it("centers the visible part of a cropped, offset clip", () => {
-    const s = state({ position: { x: 0.3, y: 0.2 }, crop: { left: 0.5, top: 0, right: 0, bottom: 0 } });
+    const s = state({
+      position: { x: 0.3, y: 0.2 },
+      crop: { left: 0.5, top: 0, right: 0, bottom: 0 },
+    });
     const out = placeOnCanvas(s, geomOf(s), canvas, "center");
     const g = geomOf({ ...s, ...out });
     near((g.bounds[0] + g.bounds[2]) / 2, 960, 1e-6);
@@ -265,7 +287,9 @@ describe("snapping", () => {
     expect(hit.guides).toContainEqual({ axis: "x", at: 0 });
     // The box's right edge is within 8 of the centre line too; the nearer one wins.
     expect(snapBounds([100, 0, 955, 200], targets, 8).dx).toBe(5);
-    expect(snapBounds([400, 0, 500, 200], targets, 2).guides.filter((g) => g.axis === "x")).toHaveLength(0);
+    expect(
+      snapBounds([400, 0, 500, 200], targets, 2).guides.filter((g) => g.axis === "x"),
+    ).toHaveLength(0);
   });
   it("catches another clip's edge, so two clips butt up", () => {
     const withNeighbour = targetsWith(canvas, [[0, 0, 700, 1080]]);
