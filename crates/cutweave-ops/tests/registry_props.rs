@@ -91,7 +91,7 @@ const REGRESSIONS: &str = concat!(
     "/proptest-regressions/registry_props.txt"
 );
 /// Sequences of the deterministic coverage run.
-const COVERAGE_CASES: u32 = 48;
+const COVERAGE_CASES: u32 = 96;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 

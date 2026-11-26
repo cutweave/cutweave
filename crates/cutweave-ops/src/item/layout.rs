@@ -443,10 +443,10 @@ impl ItemApplyLayout {
         let fill = self.fill.unwrap_or_default();
         let mut steps = Vec::with_capacity(ids.len());
         for (id, cell) in ids.into_iter().zip(cells) {
-            if cell[2] - cell[0] < 1.0 || cell[3] - cell[1] < 1.0 {
+            if cell[2] - cell[0] <= 0.0 || cell[3] - cell[1] <= 0.0 {
                 return Err(CmdError::invalid(
                     "/gap",
-                    "the gap leaves a cell smaller than one pixel",
+                    "the gap leaves no room for a cell",
                 ));
             }
             let clip = doc

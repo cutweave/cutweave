@@ -640,7 +640,7 @@ mod tests {
         let mut names: Vec<_> = PROJECTS.iter().map(|p| p.name).collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), 8);
+        assert_eq!(names.len(), 9);
     }
 
     #[test]

@@ -377,7 +377,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
         "item.reset_props" => (1, item_reset_props(p)),
-        "item.apply_layout" => (1, item_apply_layout(p)),
+        "item.apply_layout" => (edits.div_ceil(3), item_apply_layout(p)),
         "item.layouts" => (1, item_layouts()),
         "audio.set" => (edits.div_ceil(2), audio_set(p)),
         "audio.set_fade" => (edits.div_ceil(2), audio_set_fade(p)),
@@ -2291,25 +2291,40 @@ fn keyframe_eval(p: &Pools) -> BoxedStrategy<Value> {
 }
 
 fn item_apply_layout(p: &Pools) -> BoxedStrategy<Value> {
-    let ids = p.item_ids();
-    if ids.len() < 2 {
+    // Static video clips of one sequence (an animated property needs `at`): a layout takes two
+    // to four of them.
+    let by_seq: Vec<Vec<ItemId>> = p
+        .seqs
+        .iter()
+        .map(|s| {
+            p.items
+                .iter()
+                .filter(|i| i.seq == *s && i.kind == TrackKind::Video && i.keys.is_empty())
+                .map(|i| i.id)
+                .collect::<Vec<_>>()
+        })
+        .filter(|v| v.len() >= 2)
+        .collect();
+    if by_seq.is_empty() {
         return mix(unknown_item("at"), unknown_item("at"));
     }
-    let n = ids.len();
-    let valid = (
-        subsequence(ids, 2..=n.min(4)),
-        select(vec![
-            "side_by_side",
-            "top_bottom",
-            "pip_top_right",
-            "columns_3",
-            "one_large_two_small",
-            "grid_2x2",
-            "nope",
-        ]),
-        select(vec!["crop", "fit"]),
-        option::of(0.0..=40.0_f64),
-    )
+    let valid = select(by_seq)
+        .prop_flat_map(|items| {
+            let n = items.len().min(4);
+            (2..=n).prop_flat_map(move |count| {
+                let layouts: Vec<&'static str> = match count {
+                    2 => vec!["side_by_side", "top_bottom", "pip_top_right"],
+                    3 => vec!["columns_3", "one_large_two_small"],
+                    _ => vec!["grid_2x2"],
+                };
+                (
+                    subsequence(items.clone(), count),
+                    select(layouts),
+                    select(vec!["crop", "fit"]),
+                    option::of(0.0..=40.0_f64),
+                )
+            })
+        })
         .prop_map(|(items, layout, fill, gap)| {
             json!({"items": items, "layout": layout, "fill": fill, "gap": gap})
         })
