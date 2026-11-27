@@ -125,7 +125,9 @@ const lastCall = (name: string) =>
  * when `text` names missing files (other calls, like the preset's resolve, go through).
  */
 function refuseOffline(text: string): void {
-  const answer = call.getMockImplementation();
+  const answer = call.getMockImplementation() as
+    | ((name: string, input: Record<string, unknown>) => Promise<unknown>)
+    | undefined;
   let refused = false;
   call.mockImplementation(async (name: string, input: Record<string, unknown>) => {
     const starts = name === "export.start" || name === "export.enqueue";
