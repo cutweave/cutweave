@@ -141,10 +141,14 @@ impl WsClient {
 
     /// The next JSON message.
     fn next(&mut self) -> Result<Value, BenchError> {
+        self.next_within(WAIT)
+    }
+
+    fn next_within(&mut self, wait: Duration) -> Result<Value, BenchError> {
         let ws = &mut self.ws;
         self.rt.block_on(async {
             loop {
-                let msg = tokio::time::timeout(WAIT, ws.next())
+                let msg = tokio::time::timeout(wait, ws.next())
                     .await
                     .map_err(|_| BenchError::Other("no message from the engine in time".into()))?;
                 match msg {
@@ -173,8 +177,10 @@ impl WsClient {
         }
     }
 
-    /// Calls `method` and returns its result (with `_meta`).
-    pub fn call(&mut self, method: &str, params: &Value) -> Result<Value, BenchError> {
+    /// Sends a request without waiting for its answer and returns its JSON-RPC id: several
+    /// requests can be in flight at once (the crash harness kills the engine under them).
+    /// Read the answers with [`next_message`](Self::next_message).
+    pub fn send(&mut self, method: &str, params: &Value) -> Result<u64, BenchError> {
         let id = self.next_id;
         self.next_id += 1;
         let text =
@@ -183,11 +189,28 @@ impl WsClient {
         self.rt
             .block_on(ws.send(Message::text(text)))
             .map_err(|e| other("send", e))?;
+        Ok(id)
+    }
+
+    /// The next message of the engine, a response or a notification, waiting at most `wait`
+    /// (at most [`WAIT`]). An error once the connection is gone.
+    pub fn next_message(&mut self, wait: Duration) -> Result<Value, BenchError> {
+        let msg = self.next_within(wait.min(WAIT))?;
+        self.note(&msg);
+        Ok(msg)
+    }
+
+    /// Calls `method` and returns its result (with `_meta`).
+    pub fn call(&mut self, method: &str, params: &Value) -> Result<Value, BenchError> {
+        let id = self.send(method, params)?;
         loop {
             let msg = self.next()?;
             if msg.get("id").is_none() {
                 self.note(&msg);
                 continue;
+            }
+            if msg["id"].as_u64() != Some(id) {
+                continue; // the late answer of an earlier `send`
             }
             if let Some(error) = msg.get("error") {
                 return Err(BenchError::command(method, error));
@@ -252,6 +275,9 @@ pub struct ChildEngine {
     /// Its port.
     pub port: u16,
     token: String,
+    mcp_token: String,
+    /// What it prints after the `ready` line; it ends when the process does.
+    lines: Receiver<String>,
     /// From the spawn to the `ready` line.
     pub ready_after: Duration,
 }
@@ -270,6 +296,12 @@ pub struct ChildSpec {
     /// Start it the way the app does (`Gui` mode: the UI token over stdin, the GPU and the
     /// default audio output) instead of `--headless`.
     pub gui: bool,
+    /// `--deterministic-ids SEED` (headless engines only).
+    pub deterministic_ids: Option<u64>,
+    /// Extra environment variables of the process.
+    pub env: Vec<(String, String)>,
+    /// More folders its agents may use (`--allow-root`), besides `scratch`.
+    pub roots: Vec<PathBuf>,
 }
 
 impl ChildEngine {
@@ -295,6 +327,13 @@ impl ChildEngine {
         }
         if spec.stub_media {
             cmd.arg("--dev-stub-media");
+        }
+        if let Some(seed) = spec.deterministic_ids {
+            cmd.arg("--deterministic-ids").arg(seed.to_string());
+        }
+        cmd.envs(spec.env.iter().map(|(k, v)| (k, v)));
+        for root in &spec.roots {
+            cmd.arg("--allow-root").arg(root);
         }
         let mut child = cmd
             .stdin(Stdio::piped())
@@ -324,9 +363,9 @@ impl ChildEngine {
         let lines = child.stdout.take().map(stdout_lines);
         let ready = lines
             .ok_or_else(|| BenchError::Other("the engine has no stdout".into()))
-            .and_then(|lines| wait_ready(&lines));
-        let port = match ready {
-            Ok(port) => port,
+            .and_then(|lines| wait_ready(&lines).map(|port| (port, lines)));
+        let (port, lines) = match ready {
+            Ok(ready) => ready,
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -335,22 +374,72 @@ impl ChildEngine {
         };
         let ready_after = began.elapsed();
         let pid = child.id();
-        let token = RunFile::discover(&run_dir)
+        let tokens = RunFile::discover(&run_dir)
             .into_iter()
             .find(|f| f.pid == pid)
-            .and_then(|f| f.agent_tokens.into_iter().find(|t| t.label == "cli"))
-            .map(|t| t.token);
+            .map_or_else(Vec::new, |f| f.agent_tokens);
+        let token = |label: &str| {
+            tokens
+                .iter()
+                .find(|t| t.label == label)
+                .map(|t| t.token.clone())
+        };
+        let (cli, mcp) = (token("cli"), token("mcp"));
         let mut engine = ChildEngine {
             child,
             _stdin: stdin,
             port,
             token: String::new(),
+            mcp_token: mcp.unwrap_or_default(),
+            lines,
             ready_after,
         };
         // On an error the drop above kills the process.
         engine.token =
-            token.ok_or_else(|| BenchError::Other("the engine wrote no run-file".into()))?;
+            cli.ok_or_else(|| BenchError::Other("the engine wrote no run-file".into()))?;
         Ok(engine)
+    }
+
+    /// The process id.
+    #[must_use]
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    /// The `cli` agent's token (`/rpc`).
+    #[must_use]
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    /// The `mcp` agent's token (`/mcp`); empty when the run-file named none.
+    #[must_use]
+    pub fn mcp_token(&self) -> &str {
+        &self.mcp_token
+    }
+
+    /// Kills the process now (`TerminateProcess` / `SIGKILL`: none of its cleanup runs) and
+    /// reaps it.
+    pub fn kill(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+
+    /// Waits at most `wait` for the process to end by itself (its stdout closes) and reaps
+    /// it. `false`: it is still running.
+    pub fn wait_exit(&mut self, wait: Duration) -> bool {
+        let deadline = Instant::now() + wait;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.lines.recv_timeout(left) {
+                Ok(_) => {}
+                Err(mpsc::RecvTimeoutError::Timeout) => return false,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    let _ = self.child.wait();
+                    return true;
+                }
+            }
+        }
     }
 
     /// A WebSocket client of this engine.

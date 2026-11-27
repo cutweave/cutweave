@@ -55,6 +55,36 @@ The rest (`command_rtt_in_process_*`, `doc_patched_fanout_*`, `placement_ripple_
 
 The same probes run at smoke scale as an ordinary test (`crates/cutweave-bench/tests/smoke.rs`, a few seconds, no GPU), so a change that breaks the suite fails `just check-affected`.
 
+## Crash harness (WP-2J.05)
+
+```
+cargo run -p cutweave-bench -- crash --count 20 --seed 7      # 20 forced crashes, about 20 s
+cargo run -p cutweave-bench -- crash --self-test              # the harness must catch a lost edit
+cargo run -p cutweave-bench -- crash --points save,torn-tail --count 6 --seed 7
+```
+
+It starts a real engine process on a seeded project (a debug build, so that the engine's `CUTWEAVE_TEST_CRASH_AFTER` works) and makes it work as the app and an agent do at once: the editor's commands pipelined over `/rpc` (trims, ripple trims, splits, speed, audio, moves, keyframes, markers, sequences, imports, checkpoints, undo and redo, drags, saves) and an agent's tool calls over `/mcp`. Then it kills the engine, starts it again on the project, lets it recover and checks the result. A second engine, the reference, is never killed and gets exactly the commands the first one acknowledged, in the order of their revisions.
+
+| Point | The engine dies |
+|---|---|
+| `edit` | with pipelined editor commands and an agent call in flight |
+| `commit-abort` | by itself right after its Nth commit, before the reply leaves (`CUTWEAVE_TEST_CRASH_AFTER`) |
+| `save` | while `project.save` runs, with edits around it |
+| `autosave` | when autosave is due, 2 s after the last edit |
+| `drag` | with a gesture open and live updates in it |
+| `drag-commit` | with the drag's commit in flight |
+| `torn-tail` | after an acknowledged edit; the journal's last record is then cut short, as a torn write |
+| `recover` | with edits in flight, and again while `project.recover` replays the journal |
+| `import` | while `media.import` registers a file |
+| `queue` | after the export queue's pause changed |
+| `export`, `proxy` | `--with-media` only: while a queued export is encoded, while a proxy is made |
+
+A run takes every point once in a seeded order, then again. After each crash: the project opens writable (the dead engine's lock is taken over) and recovers; the recovered document is at least at the last acknowledged revision; the commands that were in flight are sent again under their request ids, and the document then equals the reference's (compared by structure, ids aside), so nothing acknowledged is lost and nothing is half applied; the checkpoints and the export queue's pause are the acknowledged ones; the document on disk is a readable project file and a save leaves no temporary file. A run ends with a save, a kill and a start that must find nothing to recover. It prints a table per point and per crash and exits 1 on the first failure, with the command to repeat it. The seed fixes the work, the crash points and the delay before each kill; where a kill lands inside the engine is up to the operating system.
+
+`--with-media` runs the full engine (build with `--features ffmpeg`, FFmpeg bundle, GPU: use `python scripts/gpu-lock.py -- …`) on a project whose source files are made first, and adds the two points that need real jobs. After `export` both queued exports must still be queued in order and finish with their files and no partial file; after `proxy` the proxy's state must be sane and making it again must finish.
+
+One crash at every point, and the self-test, run as ordinary tests (`crates/cutweave-bench/tests/crash.rs`, about 10 s, no GPU), so a change that breaks recovery or the harness fails `just check-affected`. Not covered here: GPU device loss (the engine has no way to inject it), recording (not built yet), power loss, and the Electron side (`apps/desktop/e2e/m1/m1-crash.spec.ts` kills the engine and the app under the UI).
+
 ## Adding a metric
 
 1. Add the budget row (or reuse the §19 id) in `budgets.toml`; keep §19 in sync if a §19 row changes.
