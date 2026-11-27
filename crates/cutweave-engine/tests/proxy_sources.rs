@@ -10,6 +10,7 @@
 //!   (`proxy`); off, the same frame is decoded from the original.
 //! - **The resolution rule:** a preview that draws the clip larger than its proxy shows the
 //!   original.
+//! - **The choice outlives the project:** the playback of the next project opens with it.
 //! - **Hot swap and fallback:** a proxy that becomes ready while its file is open is used from
 //!   the next seek; a deleted (or evicted) proxy falls back to the original at the next seek.
 //!
@@ -415,6 +416,21 @@ fn the_toggle_turns_the_previews_proxies_off_and_a_new_or_deleted_proxy_swaps_at
     let shown = r.show(SEC / 3);
     assert_eq!(shown["proxy"], json!(false), "{shown}");
     assert_eq!(shown["use_proxies"], json!(true));
+
+    // The choice is this computer's, not the project's: the next project (the untitled one
+    // that follows a close, with its own playback) opens with it.
+    call(
+        &r.ui,
+        "view.set_preview_quality",
+        json!({ "use_proxies": false }),
+    )
+    .unwrap();
+    let closed = call(&r.ui, "project.close", json!({ "save": false })).unwrap();
+    assert_eq!(closed["project"]["rev"], json!(0), "a new document: {closed}");
+    let state = eventually("the new project's playback", || {
+        call(&r.ui, "view.set_preview_quality", json!({})).ok()
+    });
+    assert_eq!(state["use_proxies"], json!(false), "{state}");
     drop((r.ui, r.agent));
     r.engine.shutdown();
 }

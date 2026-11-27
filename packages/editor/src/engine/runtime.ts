@@ -297,7 +297,10 @@ export function startEngineRuntime(
       });
       stores.playback.getState().applyState(state);
     } catch (error) {
-      if (!(error instanceof RpcError && error.code === "not_found")) onError(error);
+      // No transport (an engine without playback, or no document yet): nothing to set.
+      const quiet =
+        error instanceof RpcError && (error.code === "not_found" || error.code === "unsupported");
+      if (!quiet) onError(error);
     }
   }
 
