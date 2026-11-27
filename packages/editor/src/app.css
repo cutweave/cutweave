@@ -339,6 +339,8 @@ body {
   gap: var(--space-1);
 }
 .cw-media__card {
+  /* The grid places a card's rating over its picture (`.cw-media__marks`). */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -519,9 +521,6 @@ body {
 }
 /* Tags and the rating on a card (WP-2F.06b). The list has room for both at the end of the row;
    the grid shows only a rating, over a corner of the picture, so every card keeps its height. */
-.cw-media__card {
-  position: relative;
-}
 .cw-media__marks {
   display: flex;
   align-items: center;

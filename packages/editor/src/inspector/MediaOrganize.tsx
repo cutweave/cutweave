@@ -23,7 +23,6 @@ function NoteField({ media }: { readonly media: MediaAsset }) {
   // What is typed and not yet committed; `null`: the field shows the stored note.
   const [draft, setDraft] = useState<string | null>(null);
   // Another asset, or the note changed under the field (undo, an agent): show what is stored.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the stored note is the trigger
   useEffect(() => setDraft(null), [media.id, stored]);
   const text = draft ?? stored ?? "";
   const count = charCount(text.trim());

@@ -77,7 +77,6 @@ export function RatingStars({
   };
 
   return (
-    // biome-ignore lint/a11y/useSemanticElements: stars are buttons drawn as icons, not form radios
     <div
       ref={root}
       role="radiogroup"
@@ -103,7 +102,7 @@ export function RatingStars({
               className="cw-stars__star"
               onClick={() => set(value === n ? null : n)}
             >
-              <Icon name="star" size="md" />
+              <Icon name="star" size="md" className="cw-stars__icon" />
             </button>
           </Tooltip>
         );

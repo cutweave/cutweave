@@ -1183,12 +1183,12 @@
 .cw-stars__star[data-filled="true"] {
   color: var(--marigold-text);
 }
-.cw-stars__star[data-filled="true"] svg {
-  fill: currentColor;
-}
 .cw-stars__star:disabled {
   color: var(--text-disabled);
   cursor: not-allowed;
+}
+.cw-stars__star[data-filled="true"] > .cw-stars__icon {
+  fill: currentColor;
 }
 
 /* ---------- Progress bar ---------- */

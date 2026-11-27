@@ -236,8 +236,7 @@ export function TagInput({
         </p>
       )}
       {open ? (
-        // biome-ignore lint/a11y/useFocusableInteractive: the combobox keeps the focus and points at the active option
-        <ul
+        <div
           id={listId}
           role="listbox"
           aria-label={suggestionsLabel}
@@ -245,7 +244,7 @@ export function TagInput({
         >
           {suggestions.map((tag, i) => (
             // biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/useFocusableInteractive: the keys are the combobox's (Down, Up, Enter)
-            <li
+            <div
               key={tag}
               id={`${listId}-${i}`}
               role="option"
@@ -256,9 +255,9 @@ export function TagInput({
               onClick={() => add(tag)}
             >
               {tag}
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : null}
     </div>
   );
