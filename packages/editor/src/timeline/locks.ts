@@ -31,17 +31,29 @@ export interface LocksState {
   clear(): void;
 }
 
-function byItemOf(txs: ReadonlyMap<string, HeldItems>): ReadonlyMap<string, string> {
+/**
+ * Who holds which item. `previous` comes back when nothing changed (the person's own gesture
+ * locks clips on every update; the marks follow `byItem`, issue #241).
+ */
+function byItemOf(
+  txs: ReadonlyMap<string, HeldItems>,
+  previous: ReadonlyMap<string, string>,
+): ReadonlyMap<string, string> {
   const out = new Map<string, string>();
   for (const held of txs.values()) {
     if (held.actor === PERSON) continue;
     for (const item of held.items) out.set(item, held.actor);
   }
-  return out;
+  if (out.size !== previous.size) return out;
+  for (const [item, actor] of out) if (previous.get(item) !== actor) return out;
+  return previous;
 }
 
 export function createLocksStore(): StoreApi<LocksState> {
-  const next = (txs: Map<string, HeldItems>) => ({ txs, byItem: byItemOf(txs) });
+  const next = (txs: Map<string, HeldItems>, s: LocksState) => ({
+    txs,
+    byItem: byItemOf(txs, s.byItem),
+  });
   return createStore<LocksState>()((set) => ({
     txs: new Map(),
     byItem: new Map(),
@@ -50,7 +62,7 @@ export function createLocksStore(): StoreApi<LocksState> {
       for (const t of list.transactions) {
         txs.set(t.tx, { actor: t.actor, kind: t.kind, items: t.items });
       }
-      set(next(txs));
+      set((s) => next(txs, s));
     },
     held(activity) {
       set((s) => {
@@ -60,7 +72,7 @@ export function createLocksStore(): StoreApi<LocksState> {
           kind: activity.kind,
           items: activity.items,
         });
-        return next(txs);
+        return next(txs, s);
       });
     },
     released(ended) {
@@ -68,11 +80,11 @@ export function createLocksStore(): StoreApi<LocksState> {
         if (!s.txs.has(ended.tx_id)) return s;
         const txs = new Map(s.txs);
         txs.delete(ended.tx_id);
-        return next(txs);
+        return next(txs, s);
       });
     },
     clear() {
-      set(next(new Map()));
+      set((s) => next(new Map(), s));
     },
   }));
 }

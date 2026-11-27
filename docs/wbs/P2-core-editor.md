@@ -1672,7 +1672,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - A plugin load sends the change notification via the mechanism of each negotiated revision (test clients on 2025-11-25 and 2026-07-28 both receive it); a connection to `/mcp/minimal` never sees `standard` tools.
   - `cutweave_execute` still reaches every command under `minimal`.
 - **Tests:** unit, conformance.
-  - (2026-11-27, ADR-0040, Proposed) If the owner accepts its question 2, this WP also owns the budget of the `described` profile that WP-2I.07 adds (the same tools with parameter descriptions, for clients that defer tool definitions). Change notifications are for real catalog changes only (a plugin loads), never for switching toolsets in a session: that breaks prompt caching, and the 2026-07-28 revision forbids lists that differ per connection.
+  - (2026-11-27, ADR-0040, accepted) This WP also owns the budget of the `described` profile that WP-2I.07 adds (the same tools with parameter descriptions, for clients that defer tool definitions). Change notifications are for real catalog changes only (a plugin loads), never for switching toolsets in a session: that breaks prompt caching, and the 2026-07-28 revision forbids lists that differ per connection.
 - **Out of scope:** per-client auto-profile detection; per-connection profile switching.
 
 ### WP-2I.06 — Scripted-agent e2e: YouTube edit and 9:16 short via MCP only
@@ -1696,9 +1696,9 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 **Epic 2I order after the MCP-at-scale research (2026-11-27).**
 
-The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mcp-at-scale.md) (Proposed) change what the rest of this epic builds against. The remaining work runs in this order, ahead of other Phase 2 work that does not block the exit:
+The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mcp-at-scale.md) (accepted by the product owner on 2026-11-27, yes to all five questions) change what the rest of this epic builds against. The remaining work runs in this order, ahead of other Phase 2 work that does not block the exit:
 
-1. **ADR-0040**: the product owner answers its five questions.
+1. **ADR-0040**: answered on 2026-11-27 (accepted as recommended).
 2. **WP-2I.07** (hints for clients that defer tool definitions). Its first part needs no decision and starts at once.
 3. **WP-2I.09** (the evaluation), so later choices are measured. It can run beside WP-2I.07.
 4. **WP-2I.08** (discovery and concise results), then **WP-2I.05** (profiles, with the described profile) and **WP-2I.04**.
@@ -1707,7 +1707,7 @@ The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mc
 
 ### WP-2I.07 — Ready for tool search: always-loaded tools, the instructions as a map, words a user would say
 - **Area:** crates/cutweave-api (`mcp_core.toml`, `src/mcp/core.rs`, `src/mcp/catalog.rs`, the server instructions), docs/reference/mcp-core-tools.md (generated), docs/01-architecture.md §14
-- **Depends on:** WP-2I.01; ADR-0040 (questions 1 and 2) for the second part only
+- **Depends on:** WP-2I.01; ADR-0040 (questions 1 and 2, accepted) for the second part only
 - **Size:** S
 - **Executor:** sonnet
 - **Scope:**
@@ -1726,7 +1726,7 @@ The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mc
 
 ### WP-2I.08 — Discovery and results that stay small: search detail levels, describe several, concise reads
 - **Area:** crates/cutweave-api (`src/mcp/catalog.rs`, the generic tools), crates/cutweave-ops (`timeline.get`, `media.list` output shaping), docs/reference
-- **Depends on:** WP-2I.01; ADR-0040 (question 5)
+- **Depends on:** WP-2I.01; ADR-0040 (question 5, accepted)
 - **Size:** S
 - **Executor:** sonnet
 - **Scope:**

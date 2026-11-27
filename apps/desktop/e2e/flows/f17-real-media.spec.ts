@@ -5,9 +5,10 @@
 // each file in the background (frame index, thumbnails and filmstrip, waveform). The cards then
 // show real thumbnails, and once two clips are placed the video clip draws a filmstrip and the
 // phone clip's sound (its linked audio clip) a waveform: all checked from the pixels on screen,
-// against the flat placeholder tiles. Then play across the cut and step frame by frame: every
-// step shows its own picture, and stepping back shows the same pictures again (frame-accurate
-// preview from the decoder pool).
+// against the flat placeholder tiles. A drag of the phone clip paced like a hand keeps the app
+// drawing and the clip keeping up (issue #241). Then play across the cut and step frame by frame:
+// every step shows its own picture, and stepping back shows the same pictures again
+// (frame-accurate preview from the decoder pool).
 //
 // Needs an engine built with FFmpeg (`just e2e-flows` builds it when the bundle is set up) and
 // the fetched corpus (`just corpus`); without either the flow skips and says why.
@@ -18,8 +19,11 @@ import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   clipBox,
   createProject,
+  describePacedDrag,
   dropCard,
   editorCaughtUp,
+  expectKeptUp,
+  handPacedDrag,
   hasRealEngine,
   launchFlowApp,
   layout,
@@ -266,6 +270,27 @@ test.describe("F17 real media", () => {
         })
         .toBeLessThan(0.97);
       await snapshot(page, info, "filmstrip and waveform");
+
+      // Drag the phone clip to the right and back, twice, paced like a hand (a move every 16 ms
+      // whether or not the app has caught up), and let go where it began: the timeline keeps
+      // drawing (frame intervals p95 under 50 ms), the clip keeps up (20 updates or more) and
+      // each update comes back promptly (round trips p95 under 100 ms), with real pictures on the
+      // clips and the preview following (issue #241: every update re-rendered the whole window,
+      // about one update a second in the dev build).
+      const phone = placed.tracks
+        .find((t) => t.name === "V1")
+        ?.items.find((i) => Math.abs(i.start - sec(first)) < sec(0.05));
+      if (phone === undefined) throw new Error("the phone clip is not on V1");
+      const grab = clipBox(placed, phone.id);
+      const paced = await handPacedDrag(
+        page,
+        { x: Math.min(grab.x + 40, placed.box.x + placed.box.width - 8), y: grab.y },
+        2 * placed.pxPerSec,
+      );
+      console.info(describePacedDrag(paced));
+      expectKeptUp(paced);
+      await expect.poll(async () => (await layout(page))[0]?.clips[1]?.[0]).toBeCloseTo(first, 1);
+      await editorCaughtUp(page);
 
       // The preview streams the real frames.
       const surface = page.locator(".cw-preview__surface");

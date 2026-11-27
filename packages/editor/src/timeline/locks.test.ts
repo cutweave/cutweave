@@ -42,6 +42,20 @@ describe("locksStore", () => {
     expect(store.getState().txs.size).toBe(1);
   });
 
+  it("keeps the same map while the person's own gesture locks clips (issue #241)", () => {
+    const store = createLocksStore();
+    store.getState().held(activity("tx_1", "agent:claude", ["itm_a"]) as never);
+    const held = store.getState().byItem;
+    // Every update of a drag locks the clips it moves: what the marks show does not change.
+    for (let i = 0; i < 5; i += 1) {
+      store.getState().held(activity("tx_2", "user", ["itm_b", `itm_${i}`]) as never);
+    }
+    store.getState().released(ended("tx_2", "user", ["itm_b"]) as never);
+    expect(store.getState().byItem).toBe(held);
+    store.getState().held(activity("tx_1", "agent:claude", ["itm_a", "itm_c"]) as never);
+    expect(store.getState().byItem).not.toBe(held);
+  });
+
   it("follows the engine: a baseline from edit.locks, then the tx events", async () => {
     const transport = new MockTransport().handle("edit.locks", () => ({
       transactions: [

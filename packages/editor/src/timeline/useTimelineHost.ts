@@ -388,5 +388,9 @@ export function useTimelineHost(): TimelineBinding {
     };
   }, [host]);
 
-  return { host, ui, onPointer, onView, keyTarget, canvasSurface, drop };
+  // One object while nothing in it changes, so the panel's memoized parts skip a render.
+  return useMemo(
+    () => ({ host, ui, onPointer, onView, keyTarget, canvasSurface, drop }),
+    [host, ui, onPointer, onView, keyTarget, canvasSurface, drop],
+  );
 }

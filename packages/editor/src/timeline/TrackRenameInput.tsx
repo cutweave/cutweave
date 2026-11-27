@@ -4,7 +4,7 @@
 // cancels; an empty name is refused with its reason shown beside the field. It keeps the keyboard:
 // key events stop here, so the timeline's keys (S, J/K/L, Delete) never fire while typing.
 import { TextField } from "@cutweave/ui";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { useDocStore } from "../state/docStore.ts";
@@ -85,13 +85,31 @@ function RenameField({
 }
 
 /** Renders nothing until a rename is open and the track's name is on screen. */
-export function TrackRenameInput({ controller }: { readonly controller: TimelineHost }) {
+export const TrackRenameInput = memo(function TrackRenameInput({
+  controller,
+}: {
+  readonly controller: TimelineHost;
+}) {
   const { trackId, reason } = useStore(controller.rename);
+  // No rename open: nothing to follow (a drag on the canvas changes the document every frame).
+  if (trackId === null) return null;
+  return <OpenRename controller={controller} trackId={trackId} reason={reason} />;
+});
+
+function OpenRename({
+  controller,
+  trackId,
+  reason,
+}: {
+  readonly controller: TimelineHost;
+  readonly trackId: string;
+  readonly reason: string | null;
+}) {
   // Follow the lane when the timeline scrolls or the project changes under the input.
   useViewStore((s) => s.scroll);
   useDocStore((s) => s.project);
   const target = controller.renameTarget();
-  const rect = trackId === null ? null : controller.trackNameRect(trackId);
+  const rect = controller.trackNameRect(trackId);
   if (target === null || rect === null) return null;
   return (
     <RenameField

@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The timeline's toolbar (WP-2A.10): the tools, Split, markers and in/out, the snapping and
 // linked-selection toggles, and zoom. Icons with tooltips that name the action and its key from
-// the live keymap; every button goes through the timeline host, as its key does.
+// the live keymap; every button goes through the timeline host, as its key does. Memoized on the
+// few values it shows (issue #241): a drag re-renders the panel around it without redrawing it.
 import type { Tool } from "@cutweave/timeline";
 import { IconButton, type IconName, Toolbar, ToolbarSeparator, Tooltip } from "@cutweave/ui";
-import type { ReactElement } from "react";
+import { memo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
 import { comboText, strokesOf } from "../keymap/store.ts";
 import { TIMELINE_COMMANDS } from "../keymap/timeline.ts";
+import { usePref } from "../prefs/prefsStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import type { TimelineHost, TimelineUi } from "./host.ts";
 
@@ -61,18 +63,23 @@ function Button({
   );
 }
 
-export function TimelineToolbar({
+export const TimelineToolbar = memo(function TimelineToolbar({
   host,
-  ui,
+  tool,
+  linkedSelection,
   live,
 }: {
   readonly host: TimelineHost;
-  readonly ui: TimelineUi;
+  readonly tool: TimelineUi["tool"];
+  readonly linkedSelection: boolean;
   /** An engine sequence is shown: the buttons act. */
   readonly live: boolean;
 }): ReactElement {
   const { t } = useTranslation();
   const snapping = useViewStore((s) => s.snapping);
+  // The tooltips name each action's keys: a rebinding in Settings shows at once.
+  usePref("shortcuts.preset");
+  usePref("shortcuts.bindings");
   const off = !live;
   return (
     <Toolbar aria-label={t("timeline.toolbarLabel")} className="cw-timeline__tools">
@@ -82,7 +89,7 @@ export function TimelineToolbar({
           icon={def.icon}
           label={t(def.label)}
           command={TIMELINE_COMMANDS[`tool.${def.tool}`]}
-          pressed={ui.tool === def.tool}
+          pressed={tool === def.tool}
           disabled={off}
           onClick={() => host.setTool(def.tool)}
         />
@@ -128,7 +135,7 @@ export function TimelineToolbar({
       <Button
         icon="link"
         label={t("timeline.linkedSelection")}
-        pressed={ui.linkedSelection}
+        pressed={linkedSelection}
         disabled={off}
         onClick={() => host.toggleLinkedSelection()}
       />
@@ -159,4 +166,4 @@ export function TimelineToolbar({
       />
     </Toolbar>
   );
-}
+});

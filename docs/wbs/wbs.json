@@ -6907,7 +6907,7 @@
         "A plugin load sends the change notification via the mechanism of each negotiated revision (test clients on 2025-11-25 and 2026-07-28 both receive it); a connection to `/mcp/minimal` never sees `standard` tools.",
         "`cutweave_execute` still reaches every command under `minimal`."
       ],
-      "tests": "unit, conformance.\n- (2026-11-27, ADR-0040, Proposed) If the owner accepts its question 2, this WP also owns the budget of the `described` profile that WP-2I.07 adds (the same tools with parameter descriptions, for clients that defer tool definitions). Change notifications are for real catalog changes only (a plugin loads), never for switching toolsets in a session: that breaks prompt caching, and the 2026-07-28 revision forbids lists that differ per connection.",
+      "tests": "unit, conformance.\n- (2026-11-27, ADR-0040, accepted) This WP also owns the budget of the `described` profile that WP-2I.07 adds (the same tools with parameter descriptions, for clients that defer tool definitions). Change notifications are for real catalog changes only (a plugin loads), never for switching toolsets in a session: that breaks prompt caching, and the 2026-07-28 revision forbids lists that differ per connection.",
       "out_of_scope": "per-client auto-profile detection; per-connection profile switching."
     },
     {
@@ -6951,7 +6951,7 @@
         "Exported files pass the ffprobe checks (duration ±1 frame, 1080×1920 for the short)."
       ],
       "tests": "the WP itself is the test suite.",
-      "out_of_scope": "LLM-in-the-loop evals beyond WP-2I.09's on-demand run (P6).\n\n**Epic 2I order after the MCP-at-scale research (2026-11-27).**\n\nThe research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mcp-at-scale.md) (Proposed) change what the rest of this epic builds against. The remaining work runs in this order, ahead of other Phase 2 work that does not block the exit:\n\n1. **ADR-0040**: the product owner answers its five questions.\n2. **WP-2I.07** (hints for clients that defer tool definitions). Its first part needs no decision and starts at once.\n3. **WP-2I.09** (the evaluation), so later choices are measured. It can run beside WP-2I.07.\n4. **WP-2I.08** (discovery and concise results), then **WP-2I.05** (profiles, with the described profile) and **WP-2I.04**.\n5. **WP-2I.02** (visual tools), then **WP-2I.06** (the scripted run), which now also records the size of what a run costs.\n6. **WP-2I.10** (the command line with a skill in the Agent Kit), when WP-2I.09 can compare it."
+      "out_of_scope": "LLM-in-the-loop evals beyond WP-2I.09's on-demand run (P6).\n\n**Epic 2I order after the MCP-at-scale research (2026-11-27).**\n\nThe research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mcp-at-scale.md) (accepted by the product owner on 2026-11-27, yes to all five questions) change what the rest of this epic builds against. The remaining work runs in this order, ahead of other Phase 2 work that does not block the exit:\n\n1. **ADR-0040**: answered on 2026-11-27 (accepted as recommended).\n2. **WP-2I.07** (hints for clients that defer tool definitions). Its first part needs no decision and starts at once.\n3. **WP-2I.09** (the evaluation), so later choices are measured. It can run beside WP-2I.07.\n4. **WP-2I.08** (discovery and concise results), then **WP-2I.05** (profiles, with the described profile) and **WP-2I.04**.\n5. **WP-2I.02** (visual tools), then **WP-2I.06** (the scripted run), which now also records the size of what a run costs.\n6. **WP-2I.10** (the command line with a skill in the Agent Kit), when WP-2I.09 can compare it."
     },
     {
       "id": "WP-2I.07",
@@ -6966,7 +6966,7 @@
       "size": "S",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "WP-2I.01; ADR-0040 (questions 1 and 2) for the second part only",
+      "depends_raw": "WP-2I.01; ADR-0040 (questions 1 and 2, accepted) for the second part only",
       "depends_wps": [
         "WP-2I.01"
       ],
@@ -6997,7 +6997,7 @@
       "size": "S",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "WP-2I.01; ADR-0040 (question 5)",
+      "depends_raw": "WP-2I.01; ADR-0040 (question 5, accepted)",
       "depends_wps": [
         "WP-2I.01"
       ],

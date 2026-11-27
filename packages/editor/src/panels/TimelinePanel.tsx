@@ -6,7 +6,7 @@ import {
   type ViewState,
 } from "@cutweave/timeline";
 import { Icon, useOwnerWindow } from "@cutweave/ui";
-import { useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import { useMediaLoaders } from "../media/mediaWiring.ts";
@@ -35,9 +35,15 @@ const PLACEHOLDER_TRACKS = [
  * selectors (it follows every `doc.patched`), with the interactions of WP-2A.10: pointer input
  * goes through the timeline state machine and comes back as engine commands. Video clips draw
  * filmstrips and audio clips waveforms through the engine's media endpoints (WP-1I.03); the
- * sequence's markers and in/out show in the ruler and over the lanes (WP-2A.09).
+ * sequence's markers and in/out show in the ruler and over the lanes (WP-2A.09). Memoized, as are
+ * the overlays in it: a drag changes the document every frame, and only what moved draws again
+ * (issue #241).
  */
-function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
+const EngineTimeline = memo(function EngineTimeline({
+  intents,
+}: {
+  readonly intents: TimelineBinding;
+}) {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
   const mediaLoaders = useMediaLoaders();
@@ -113,7 +119,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
       <InUseMarks controller={intents.host} />
     </>
   );
-}
+});
 
 /** The sample track area shown while no engine supplies a sequence. */
 function SampleLanes() {
@@ -162,7 +168,12 @@ export function TimelinePanel() {
       data-state={intents.ui.state}
       onPointerDownCapture={() => void transportController().closeSource()}
     >
-      <TimelineToolbar host={intents.host} ui={intents.ui} live={live} />
+      <TimelineToolbar
+        host={intents.host}
+        tool={intents.ui.tool}
+        linkedSelection={intents.ui.linkedSelection}
+        live={live}
+      />
       <div className="cw-timeline__body" {...(live ? intents.drop : {})}>
         {live ? <EngineTimeline intents={intents} /> : <SampleLanes />}
       </div>
