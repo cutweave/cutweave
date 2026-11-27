@@ -170,7 +170,7 @@ function Shell() {
             <IconButton icon="undo-2" label="Undo" />
             <IconButton icon="redo-2" label="Redo" disabled />
             <ToolbarSeparator />
-            <IconButton icon="save" label="Save" />
+            <IconButton icon="folder-open" label="Open project" />
           </Toolbar>
         </div>
         <span className="label">Launch teaser</span>
