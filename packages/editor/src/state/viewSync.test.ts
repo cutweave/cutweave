@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { MockTransport, RpcClient, type UiState } from "@cutweave/protocol";
+import { type MediaId, MockTransport, RpcClient, type UiState } from "@cutweave/protocol";
 import { describe, expect, it } from "vitest";
 import { createViewStore, initialViewState, panelLayoutFrom, panelLayoutOf } from "./viewStore.ts";
 import { diffView, VIEW_SYNC_DEBOUNCE_MS, ViewSync } from "./viewSync.ts";
@@ -39,6 +39,7 @@ const engineView = (over: Partial<UiState> = {}): UiState => ({
   preview_quality: "full",
   master_gain: null,
   active_sequence: null,
+  source_marks: {},
   ...over,
 });
 
@@ -196,6 +197,7 @@ describe("diffView and panel layout", () => {
       zoom: s.zoom,
       scroll: s.scroll,
       selection: s.selection,
+      sourceMarks: s.sourceMarks,
       panel: { workspaceId: s.workspaceId, aspect: s.aspect, layouts: s.layouts },
     };
     expect(Object.keys(diffView(null, now) ?? {}).sort()).toEqual([
@@ -205,6 +207,60 @@ describe("diffView and panel layout", () => {
       "selection",
     ]);
     expect(diffView(now, { ...now })).toBeNull();
+  });
+
+  it("source marks go to the engine at once, per asset, and a cleared asset as {}", async () => {
+    const a = "m_a" as MediaId;
+    const b = "m_b" as MediaId;
+    const { store, sync, sets, timers } = setup(
+      engineView({ source_marks: { [b]: { in: 10, out: null } } as UiState["source_marks"] }),
+    );
+    await sync.restore();
+    expect(store.getState().sourceMarks).toEqual({ [b]: { in: 10, out: null } });
+    store.getState().setSourceMarks(a, { in: 100, out: 400 });
+    await settle();
+    expect(timers.pending).toBe(0);
+    expect(sets().at(-1)?.params).toEqual({
+      patch: { source_marks: { [a]: { in: 100, out: 400 } } },
+    });
+    store.getState().setSourceMarks(b, null);
+    store.getState().setSourceMarks(a, { in: null, out: 400 });
+    await settle();
+    // The second change came while the first was on its way: it follows after the debounce.
+    timers.advance(VIEW_SYNC_DEBOUNCE_MS);
+    await settle();
+    const sent = sets()
+      .slice(1)
+      .map((r) => (r.params as { patch: { source_marks: unknown } }).patch.source_marks);
+    expect(Object.assign({}, ...sent)).toEqual({ [b]: {}, [a]: { out: 400 } });
+    expect(store.getState().sourceMarks).toEqual({ [a]: { in: null, out: 400 } });
+  });
+
+  it("another project opened: the old marks are dropped, never sent, and its own are read", async () => {
+    const a = "m_a" as MediaId;
+    const b = "m_b" as MediaId;
+    let held: UiState = engineView({
+      source_marks: { [a]: { in: 1, out: 9 } } as UiState["source_marks"],
+    });
+    const transport = new MockTransport()
+      .handle("view.get", () => held)
+      .handle("view.set", () => held);
+    const store = createViewStore();
+    const timers = new FakeTimers();
+    const sync = new ViewSync({ store, rpc: new RpcClient(transport), timers });
+    await sync.restore();
+    expect(store.getState().sourceMarks).toEqual({ [a]: { in: 1, out: 9 } });
+    held = engineView({ source_marks: { [b]: { in: 2, out: null } } as UiState["source_marks"] });
+    transport.emit("project.opened", { name: "Other" });
+    // At once: nothing of the project before is left to send.
+    expect(store.getState().sourceMarks).toEqual({});
+    await settle();
+    expect(store.getState().sourceMarks).toEqual({ [b]: { in: 2, out: null } });
+    timers.advance(5_000);
+    await settle();
+    expect(transport.requests.filter((r) => r.method === "view.set")).toHaveLength(0);
+    transport.emit("project.closed", {});
+    expect(store.getState().sourceMarks).toEqual({});
   });
 
   it("panelLayoutFrom narrows the opaque engine value", () => {

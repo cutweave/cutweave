@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { SelectionRef, UiState } from "@cutweave/protocol";
+import type { MediaId, SelectionRef, SourceMarks, UiState } from "@cutweave/protocol";
 import type { SerializedDockview } from "dockview-react";
 import { useStore } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
@@ -92,13 +92,25 @@ export interface EngineViewState {
   scroll: { x: number; y: number };
   /** Selected entities, in selection order. */
   selection: SelectionRef[];
+  /**
+   * The Source view's in and out marks per media asset (WP-2A.14), flicks in the media's own
+   * time. Only assets with a mark are listed. The engine keeps them with the project's view
+   * state (`ui-state.json`), so they survive a reopen; they are not part of the document.
+   */
+  sourceMarks: SourceMarksMap;
 }
+
+/** The marks of every marked asset, by media id. */
+export type SourceMarksMap = Readonly<Partial<Record<MediaId, SourceMarks>>>;
+
+const NO_MARKS: SourceMarksMap = {};
 
 export const initialEngineView: EngineViewState = {
   playhead: 0,
   zoom: null,
   scroll: { x: 0, y: 0 },
   selection: [],
+  sourceMarks: NO_MARKS,
 };
 
 export interface ViewState extends EngineViewState {
@@ -137,6 +149,8 @@ export interface ViewActions {
   setZoom: (pxPerSec: number | null) => void;
   setScroll: (x: number, y: number) => void;
   setSelection: (selection: SelectionRef[]) => void;
+  /** Replaces the marks of `media`; `null` (or marks with neither end) clears them. */
+  setSourceMarks: (media: MediaId, marks: SourceMarks | null) => void;
   setMasterGain: (gain: number) => void;
   setMuted: (muted: boolean) => void;
   setSafeAreas: (on: boolean) => void;
@@ -275,6 +289,15 @@ export function createViewStore(storage?: StateStorage) {
         setZoom: (zoom) => set(() => ({ zoom })),
         setScroll: (x, y) => set(() => ({ scroll: { x: Math.max(0, x), y: Math.max(0, y) } })),
         setSelection: (selection) => set(() => ({ selection })),
+        setSourceMarks: (media, marks) =>
+          set((s) => {
+            const { [media]: _old, ...rest } = s.sourceMarks;
+            const empty = marks === null || (marks.in == null && marks.out == null);
+            if (empty) return _old === undefined ? {} : { sourceMarks: rest };
+            return {
+              sourceMarks: { ...rest, [media]: { in: marks.in ?? null, out: marks.out ?? null } },
+            };
+          }),
         setMasterGain: (gain) =>
           set(() => (Number.isFinite(gain) ? { masterGain: Math.min(4, Math.max(0, gain)) } : {})),
         setMuted: (muted) => set(() => ({ muted })),
@@ -289,6 +312,9 @@ export function createViewStore(storage?: StateStorage) {
             }
             if (ui.selection !== undefined) next.selection = ui.selection;
             if (typeof ui.master_gain === "number") next.masterGain = ui.master_gain;
+            if (typeof ui.source_marks === "object" && ui.source_marks !== null) {
+              next.sourceMarks = ui.source_marks;
+            }
             const layout = panelLayoutFrom(ui.panel_layout);
             if (layout !== null) {
               Object.assign(next, layout, { layoutRevision: s.layoutRevision + 1 });

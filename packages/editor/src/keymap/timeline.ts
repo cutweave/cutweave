@@ -43,6 +43,7 @@ export const EDITOR_COMMANDS = [
   "timeline.add_marker",
   "timeline.mark_in",
   "timeline.mark_out",
+  "timeline.match_frame",
   "track.rename",
 ] as const;
 export type TimelineEditorCommand = (typeof EDITOR_COMMANDS)[number];

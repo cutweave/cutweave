@@ -624,6 +624,15 @@ body {
   background: var(--scrim);
   color: var(--text-primary);
 }
+/* The asset's marked range from the Source view (WP-2A.14): a bar along the picture's foot. */
+.cw-media__range {
+  position: absolute;
+  inset-block-end: 0;
+  height: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--marigold);
+  pointer-events: none;
+}
 /* Hover-scrub (WP-1M.14): the frame under the pointer over the poster, a position line, the time. */
 .cw-media__scrub-canvas {
   position: absolute;
@@ -1632,6 +1641,34 @@ body {
   flex: none;
   gap: var(--space-1);
   color: var(--text-secondary);
+}
+/* The Source view's scrub bar (WP-2A.14): the playhead in the clip and the marked range. */
+.cw-source__scrub {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-top: var(--border-thin) solid var(--border-subtle);
+}
+.cw-source__scrub-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cw-source__range {
+  position: absolute;
+  height: var(--space-2);
+  border-inline: var(--border-thick) solid var(--marigold);
+  border-radius: var(--radius-xs);
+  background: var(--marigold-subtle);
+  pointer-events: none;
+}
+.cw-source__marks {
+  flex: none;
+  color: var(--text-secondary);
+}
+.cw-source__drag {
+  cursor: grab;
 }
 /* The frame is marigold ("here") while a source is shown, so it cannot be taken for the timeline. */
 .cw-preview[data-source="true"] .cw-preview__frame {

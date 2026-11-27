@@ -4,12 +4,13 @@
 // TODO(render.frame): "Copy frame" and "Save frame as…" need `render.frame` in the command
 // catalog and an image clipboard / save dialog in the desktop host; neither exists yet.
 // The grid, center cross and zoom choices are the preview bar's Guides menu (WP-2H.06).
-// TODO(WP-2A.14): the Source view's
-// Insert, Overwrite and marks.
+// The Source view's Insert, Overwrite and marks are WP-2A.14: the marks are view state and the
+// placements are `timeline.insert` and `timeline.overwrite` (source/actions.ts).
 import { PLAYING_QUALITIES, type PlayingQualityChoice } from "@cutweave/preferences";
 import type { TKey } from "../../i18n/index.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { flipArgs, placeArgs } from "../../preview/overlays/placement.ts";
+import { sourceHasMarks } from "../../source/actions.ts";
 import { docStore } from "../../state/docStore.ts";
 import { playbackStore } from "../../state/playbackStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
@@ -17,6 +18,8 @@ import { displayTime } from "../../timeline/prefs.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.ts";
 import { clipFact } from "./facts.ts";
 import { sequenceRate } from "./shared.ts";
+
+const NO_ENGINE = "contextMenu.reason.noEngine" as const;
 
 const playLabel = (): LabelSpec => ({
   key: playbackStore.getState().playing ? "transport.pause" : "transport.play",
@@ -113,9 +116,26 @@ export const PREVIEW_CANVAS: MenuSurfaceDef = {
 export const SOURCE_VIEW: MenuSurfaceDef = {
   id: "source.view",
   name: () => ({ key: "contextMenu.name.sourceView" }),
-  groups: ["play", "navigate", "frame", "copy"],
+  groups: ["play", "place", "marks", "navigate", "frame", "copy"],
   rows: [
     playRow("play", 0),
+    { command: "source.insert", group: "place", order: 0, when: "engine.live", reason: NO_ENGINE },
+    {
+      command: "source.overwrite",
+      group: "place",
+      order: 1,
+      when: "engine.live",
+      reason: NO_ENGINE,
+    },
+    { command: "source.mark_in", group: "marks", order: 0 },
+    { command: "source.mark_out", group: "marks", order: 1 },
+    {
+      command: "source.clear_marks",
+      group: "marks",
+      order: 2,
+      enabledIf: () => sourceHasMarks(),
+      reason: "contextMenu.reason.noMarks",
+    },
     { command: "source.back", group: "navigate", order: 0 },
     addFrameRow("frame", 0),
     {

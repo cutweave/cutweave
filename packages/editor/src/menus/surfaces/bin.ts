@@ -2,7 +2,7 @@
 // The media bin's menus (WP-2H.13): a card (one or several selected), the background and the empty
 // bin, and a filter chip. Rows name commands that exist today; what later work packages add is
 // listed in the TODO below, not stubbed.
-// TODO(WP-2A.14): Overwrite at playhead. TODO(WP-2B.01): New timeline from selection.
+// TODO(WP-2B.01): New timeline from selection.
 // Each work package adds its row to these tables. Add tag… and Set rating ▸ (WP-2F.06b) are on
 // a card, for one or several. Collections (WP-2F.06c): Add to collection ▸ (the manual
 // collections and New collection…) and, while a manual collection is open, Remove from
@@ -89,6 +89,14 @@ export function insertArgsFor(id: string | undefined, at: Placement) {
 }
 
 const insertArgs = (ctx: MenuContext, at: Placement) => insertArgsFor(ctx.ids[0], at);
+
+/** `timeline.overwrite` of the asset at the playhead (WP-2A.14): what is there is cut out. */
+function overwriteArgs(ctx: MenuContext) {
+  const args = insertArgs(ctx, "playhead");
+  if (args === undefined) return undefined;
+  const { overlap: _overlap, ...rest } = args;
+  return rest;
+}
 
 const canInsert = (ctx: MenuContext): boolean => {
   const id = ctx.ids[0];
@@ -313,6 +321,14 @@ export const BIN_CARD: MenuSurfaceDef = {
       enabledIf: canInsert,
       reason: insertReason,
       args: (ctx) => insertArgs(ctx, "playhead"),
+    },
+    {
+      command: "timeline.overwrite",
+      group: "place",
+      order: 0.5,
+      enabledIf: canInsert,
+      reason: insertReason,
+      args: overwriteArgs,
     },
     {
       id: "append",

@@ -12,10 +12,21 @@ import type { DragPayload } from "./folders.ts";
 /** The `dataTransfer` type a card sets (the value is the media ID). */
 export const MEDIA_DRAG_TYPE = "application/x-cutweave-media";
 
+/**
+ * What is dragged to the timeline: a bin card, or the Source view's marked range (WP-2A.14).
+ * `duration` is then the range's length (the drop's ghost shows it).
+ */
+export interface DraggedMedia extends DroppedMedia {
+  /** The part of the media to place (flicks, the media's own time): the Source view's marks. */
+  readonly range?: { readonly sourceIn: number; readonly duration: number };
+  /** `false`: the picture without its sound (the Source view's picture icon). */
+  readonly link?: false;
+}
+
 export interface DragState {
   /** The card being dragged, or `null` when no drag from the bin is under way. */
-  readonly session: DroppedMedia | null;
-  begin(media: DroppedMedia): void;
+  readonly session: DraggedMedia | null;
+  begin(media: DraggedMedia): void;
   end(): void;
 }
 

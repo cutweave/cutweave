@@ -676,8 +676,16 @@
     "source": {
       "back": "Back to the timeline",
       "backHelp": "Source view. Returns the Preview to the timeline.",
-      "insert": "Add the clip to the timeline",
-      "insertHelp": "Source view. Puts the clip on the timeline at the playhead."
+      "insert": "Insert at the playhead",
+      "insertHelp": "Source view. Puts the marked range (the whole clip without marks) on the timeline at the playhead; what is there moves later.",
+      "overwrite": "Overwrite at the playhead",
+      "overwriteHelp": "Source view. Puts the marked range on the timeline at the playhead, over what is there.",
+      "markIn": "Set the source in point",
+      "markInHelp": "Source view. Marks where the part to place starts, at the source's playhead.",
+      "markOut": "Set the source out point",
+      "markOutHelp": "Source view. Marks where the part to place ends, at the source's playhead.",
+      "clearMarks": "Clear the source in and out",
+      "clearMarksHelp": "Source view. Removes both marks of the clip."
     },
     "timeline": {
       "cancel": "Cancel",
@@ -727,7 +735,9 @@
       "toolHand": "Hand tool",
       "toolHandHelp": "Timeline. Drag to scroll the timeline.",
       "toolZoom": "Zoom tool",
-      "toolZoomHelp": "Timeline. Click to zoom in, Alt+click to zoom out, drag to zoom to a range."
+      "toolZoomHelp": "Timeline. Click to zoom in, Alt+click to zoom out, drag to zoom to a range.",
+      "matchFrame": "Match frame",
+      "matchFrameHelp": "Timeline. Opens the clip under the playhead in the Source view at the same frame."
     },
     "preview": {
       "nudgeLeft": "Nudge the picture left",
@@ -980,7 +990,8 @@
       "pause": "Pause {{name}}",
       "used": "Used",
       "usedTipOne": "On a timeline: 1 clip uses it",
-      "usedTipMany": "On a timeline: {{count}} clips use it"
+      "usedTipMany": "On a timeline: {{count}} clips use it",
+      "markedRange": "Marked {{in}} to {{out}}"
     },
     "layout": {
       "label": "Media layout",
@@ -1339,9 +1350,21 @@
       "region": "Source view",
       "timecode": "Source time",
       "back": "Back to timeline",
-      "insert": "Add to the timeline at the playhead",
-      "frameLabel": "Source: {{name}}. Press Enter to add it to the timeline, Esc to go back.",
-      "stills": "Still frames of the source"
+      "insert": "Insert at the playhead",
+      "frameLabel": "Source: {{name}}. Press Enter to insert it at the timeline's playhead, Esc to go back.",
+      "stills": "Still frames of the source",
+      "overwrite": "Overwrite at the playhead",
+      "markIn": "Set in point",
+      "markOut": "Set out point",
+      "clearMarks": "Clear in and out",
+      "dragVideo": "Drag to the timeline: picture only",
+      "dragAudio": "Drag to the timeline: sound only",
+      "scrub": "Source position",
+      "scrubValue": "{{time}}, in {{in}}, out {{out}}",
+      "marksValue": "In {{in}} · Out {{out}} · {{length}}",
+      "nothingToPlace": "The in and out points leave nothing to place. Clear them or set them again.",
+      "shortenedTitle": "Placed a shorter clip",
+      "shortened": "The clip ends where its media ends."
     },
     "reducedTitle": "Reduced preview",
     "reduced": {
@@ -1974,6 +1997,10 @@
       "overwrite": "Overwrite",
       "newTrack": "New track",
       "replace": "Replace clip"
+    },
+    "matchFrame": {
+      "label": "Match frame",
+      "none": "No clip under the playhead"
     }
   },
   "engine": {
@@ -2356,7 +2383,9 @@
       "outAtStart": "The out point cannot be at the very start",
       "trackAtTop": "Already the top track",
       "trackAtBottom": "Already the bottom track",
-      "mainTrackVideo": "Only a video track can be the main track"
+      "mainTrackVideo": "Only a video track can be the main track",
+      "noMarks": "No in or out point is set",
+      "playheadOffClip": "Move the playhead onto a clip"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -2411,7 +2440,8 @@
       "trackSetHeight": "Track height",
       "trackReorder": "Move track",
       "timelineUpdateMarker": "Edit marker",
-      "itemSetLabelColor": "Color label"
+      "itemSetLabelColor": "Color label",
+      "timelineOverwrite": "Overwrite at playhead"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",

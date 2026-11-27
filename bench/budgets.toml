@@ -84,6 +84,23 @@ value = 1536
 unit = "MB"
 machine_scope = ["any"]
 
+# Not §19 rows: limits a work package sets for a metric of its own (`cargo bench -p cutweave-bench`).
+[[wp]]
+id = "timeline_get_p400_ms"
+metric = "timeline.get summary (depth 1) of the 1-hour, 400-item project, p95 (WP-2J.01)"
+op = "<"
+value = 30
+unit = "ms"
+machine_scope = ["any"]
+
+[[wp]]
+id = "app_start_engine_ms"
+metric = "Engine process start to an editable empty project: the engine's share of app_start_ms (WP-2J.01)"
+op = "<"
+value = 2500
+unit = "ms"
+machine_scope = ["any"]
+
 # Not a §19 row: budget for the synthetic metric emitted by `cargo xtask bench --suite smoke`,
 # so the harness can be exercised end to end before real benchmarks exist (P2).
 [[synthetic]]

@@ -5,8 +5,8 @@
 // that exists; a row for a command nobody has registered is left out, so a feature WP only adds
 // its row. Issue #222 added the clip's Color label (`item.set_label_color`) and the marker's
 // Edit… and Convert to chapter (`timeline.update_marker`). Not here yet, for want of a command:
-// Detach audio (`audio.extract`), Group, Compound clip, Match frame. TODO(WP-2C.05): the
-// keyframe menu.
+// Detach audio (`audio.extract`), Group, Compound clip. Match frame (WP-2A.14) opens the clip
+// under the playhead in the Source view. TODO(WP-2C.05): the keyframe menu.
 import type { MarkerId } from "@cutweave/protocol";
 import { formatTimecode } from "@cutweave/timeline";
 import { canSwap, visualClipIds } from "../../layout/actions.ts";
@@ -14,8 +14,10 @@ import { LAYOUT_NAMES } from "../../layout/names.ts";
 import { LAYOUTS } from "../../layout/table.ts";
 import { isMovingPicture } from "../../media/kinds.ts";
 import { activeDocument } from "../../shell/windows.ts";
+import { matchFrameAt } from "../../source/matchFrame.ts";
 import { docStore } from "../../state/docStore.ts";
 import { selectInOut } from "../../state/selectors.ts";
+import { viewStore } from "../../state/viewStore.ts";
 import { activeTimelineHost } from "../../timeline/activeHost.ts";
 import { attributesSource, hasClipboardItems } from "../../timeline/clipboard.ts";
 import { onePerGroup, withPartners } from "../../timeline/groups.ts";
@@ -500,10 +502,18 @@ const clipRows: readonly MenuRow[] = [
     reason: "contextMenu.reason.oneClip",
   },
   {
+    command: "timeline.match_frame",
+    group: "reveal",
+    order: 1,
+    enabledIf: (ctx) =>
+      matchFrameAt(docStore.getState().project, viewStore.getState().playhead, ctx.ids) !== null,
+    reason: "contextMenu.reason.playheadOffClip",
+  },
+  {
     id: "copy-path",
     command: "host.copy_text",
     group: "reveal",
-    order: 1,
+    order: 2,
     label: { key: "contextMenu.item.copyPath" },
     enabledIf: (ctx) => pathOfClip(ctx) !== null,
     reason: "contextMenu.reason.noFile",

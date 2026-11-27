@@ -1,186 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Benchmark harness skeleton (WP-0I.03): result schema types, budget comparator, `bench` and `bench-check`.
+//! Benchmark harness (WP-0I.03): `bench` and `bench-check`.
 //!
-//! Budgets live in `bench/budgets.toml`, results follow `bench/result.schema.json`. The only suite today
-//! is `smoke` (a synthetic metric); real suites arrive in P2 and add their metrics under budget ids.
+//! Budgets live in `bench/budgets.toml`, results follow `bench/result.schema.json`; the result
+//! types and the budget comparison are `cutweave_bench::result`, shared with the engine suite
+//! (`cargo bench -p cutweave-bench`, WP-2J.01). The only suite here is `smoke` (a synthetic
+//! metric that exercises the harness end to end).
 
-use serde::{Deserialize, Serialize};
+use cutweave_bench::result::{BenchResult, Budgets, Metric, check};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
-
-/// A baseline comparison fails when a metric is worse by more than this fraction.
-const BASELINE_TOLERANCE: f64 = 0.10;
-
-/// Comparison operator of a budget: the *measured value* must satisfy `value <op> budget`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum Op {
-    #[serde(rename = "<")]
-    Lt,
-    #[serde(rename = "<=")]
-    Le,
-    #[serde(rename = ">=")]
-    Ge,
-    #[serde(rename = ">")]
-    Gt,
-}
-
-impl Op {
-    fn holds(self, value: f64, budget: f64) -> bool {
-        match self {
-            Op::Lt => value < budget,
-            Op::Le => value <= budget,
-            Op::Ge => value >= budget,
-            Op::Gt => value > budget,
-        }
-    }
-    fn lower_is_better(self) -> bool {
-        matches!(self, Op::Lt | Op::Le)
-    }
-    fn symbol(self) -> &'static str {
-        match self {
-            Op::Lt => "<",
-            Op::Le => "<=",
-            Op::Ge => ">=",
-            Op::Gt => ">",
-        }
-    }
-}
-
-/// One budget row.
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)] // `metric` is documentation for humans and the dashboards in 2J
-pub struct Budget {
-    pub id: String,
-    pub metric: String,
-    pub op: Op,
-    pub value: f64,
-    pub unit: String,
-    pub machine_scope: Vec<String>,
-}
-
-/// `bench/budgets.toml`.
-#[derive(Debug, Deserialize)]
-pub struct Budgets {
-    pub budget: Vec<Budget>,
-    #[serde(default)]
-    pub synthetic: Vec<Budget>,
-}
-
-impl Budgets {
-    fn all(&self) -> impl Iterator<Item = &Budget> {
-        self.budget.iter().chain(&self.synthetic)
-    }
-}
-
-/// Toolchain versions recorded with a result.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Toolchain {
-    pub rustc: Option<String>,
-    pub ffmpeg: Option<String>,
-    pub wgpu: Option<String>,
-    pub electron: Option<String>,
-}
-
-/// One measured metric.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Metric {
-    pub id: String,
-    pub value: f64,
-    pub unit: String,
-    pub samples: u32,
-}
-
-/// A benchmark run (`bench/result.schema.json`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BenchResult {
-    pub machine: String,
-    pub commit: String,
-    pub date: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub suite: Option<String>,
-    pub toolchain: Toolchain,
-    pub metrics: Vec<Metric>,
-}
-
-/// Outcome of comparing a result with the budgets (and optionally a baseline).
-#[derive(Debug, Default, PartialEq)]
-pub struct Report {
-    pub failures: Vec<String>,
-    pub notes: Vec<String>,
-}
-
-impl Report {
-    /// True when nothing failed.
-    pub fn ok(&self) -> bool {
-        self.failures.is_empty()
-    }
-}
-
-/// Compare `result` with `budgets`; metrics with no budget row are informational.
-pub fn check(budgets: &Budgets, result: &BenchResult, baseline: Option<&BenchResult>) -> Report {
-    let mut r = Report::default();
-    for m in &result.metrics {
-        let Some(b) = budgets.all().find(|b| b.id == m.id) else {
-            r.notes.push(format!("{}: no budget (informational)", m.id));
-            continue;
-        };
-        if b.machine_scope
-            .iter()
-            .all(|s| s != "any" && *s != result.machine)
-        {
-            r.notes.push(format!(
-                "{}: skipped (budget scoped to {:?}, machine is {})",
-                m.id, b.machine_scope, result.machine
-            ));
-            continue;
-        }
-        if m.unit != b.unit {
-            r.failures.push(format!(
-                "{}: unit `{}` but the budget is in `{}`",
-                m.id, m.unit, b.unit
-            ));
-            continue;
-        }
-        if b.op.holds(m.value, b.value) {
-            r.notes.push(format!(
-                "{}: ok ({} {} {} {})",
-                m.id,
-                m.value,
-                b.op.symbol(),
-                b.value,
-                b.unit
-            ));
-        } else {
-            r.failures.push(format!(
-                "{}: {} {} violates budget (need {} {} {})",
-                m.id,
-                m.value,
-                b.unit,
-                b.op.symbol(),
-                b.value,
-                b.unit
-            ));
-        }
-        let base = baseline.and_then(|bl| bl.metrics.iter().find(|x| x.id == m.id));
-        if let Some(base) = base {
-            let worse = if b.op.lower_is_better() {
-                m.value > base.value * (1.0 + BASELINE_TOLERANCE)
-            } else {
-                m.value < base.value * (1.0 - BASELINE_TOLERANCE)
-            };
-            if worse {
-                r.failures.push(format!(
-                    "{}: regressed more than 10% vs baseline ({} -> {} {})",
-                    m.id, base.value, m.value, m.unit
-                ));
-            }
-        }
-    }
-    r
-}
+use std::time::Instant;
 
 fn read_json<T: for<'de> Deserialize<'de>>(p: &Path) -> Result<T, String> {
     let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -188,35 +19,7 @@ fn read_json<T: for<'de> Deserialize<'de>>(p: &Path) -> Result<T, String> {
 }
 
 fn load_budgets(root: &Path) -> Result<Budgets, String> {
-    let p = root.join("bench").join("budgets.toml");
-    let text = fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
-    toml::from_str(&text).map_err(|e| format!("{}: {e}", p.display()))
-}
-
-/// UTC `YYYY-MM-DD` for a unix timestamp (civil-from-days, no calendar dependency).
-fn iso_date(secs: u64) -> String {
-    let z = i64::try_from(secs / 86_400).unwrap_or(0) + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-fn tool_version(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new(cmd).args(args).output().ok()?;
-    out.status.success().then(|| {
-        String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_owned()
-    })
+    Budgets::load(root)
 }
 
 /// Fixed hashing workload; its wall time in ms is the synthetic smoke metric.
@@ -259,31 +62,7 @@ pub fn bench(root: &Path, args: &[String]) -> bool {
                 other => return Err(format!("unknown option `{other}`")),
             }
         }
-        let secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
-        let result = BenchResult {
-            machine: std::env::var("CUTWEAVE_BENCH_MACHINE").unwrap_or_else(|_| "local".into()),
-            commit: Command::new("git")
-                .args(["rev-parse", "HEAD"])
-                .current_dir(root)
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map_or_else(
-                    || "unknown".into(),
-                    |o| String::from_utf8_lossy(&o.stdout).trim().to_owned(),
-                ),
-            date: iso_date(secs),
-            toolchain: Toolchain {
-                rustc: tool_version("rustc", &["--version"]),
-                ffmpeg: tool_version("ffmpeg", &["-version"]),
-                wgpu: None,
-                electron: None,
-            },
-            metrics: run_suite(&suite, synthetic)?,
-            suite: Some(suite),
-        };
+        let result = BenchResult::now(root, &suite, run_suite(&suite, synthetic)?);
         let json = serde_json::to_string_pretty(&result).map_err(|e| e.to_string())?;
         fs::write(&out, json + "\n").map_err(|e| format!("{}: {e}", out.display()))?;
         println!(
@@ -333,6 +112,7 @@ pub fn bench_check(root: &Path, args: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cutweave_bench::result::{Op, Toolchain, iso_date};
     use serde_json::Value;
 
     fn budgets() -> Budgets {

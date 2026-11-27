@@ -124,7 +124,23 @@
     },
     {
       "command": "source.insert",
-      "keys": ["Enter"]
+      "keys": [",", "Enter"]
+    },
+    {
+      "command": "source.overwrite",
+      "keys": ["."]
+    },
+    {
+      "command": "source.mark_in",
+      "keys": ["I"]
+    },
+    {
+      "command": "source.mark_out",
+      "keys": ["O"]
+    },
+    {
+      "command": "source.clear_marks",
+      "keys": ["Alt+X"]
     },
     {
       "command": "clip.split",
@@ -181,6 +197,10 @@
     {
       "command": "timeline.mark_out",
       "keys": ["O"]
+    },
+    {
+      "command": "timeline.match_frame",
+      "keys": ["F"]
     },
     {
       "command": "timeline.tool.select",

@@ -374,6 +374,90 @@ fn from_json_tolerates_damage_and_keeps_unknown_keys() {
     assert!(w[0].contains("newer"));
 }
 
+#[test]
+fn source_marks_merge_per_asset_and_validate() {
+    let (doc, ids) = fixture();
+    let registry = registry();
+    let mut ctx = ViewCtx::new(doc.clone());
+    let media = ids.media.to_string();
+    let set = |ctx: &mut ViewCtx, marks: Value| {
+        call(
+            &registry,
+            ctx,
+            "view.set",
+            json!({"patch": {"source_marks": {media.clone(): marks}}}),
+        )
+    };
+    // In and out, as flicks or seconds text.
+    let s = set(&mut ctx, json!({"in": "2s", "out": secs(5)})).unwrap();
+    let marks = s.source_marks[&ids.media];
+    assert_eq!(
+        (marks.mark_in, marks.mark_out),
+        (Some(secs(2)), Some(secs(5)))
+    );
+    assert_eq!(
+        ctx.to_json()["source_marks"][&media],
+        json!({"in": secs(2), "out": secs(5)})
+    );
+    // An entry replaces the asset's marks: only an in mark is left.
+    let s = set(&mut ctx, json!({"in": secs(1)})).unwrap();
+    assert_eq!(s.source_marks[&ids.media].mark_out, None);
+    // Other fields of the patch leave the marks alone.
+    let s = call(
+        &registry,
+        &mut ctx,
+        "view.set",
+        json!({"patch": {"zoom": 12.0}}),
+    )
+    .unwrap();
+    assert_eq!(s.source_marks.len(), 1);
+    // Refused: reversed, negative, an out at 0, an unknown asset. Nothing changes.
+    for bad in [
+        json!({"in": secs(5), "out": secs(5)}),
+        json!({"in": secs(5), "out": secs(2)}),
+        json!({"in": -1}),
+        json!({"out": 0}),
+    ] {
+        let err = set(&mut ctx, bad).unwrap_err();
+        assert!(matches!(err, CmdError::Invalid { .. }), "{err:?}");
+    }
+    let gone = MediaId::from_u128(0x77).to_string();
+    let err = call(
+        &registry,
+        &mut ctx,
+        "view.set",
+        json!({"patch": {"source_marks": {gone: {"in": 0}}}}),
+    )
+    .unwrap_err();
+    assert!(matches!(err, CmdError::NotFound { .. }), "{err:?}");
+    assert_eq!(ctx.state().source_marks[&ids.media].mark_in, Some(secs(1)));
+    // The file round-trips; marks of an asset that is gone are dropped on load and on set_doc.
+    let file = ctx.to_json();
+    let (back, warnings) = ViewCtx::from_json(&file, doc.clone());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(back.state(), ctx.state());
+    let mut smaller = doc.clone();
+    smaller.media.remove(&ids.media);
+    let (back, _) = ViewCtx::from_json(&file, smaller.clone());
+    assert!(back.state().source_marks.is_empty());
+    ctx.take_event();
+    assert!(ctx.set_doc(&smaller));
+    assert!(ctx.state().source_marks.is_empty());
+    // An empty entry clears.
+    let mut ctx = ViewCtx::new(doc);
+    set(&mut ctx, json!({"out": secs(3)})).unwrap();
+    let s = set(&mut ctx, json!({})).unwrap();
+    assert!(s.source_marks.is_empty());
+    // A damaged file keeps the good entries.
+    let (doc, _) = fixture();
+    let damaged = json!({"source_marks": {
+        media.clone(): {"in": secs(4), "out": secs(1)},
+        "nonsense": {"in": 0},
+    }});
+    let (ctx, _) = ViewCtx::from_json(&damaged, doc);
+    assert!(ctx.state().source_marks.is_empty());
+}
+
 fn arb_patch(ids: [ItemId; 2]) -> impl Strategy<Value = ViewPatch> {
     (
         proptest::option::of(0i64..1_000_000_000_000),
@@ -401,6 +485,7 @@ fn arb_patch(ids: [ItemId; 2]) -> impl Strategy<Value = ViewPatch> {
             }),
             master_gain: g,
             active_sequence: None,
+            source_marks: None,
         })
 }
 

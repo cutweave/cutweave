@@ -653,6 +653,9 @@ The Source view turns marks into `timeline.insert`/`timeline.overwrite` params w
 
 - **INV-291** The duration never reads past the media: it is shortened to the media remainder when needed, and the function reports `shortened: true`.
 - **INV-292** A source out at or before the source in is `Invalid`; a still without marks lasts 5 s (INV-25).
+- **INV-293** **Source marks are view state** (WP-2A.14): `view.set{source_marks: {<media id>: {in, out}}}` keeps them per media asset in `ui-state.json`, so they survive a reopen. They are positions in the media's own time: `in >= 0`, `out` exclusive and after `in` (after 0 without one). An entry replaces that asset's marks and an entry with neither clears them; marks of a removed asset are dropped. Setting or clearing a mark never changes the document: it is not undoable and not journaled.
+- **INV-294** **Insert** from the Source view is one `timeline.insert{at, source_in, duration, mode: "insert"}` on the target track (the selected track that takes the media, else the first unlocked one): what is under `at` is split and moves later (§4.1). **Overwrite** is one `timeline.overwrite{at, source_in, duration}`. Each is one transaction and one undo step, and the same call from the CLI or MCP makes the same item. The engine snaps `at` and `duration` to the sequence's frames (INV-24); `source_in` is a media position and is not snapped.
+- **INV-295** **Match frame** on a clip under the playhead `p` shows its media in the Source view at `source_in + (p − start) × speed` (from the range's end backwards when reversed; `source_in` for a freeze frame) and sets the source marks to the part of the media the clip plays, `[source_in, source_in + duration × speed)`. Of several clips under the playhead a selected one wins, then the topmost picture, then sound.
 
 ## 5. Gestures and soft locks
 

@@ -42,6 +42,7 @@ import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
 import { projectController } from "../../session/useProject.ts";
 import { openSettings } from "../../settings/settingsStore.ts";
+import { clearMarks, matchFrame, placeShownSource, setSourceMark } from "../../source/actions.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
@@ -520,6 +521,50 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     label: "preview.source.back",
     icon: "arrow-left",
     run: async () => transportController().closeSource(),
+  },
+  // The Source view's marks and three-point edits (WP-2A.14): the marks are view state
+  // (`view.set{source_marks}`), the placements `timeline.insert` and `timeline.overwrite`.
+  {
+    id: "source.insert",
+    label: "preview.source.insert",
+    icon: "plus",
+    run: async () => {
+      await placeShownSource("insert");
+    },
+  },
+  {
+    id: "source.overwrite",
+    label: "preview.source.overwrite",
+    icon: "layers",
+    run: async () => {
+      await placeShownSource("overwrite");
+    },
+  },
+  {
+    id: "source.mark_in",
+    label: "preview.source.markIn",
+    icon: "mark-in",
+    run: () => void setSourceMark("in"),
+  },
+  {
+    id: "source.mark_out",
+    label: "preview.source.markOut",
+    icon: "mark-out",
+    run: () => void setSourceMark("out"),
+  },
+  {
+    id: "source.clear_marks",
+    label: "preview.source.clearMarks",
+    icon: "x",
+    run: () => void clearMarks(),
+  },
+  {
+    id: "timeline.match_frame",
+    label: "timeline.matchFrame.label",
+    icon: "film",
+    run: async () => {
+      await matchFrame();
+    },
   },
 
   // ---- the timeline -------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import { registerTimelineCanvas } from "../menus/timelineSurface.ts";
 import { prefsStore } from "../prefs/prefsStore.ts";
 import { isHTMLElement } from "../shell/realm.ts";
 import { forEveryWindow, framesOf } from "../shell/windows.ts";
+import { matchFrame } from "../source/actions.ts";
 import { docStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { toastStore } from "../state/toastStore.ts";
@@ -130,6 +131,7 @@ export function useTimelineHost(): TimelineBinding {
         // Settings > Editing and Settings > Timeline (WP-2A.13).
         prefs: () => machinePrefs(prefsStore.getState().values),
         linkAv: () => prefsStore.getState().values["editing.link_av"],
+        matchFrame: () => void matchFrame(),
         newTrackHeight: () =>
           newTrackHeight(prefsStore.getState().values["timeline.track_height"], surface.current),
       }),

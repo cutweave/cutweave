@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Mirrors the persisted part of `viewStore` to the engine (`view.set`, debounced) and restores
-// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout. The preview
+// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout, and the Source
+// view's marks (WP-2A.14, sent at once: a mark is a deliberate act and must survive a quit). The preview
 // quality is a preference, not part of it (WP-2H.10). `view.*` commands never touch the document
 // and are not undoable.
 
-import type { RpcClient, SelectionRef, UiState, ViewPatch } from "@cutweave/protocol";
+import type { MediaId, RpcClient, SelectionRef, UiState, ViewPatch } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
 import {
   type EngineViewState,
   type PanelLayout,
   panelLayoutOf,
+  type SourceMarksMap,
   type ViewStore,
 } from "./viewStore.ts";
 
@@ -44,6 +46,7 @@ function mirrored(state: ViewStore): Mirrored {
     zoom: state.zoom,
     scroll: state.scroll,
     selection: state.selection,
+    sourceMarks: state.sourceMarks,
     panel: { workspaceId: state.workspaceId, aspect: state.aspect, layouts: state.layouts },
   };
 }
@@ -70,7 +73,27 @@ export function diffView(sent: Mirrored | null, now: Mirrored): ViewPatch | null
   ) {
     patch.panel_layout = panelLayoutOf(now.panel);
   }
+  const marks = diffMarks(sent?.sourceMarks ?? {}, now.sourceMarks);
+  if (marks !== null) patch.source_marks = marks;
   return Object.keys(patch).length === 0 ? null : patch;
+}
+
+type MarksPatch = NonNullable<ViewPatch["source_marks"]>;
+
+/** The assets whose marks differ, as `view.set`'s per-asset entries (`{}` clears an asset's). */
+function diffMarks(sent: SourceMarksMap, now: SourceMarksMap): MarksPatch | null {
+  if (sent === now) return null;
+  const out: Record<string, { in?: number; out?: number }> = {};
+  for (const id of new Set([...Object.keys(sent), ...Object.keys(now)]) as Set<MediaId>) {
+    const a = sent[id];
+    const b = now[id];
+    if ((a?.in ?? null) === (b?.in ?? null) && (a?.out ?? null) === (b?.out ?? null)) continue;
+    out[id] = {
+      ...(b?.in != null && { in: b.in }),
+      ...(b?.out != null && { out: b.out }),
+    };
+  }
+  return Object.keys(out).length === 0 ? null : (out as MarksPatch);
 }
 
 export class ViewSync {
@@ -84,8 +107,11 @@ export class ViewSync {
   #timer: unknown = null;
   #flushing: Promise<void> | null = null;
   #dirtyAgain = false;
+  /** The engine's own state is being taken in: nothing of it is sent back. */
+  #adopting = false;
   #unsubscribe: (() => void) | null = null;
   #offChanged: (() => void) | null = null;
+  #offProject: (() => void)[] = [];
 
   constructor(options: ViewSyncOptions) {
     this.#store = options.store;
@@ -115,6 +141,8 @@ export class ViewSync {
     this.#unsubscribe = null;
     this.#offChanged?.();
     this.#offChanged = null;
+    for (const off of this.#offProject) off();
+    this.#offProject = [];
     if (this.#timer !== null) {
       this.#cancelTimer();
       await this.flush();
@@ -155,6 +183,10 @@ export class ViewSync {
   #watch(): void {
     if (this.#unsubscribe === null) {
       this.#unsubscribe = this.#store.subscribe((state, previous) => {
+        if (state.sourceMarks !== previous.sourceMarks && !this.#adopting) {
+          this.flush().catch(this.#onError);
+          return;
+        }
         if (
           state.playhead !== previous.playhead ||
           state.zoom !== previous.zoom ||
@@ -168,6 +200,12 @@ export class ViewSync {
         }
       });
     }
+    if (this.#offProject.length === 0) {
+      this.#offProject = [
+        this.#rpc.onUntyped("project.opened", () => void this.#reloadMarks(true)),
+        this.#rpc.onUntyped("project.closed", () => void this.#reloadMarks(false)),
+      ];
+    }
     if (this.#offChanged === null) {
       // Another client (an agent) moved the playhead or changed the selection.
       this.#offChanged = this.#rpc.onUntyped("view.changed", (payload) => {
@@ -178,9 +216,42 @@ export class ViewSync {
     }
   }
 
+  /**
+   * Another project is open (or none): the marks in the store belong to the assets of the one
+   * before. They are dropped at once, so they are never sent to a project that has no such
+   * assets (the engine would refuse the whole patch), and the new project's own are read.
+   */
+  async #reloadMarks(opened: boolean): Promise<void> {
+    this.#adoptMarks({});
+    if (!opened) return;
+    try {
+      const ui = await this.#rpc.call("view.get", {});
+      this.#adoptMarks(ui.source_marks ?? {});
+    } catch (error) {
+      this.#onError(error);
+    }
+  }
+
+  #adoptMarks(marks: SourceMarksMap): void {
+    this.#adopting = true;
+    try {
+      this.#store.getState().applyEngineView({ source_marks: marks as UiState["source_marks"] });
+    } finally {
+      this.#adopting = false;
+    }
+    if (this.#sent !== null) {
+      this.#sent = { ...this.#sent, sourceMarks: this.#store.getState().sourceMarks };
+    }
+  }
+
   /** Takes engine-side state into the store without echoing it back. */
   #adopt(ui: Partial<UiState>): void {
-    this.#store.getState().applyEngineView(ui);
+    this.#adopting = true;
+    try {
+      this.#store.getState().applyEngineView(ui);
+    } finally {
+      this.#adopting = false;
+    }
     this.#sent = mirrored(this.#store.getState());
   }
 

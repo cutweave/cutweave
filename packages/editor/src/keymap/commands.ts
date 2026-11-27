@@ -133,6 +133,34 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
     "shortcuts.source.insert",
     "shortcuts.source.insertHelp",
   ),
+  cmd(
+    "source.overwrite",
+    "playback",
+    "source",
+    "shortcuts.source.overwrite",
+    "shortcuts.source.overwriteHelp",
+  ),
+  cmd(
+    "source.mark_in",
+    "playback",
+    "source",
+    "shortcuts.source.markIn",
+    "shortcuts.source.markInHelp",
+  ),
+  cmd(
+    "source.mark_out",
+    "playback",
+    "source",
+    "shortcuts.source.markOut",
+    "shortcuts.source.markOutHelp",
+  ),
+  cmd(
+    "source.clear_marks",
+    "playback",
+    "source",
+    "shortcuts.source.clearMarks",
+    "shortcuts.source.clearMarksHelp",
+  ),
   // ---- the timeline
   cmd(
     "timeline.cancel",
@@ -245,6 +273,13 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
     "timeline",
     "shortcuts.timeline.markOut",
     "shortcuts.timeline.markOutHelp",
+  ),
+  cmd(
+    "timeline.match_frame",
+    "timeline",
+    "timeline",
+    "shortcuts.timeline.matchFrame",
+    "shortcuts.timeline.matchFrameHelp",
   ),
   cmd(
     "timeline.tool.select",

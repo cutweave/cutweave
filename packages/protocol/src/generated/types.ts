@@ -6616,6 +6616,28 @@ export type SlideshowOrder =
 "name_numeric";
 
 /**
+ *  The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):
+ *  positions in the media's own time. At least one is set; with both, `out` is after `in`.
+ */
+export type SourceMarks = {
+	/**  The in mark (`>= 0`); a placement starts at the start of the media without it. */
+	in: Time | null,
+	/**  The out mark (exclusive, `> in`); a placement runs to the end of the media without it. */
+	out: Time | null,
+};
+
+/**
+ *  The marks of one asset in a `view.set` patch: they replace the asset's marks, and an entry
+ *  with neither clears them.
+ */
+export type SourceMarksInput = {
+	/**  The in mark (flicks or seconds text; `>= 0`). */
+	in?: TimeInput | null,
+	/**  The out mark (exclusive; after `in` and `> 0`). */
+	out?: TimeInput | null,
+};
+
+/**
  *  A constant playback speed: `num/den` times normal, from 1/10 to 100, in lowest terms.
  * 
  *  Serialized as `{"num": 2, "den": 1}`; unreduced input is reduced on parse.
@@ -7728,6 +7750,11 @@ export type UiState = {
 	 *  shows the first sequence. Never names a sequence that no longer exists.
 	 */
 	active_sequence: SequenceId | null,
+	/**
+	 *  In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that
+	 *  have a mark are listed; marks of removed assets are dropped.
+	 */
+	source_marks: { [key in MediaId]: SourceMarks },
 };
 
 /**
@@ -7799,7 +7826,7 @@ export type VideoSpec = {
 
 /**
  *  Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview
- *  quality and master gain.
+ *  quality, master gain and the source marks (in and out per media asset).
  */
 export type ViewGet = Record<string, never>;
 
@@ -7824,6 +7851,11 @@ export type ViewPatch = {
 	master_gain?: number | null,
 	/**  The sequence to show; must exist. */
 	active_sequence?: SequenceId | null,
+	/**
+	 *  Source marks per media asset (must exist): each entry replaces that asset's marks, and
+	 *  an entry with neither `in` nor `out` clears them. Other assets keep theirs.
+	 */
+	source_marks?: { [key in MediaId]: SourceMarksInput } | null,
 };
 
 /**  Changes the selection. Every ID that is added must exist in the project. */

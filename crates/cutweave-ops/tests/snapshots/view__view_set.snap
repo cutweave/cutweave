@@ -222,6 +222,70 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "pattern": "^seq_[0-9a-f]{32}$",
               "description": "The sequence to show; must exist.",
               "default": null
+            },
+            "source_marks": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "patternProperties": {
+                "^med_[0-9a-f]{32}$": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "anyOf": [
+                        {
+                          "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The in mark (flicks or seconds text; `>= 0`).",
+                      "default": null
+                    },
+                    "out": {
+                      "anyOf": [
+                        {
+                          "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The out mark (exclusive; after `in` and `> 0`).",
+                      "default": null
+                    }
+                  },
+                  "description": "The marks of one asset in a `view.set` patch: they replace the asset's marks, and an entry\nwith neither clears them."
+                }
+              },
+              "description": "Source marks per media asset (must exist): each entry replaces that asset's marks, and\nan entry with neither `in` nor `out` clears them. Other assets keep theirs.",
+              "default": null
             }
           },
           "description": "The fields to change."
@@ -389,6 +453,42 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "pattern": "^seq_[0-9a-f]{32}$",
           "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists."
+        },
+        "source_marks": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^med_[0-9a-f]{32}$": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "out": {
+                  "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "in",
+                "out"
+              ],
+              "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`."
+            }
+          },
+          "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped."
         }
       },
       "required": [
@@ -399,7 +499,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "panel_layout",
         "preview_quality",
         "master_gain",
-        "active_sequence"
+        "active_sequence",
+        "source_marks"
       ],
       "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
       "title": "UiState"
@@ -609,6 +710,70 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "pattern": "^seq_[0-9a-f]{32}$",
             "description": "The sequence to show; must exist.",
             "default": null
+          },
+          "source_marks": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "patternProperties": {
+              "^med_[0-9a-f]{32}$": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "in": {
+                    "anyOf": [
+                      {
+                        "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The in mark (flicks or seconds text; `>= 0`).",
+                    "default": null
+                  },
+                  "out": {
+                    "anyOf": [
+                      {
+                        "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The out mark (exclusive; after `in` and `> 0`).",
+                    "default": null
+                  }
+                },
+                "description": "The marks of one asset in a `view.set` patch: they replace the asset's marks, and an entry\nwith neither clears them."
+              }
+            },
+            "description": "Source marks per media asset (must exist): each entry replaces that asset's marks, and\nan entry with neither `in` nor `out` clears them. Other assets keep theirs.",
+            "default": null
           }
         },
         "description": "The fields to change."
@@ -776,6 +941,42 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         ],
         "pattern": "^seq_[0-9a-f]{32}$",
         "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists."
+      },
+      "source_marks": {
+        "type": "object",
+        "additionalProperties": false,
+        "patternProperties": {
+          "^med_[0-9a-f]{32}$": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "in": {
+                "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "out": {
+                "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "in",
+              "out"
+            ],
+            "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`."
+          }
+        },
+        "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped."
       }
     },
     "required": [
@@ -786,7 +987,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "panel_layout",
       "preview_quality",
       "master_gain",
-      "active_sequence"
+      "active_sequence",
+      "source_marks"
     ],
     "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
     "title": "UiState"
