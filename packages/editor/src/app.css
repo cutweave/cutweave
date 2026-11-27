@@ -944,48 +944,72 @@ body {
 }
 
 /* ---------- Transport ---------- */
+/* Three groups, each as wide as its content and never narrower (#225): the timecode, the
+   playback buttons (centred while both sides have room) and the secondary controls. Nothing in
+   the bar shrinks; `TransportBar` measures the groups and moves the controls that do not fit
+   into its More menu (transport/barLayout.ts). */
 .cw-transport {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(max-content, 1fr) max-content minmax(max-content, 1fr);
   align-items: center;
   gap: var(--space-3);
   box-sizing: border-box;
   height: var(--toolbar);
   padding: 0 var(--space-3);
   border-top: var(--border-thin) solid var(--border-subtle);
+  /* Narrower than play, the timecode and More need (a very small detached window): the end of
+     the bar is cut off; it never scrolls sideways and never draws over the panel beside it. */
+  overflow: clip;
+}
+/* The last level (play, the timecode and More only): closer together, for a window at its
+   smallest. */
+.cw-transport[data-fit="tight"] {
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
 }
 .cw-transport__time {
+  justify-self: start;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 .cw-transport__bar {
   grid-column: 2;
+  justify-self: center;
 }
 .cw-transport__side {
   display: flex;
   grid-column: 3;
+  justify-self: end;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--space-2);
-  min-width: 0;
 }
+.cw-transport__side > * {
+  flex: none;
+}
+/* The two readouts change while playing ("Full" to "Quarter", "Original" to "Proxy"). Each keeps
+   room for its longer text, so a change does not move other controls in and out of the bar. */
 .cw-transport__quality {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: calc(var(--space-12) + var(--space-4));
   color: var(--text-secondary);
   white-space: nowrap;
 }
 .cw-transport__source {
   display: inline-flex;
   align-items: center;
+  min-width: calc(var(--space-12) + var(--space-8));
   white-space: nowrap;
 }
+/* The mute button beside it names it and the thumb shows the level: the slider draws its track
+   only, which leaves room for every control in the default layout. Its value stays in the
+   thumb's `aria-valuetext`. */
 .cw-transport__volume {
-  flex: 0 1 calc(var(--space-12) * 4);
-  min-width: 0;
+  width: calc(var(--space-12) + var(--space-8));
 }
-.cw-transport__volume .cw-slider__label {
-  min-width: 0;
+.cw-transport__volume .cw-slider__value {
+  display: none;
 }
 
 /* ---------- Inspector ---------- */

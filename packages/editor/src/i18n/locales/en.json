@@ -1367,6 +1367,9 @@
       "quarter": "Quarter"
     },
     "useProxies": "Use proxies in the preview",
+    "more": "More controls",
+    "moreMenu": "More transport controls",
+    "qualityPlaying": "Quality while playing",
     "sourceValue": "Preview source: {{source}}",
     "sourceHint": "What the frame in the preview was decoded from. Exports always use the original files.",
     "source": {

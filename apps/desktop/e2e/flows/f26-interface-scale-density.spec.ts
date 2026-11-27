@@ -34,6 +34,7 @@ import {
   shortcut,
   snapshot,
   type TimelineGeometry,
+  timecode,
   timelineCanvas,
   timelineGeometry,
   workspace,
@@ -134,6 +135,44 @@ async function settingsViolations(page: Page): Promise<string[]> {
   });
 }
 
+/**
+ * What is wrong with the Preview's transport bar as a person sees it (#225): two controls drawn
+ * over each other, a control squashed or sticking out of the bar, or a bar that scrolls sideways.
+ * Empty when every control has its own place.
+ */
+const transportProblems = (page: Page) =>
+  page.evaluate(() => {
+    const bar = document.querySelector(".cw-transport");
+    if (bar === null) return ["no transport bar"];
+    const frame = bar.getBoundingClientRect();
+    const controls = [...bar.querySelectorAll("button, output, .cw-slider")].map((el) => ({
+      name: el.getAttribute("aria-label") ?? el.className,
+      button: el.tagName === "BUTTON",
+      slider: el.classList.contains("cw-slider"),
+      box: el.getBoundingClientRect(),
+    }));
+    const problems: string[] = [];
+    if (controls.length < 3) problems.push(`only ${controls.length} controls`);
+    if (bar.scrollWidth > bar.clientWidth) problems.push("the bar is wider than its panel");
+    for (const [i, a] of controls.entries()) {
+      if (a.box.left < frame.left - 0.5 || a.box.right > frame.right + 0.5) {
+        problems.push(`${a.name} sticks out of the bar`);
+      }
+      // The buttons are square icons, and the slider needs a track to drag along.
+      if (a.button && a.box.width < a.box.height - 0.5) problems.push(`${a.name} is squashed`);
+      if (a.slider && a.box.width < 64) problems.push(`the slider is ${a.box.width} px wide`);
+      for (const b of controls.slice(i + 1)) {
+        const apart =
+          a.box.right <= b.box.left + 0.5 ||
+          b.box.right <= a.box.left + 0.5 ||
+          a.box.bottom <= b.box.top + 0.5 ||
+          b.box.bottom <= a.box.top + 0.5;
+        if (!apart) problems.push(`${a.name} is drawn over ${b.name}`);
+      }
+    }
+    return problems;
+  });
+
 /** How the open Settings dialog came in: the name of its opening animation, or `none`. */
 const openingAnimation = (settings: Locator) =>
   settings.evaluate((el) => getComputedStyle(el).animationName);
@@ -198,6 +237,9 @@ test.describe("F26 interface scale and density", () => {
       if ((await overlay()) !== null) {
         await expect.poll(async () => Math.abs(((await overlay()) ?? 0) - 40)).toBeLessThan(1);
       }
+      // The Preview is a quarter narrower in CSS pixels: its transport bar still keeps every
+      // control apart, behind the dialog (#225).
+      await expect.poll(() => transportProblems(page)).toEqual([]);
       await snapshot(page, info, "appearance standard 125");
 
       // Comfortable: at once too. The top bar and the controls are taller, the text is not.
@@ -227,6 +269,8 @@ test.describe("F26 interface scale and density", () => {
           })
           .toBeLessThanOrEqual(1);
       }
+      // The transport bar's controls are taller and wider in Comfortable, and still apart (#225).
+      await expect.poll(() => transportProblems(page)).toEqual([]);
       await snapshot(page, info, "editor comfortable 125");
 
       // A detached panel's window (F47) has the same scale and density.
@@ -416,6 +460,73 @@ test.describe("F26 interface scale and density", () => {
       expect(Math.abs(px100 - 100)).toBeLessThanOrEqual(frame);
       expect(px90).toBeCloseTo(px100, 6);
       expect(px125).toBeCloseTo(px100, 6);
+
+      // #225, still at 125%: the Preview is too narrow for all of its transport bar, so the bar
+      // keeps play, the steps and the timecode, and its least important controls are in the More
+      // menu at its end. Nothing is drawn over anything else.
+      const bar = page.locator(".cw-transport");
+      const more = bar.getByRole("button", { name: "More controls" });
+      const proxies = bar.getByRole("button", { name: "Use proxies in the preview" });
+      const menu = page.getByRole("menu", { name: "More transport controls" });
+      const proxiesRow = menu.getByRole("menuitemcheckbox", { name: "Use proxies in the preview" });
+      await expect.poll(() => transportProblems(page)).toEqual([]);
+      await expect(more).toBeVisible();
+      await expect(proxies).toHaveCount(0);
+      for (const name of ["Step back one frame", "Play", "Step forward one frame"]) {
+        await expect(bar.getByRole("button", { name })).toBeVisible();
+      }
+      await expect(timecode(page)).toBeVisible();
+      await snapshot(page, info, "transport at 125");
+      // The proxies toggle from the menu, with the mouse: it was on, and is now off.
+      await more.click();
+      await expect(proxiesRow).toHaveAttribute("aria-checked", "true");
+      await snapshot(page, info, "transport more menu at 125");
+      await proxiesRow.click();
+      await expect(menu).toBeHidden();
+
+      // Back at 100% there is room: the toggle is in the bar again, and it is off, since the
+      // menu's row was the same control.
+      await setScale(app, page, 100);
+      await expect(proxies).toBeVisible();
+      await expect(proxies).toHaveAttribute("aria-pressed", "false");
+      await expect.poll(() => transportProblems(page)).toEqual([]);
+
+      // The same at 100% with a narrow Preview: drag the edge between the Preview and the
+      // Inspector to the left as far as it goes. The panel stops at its minimum width
+      // (`--layer-width-md`), and the bar still fits in it.
+      const preview = page.getByRole("region", { name: "Preview", exact: true });
+      const wide = await cssBox(preview);
+      const edge = { x: wide.x + wide.width + 1, y: wide.y + wide.height / 2 };
+      await drag(page, edge, { x: wide.x + 40, y: edge.y });
+      const minimum = await token(page, "--layer-width-md");
+      await expect.poll(async () => (await cssBox(preview)).width).toBeLessThan(minimum + 8);
+      expect((await cssBox(preview)).width).toBeGreaterThan(minimum - 8);
+      await expect.poll(() => transportProblems(page)).toEqual([]);
+      await expect(more).toBeVisible();
+      await expect(proxies).toHaveCount(0);
+      await expect(bar.getByRole("button", { name: "Play" })).toBeVisible();
+      await snapshot(page, info, "transport in the narrowest preview");
+      // With the keyboard this time: Enter on More opens the menu, the arrows reach the row and
+      // Enter turns the proxies back on.
+      await more.press("Enter");
+      await expect(menu).toBeVisible();
+      await expect(proxiesRow).toHaveAttribute("aria-checked", "false");
+      for (let presses = 0; presses < 12; presses += 1) {
+        if (await proxiesRow.evaluate((el) => el === el.ownerDocument.activeElement)) break;
+        await page.keyboard.press("ArrowDown");
+      }
+      await expect(proxiesRow).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(menu).toBeHidden();
+
+      // The edge dragged back: the controls return to the bar, and the toggle is on.
+      const narrow = await cssBox(preview);
+      const back = { x: narrow.x + narrow.width + 1, y: edge.y };
+      await drag(page, back, { x: edge.x, y: edge.y });
+      await expect.poll(async () => (await cssBox(preview)).width).toBeGreaterThan(wide.width - 8);
+      await expect(proxies).toBeVisible();
+      await expect(proxies).toHaveAttribute("aria-pressed", "true");
+      await expect.poll(() => transportProblems(page)).toEqual([]);
     } finally {
       await close();
       work.remove();
