@@ -1,0 +1,131 @@
+{
+  "format": 1,
+  "task": "long-tail",
+  "variant": "standard",
+  "client": "upfront",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 26621,
+    "upfront_bytes": 26621,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1130
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_get",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "depth": 2
+          },
+          "is_error": false,
+          "result_bytes": 5603
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_search_commands",
+          "input": {
+            "query": "mute a track"
+          },
+          "is_error": false,
+          "result_bytes": 3950
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_describe_command",
+          "input": {
+            "name": "track.set"
+          },
+          "is_error": false,
+          "result_bytes": 2121
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_execute",
+          "input": {
+            "steps": [
+              {
+                "cmd": "track.set",
+                "args": {
+                  "track": "trk_00000000000571b69511c8096f900b63",
+                  "muted": true,
+                  "name": "Music"
+                }
+              }
+            ]
+          },
+          "is_error": false,
+          "result_bytes": 266
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

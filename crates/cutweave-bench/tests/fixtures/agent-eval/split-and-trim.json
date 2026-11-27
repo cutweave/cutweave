@@ -1,0 +1,134 @@
+{
+  "format": 1,
+  "task": "split-and-trim",
+  "variant": "standard",
+  "client": "upfront",
+  "model": "none (written by hand; the token counts are made up, to test the sums)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 26621,
+    "upfront_bytes": 26621,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 310,
+        "output_tokens": 96,
+        "cache_creation_input_tokens": 9200,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "tool_use",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1145
+        },
+        {
+          "tool": "timeline_get",
+          "input": {
+            "depth": 2
+          },
+          "is_error": true,
+          "error_code": "invalid",
+          "result_bytes": 381
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 18,
+        "output_tokens": 71,
+        "cache_creation_input_tokens": 640,
+        "cache_read_input_tokens": 9200
+      },
+      "stop_reason": "tool_use",
+      "calls": [
+        {
+          "tool": "timeline_get",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "depth": 2
+          },
+          "is_error": false,
+          "result_bytes": 5603
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 21,
+        "output_tokens": 64,
+        "cache_creation_input_tokens": 2710,
+        "cache_read_input_tokens": 9840
+      },
+      "stop_reason": "tool_use",
+      "calls": [
+        {
+          "tool": "cutweave_describe_command",
+          "input": {
+            "name": "clip.trim"
+          },
+          "is_error": false,
+          "result_bytes": 9344
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 17,
+        "output_tokens": 88,
+        "cache_creation_input_tokens": 905,
+        "cache_read_input_tokens": 12550
+      },
+      "stop_reason": "tool_use",
+      "calls": [
+        {
+          "tool": "clip_split",
+          "input": {
+            "item": "itm_00000000000d767ea5b84b3e1d426e24",
+            "at": "f:1262"
+          },
+          "is_error": false,
+          "result_bytes": 571
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 19,
+        "output_tokens": 77,
+        "cache_creation_input_tokens": 420,
+        "cache_read_input_tokens": 13455
+      },
+      "stop_reason": "tool_use",
+      "calls": [
+        {
+          "tool": "clip_trim",
+          "input": {
+            "item": "itm_0000000000017e999cdbc20a2319b9cb",
+            "edge": "end",
+            "delta": "-5s"
+          },
+          "is_error": false,
+          "result_bytes": 950
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 16,
+        "output_tokens": 23,
+        "cache_creation_input_tokens": 510,
+        "cache_read_input_tokens": 13875
+      },
+      "stop_reason": "end_turn",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

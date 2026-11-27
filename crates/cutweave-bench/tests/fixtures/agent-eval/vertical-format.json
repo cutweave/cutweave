@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "task": "vertical-format",
+  "variant": "standard",
+  "client": "upfront",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 26621,
+    "upfront_bytes": 26621,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1148
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "sequence_set_format",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "width": 1080,
+            "height": 1920
+          },
+          "is_error": false,
+          "result_bytes": 295
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

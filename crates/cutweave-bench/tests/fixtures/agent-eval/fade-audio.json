@@ -1,0 +1,110 @@
+{
+  "format": 1,
+  "task": "fade-audio",
+  "variant": "standard",
+  "client": "deferred",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 27239,
+    "upfront_bytes": 2825,
+    "loaded_bytes": 1325
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1136
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_get",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "depth": 2
+          },
+          "is_error": false,
+          "result_bytes": 5603
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "searches": [
+        {
+          "query": "fade audio in and out",
+          "found": [
+            "audio_set"
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "tool": "audio_set",
+          "input": {
+            "item": "itm_00000000001876789acbc14e274e560d",
+            "set": {
+              "kind": "fade",
+              "in": "0.5s",
+              "out": "2s"
+            }
+          },
+          "is_error": false,
+          "result_bytes": 293
+        },
+        {
+          "tool": "audio_set",
+          "input": {
+            "item": "itm_000000000019703390eaa2e86db2bd39",
+            "set": {
+              "kind": "fade",
+              "in": "0.5s",
+              "out": "2s"
+            }
+          },
+          "is_error": false,
+          "result_bytes": 293
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}
