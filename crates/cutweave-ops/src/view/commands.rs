@@ -12,7 +12,7 @@ use cutweave_model::{SequenceId, TimeInput};
 use super::state::{SelectMode, SelectionRef, UiState, ViewCtx, ViewPatch};
 
 /// Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview
-/// quality and master gain.
+/// quality, master gain and the source marks (in and out per media asset).
 #[command(
     name = "view.get",
     summary = "Get the UI view state (playhead, zoom, selection, ...)",

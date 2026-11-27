@@ -34374,7 +34374,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview\nquality and master gain.",
+        "description": "Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview\nquality, master gain and the source marks (in and out per media asset).",
         "title": "ViewGet",
         "type": "object"
       },
@@ -34535,6 +34535,42 @@
             },
             "type": "array"
           },
+          "source_marks": {
+            "additionalProperties": false,
+            "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped.",
+            "patternProperties": {
+              "^med_[0-9a-f]{32}$": {
+                "additionalProperties": false,
+                "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`.",
+                "properties": {
+                  "in": {
+                    "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "out": {
+                    "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "in",
+                  "out"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
           "zoom": {
             "description": "Timeline zoom in pixels per second.",
             "format": "double",
@@ -34549,7 +34585,8 @@
           "panel_layout",
           "preview_quality",
           "master_gain",
-          "active_sequence"
+          "active_sequence",
+          "source_marks"
         ],
         "title": "UiState",
         "type": "object"
@@ -34854,6 +34891,42 @@
             },
             "type": "array"
           },
+          "source_marks": {
+            "additionalProperties": false,
+            "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped.",
+            "patternProperties": {
+              "^med_[0-9a-f]{32}$": {
+                "additionalProperties": false,
+                "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`.",
+                "properties": {
+                  "in": {
+                    "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "out": {
+                    "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "in",
+                  "out"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
           "zoom": {
             "description": "Timeline zoom in pixels per second.",
             "format": "double",
@@ -34868,7 +34941,8 @@
           "panel_layout",
           "preview_quality",
           "master_gain",
-          "active_sequence"
+          "active_sequence",
+          "source_marks"
         ],
         "title": "UiState",
         "type": "object"
@@ -35082,6 +35156,70 @@
                   "null"
                 ]
               },
+              "source_marks": {
+                "additionalProperties": false,
+                "default": null,
+                "description": "Source marks per media asset (must exist): each entry replaces that asset's marks, and\nan entry with neither `in` nor `out` clears them. Other assets keep theirs.",
+                "patternProperties": {
+                  "^med_[0-9a-f]{32}$": {
+                    "additionalProperties": false,
+                    "description": "The marks of one asset in a `view.set` patch: they replace the asset's marks, and an entry\nwith neither clears them.",
+                    "properties": {
+                      "in": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                                "type": "string"
+                              }
+                            ],
+                            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "The in mark (flicks or seconds text; `>= 0`)."
+                      },
+                      "out": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                                "type": "string"
+                              }
+                            ],
+                            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "The out mark (exclusive; after `in` and `> 0`)."
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "zoom": {
                 "default": null,
                 "description": "New zoom in pixels per second.",
@@ -35258,6 +35396,42 @@
             },
             "type": "array"
           },
+          "source_marks": {
+            "additionalProperties": false,
+            "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped.",
+            "patternProperties": {
+              "^med_[0-9a-f]{32}$": {
+                "additionalProperties": false,
+                "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`.",
+                "properties": {
+                  "in": {
+                    "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "out": {
+                    "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "in",
+                  "out"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
           "zoom": {
             "description": "Timeline zoom in pixels per second.",
             "format": "double",
@@ -35272,7 +35446,8 @@
           "panel_layout",
           "preview_quality",
           "master_gain",
-          "active_sequence"
+          "active_sequence",
+          "source_marks"
         ],
         "title": "UiState",
         "type": "object"
@@ -35522,6 +35697,42 @@
             },
             "type": "array"
           },
+          "source_marks": {
+            "additionalProperties": false,
+            "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped.",
+            "patternProperties": {
+              "^med_[0-9a-f]{32}$": {
+                "additionalProperties": false,
+                "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`.",
+                "properties": {
+                  "in": {
+                    "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "out": {
+                    "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "in",
+                  "out"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
           "zoom": {
             "description": "Timeline zoom in pixels per second.",
             "format": "double",
@@ -35536,7 +35747,8 @@
           "panel_layout",
           "preview_quality",
           "master_gain",
-          "active_sequence"
+          "active_sequence",
+          "source_marks"
         ],
         "title": "UiState",
         "type": "object"
@@ -35727,6 +35939,42 @@
             },
             "type": "array"
           },
+          "source_marks": {
+            "additionalProperties": false,
+            "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped.",
+            "patternProperties": {
+              "^med_[0-9a-f]{32}$": {
+                "additionalProperties": false,
+                "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`.",
+                "properties": {
+                  "in": {
+                    "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "out": {
+                    "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "in",
+                  "out"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
           "zoom": {
             "description": "Timeline zoom in pixels per second.",
             "format": "double",
@@ -35741,7 +35989,8 @@
           "panel_layout",
           "preview_quality",
           "master_gain",
-          "active_sequence"
+          "active_sequence",
+          "source_marks"
         ],
         "title": "UiState",
         "type": "object"

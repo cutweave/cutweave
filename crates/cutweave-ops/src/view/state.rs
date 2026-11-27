@@ -7,6 +7,8 @@
 //! context), and the engine persists it to `.cutweave/ui-state.json`
 //! (`cutweave_engine::ui_state`). This module is pure (no I/O, no clocks).
 
+use std::collections::BTreeMap;
+
 use cutweave_commands::{CmdError, wire};
 use cutweave_model::{EntityKind, ItemId, MediaId, Project, SequenceId, Time, TimeInput, TrackId};
 use serde_json::{Map, Value};
@@ -21,6 +23,8 @@ pub const MAX_ZOOM: f64 = 100_000.0;
 pub const MAX_MASTER_GAIN: f64 = 4.0;
 /// Most selected entities.
 pub const MAX_SELECTION: usize = 10_000;
+/// Most assets with source marks.
+pub const MAX_SOURCE_MARKS: usize = 10_000;
 /// Largest accepted `panel_layout`, as serialized JSON.
 pub const MAX_PANEL_LAYOUT_BYTES: usize = 256 * 1024;
 
@@ -35,6 +39,7 @@ const KNOWN_KEYS: &[&str] = &[
     "preview_quality",
     "master_gain",
     "active_sequence",
+    "source_marks",
 ];
 
 /// Preview resolution (arch §8 quality ladder).
@@ -109,6 +114,46 @@ impl SelectionRef {
     }
 }
 
+/// The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):
+/// positions in the media's own time. At least one is set; with both, `out` is after `in`.
+#[wire]
+#[derive(Copy, Eq, Default)]
+pub struct SourceMarks {
+    /// The in mark (`>= 0`); a placement starts at the start of the media without it.
+    #[serde(rename = "in")]
+    pub mark_in: Option<Time>,
+    /// The out mark (exclusive, `> in`); a placement runs to the end of the media without it.
+    #[serde(rename = "out")]
+    pub mark_out: Option<Time>,
+}
+
+/// The marks of one asset in a `view.set` patch: they replace the asset's marks, and an entry
+/// with neither clears them.
+#[wire]
+#[derive(Copy, Default)]
+pub struct SourceMarksInput {
+    /// The in mark (flicks or seconds text; `>= 0`).
+    #[serde(default, rename = "in")]
+    pub mark_in: Option<TimeInput>,
+    /// The out mark (exclusive; after `in` and `> 0`).
+    #[serde(default, rename = "out")]
+    pub mark_out: Option<TimeInput>,
+}
+
+/// Validates one asset's marks; `Ok(None)` when neither is set (the asset has no marks).
+pub(crate) fn check_marks(
+    mark_in: Option<Time>,
+    mark_out: Option<Time>,
+) -> Result<Option<SourceMarks>, String> {
+    if mark_in.is_some_and(|t| t < Time::ZERO) {
+        return Err("the in mark cannot be negative".into());
+    }
+    if mark_out.is_some_and(|t| t <= mark_in.unwrap_or(Time::ZERO)) {
+        return Err("the out mark must be after the in mark".into());
+    }
+    Ok((mark_in.is_some() || mark_out.is_some()).then_some(SourceMarks { mark_in, mark_out }))
+}
+
 /// The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.
 #[wire]
 pub struct UiState {
@@ -131,6 +176,9 @@ pub struct UiState {
     /// The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then
     /// shows the first sequence. Never names a sequence that no longer exists.
     pub active_sequence: Option<SequenceId>,
+    /// In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that
+    /// have a mark are listed; marks of removed assets are dropped.
+    pub source_marks: BTreeMap<MediaId, SourceMarks>,
 }
 
 impl Default for UiState {
@@ -152,6 +200,7 @@ impl UiState {
             preview_quality: PreviewQuality::Full,
             master_gain: 1.0,
             active_sequence: None,
+            source_marks: BTreeMap::new(),
         }
     }
 }
@@ -186,6 +235,10 @@ pub struct ViewPatch {
     /// The sequence to show; must exist.
     #[serde(default)]
     pub active_sequence: Option<SequenceId>,
+    /// Source marks per media asset (must exist): each entry replaces that asset's marks, and
+    /// an entry with neither `in` nor `out` clears them. Other assets keep theirs.
+    #[serde(default)]
+    pub source_marks: Option<BTreeMap<MediaId, SourceMarksInput>>,
 }
 
 /// How `view.select` combines its IDs with the current selection.
@@ -355,6 +408,26 @@ impl ViewCtx {
             s.active_sequence = id.filter(|id| known.contains(id));
             Ok(())
         });
+        let media = &ctx.doc.media;
+        field("source_marks", &mut |v| {
+            let entries = v.as_object().ok_or("expected an object")?;
+            for (key, value) in entries {
+                // One bad entry must not lose the rest; marks of removed assets are dropped.
+                let (Ok(id), Ok(m)) = (
+                    from_value::<MediaId>(&Value::String(key.clone())),
+                    from_value::<SourceMarks>(value),
+                ) else {
+                    continue;
+                };
+                if s.source_marks.len() < MAX_SOURCE_MARKS
+                    && media.contains_key(&id)
+                    && let Ok(Some(m)) = check_marks(m.mark_in, m.mark_out)
+                {
+                    s.source_marks.insert(id, m);
+                }
+            }
+            Ok(())
+        });
         let mut selection = Vec::new();
         field("selection", &mut |v| {
             let items = v.as_array().ok_or("expected an array")?;
@@ -424,6 +497,11 @@ impl ViewCtx {
         let doc = &self.doc;
         self.state.selection.retain(|r| r.check_exists(doc).is_ok());
         let mut changed = self.state.selection.len() != before;
+        let marks = self.state.source_marks.len();
+        self.state
+            .source_marks
+            .retain(|id, _| doc.media.contains_key(id));
+        changed |= self.state.source_marks.len() != marks;
         if let Some(id) = self.state.active_sequence
             && !self.doc.sequences.contains_key(&id)
         {
@@ -473,6 +551,9 @@ impl ViewCtx {
         if let Some(id) = patch.active_sequence {
             next.active_sequence = Some(self.checked_sequence(id)?);
         }
+        if let Some(marks) = &patch.source_marks {
+            self.merge_marks(&mut next.source_marks, marks)?;
+        }
         Ok(self.commit(next))
     }
 
@@ -481,6 +562,42 @@ impl ViewCtx {
         let mut next = self.state.clone();
         next.active_sequence = Some(self.checked_sequence(id)?);
         Ok(self.commit(next))
+    }
+
+    /// Replaces the marks of every asset `patch` names (clearing those it leaves empty).
+    fn merge_marks(
+        &self,
+        marks: &mut BTreeMap<MediaId, SourceMarks>,
+        patch: &BTreeMap<MediaId, SourceMarksInput>,
+    ) -> Result<(), CmdError> {
+        for (id, input) in patch {
+            let path = format!("/patch/source_marks/{id}");
+            if !self.doc.media.contains_key(id) {
+                return Err(CmdError::not_found(EntityKind::Media, *id));
+            }
+            let resolve = |t: Option<TimeInput>| {
+                t.map(|t| t.resolve(None))
+                    .transpose()
+                    .map_err(|e| invalid(&path, e.to_string()))
+            };
+            let checked = check_marks(resolve(input.mark_in)?, resolve(input.mark_out)?)
+                .map_err(|m| invalid(&path, m))?;
+            match checked {
+                Some(m) => {
+                    marks.insert(*id, m);
+                }
+                None => {
+                    marks.remove(id);
+                }
+            }
+        }
+        if marks.len() > MAX_SOURCE_MARKS {
+            return Err(invalid(
+                "/patch/source_marks",
+                format!("at most {MAX_SOURCE_MARKS} assets can have source marks"),
+            ));
+        }
+        Ok(())
     }
 
     fn checked_sequence(&self, id: SequenceId) -> Result<SequenceId, CmdError> {

@@ -21,7 +21,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview\nquality and master gain.",
+      "description": "Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview\nquality, master gain and the source marks (in and out per media asset).",
       "title": "ViewGet"
     },
     "output_schema": {
@@ -180,6 +180,42 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "pattern": "^seq_[0-9a-f]{32}$",
           "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists."
+        },
+        "source_marks": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^med_[0-9a-f]{32}$": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "out": {
+                  "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "in",
+                "out"
+              ],
+              "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`."
+            }
+          },
+          "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped."
         }
       },
       "required": [
@@ -190,7 +226,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "panel_layout",
         "preview_quality",
         "master_gain",
-        "active_sequence"
+        "active_sequence",
+        "source_marks"
       ],
       "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
       "title": "UiState"
@@ -199,7 +236,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
   "input": {
     "type": "object",
     "additionalProperties": false,
-    "description": "Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview\nquality and master gain.",
+    "description": "Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview\nquality, master gain and the source marks (in and out per media asset).",
     "title": "ViewGet"
   },
   "output": {
@@ -358,6 +395,42 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         ],
         "pattern": "^seq_[0-9a-f]{32}$",
         "description": "The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then\nshows the first sequence. Never names a sequence that no longer exists."
+      },
+      "source_marks": {
+        "type": "object",
+        "additionalProperties": false,
+        "patternProperties": {
+          "^med_[0-9a-f]{32}$": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "in": {
+                "description": "The in mark (`>= 0`); a placement starts at the start of the media without it.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "out": {
+                "description": "The out mark (exclusive, `> in`); a placement runs to the end of the media without it.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "in",
+              "out"
+            ],
+            "description": "The in and out marks of one media asset in the Source view (WP-2A.14, timeline spec §4.18):\npositions in the media's own time. At least one is set; with both, `out` is after `in`."
+          }
+        },
+        "description": "In and out marks per media asset, set in the Source view (WP-2A.14). Only assets that\nhave a mark are listed; marks of removed assets are dropped."
       }
     },
     "required": [
@@ -368,7 +441,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "panel_layout",
       "preview_quality",
       "master_gain",
-      "active_sequence"
+      "active_sequence",
+      "source_marks"
     ],
     "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
     "title": "UiState"

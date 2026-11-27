@@ -17,8 +17,9 @@ pub use commands::{
     ViewSetPlayhead, ViewSetZoom,
 };
 pub use state::{
-    MAX_MASTER_GAIN, MAX_PANEL_LAYOUT_BYTES, MAX_SELECTION, MAX_ZOOM, MIN_ZOOM, PreviewQuality,
-    Scroll, SelectMode, SelectionRef, UI_STATE_VERSION, UiState, ViewChanged, ViewCtx, ViewPatch,
+    MAX_MASTER_GAIN, MAX_PANEL_LAYOUT_BYTES, MAX_SELECTION, MAX_SOURCE_MARKS, MAX_ZOOM, MIN_ZOOM,
+    PreviewQuality, Scroll, SelectMode, SelectionRef, SourceMarks, SourceMarksInput,
+    UI_STATE_VERSION, UiState, ViewChanged, ViewCtx, ViewPatch,
 };
 
 /// Registers the `view.*` commands.
