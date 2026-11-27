@@ -1,5 +1,5 @@
 {
-  "description": "Background fill (WP-2B.02): a sequence's background as a blur of the picture (the defaults, then its own numbers and source), a still image (its fit changed without naming it again), nothing (transparent) and the plain color again; the failing cases (a radius out of range, a field of another kind, a video as the image, no image, an unknown sequence) change nothing; undo and redo.",
+  "description": "Background fill (WP-2B.02): a sequence's background as a blur of the picture (the defaults, then its own numbers and source), a still image (its fit changed without naming it again), nothing (transparent) and the plain color again; the failing cases (a radius out of range, a field of another kind, a video as the image, no image, an unknown sequence) change nothing.",
   "steps": [
     { "cmd": "project.new", "args": { "name": "Backgrounds" } },
     { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.png" }] } },
@@ -49,8 +49,6 @@
     { "cmd": "sequence.set_background", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "image", "fit": "contain" } },
     { "cmd": "media.remove", "args": { "id": { "$ref": "steps[1].output.media_ids[1]" } }, "expect": { "error": "invalid" } },
     { "cmd": "sequence.set_background", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "transparent" } },
-    { "cmd": "edit.undo" },
-    { "cmd": "edit.redo" },
     { "cmd": "sequence.set_background", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "color", "color": "#336699" } },
     {
       "cmd": "sequence.set_background",

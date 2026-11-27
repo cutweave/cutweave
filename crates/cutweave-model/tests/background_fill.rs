@@ -46,8 +46,10 @@ fn every_fill_round_trips_with_its_kind() {
         (BackgroundFill::Transparent, json!({"kind": "transparent"})),
     ];
     for (fill, stored) in fills {
-        let mut format = SequenceFormat::default();
-        format.background_fill = Some(fill.clone());
+        let format = SequenceFormat {
+            background_fill: Some(fill.clone()),
+            ..SequenceFormat::default()
+        };
         let written = serde_json::to_value(&format).unwrap();
         assert_eq!(written["background_fill"], stored);
         let read: SequenceFormat = serde_json::from_value(written).unwrap();
