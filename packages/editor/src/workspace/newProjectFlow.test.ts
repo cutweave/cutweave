@@ -93,9 +93,22 @@ describe("a new project takes the still image duration from Settings (WP-2F.05b)
     prefsStore.setState({ values: { ...defaultPreferences(), "editing.still_duration": 12 } });
     expect(await newProject()).toBe(true);
     expect(sent).toEqual([
-      { name: "Film", still_duration: "5s", proxy_policy: "auto" },
-      { name: "Film", still_duration: "12s", proxy_policy: "auto" },
+      { name: "Film", still_duration: "5s", proxy_policy: "auto", main_magnetic: true },
+      { name: "Film", still_duration: "12s", proxy_policy: "auto", main_magnetic: true },
     ]);
+  });
+
+  it("passes Settings > Timeline > Main track is magnetic in new sequences to project.new (ADR-0037)", async () => {
+    const sent: { main_magnetic?: boolean }[] = [];
+    engine.answer("project.new", (params: unknown) => {
+      sent.push(params as { main_magnetic?: boolean });
+      return { project: status() };
+    });
+    // The default is on.
+    expect(await newProject()).toBe(true);
+    prefsStore.setState({ values: { ...defaultPreferences(), "timeline.magnetic_main": false } });
+    expect(await newProject()).toBe(true);
+    expect(sent.map((p) => p.main_magnetic)).toEqual([true, false]);
   });
 
   it("passes Settings > Media and import > Proxies for new projects to project.new (WP-2F.03b)", async () => {

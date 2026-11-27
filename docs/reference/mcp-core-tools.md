@@ -4,9 +4,9 @@
 
 The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §14). Generated from the core tool table, `crates/cutweave-api/mcp_core.toml`, and the command registry.
 
-- **Listed:** 32 tools (28 core and the 4 generic ones), 30775 bytes, about 7694 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
+- **Listed:** 32 tools (28 core and the 4 generic ones), 30875 bytes, about 7719 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
 - **`/mcp/minimal`** (minimal): 10 tools, about 1805 tokens of 3000.
-- **`/mcp/full`** (full): 32 tools, about 7694 tokens of 8000.
+- **`/mcp/full`** (full): 32 tools, about 7719 tokens of 8000.
 - **Names:** a tool is named after its command with `.` replaced by `_` (`clip.split` is `clip_split`). A core tool is only that command: the same input schema, result and errors as over JSON-RPC and the CLI.
 - **Descriptions:** the text below followed by `E.g.` and the example, at most 300 characters. In an example `…` stands for the 32 hex digits of an id.
 - **Parameters:** a listed input schema validates exactly like the command's, but carries no parameter descriptions (they do not fit the budget). `cutweave_describe_command` returns them, with the output schema.
@@ -36,7 +36,7 @@ The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §
 | `project_info` | `project.info` | read-only, idempotent | Get the project's name, default format and its sequences with their ids. Start here. | `{}` |
 | `project_open` | `project.open` | destructive | Open a project folder or .cutweave file; the current project closes. Fails if that would lose unsaved changes. | `{"path":"C:/projects/trip"}` |
 | `render_frame` | `render.frame` | read-only, idempotent | See the frame at a time: returns an image (JPEG, 768 px by default) and the items on screen. Not usable inside cutweave_execute. | `{"t":"2.5s"}` |
-| `sequence_create` | `sequence.create` | - | Add a sequence from an aspect preset ("16:9", "9:16", "1:1", ...) or an explicit format; returns its id and tracks. | `{"name":"Short","preset":"9:16"}` |
+| `sequence_create` | `sequence.create` | - | Add a sequence from an aspect preset ("16:9", "9:16", "1:1", ...) or an explicit format; `main_magnetic: true` makes V1 the magnetic main track; returns its id and tracks. | `{"name":"Short","preset":"9:16"}` |
 | `sequence_set_format` | `sequence.set_format` | destructive, idempotent | Change a sequence's size, frame rate, sample rate or background; `reframe` says how items adapt to a new size. | `{"sequence":"seq_…","width":1080,"height":1920}` |
 | `timeline_add_marker` | `timeline.add_marker` | - | Add a marker at a time of a sequence, or on one of its items (`item`; then `t` is from the item's start). `duration` makes it a range. | `{"sequence":"seq_…","t":"12s","label":"Cut here"}` |
 | `timeline_get` | `timeline.get` | read-only, idempotent | Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`. | `{"sequence":"seq_…","depth":2,"limit":50}` |

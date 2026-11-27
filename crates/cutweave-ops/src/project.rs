@@ -96,6 +96,9 @@ pub struct ProjectNew {
     /// Project settings to start with, as in `project.set_settings`; absent keys take their
     /// default. `default_format` here is the full form of `format`.
     pub settings: Option<SettingsPatch>,
+    /// `true` makes `V1` the magnetic main track (clips stay butted from 0); absent: `false`.
+    /// The editor passes the person's "Main track is magnetic in new sequences" setting.
+    pub main_magnetic: Option<bool>,
 }
 
 impl ProjectNew {
@@ -186,7 +189,8 @@ impl Command for ProjectNew {
         let settings = self.settings()?;
         let format: SequenceFormat = settings.default_format.clone();
         let mut sequence = Sequence::new(tx.new_id(), DEFAULT_SEQUENCE_NAME, format);
-        let video = Track::new(tx.new_id(), TrackKind::Video, "V1");
+        let mut video = Track::new(tx.new_id(), TrackKind::Video, "V1");
+        video.magnetic = self.main_magnetic.unwrap_or(false);
         let audio = Track::new(tx.new_id(), TrackKind::Audio, "A1");
         let out = ProjectNewOutput {
             sequence: sequence.id,

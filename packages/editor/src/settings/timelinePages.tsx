@@ -186,6 +186,15 @@ const timelinePage: SettingsPageDef = {
       },
     },
     {
+      // ADR-0037: the editor passes it as `main_magnetic` when it creates a project.
+      id: "timeline.magnetic_main",
+      key: "timeline.magnetic_main",
+      label: "settings.rows.magneticMain.label",
+      description: "settings.rows.magneticMain.description",
+      keywords: "settings.rows.magneticMain.keywords",
+      control: { kind: "switch" },
+    },
+    {
       id: "timeline.thumbnails",
       key: "timeline.thumbnails",
       label: "settings.rows.thumbnails.label",

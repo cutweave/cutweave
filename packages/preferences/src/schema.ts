@@ -275,6 +275,11 @@ export interface PreferenceValues {
   /** Snap distance in pixels. */
   "timeline.snap_distance": number;
   "timeline.follow": FollowModeChoice;
+  /**
+   * The main track of a sequence the editor creates is magnetic (ADR-0037): passed as
+   * `main_magnetic` to `project.new` and `sequence.create`. Tracks that exist keep their own.
+   */
+  "timeline.magnetic_main": boolean;
   "timeline.thumbnails": ThumbnailModeChoice;
   "timeline.waveforms": boolean;
   "timeline.track_height": TrackHeightChoice;
@@ -534,6 +539,8 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     default: 8,
   },
   "timeline.follow": { type: "enum", scope: "app", options: FOLLOW_MODES, default: "page" },
+  // New sequences made in the app start with a magnetic main track (ADR-0037, #240).
+  "timeline.magnetic_main": { type: "boolean", scope: "app", default: true },
   "timeline.thumbnails": {
     type: "enum",
     scope: "app",

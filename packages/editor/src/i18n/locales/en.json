@@ -292,6 +292,11 @@
         "smooth": "Smooth",
         "off": "Off"
       },
+      "magneticMain": {
+        "label": "Main track is magnetic in new sequences",
+        "description": "Clips on the main track of a new project stay joined from the start: a drop pushes the rest along and a delete closes the space. Magnetic main track in a track's menu changes it for a sequence you already have.",
+        "keywords": "magnetic, magnet, main track, ripple, gap, storyline, new project, new sequence"
+      },
       "thumbnails": {
         "label": "Video clip thumbnails",
         "description": "Filmstrip shows frames all along a clip, First frame shows one at its start, Off shows none.",
