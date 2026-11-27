@@ -192,6 +192,12 @@ pub struct PlaybackState {
     pub quality: FrameQuality,
     /// Frames skipped since playback attached because rendering fell behind (saturates).
     pub dropped: u32,
+    /// Whether the preview uses proxies when they are ready and large enough
+    /// (`view.set_preview_quality{use_proxies}`, WP-2F.02; on until told otherwise).
+    pub use_proxies: bool,
+    /// Whether the newest delivered frame shows a proxy: at least one of its pictures was
+    /// decoded from a proxy file instead of the original.
+    pub proxy: bool,
     /// The media asset playing instead of the sequence (`view.set_source`); `null` while the
     /// sequence plays. The sequence's playhead does not move while a source plays.
     pub source: Option<SourceInfo>,

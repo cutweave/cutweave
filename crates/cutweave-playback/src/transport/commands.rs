@@ -211,6 +211,38 @@ impl EngineCommand for ViewSetPreviewSize {
     }
 }
 
+/// Chooses whether the preview uses proxies (WP-2F.02). On (the default), a clip plays, scrubs
+/// and pauses on its proxy when one is ready and holds the pixels the clip is drawn at; a
+/// preview that needs more than the proxy has shows the original. Off, the preview reads
+/// originals only. Exports, agent frames, thumbnails and analysis read originals either way.
+/// This computer's preference (`playback.proxies`): the app sends it after connecting and
+/// when the transport bar's toggle changes; `playback.state` reports it (`use_proxies`) and
+/// whether the frame on screen shows a proxy (`proxy`). Returns the playback state.
+#[command(
+    name = "view.set_preview_quality",
+    summary = "Choose whether the preview uses proxies",
+    view,
+    scope = "ui",
+    mcp = "hidden",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewSetPreviewQuality {
+    /// Whether the preview uses proxies; absent keeps the current choice.
+    #[serde(default)]
+    pub use_proxies: Option<bool>,
+}
+
+impl EngineCommand for ViewSetPreviewQuality {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        Ok(match self.use_proxies {
+            Some(on) => transport.set_use_proxies(on),
+            None => transport.state(),
+        })
+    }
+}
+
 /// Registers the `view.*` transport commands.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
@@ -220,6 +252,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ViewSetRate>()?
         .register::<ViewStep>()?
         .register::<ViewSetSource>()?
-        .register::<ViewSetPreviewSize>()?;
+        .register::<ViewSetPreviewSize>()?
+        .register::<ViewSetPreviewQuality>()?;
     Ok(())
 }

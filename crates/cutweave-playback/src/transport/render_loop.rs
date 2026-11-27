@@ -535,7 +535,11 @@ impl RenderLoop {
             target: snap.target,
             frame,
             t: timing.frame_start(frame),
-            quality,
+            // The rung's size; proxies as the preview's toggle says (one atomic load).
+            quality: Quality::new(
+                quality.scale,
+                self.shared.use_proxies.load(Ordering::Relaxed),
+            ),
             layout,
             purpose,
         };
@@ -588,6 +592,7 @@ impl RenderLoop {
                 stats
                     .last_quality
                     .store(FrameQuality::of(quality.scale).to_u8(), Ordering::Relaxed);
+                stats.last_proxy.store(rendered.proxy, Ordering::Relaxed);
                 stats.last_seq.store(seq, Ordering::Relaxed);
                 stats.delivered.fetch_add(1, Ordering::Release);
                 self.shown = Some(Shown {
