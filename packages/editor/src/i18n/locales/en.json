@@ -2069,8 +2069,7 @@
     "deletePreset": {
       "label": "Delete this preset",
       "deleted": "Deleted your preset “{{name}}”.",
-      "undo": "Undo",
-      "refused": "The preset was not deleted: {{message}}"
+      "undo": "Undo"
     },
     "notify": {
       "failed": "{{name}}: {{message}}"

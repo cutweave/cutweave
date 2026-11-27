@@ -109,6 +109,11 @@ const SIZE_PROBLEM = {
   fps: "export.errors.fps",
 } as const satisfies Record<"width" | "height" | "fps", TKey>;
 
+const NAME_PROBLEM = {
+  empty: "export.savePreset.empty",
+  long: "export.savePreset.long",
+} as const satisfies Record<"empty" | "long", TKey>;
+
 /** Where a refusal shows: a field of the form, or the dialog's own line. */
 type Spot = "path" | "range" | "size" | "options" | "general";
 
@@ -821,7 +826,7 @@ function PresetForm({
               </p>
             ) : null}
             {naming.tried && nameIssue !== null ? (
-              <FieldError>{t(`export.savePreset.${nameIssue}`)}</FieldError>
+              <FieldError>{t(NAME_PROBLEM[nameIssue])}</FieldError>
             ) : naming.refused !== null ? (
               <FieldError>{t("export.savePreset.refused", { message: naming.refused })}</FieldError>
             ) : null}
