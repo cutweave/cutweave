@@ -174,6 +174,65 @@ impl FrameQuality {
     }
 }
 
+/// The preview's quality while playing (`view.set_preview_quality{playing}`, WP-2H.10).
+#[wire]
+#[derive(Copy, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayingQuality {
+    /// The quality ladder: full size while frames are on time, smaller when they are late.
+    #[default]
+    Auto,
+    /// Always full size; late frames are dropped.
+    Full,
+    /// Always half size.
+    Half,
+    /// Always quarter size.
+    Quarter,
+}
+
+impl PlayingQuality {
+    /// The size every playback frame is rendered at; `None` leaves it to the ladder.
+    #[must_use]
+    pub const fn scale(self) -> Option<Scale> {
+        match self {
+            PlayingQuality::Auto => None,
+            PlayingQuality::Full => Some(Scale::Full),
+            PlayingQuality::Half => Some(Scale::Half),
+            PlayingQuality::Quarter => Some(Scale::Quarter),
+        }
+    }
+
+    pub(crate) const fn to_u8(self) -> u8 {
+        match self {
+            PlayingQuality::Auto => 0,
+            PlayingQuality::Full => 1,
+            PlayingQuality::Half => 2,
+            PlayingQuality::Quarter => 3,
+        }
+    }
+
+    pub(crate) const fn from_u8(v: u8) -> PlayingQuality {
+        match v {
+            1 => PlayingQuality::Full,
+            2 => PlayingQuality::Half,
+            3 => PlayingQuality::Quarter,
+            _ => PlayingQuality::Auto,
+        }
+    }
+}
+
+/// The preview's quality when stopped (`view.set_preview_quality{paused}`, WP-2H.10).
+#[wire]
+#[derive(Copy, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PausedQuality {
+    /// The frame refines to full size.
+    #[default]
+    Full,
+    /// The frame stays at the size playback uses: the chosen one, or the ladder's rung.
+    Auto,
+}
+
 /// The `playback.state` event payload and the result of the `view.*` transport commands.
 #[wire]
 pub struct PlaybackState {
@@ -198,6 +257,15 @@ pub struct PlaybackState {
     /// Whether the newest delivered frame shows a proxy: at least one of its pictures was
     /// decoded from a proxy file instead of the original.
     pub proxy: bool,
+    /// The quality chosen for playing (`view.set_preview_quality{playing}`, WP-2H.10; `auto`
+    /// until told otherwise). `quality` says what the frame on screen has.
+    pub playing_quality: PlayingQuality,
+    /// The quality chosen for a stopped frame (`view.set_preview_quality{paused}`; `full`
+    /// until told otherwise).
+    pub paused_quality: PausedQuality,
+    /// Whether forward playback starts again from the beginning at the end (`view.set_loop`,
+    /// WP-2H.10; off until told otherwise).
+    pub looping: bool,
     /// The media asset playing instead of the sequence (`view.set_source`); `null` while the
     /// sequence plays. The sequence's playhead does not move while a source plays.
     pub source: Option<SourceInfo>,

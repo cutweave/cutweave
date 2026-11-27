@@ -13,7 +13,7 @@ use cutweave_model::{MediaId, Time, TimeInput};
 
 use crate::shm::{PixelFormat, PreviewConfig};
 use crate::transport::control::Transport;
-use crate::transport::state::{PlaybackState, Rate};
+use crate::transport::state::{PausedQuality, PlaybackState, PlayingQuality, Rate};
 
 /// Plays forward at normal speed with audio (L). At the end of the content, playback starts
 /// again from the beginning. Returns the playback state.
@@ -211,16 +211,29 @@ impl EngineCommand for ViewSetPreviewSize {
     }
 }
 
-/// Chooses whether the preview uses proxies (WP-2F.02). On (the default), a clip plays, scrubs
+/// Chooses how the preview trades quality for speed: whether it uses proxies, and the size of
+/// its frames while playing and when stopped.
+///
+/// `use_proxies` (WP-2F.02). On (the default), a clip plays, scrubs
 /// and pauses on its proxy when one is ready and holds the pixels the clip is drawn at; a
 /// preview that needs more than the proxy has shows the original. Off, the preview reads
 /// originals only. Exports, agent frames, thumbnails and analysis read originals either way.
 /// This computer's preference (`playback.proxies`): the app sends it after connecting and
 /// when the transport bar's toggle changes; `playback.state` reports it (`use_proxies`) and
-/// whether the frame on screen shows a proxy (`proxy`). Returns the playback state.
+/// whether the frame on screen shows a proxy (`proxy`).
+///
+/// `playing` and `paused` (WP-2H.10; the preferences `playback.quality_playing` and
+/// `playback.quality_paused`, sent the same way). While playing, `auto` (the default) follows
+/// the quality ladder: full size while frames are on time, smaller when they are late; `full`,
+/// `half` and `quarter` hold that size whatever the frame times (late frames are dropped).
+/// When stopped, `full` (the default) refines the frame to full size and `auto` keeps it at
+/// the size playback uses. `playback.state.quality` says the size of the frame on screen.
+///
+/// A change re-renders the current frame and applies from the next one, with no seek.
+/// Returns the playback state.
 #[command(
     name = "view.set_preview_quality",
-    summary = "Choose whether the preview uses proxies",
+    summary = "Choose the preview's use of proxies and its quality while playing and paused",
     view,
     scope = "ui",
     mcp = "hidden",
@@ -230,16 +243,50 @@ pub struct ViewSetPreviewQuality {
     /// Whether the preview uses proxies; absent keeps the current choice.
     #[serde(default)]
     pub use_proxies: Option<bool>,
+    /// The size of frames while playing: `auto`, `full`, `half` or `quarter`; absent keeps
+    /// the current choice.
+    #[serde(default)]
+    pub playing: Option<PlayingQuality>,
+    /// The size of the frame when stopped: `full` or `auto`; absent keeps the current choice.
+    #[serde(default)]
+    pub paused: Option<PausedQuality>,
 }
 
 impl EngineCommand for ViewSetPreviewQuality {
     type Context = Transport;
     type Output = PlaybackState;
     fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
-        Ok(match self.use_proxies {
-            Some(on) => transport.set_use_proxies(on),
-            None => transport.state(),
-        })
+        if let Some(on) = self.use_proxies {
+            transport.set_use_proxies(on);
+        }
+        Ok(transport.set_preview_quality(self.playing, self.paused))
+    }
+}
+
+/// Turns loop playback on or off (WP-2H.10). On, forward playback that reaches the end of
+/// what plays (the sequence, or a source) starts again from the beginning and goes on until
+/// it is paused, at 1× with its sound; reverse playback still stops at the start. Off (the
+/// default), playback stops at the end. The person's preference (`playback.loop`): the app
+/// sends it after connecting and when the transport bar's loop button or the setting changes.
+/// Returns the playback state.
+#[command(
+    name = "view.set_loop",
+    summary = "Turn loop playback on or off",
+    view,
+    scope = "ui",
+    mcp = "hidden",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewSetLoop {
+    /// Whether playback starts again from the beginning when it reaches the end.
+    pub on: bool,
+}
+
+impl EngineCommand for ViewSetLoop {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        Ok(transport.set_looping(self.on))
     }
 }
 
@@ -253,6 +300,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ViewStep>()?
         .register::<ViewSetSource>()?
         .register::<ViewSetPreviewSize>()?
-        .register::<ViewSetPreviewQuality>()?;
+        .register::<ViewSetPreviewQuality>()?
+        .register::<ViewSetLoop>()?;
     Ok(())
 }

@@ -82,8 +82,8 @@ use cutweave_playback::shm::{
 };
 use cutweave_playback::transport::{
     AudioControl, FrameSink, HostClock, ManualAudio, NullSink, OutputAudio, PLAYBACK_STATE_EVENT,
-    PlaybackConfig, PlaybackEngine, PlaybackParts, PlaybackState, PlaybackStats, PublisherSink,
-    RenderConfig, SystemClock, Transport,
+    PausedQuality, PlaybackConfig, PlaybackEngine, PlaybackParts, PlaybackState, PlaybackStats,
+    PlayingQuality, PublisherSink, RenderConfig, SystemClock, Transport,
 };
 use cutweave_render::gpu::AdapterChoice;
 use cutweave_render::query::{RenderFrame, SharedBackend};
@@ -279,6 +279,9 @@ struct Inner {
     /// Whether the preview uses proxies (`view.set_preview_quality`, WP-2F.02): this
     /// computer's choice, kept here so the playback of the next project opens with it.
     use_proxies: AtomicBool,
+    /// The preview quality and loop playback the person chose (`view.set_preview_quality`,
+    /// `view.set_loop`, WP-2H.10): preferences of the app, kept here like the proxy choice.
+    playback_choices: Mutex<(PlayingQuality, PausedQuality, bool)>,
     started: Mutex<Option<Started>>,
     per_doc: Mutex<Option<PerDoc>>,
     ring: Arc<Mutex<Option<Announced>>>,
@@ -416,6 +419,7 @@ impl FullSubsystems {
                 frame_cache: Arc::new(FrameCache::new(budget)),
                 decode: Arc::default(),
                 use_proxies: AtomicBool::new(true),
+                playback_choices: Mutex::new((PlayingQuality::Auto, PausedQuality::Full, false)),
                 config,
                 doc: CurrentDoc::default(),
                 started: Mutex::new(None),
@@ -572,6 +576,11 @@ impl FullSubsystems {
         parts
             .transport
             .set_use_proxies(self.inner.use_proxies.load(Ordering::Relaxed));
+        let (playing, paused, looping) = *lock(&self.inner.playback_choices);
+        parts
+            .transport
+            .set_preview_quality(Some(playing), Some(paused));
+        parts.transport.set_looping(looping);
         let events = started.events.clone();
         let publish = move |state: &PlaybackState| {
             events.publish(
@@ -1165,11 +1174,13 @@ impl Subsystems for FullSubsystems {
         let Ok(output) = &result else {
             return Some(result);
         };
-        if call.name == "view.set_preview_quality" {
+        if call.name == "view.set_preview_quality" || call.name == "view.set_loop" {
             // Kept for the transports of the projects opened after this one.
             self.inner
                 .use_proxies
                 .store(transport.use_proxies(), Ordering::Relaxed);
+            let (playing, paused) = transport.preview_quality();
+            *lock(&self.inner.playback_choices) = (playing, paused, transport.looping());
             return Some(result);
         }
         let Ok(state) = serde_json::from_value::<PlaybackState>(output.clone()) else {
