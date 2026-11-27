@@ -174,6 +174,31 @@ pub struct Finished {
     pub histogram_path: PathBuf,
     /// Metrics outside their budget.
     pub failed: Vec<String>,
+    /// Probes that could not run, with the reason.
+    pub not_run: Vec<String>,
+}
+
+impl Finished {
+    /// The table, where the files went and what is over budget or missing: what a run prints.
+    #[must_use]
+    pub fn report(&self) -> String {
+        let mut out = format!(
+            "{}
+result:    {}
+histogram: {}
+",
+            self.table,
+            self.result_path.display(),
+            self.histogram_path.display()
+        );
+        if !self.failed.is_empty() {
+            let _ = writeln!(out, "over budget: {}", self.failed.join(", "));
+        }
+        for probe in &self.not_run {
+            let _ = writeln!(out, "not measured: {probe}");
+        }
+        out
+    }
 }
 
 /// Writes the result of a run (`out`, default `bench-results/{machine}/{date}.json`) and the
@@ -205,6 +230,7 @@ pub fn finish(
         result_path,
         histogram_path,
         failed,
+        not_run: outcome.failed.clone(),
     })
 }
 

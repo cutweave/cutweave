@@ -48,6 +48,8 @@ pub struct Scale {
     pub starts: usize,
     /// Start the engine process with `--dev-stub-media` (no decoders, GPU or audio).
     pub stub_media: bool,
+    /// Start the engine process the way the app does (`Gui` mode) instead of headless.
+    pub gui_engine: bool,
 }
 
 impl Scale {
@@ -65,8 +67,9 @@ impl Scale {
             fan_out_rounds: 200,
             ripples: 60,
             idle: Duration::from_secs(60),
-            starts: 5,
+            starts: 3,
             stub_media: false,
+            gui_engine: true,
         }
     }
 
@@ -90,6 +93,7 @@ impl Scale {
             idle: Duration::from_millis(200),
             starts: 1,
             stub_media: true,
+            gui_engine: false,
         }
     }
 }
@@ -234,26 +238,24 @@ pub fn open_and_query(ws: &Workspace, scale: &Scale) -> Result<Vec<Metric>, Benc
     ])
 }
 
-/// Command round trip on P-5K: `scale.commands` mixed commands in process, then as many over
-/// the WebSocket (request, response and the `doc.patched` it causes).
-/// `command_roundtrip_p95_ms` is the WebSocket p95.
+/// Command round trip on P-5K: `scale.commands` mixed commands in process and as many over the
+/// WebSocket (request, response and the `doc.patched` it causes), taking turns so both see the
+/// same document as it grows. `command_roundtrip_p95_ms` is the WebSocket p95.
 pub fn command_rtt(
     engine: &BenchEngine,
     workload: &mut Workload,
     scale: &Scale,
 ) -> Result<(Vec<Metric>, RttHistogram), BenchError> {
     let conn = engine.connect()?;
+    let mut client = engine.ws()?;
+    client.subscribe_patches()?;
     let mut local = Vec::with_capacity(scale.commands);
+    let mut remote = Vec::with_capacity(scale.commands);
     for _ in 0..scale.commands {
         let step = workload.next_step();
         let t0 = Instant::now();
         call(&conn, step.command, step.params)?;
         local.push(ms(t0));
-    }
-    let mut client = engine.ws()?;
-    client.subscribe_patches()?;
-    let mut remote = Vec::with_capacity(scale.commands);
-    for _ in 0..scale.commands {
         let step = workload.next_step();
         let t0 = Instant::now();
         client.round_trip(step.command, step.params)?;
@@ -363,11 +365,13 @@ fn child_spec(ws: &Workspace, scale: &Scale, exe: &Path, tag: &str) -> ChildSpec
         scratch: ws.scratch.join(tag),
         project: None,
         stub_media: scale.stub_media,
+        gui: scale.gui_engine,
     }
 }
 
-/// Engine start (`app_start_engine_ms`): from spawning the engine process to an editable empty
-/// project over the WebSocket, the median of `scale.starts`. The engine's share of
+/// Engine start (`app_start_engine_ms`): from spawning the engine process (in `Gui` mode at
+/// full scale, as the app starts it) to an editable empty project over the WebSocket, the
+/// median of `scale.starts`. The engine's share of
 /// `app_start_ms`; Electron's is measured by WP-2J.02.
 pub fn engine_start(ws: &Workspace, scale: &Scale, exe: &Path) -> Result<Vec<Metric>, BenchError> {
     let spec = child_spec(ws, scale, exe, "start");
@@ -388,6 +392,7 @@ pub fn engine_start(ws: &Workspace, scale: &Scale, exe: &Path) -> Result<Vec<Met
     let (s, r) = (summarize(&times), summarize(&ready));
     Ok(vec![
         Metric::new("app_start_engine_ms", s.p50, "ms", s.samples),
+        Metric::new("app_start_engine_max_ms", s.max, "ms", s.samples),
         Metric::new("app_start_engine_ready_ms", r.p50, "ms", r.samples),
     ])
 }
@@ -420,6 +425,9 @@ pub struct Outcome {
     pub metrics: Vec<Metric>,
     /// The round-trip distributions.
     pub rtt: RttHistogram,
+    /// Probes of the engine process that could not run (it did not start, say), with the
+    /// reason; their metrics are missing.
+    pub failed: Vec<String>,
 }
 
 /// Runs every probe at `scale`. `exe` is the `cutweave-bench` executable (the engine process
@@ -435,7 +443,24 @@ pub fn run_all(ws: &Workspace, scale: &Scale, exe: &Path) -> Result<Outcome, Ben
         metrics.extend(ripple(&engine, ws, scale)?);
         rtt
     };
-    metrics.extend(engine_start(ws, scale, exe)?);
-    metrics.extend(idle_memory(ws, scale, exe)?);
-    Ok(Outcome { metrics, rtt })
+    // The engine process depends on the machine (GPU, audio device): when it does not come
+    // up, the measurements above are still worth reporting.
+    let mut failed = Vec::new();
+    for (name, probe) in [
+        (
+            "engine start",
+            engine_start as fn(&Workspace, &Scale, &Path) -> _,
+        ),
+        ("idle memory", idle_memory),
+    ] {
+        match probe(ws, scale, exe) {
+            Ok(found) => metrics.extend(found),
+            Err(e) => failed.push(format!("{name}: {e}")),
+        }
+    }
+    Ok(Outcome {
+        metrics,
+        rtt,
+        failed,
+    })
 }

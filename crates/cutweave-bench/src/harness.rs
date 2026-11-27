@@ -3,14 +3,14 @@
 //! `/rpc`), a JSON-RPC WebSocket client ([`WsClient`]) and a real engine process started through
 //! the launch protocol ([`ChildEngine`]).
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write as _};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use cutweave_api::rpc::RpcConfig;
-use cutweave_api::{Credential, RunFile};
+use cutweave_api::{Credential, RunFile, Token};
 use cutweave_engine::{Call, Connection, Engine, EngineConfig, EngineMode, rpc_mounts};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
@@ -24,6 +24,10 @@ use crate::BenchError;
 
 /// How long a probe waits for any one answer before it gives up.
 pub const WAIT: Duration = Duration::from_secs(60);
+/// How long an engine process may take to say it is ready. Generous: on a machine whose GPU
+/// is busy the full engine has been seen to take a minute, and the probe should report that
+/// number, not fail.
+pub const READY_WAIT: Duration = Duration::from_secs(240);
 
 fn other(what: &str, e: impl std::fmt::Display) -> BenchError {
     BenchError::Other(format!("{what}: {e}"))
@@ -243,6 +247,8 @@ impl WsClient {
 /// `docs/reference/launch-protocol.md`), killed on drop.
 pub struct ChildEngine {
     child: Child,
+    /// Kept open: a `Gui` engine stops when its stdin ends.
+    _stdin: Option<ChildStdin>,
     /// Its port.
     pub port: u16,
     token: String,
@@ -261,6 +267,9 @@ pub struct ChildSpec {
     pub project: Option<PathBuf>,
     /// `--dev-stub-media`: no decoders, GPU or audio (the smoke run).
     pub stub_media: bool,
+    /// Start it the way the app does (`Gui` mode: the UI token over stdin, the GPU and the
+    /// default audio output) instead of `--headless`.
+    pub gui: bool,
 }
 
 impl ChildEngine {
@@ -269,7 +278,12 @@ impl ChildEngine {
         let run_dir = spec.scratch.join("run");
         let began = Instant::now();
         let mut cmd = Command::new(&spec.exe);
-        cmd.args(["engine", "--headless", "--port", "0", "--no-log"])
+        cmd.args(["engine", "--port", "0", "--no-log"])
+            .arg(if spec.gui {
+                "--token-stdin"
+            } else {
+                "--headless"
+            })
             .arg("--run-dir")
             .arg(&run_dir)
             .arg("--cache-dir")
@@ -288,6 +302,25 @@ impl ChildEngine {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| BenchError::io("start", &spec.exe, e))?;
+        let mut stdin = child.stdin.take();
+        if spec.gui {
+            // The handshake: one line with a fresh UI token (never logged, never reused).
+            let sent = Token::generate()
+                .map_err(|e| other("make a token", e))
+                .and_then(|token| {
+                    let pipe = stdin
+                        .as_mut()
+                        .ok_or_else(|| BenchError::Other("the engine has no stdin".into()))?;
+                    writeln!(pipe, "{}", token.expose())
+                        .and_then(|()| pipe.flush())
+                        .map_err(|e| other("send the handshake", e))
+                });
+            if let Err(e) = sent {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e);
+            }
+        }
         let lines = child.stdout.take().map(stdout_lines);
         let ready = lines
             .ok_or_else(|| BenchError::Other("the engine has no stdout".into()))
@@ -309,6 +342,7 @@ impl ChildEngine {
             .map(|t| t.token);
         let mut engine = ChildEngine {
             child,
+            _stdin: stdin,
             port,
             token: String::new(),
             ready_after,
@@ -353,7 +387,7 @@ fn stdout_lines(stdout: std::process::ChildStdout) -> Receiver<String> {
 
 /// The port of the `ready` line; an `error` line or the end of stdout fails.
 fn wait_ready(lines: &Receiver<String>) -> Result<u16, BenchError> {
-    let deadline = Instant::now() + WAIT;
+    let deadline = Instant::now() + READY_WAIT;
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
         let line = lines

@@ -27,6 +27,7 @@ fn the_suite_runs_end_to_end_at_smoke_scale() {
     let exe = Path::new(env!("CARGO_BIN_EXE_cutweave-bench"));
     let outcome = run_all(&workspace, &scale, exe).unwrap();
 
+    assert!(outcome.failed.is_empty(), "{:?}", outcome.failed);
     let ids: Vec<&str> = outcome.metrics.iter().map(|m| m.id.as_str()).collect();
     for id in [
         "project_open_1h_ms",

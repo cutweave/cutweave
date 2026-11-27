@@ -44,10 +44,10 @@ It runs the criterion benches (project open, command round trip in process and o
 | Metric | How it is measured |
 |---|---|
 | `project_open_1h_ms` | `project.open` of P-400 plus reading its whole timeline, median of 10 |
-| `command_roundtrip_p95_ms` | 10,000 mixed commands on P-5K over the WebSocket: request, response and the `doc.patched` it causes |
+| `command_roundtrip_p95_ms` | 10,000 mixed commands (property changes, keyframes, moves, mutes, markers) on P-5K over the WebSocket: request, response and the `doc.patched` it causes. They take turns with 10,000 in-process calls (`command_rtt_in_process_*`), so both see the same growing document |
 | `timeline_get_p400_ms` | `timeline.get` at depth 1 on P-400, p95 of 200 |
-| `app_start_engine_ms` | a real engine process (`cutweave-bench engine`, the launch protocol) from spawn to `project.new` answered; Electron's share of `app_start_ms` is WP-2J.02's |
-| `idle_memory_1h_1080p_mb` | resident memory of that engine process with P-400 open after 60 s idle. Reported under this id only with `--features ffmpeg` and the source files made; otherwise as `idle_memory_no_media_mb`, without a budget |
+| `app_start_engine_ms` | a real engine process (`cutweave-bench engine`, the launch protocol, started in `Gui` mode with the handshake as the app does: GPU and default audio output) from spawn to `project.new` answered, median of 3 (the slowest, usually the first, is `app_start_engine_max_ms`); Electron's share of `app_start_ms` is WP-2J.02's |
+| `idle_memory_1h_1080p_mb` | resident memory of such an engine process with P-400 open after 60 s idle. Reported under this id only with `--features ffmpeg` and the source files made; otherwise as `idle_memory_no_media_mb`, without a budget |
 
 The rest (`command_rtt_in_process_*`, `doc_patched_fanout_*`, `placement_ripple_p5k_*`, …) is informational. The result goes to `bench-results/{machine}/{date}.json` (git-ignored; `cargo xtask bench-check <file>` judges it again, with `--baseline` against an earlier run) and the round-trip histogram to `{date}.command-rtt.json` next to it. The run itself always exits 0: the gate is `bench-check` (WP-2J.04).
 

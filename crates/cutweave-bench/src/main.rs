@@ -40,15 +40,18 @@ fn run(args: &[String]) -> Result<bool, BenchError> {
         }
     }
     let root = workspace_root();
-    let scratch = root.join("target").join("bench-scratch").join(scale.suite);
+    // The folder `cargo bench` uses too, so the source files are made once.
+    let scratch = root
+        .join("target")
+        .join("tmp")
+        .join("bench-scratch")
+        .join(scale.suite);
     let exe = std::env::current_exe().map_err(|e| BenchError::Other(e.to_string()))?;
     let workspace = Workspace::prepare(&scale, &scratch, with_media)?;
     let outcome = run_all(&workspace, &scale, &exe)?;
     let finished = cli::finish(&root, &scale, &outcome, out.as_deref())?;
-    println!("{}", finished.table);
-    println!("result:    {}", finished.result_path.display());
-    println!("histogram: {}", finished.histogram_path.display());
-    Ok(finished.failed.is_empty())
+    print!("{}", finished.report());
+    Ok(finished.failed.is_empty() && finished.not_run.is_empty())
 }
 
 fn main() -> ExitCode {
