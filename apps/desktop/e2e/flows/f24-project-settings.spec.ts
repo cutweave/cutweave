@@ -94,7 +94,7 @@ test.describe("F24 project settings", () => {
         await page.getByRole("button", { name: "Project settings…" }).click();
         const dialog = dialogOf(page);
         await expect(dialog).toBeVisible(BOUND);
-        await expect(stillField(dialog)).toHaveValue(/^5/);
+        await expect(stillField(dialog)).toHaveAttribute("aria-valuenow", "5");
         await dialog.getByRole("button", { name: "Close" }).click();
         await expect(dialog).toBeHidden();
 
@@ -105,7 +105,7 @@ test.describe("F24 project settings", () => {
         await page.keyboard.type("3");
         await page.keyboard.press("Enter");
         await expect.poll(async () => (await settings(page)).still_duration, BOUND).toBe(sec(3));
-        await expect(stillField(dialog)).toHaveValue(/^3/);
+        await expect(stillField(dialog)).toHaveAttribute("aria-valuenow", "3");
         await dialog.getByRole("button", { name: "Close" }).click();
         await expect(dialog).toBeHidden();
 
@@ -120,14 +120,14 @@ test.describe("F24 project settings", () => {
         await dialog.getByRole("heading", { name: "Project settings" }).click();
         await shortcut(app, "Control+Z");
         await expect.poll(() => clipLengths(page), BOUND).toEqual([]);
-        await expect(stillField(dialog)).toHaveValue(/^3/);
+        await expect(stillField(dialog)).toHaveAttribute("aria-valuenow", "3");
         await shortcut(app, "Control+Z");
-        await expect(stillField(dialog)).toHaveValue(/^5/, BOUND);
+        await expect(stillField(dialog)).toHaveAttribute("aria-valuenow", "5", BOUND);
         expect((await settings(page)).still_duration).toBe(sec(5));
 
         // Redo the setting, and make it the default for new projects.
         await shortcut(app, "Control+Y");
-        await expect(stillField(dialog)).toHaveValue(/^3/, BOUND);
+        await expect(stillField(dialog)).toHaveAttribute("aria-valuenow", "3", BOUND);
         await dialog.getByRole("button", { name: "Use as defaults for new projects" }).click();
         await expect(dialog.getByRole("status")).toContainText("3 s", BOUND);
 
@@ -154,7 +154,7 @@ test.describe("F24 project settings", () => {
             proxy_policy: "auto",
           });
         await chooseMenu(page, app, "File", "Project settings…");
-        await expect(stillField(dialog)).toHaveValue(/^3/, BOUND);
+        await expect(stillField(dialog)).toHaveAttribute("aria-valuenow", "3", BOUND);
         await expect(dialog.getByRole("radio", { name: "Auto" })).toHaveAttribute(
           "aria-checked",
           "true",
