@@ -59,6 +59,7 @@ export {
   usePortalContainer,
 } from "./PortalContainer.ts";
 export { ProgressBar, type ProgressBarProps } from "./ProgressBar.tsx";
+export { RatingStars, type RatingStarsProps } from "./RatingStars.tsx";
 export { SearchField, type SearchFieldProps } from "./SearchField.tsx";
 export {
   SegmentedControl,
@@ -85,6 +86,7 @@ export {
   Tabs,
   type TabsProps,
 } from "./Tabs.tsx";
+export { TagInput, type TagInputProps, type TagInputTag } from "./TagInput.tsx";
 export { TextField, type TextFieldProps } from "./TextField.tsx";
 export {
   Toast,
