@@ -8,6 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaultPreferences } from "@cutweave/preferences";
 import type { ItemId, RpcClient, SequenceId, TrackId } from "@cutweave/protocol";
 import {
   type EngineHandle,
@@ -23,6 +24,7 @@ import { InspectorEditor, type PropEdit } from "../inspector/editor.ts";
 import { FIELDS, type FieldDef, type SelectedClip } from "../inspector/fields.ts";
 import { propsPatch, propsSchema } from "../inspector/video.ts";
 import { commandCatalog } from "../palette/catalog.ts";
+import { prefsStore } from "../prefs/prefsStore.ts";
 import { createDocStore } from "../state/docStore.ts";
 import { createJobStore } from "../state/jobStore.ts";
 import { createPlaybackStore } from "../state/playbackStore.ts";
@@ -134,7 +136,14 @@ async function open(extraArgs: readonly string[] = []): Promise<Session> {
   };
 }
 
+/** Settings > Timeline > Main track is magnetic in new sequences (ADR-0037). */
+const setMagneticMain = (on: boolean): void =>
+  prefsStore.setState({ values: { ...defaultPreferences(), "timeline.magnetic_main": on } });
+
 beforeAll(() => {
+  // The tests below place a clip at 1 s and move it, as on a free main track: they run with the
+  // setting off, like a person who turned it off. The default (on) has its own test.
+  setMagneticMain(false);
   const resolved = resolveEngineBinary();
   if (resolved.unavailable !== undefined) {
     skipReason = resolved.unavailable;
@@ -149,6 +158,7 @@ beforeAll(() => {
 }, 20 * 60_000);
 
 afterAll(async () => {
+  prefsStore.setState({ values: defaultPreferences() });
   for (const runtime of runtimes) await runtime.stop().catch(() => undefined);
   for (const handle of handles) await handle.stop().catch(() => undefined);
   if (workDir !== undefined) rmSync(workDir, { recursive: true, force: true });
@@ -262,6 +272,29 @@ const untitledAndEmpty = (s: Session) =>
   );
 
 const history = async (s: Session) => (await s.rpc.call("edit.history", { limit: 500 })).entries;
+
+describe("the main track of a new project (ADR-0037)", () => {
+  live("is magnetic with the Timeline setting on, and free with it off", async () => {
+    const s = await open();
+    /** `magnetic` of the open project's tracks, in order (V1, A1). */
+    const magnets = (): (boolean | undefined)[] => {
+      const seq = Object.values(s.stores.doc.getState().project?.sequences ?? {})[0];
+      return seq === undefined ? [] : seq.track_order.map((id) => seq.tracks[id]?.magnetic);
+    };
+    try {
+      setMagneticMain(true); // the default
+      await createProject(s, "MagnetOn");
+      await until(() => magnets().length === 2, 5000, "the new project");
+      expect(magnets()).toEqual([true, false]);
+      setMagneticMain(false);
+      await createProject(s, "MagnetOff");
+      await until(() => magnets().length === 2 && magnets()[0] === false, 5000, "the new project");
+      expect(magnets()).toEqual([false, false]);
+    } finally {
+      setMagneticMain(false);
+    }
+  });
+});
 
 describe("the inspector, undo and redo against the real engine", () => {
   live("an opacity drag is one gesture and one undo entry; Undo and Redo name it", async () => {
