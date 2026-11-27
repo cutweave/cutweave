@@ -5,7 +5,7 @@
 //! skipped by pointer without being visited (`imbl` diffs skip shared nodes), so the cost is
 //! proportional to what changed, plus one pass over the items of each changed track.
 
-use cutweave_model::{Item, MediaAsset, Project, Sequence, Track, TrackItems};
+use cutweave_model::{Collection, Item, MediaAsset, Project, Sequence, Track, TrackItems};
 use imbl::{OrdMap, ordmap::DiffItem};
 use serde::Serialize;
 use serde_json::Value;
@@ -44,6 +44,7 @@ fn diff_project(before: &Project, after: &Project, out: &mut Ops) -> Result<(), 
     let root = DocPath::root();
     let shallow = |p: &Project| Project {
         media: OrdMap::new(),
+        collections: OrdMap::new(),
         sequences: OrdMap::new(),
         ..p.clone()
     };
@@ -51,8 +52,15 @@ fn diff_project(before: &Project, after: &Project, out: &mut Ops) -> Result<(), 
         &root,
         &shallow(before),
         &shallow(after),
-        &["media", "sequences"],
+        &["media", "collections", "sequences"],
         out,
+    )?;
+    diff_omitted_while_empty(
+        &root.join("collections"),
+        &before.collections,
+        &after.collections,
+        out,
+        diff_collection,
     )?;
     diff_keyed(
         &root.join("media"),
@@ -173,7 +181,70 @@ where
     Ok(())
 }
 
-fn add<T: Serialize>(path: &DocPath, value: &T, out: &mut Ops) -> Result<(), PatchError> {
+/// Diffs an ID-keyed map that is left out of the document while it is empty
+/// (`Project::collections`, ADR-0036), so that no op leaves it present and empty: the document
+/// model cannot hold that, and neither can the JSON form of the document, where the key is
+/// then absent. A map that appears or disappears is added or removed whole; otherwise entries
+/// are added, then changed, then removed, so the map is never empty in between.
+fn diff_omitted_while_empty<K, V>(
+    path: &DocPath,
+    before: &OrdMap<K, V>,
+    after: &OrdMap<K, V>,
+    out: &mut Ops,
+    child: impl Fn(&DocPath, &V, &V, &mut Ops) -> Result<(), PatchError>,
+) -> Result<(), PatchError>
+where
+    K: Ord + Clone + std::fmt::Display + Serialize,
+    V: Clone + PartialEq + Serialize,
+{
+    match (before.is_empty(), after.is_empty()) {
+        (true, true) => return Ok(()),
+        (true, false) => return add(path, after, out),
+        (false, true) => return remove(path, before, out),
+        (false, false) => {}
+    }
+    for change in before.diff(after) {
+        if let DiffItem::Add(key, value) = change {
+            add(&path.join(key), value, out)?;
+        }
+    }
+    for change in before.diff(after) {
+        if let DiffItem::Update {
+            old: (key, old),
+            new: (_, new),
+        } = change
+        {
+            child(&path.join(key), old, new, out)?;
+        }
+    }
+    for change in before.diff(after) {
+        if let DiffItem::Remove(key, value) = change {
+            remove(&path.join(key), value, out)?;
+        }
+    }
+    Ok(())
+}
+
+/// A collection that changes kind is replaced whole: a manual and a smart collection share no
+/// member of `kind`, and the halfway states are not valid values.
+fn diff_collection(
+    path: &DocPath,
+    before: &Collection,
+    after: &Collection,
+    out: &mut Ops,
+) -> Result<(), PatchError> {
+    if before.kind.name() == after.kind.name() {
+        return diff_value(path, before, after, out);
+    }
+    out.push(PatchOp::Replace {
+        path: path.clone(),
+        old: to_json(before, path)?,
+        value: to_json(after, path)?,
+    });
+    Ok(())
+}
+
+fn add<T: Serialize + ?Sized>(path: &DocPath, value: &T, out: &mut Ops) -> Result<(), PatchError> {
     out.push(PatchOp::Add {
         path: path.clone(),
         value: to_json(value, path)?,
@@ -181,7 +252,11 @@ fn add<T: Serialize>(path: &DocPath, value: &T, out: &mut Ops) -> Result<(), Pat
     Ok(())
 }
 
-fn remove<T: Serialize>(path: &DocPath, value: &T, out: &mut Ops) -> Result<(), PatchError> {
+fn remove<T: Serialize + ?Sized>(
+    path: &DocPath,
+    value: &T,
+    out: &mut Ops,
+) -> Result<(), PatchError> {
     out.push(PatchOp::Remove {
         path: path.clone(),
         old: to_json(value, path)?,
@@ -218,4 +293,97 @@ fn diff_shallow<T: Serialize>(
     };
     json::diff(path, &strip(before)?, &strip(after)?, out);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use cutweave_model::{CollectionId, CollectionKind, MediaFilter};
+
+    use super::*;
+    use crate::patch::{apply_patch_json, invert};
+
+    fn with(collections: &[(u128, &str, CollectionKind)]) -> Project {
+        let mut doc = Project::new("Diff");
+        for (n, name, kind) in collections {
+            let id = CollectionId::from_u128(*n);
+            doc.collections
+                .insert(id, Collection::new(id, *name, kind.clone()));
+        }
+        doc
+    }
+
+    /// The ops of `before → after` as `op path`, after checking that the patch and its inverse
+    /// hold on the typed document and on its JSON form.
+    fn ops(before: &Project, after: &Project) -> Vec<String> {
+        let patch = diff(before, after).unwrap();
+        assert_eq!(&apply_patch(after, &invert(&patch)).unwrap(), before);
+        let mut mirror = serde_json::to_value(before).unwrap();
+        apply_patch_json(&mut mirror, &patch).unwrap();
+        assert_eq!(mirror, serde_json::to_value(after).unwrap());
+        apply_patch_json(&mut mirror, &invert(&patch)).unwrap();
+        assert_eq!(mirror, serde_json::to_value(before).unwrap());
+        patch
+            .iter()
+            .map(|op| {
+                let kind = match op {
+                    PatchOp::Add { .. } => "add",
+                    PatchOp::Remove { .. } => "remove",
+                    PatchOp::Replace { .. } => "replace",
+                    PatchOp::Move { .. } => "move",
+                };
+                format!("{kind} {}", op.path())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn collections_are_never_left_present_and_empty() {
+        let manual = CollectionKind::manual;
+        let (a, b) = (CollectionId::from_u128(1), CollectionId::from_u128(2));
+        let none = with(&[]);
+        let one = with(&[(1, "A", manual())]);
+        let other = with(&[(2, "B", manual())]);
+
+        // The map appears and disappears whole (its key is absent while it is empty).
+        assert_eq!(ops(&none, &one), ["add /collections"]);
+        assert_eq!(ops(&one, &none), ["remove /collections"]);
+        // Every entry replaced: the new ones are added before the old ones are removed.
+        assert_eq!(
+            ops(&one, &other),
+            [
+                format!("add /collections/{b}"),
+                format!("remove /collections/{a}")
+            ]
+        );
+        assert_eq!(
+            ops(&other, &one),
+            [
+                format!("add /collections/{a}"),
+                format!("remove /collections/{b}")
+            ]
+        );
+        // An entry that stays is diffed field by field.
+        let renamed = with(&[(1, "Best", manual())]);
+        assert_eq!(
+            ops(&one, &renamed),
+            [format!("replace /collections/{a}/name")]
+        );
+    }
+
+    #[test]
+    fn a_collection_that_changes_kind_is_replaced_whole() {
+        let a = CollectionId::from_u128(1);
+        let manual = with(&[(1, "A", CollectionKind::manual())]);
+        let smart = with(&[(
+            1,
+            "A",
+            CollectionKind::Smart {
+                filter: MediaFilter::default(),
+            },
+        )]);
+        assert_eq!(ops(&manual, &smart), [format!("replace /collections/{a}")]);
+        assert_eq!(ops(&smart, &manual), [format!("replace /collections/{a}")]);
+    }
 }
