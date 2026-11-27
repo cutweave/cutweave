@@ -5,7 +5,7 @@
 // engine with a toast that names the same actor (`describeRefusal`). The marks follow the
 // engine's `tx.*` events (`locks.ts`) and are gone the moment the holder commits or cancels.
 import { Icon, Tooltip } from "@cutweave/ui";
-import { type ReactElement, useEffect } from "react";
+import { memo, type ReactElement, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { useEngineStore } from "../engine/engineStore.ts";
@@ -14,6 +14,7 @@ import { useDocStore } from "../state/docStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { translator } from "./errors.ts";
 import type { TimelineHost } from "./host.ts";
+import { lanesLaidStore } from "./keyframes.ts";
 import { LocksFeed, locksStore } from "./locks.ts";
 
 /** Keeps `locksStore` current while the timeline shows an engine's sequence. */
@@ -30,15 +31,32 @@ function useLocksFeed(): void {
 }
 
 /** The marks, laid over the timeline canvas. */
-export function InUseMarks({ controller }: { readonly controller: TimelineHost }) {
-  const { t } = useTranslation();
+export const InUseMarks = memo(function InUseMarks({
+  controller,
+}: {
+  readonly controller: TimelineHost;
+}) {
   useLocksFeed();
   const byItem = useStore(locksStore, (s) => s.byItem);
+  // Nothing held, nothing to follow (a drag on the canvas changes the document every frame).
+  if (byItem.size === 0) return null;
+  return <Marks controller={controller} byItem={byItem} />;
+});
+
+function Marks({
+  controller,
+  byItem,
+}: {
+  readonly controller: TimelineHost;
+  readonly byItem: ReadonlyMap<string, string>;
+}) {
+  const { t } = useTranslation();
   // Follow the clips when the timeline scrolls or zooms, or the document changes.
   useViewStore((s) => s.scroll);
   useViewStore((s) => s.zoom);
   useDocStore((s) => s.project);
-  if (byItem.size === 0) return null;
+  // A keyframe lane opened or closed: the tracks below it moved (WP-2C.05).
+  useStore(lanesLaidStore);
   const tr = translator(t);
   const marks: ReactElement[] = [];
   for (const [item, actor] of byItem) {

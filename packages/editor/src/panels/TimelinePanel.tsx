@@ -6,7 +6,7 @@ import {
   type ViewState,
 } from "@cutweave/timeline";
 import { Icon, useOwnerWindow } from "@cutweave/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import { useMediaLoaders } from "../media/mediaWiring.ts";
@@ -17,6 +17,7 @@ import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { InUseMarks } from "../timeline/InUseMarks.tsx";
+import { lanesRelaid, lanesShapeOf } from "../timeline/keyframes.ts";
 import { timelineDisplay } from "../timeline/prefs.ts";
 import { DropGhost, TrackHeaderControls } from "../timeline/TimelineOverlays.tsx";
 import { TimelineToolbar } from "../timeline/TimelineToolbar.tsx";
@@ -36,9 +37,15 @@ const PLACEHOLDER_TRACKS = [
  * selectors (it follows every `doc.patched`), with the interactions of WP-2A.10: pointer input
  * goes through the timeline state machine and comes back as engine commands. Video clips draw
  * filmstrips and audio clips waveforms through the engine's media endpoints (WP-1I.03); the
- * sequence's markers and in/out show in the ruler and over the lanes (WP-2A.09).
+ * sequence's markers and in/out show in the ruler and over the lanes (WP-2A.09). Memoized, as are
+ * the overlays in it: a drag changes the document every frame, and only what moved draws again
+ * (issue #241).
  */
-function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
+const EngineTimeline = memo(function EngineTimeline({
+  intents,
+}: {
+  readonly intents: TimelineBinding;
+}) {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
   const mediaLoaders = useMediaLoaders();
@@ -53,9 +60,10 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
   // The open keyframe lanes (WP-2C.05): view state, drawn from the document.
   const keyframeLanes = useKeyframeLanes(project);
   // Opening or closing a lane moves the tracks below it: once the canvas has laid them out (its
-  // effect runs before this one), what is placed over the headers and clips renders again.
-  const [, relaid] = useState(0);
-  useEffect(() => relaid((n) => n + 1), [keyframeLanes]);
+  // effect runs before this one), what is placed over the headers and clips follows.
+  const lanesShape = lanesShapeOf(keyframeLanes);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the lanes' shape changes
+  useEffect(() => lanesRelaid(), [lanesShape]);
   // The sequence's in and out points shade the timeline (markers come with the model).
   const range = selectInOut(project);
   const playhead = useViewStore((s) => s.playhead);
@@ -121,7 +129,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
       <InUseMarks controller={intents.host} />
     </>
   );
-}
+});
 
 /** The sample track area shown while no engine supplies a sequence. */
 function SampleLanes() {
@@ -170,7 +178,12 @@ export function TimelinePanel() {
       data-state={intents.ui.state}
       onPointerDownCapture={() => void transportController().closeSource()}
     >
-      <TimelineToolbar host={intents.host} ui={intents.ui} live={live} />
+      <TimelineToolbar
+        host={intents.host}
+        tool={intents.ui.tool}
+        linkedSelection={intents.ui.linkedSelection}
+        live={live}
+      />
       <div className="cw-timeline__body" {...(live ? intents.drop : {})}>
         {live ? <EngineTimeline intents={intents} /> : <SampleLanes />}
       </div>

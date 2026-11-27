@@ -17,7 +17,7 @@ use super::state::{SelectMode, SelectionRef, UiState, ViewCtx, ViewPatch};
     name = "view.get",
     summary = "Get the UI view state (playhead, zoom, selection, ...)",
     view,
-    mcp = "catalog",
+    mcp = "core",
     annotations(destructive = false, idempotent = true)
 )]
 pub struct ViewGet {}
@@ -37,7 +37,7 @@ impl EngineCommand for ViewGet {
     name = "view.set",
     summary = "Update the UI view state (partial merge; not undoable)",
     view,
-    mcp = "catalog",
+    mcp = "core",
     annotations(destructive = false, idempotent = true)
 )]
 pub struct ViewSet {

@@ -3,6 +3,8 @@
 // WP-2C.05: the timeline toolbar during a clip drag. Every update of a drag patches the
 // document; the toolbar (with its Keyframe lanes button) must not render again for it, and the
 // button asks the host for one small value, which the host answers from memory.
+
+import type { Tool } from "@cutweave/timeline";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { createElement as h, Profiler } from "react";
 import { I18nextProvider } from "react-i18next";
@@ -11,43 +13,32 @@ import { i18n } from "../i18n/index.ts";
 import { docStore } from "../state/docStore.ts";
 import { viewStore } from "../state/viewStore.ts";
 import { sampleProject } from "../testing/fixtures.ts";
-import type { TimelineHost, TimelineUi } from "./host.ts";
+import type { TimelineHost } from "./host.ts";
 import type { LanesToggle } from "./keyframes.ts";
 import { TimelineToolbar } from "./TimelineToolbar.tsx";
 
 afterEach(cleanup);
 
-const UI: TimelineUi = {
-  tool: "select",
-  linkedSelection: true,
-  snapGuides: [],
-  marquee: null,
-  preview: null,
-  replaceTarget: null,
-  cursor: "default",
-  state: "moving",
-};
-
 function mount(state: { toggle: LanesToggle }) {
   const lanesToggleState = vi.fn(() => state.toggle);
   const host = { lanesToggleState, toggleKeyframeLanes: vi.fn() } as unknown as TimelineHost;
   let commits = 0;
-  const tree = (ui: TimelineUi) =>
+  const tree = (tool: Tool) =>
     h(
       I18nextProvider,
       { i18n },
       h(
         Profiler,
         { id: "toolbar", onRender: () => void (commits += 1) },
-        h(TimelineToolbar, { host, ui, live: true }),
+        h(TimelineToolbar, { host, tool, linkedSelection: true, live: true }),
       ),
     );
-  const view = render(tree(UI));
+  const view = render(tree("select"));
   return {
     lanesToggleState,
     commits: () => commits,
-    /** The panel renders the toolbar again with a new `ui`, as every machine event makes it. */
-    again: () => view.rerender(tree({ ...UI })),
+    /** The panel renders the toolbar again (another tool is picked). */
+    again: (tool: Tool) => view.rerender(tree(tool)),
   };
 }
 
@@ -69,8 +60,7 @@ describe("TimelineToolbar during a drag", () => {
     const { lanesToggleState, again, commits } = mount(state);
     const asked = lanesToggleState.mock.calls.length;
     const mounted = commits();
-    // A hundred pointer moves of a drag: the panel hands the toolbar a new `ui` each time.
-    for (let move = 0; move < 100; move += 1) again();
+    for (let n = 0; n < 100; n += 1) again(n % 2 === 0 ? "razor" : "select");
     expect(commits()).toBe(mounted + 100);
     // The button's render is the only thing that asks the host: it was never asked.
     expect(lanesToggleState.mock.calls.length).toBe(asked);

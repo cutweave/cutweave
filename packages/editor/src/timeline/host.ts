@@ -444,10 +444,12 @@ export class TimelineHost {
   send(event: MachineEvent): void {
     if (this.#disposed) return;
     this.#machine.send(event);
-    this.ui.setState({ state: this.#machine.state.mode.name });
+    // Only a new state is written: every write re-renders the panel (a pointer move each frame).
+    const state = this.#machine.state.mode.name;
+    if (this.ui.getState().state !== state) this.ui.setState({ state });
     // The dragged keys stay marked where the drag has them.
     const drag = this.#keyDrag;
-    if (drag !== null && this.#machine.state.mode.name === "keyframe_dragging") {
+    if (drag !== null && state === "keyframe_dragging") {
       const selection = keySelectionStore.getState();
       if (selection.offset !== drag.delta) keySelectionStore.setState({ offset: drag.delta });
     }

@@ -68,6 +68,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "pattern": "^itm_[0-9a-f]{32}$",
               "description": "The item."
             },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its own name, when it has one (`item.set_props`); otherwise its media's name is shown."
+            },
             "kind": {
               "type": "string",
               "description": "Item kind (`clip`)."
@@ -2932,6 +2939,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string",
             "pattern": "^itm_[0-9a-f]{32}$",
             "description": "The item."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its own name, when it has one (`item.set_props`); otherwise its media's name is shown."
           },
           "kind": {
             "type": "string",

@@ -364,6 +364,7 @@ The registry produces the following, each committed and checked against snapshot
 - `packages/protocol/src/generated/*.ts`: TS types and a typed RPC client (via `specta`)
 - The MCP catalog (§14) and CLI subcommand help
 - `docs/reference/commands.md`
+- `docs/reference/mcp-core-tools.md` (WP-2I.01): the core MCP tools, from `crates/cutweave-api/mcp_core.toml` and the registry
 
 **Decided in WP-1N.01:** `cargo xtask gen` writes `schema/{commands,queries,events,mcp-tools,patch-fixtures}.json`, `schema/schema-hash.txt` (`SCHEMA_HASH` = sha256 of `commands.json`, also a generated constant in `cutweave-commands`), `docs/reference/commands.md` and `docs/reference/cli.md` (the `cutweave` command line, from the clap definition of `cutweave-cli`, WP-1K.01). `cargo xtask gen --check` (part of `just check`) fails with a unified diff when a committed file is stale. `events.json` joins document events (`EVENT_CATALOG`) and engine events (project, job, media), each tagged with its `source`. MCP tool names are the command name with `.` replaced by `_`.
 
@@ -744,6 +745,7 @@ flowchart LR
   - Change notifications use the negotiated revision's mechanism (`resources/subscribe` or `subscriptions/listen`). Spike 5 verifies both.
 - **Tool strategy, hybrid** *(ADR-009)*:
   - **~30 core tools** are always listed, with rich annotations (`readOnly`, `destructive`, `idempotent`). Examples: `project_open`, `project_info`, `media_import`, `media_list`, `timeline_get`, `timeline_insert`, `clip_split`, `clip_trim`, `clip_move`, `item_delete`, `item_set_props`, `text_add`, `caption_generate`, `caption_style`, `effect_add`, `transition_add`, `keyframe_set`, `audio_set`, `render_frame`, `render_contact_sheet`, `export_start`, `job_status`, `job_wait`, `edit_undo`, `edit_checkpoint`, `ai_generate`, `ai_models`, `composition_create`.
+  - **The P2 core set (as built, WP-2I.01):** the 28 tools of `crates/cutweave-api/mcp_core.toml`, listed in [docs/reference/mcp-core-tools.md](reference/mcp-core-tools.md). That table is the checked-in gate of the list: it names each core tool, its command, a description for an agent with one example call (at most 300 characters together) and the budget. A test fails when the table and the registry's `mcp = "core"` entries differ, when an example is not valid under the command's schema, or when the list leaves the budget. `item_move` is the listed move tool (the `clip_move` above was an example; there is no such command). `render_contact_sheet`, `media_filmstrip` and `audio_waveform` come with WP-2I.02; text, caption, effect, transition, composition and AI tools with their commands in P3 to P5.
   - **4 generic tools** cover the long tail:
     - `cutweave_search_commands(query)` and `cutweave_describe_command(name)` return the JSON Schema.
     - `cutweave_execute(steps[], dry_run?, expected_rev?, checkpoint?)` runs a transactional batch with `$ref` between steps. `checkpoint: true` saves one checkpoint before it and returns its id (WP-2I.03).
@@ -751,8 +753,8 @@ flowchart LR
 
     Every registered command, including plugin commands, is reachable this way.
   - **Tool profiles are chosen per endpoint** (`/mcp`, `/mcp/minimal`, `/mcp/full`) or by the `--profile` flag, **never per connection**, because the stateless spec requires list results that don't vary by connection.
-  - **Tool-list budget** (single source, CI-enforced): minimal ≤ 12 tools / ≤ 3k tokens; standard ≤ 36 tools / ≤ 8k tokens; full = standard plus the search-based long tail, with no extra listed tools.
-  - **View tools:** `view_get` / `view_set` (playhead, selection, in/out, zoom) are in the catalog, so agents can show the user what they mean. They are non-undoable.
+  - **Tool-list budget** (single source, CI-enforced): minimal ≤ 12 tools / ≤ 3k tokens; standard ≤ 36 tools / ≤ 8k tokens; full = standard plus the search-based long tail, with no extra listed tools. The standard budget is for clients that load every definition at the start; `described` (WP-2I.07) lists the same tools in the same order with full parameter descriptions for clients that defer definitions, within ≤ 16k tokens ([ADR-0040](adr/0040-mcp-at-scale.md), accepted). From Phase 3 a feature area adds at most two core tools, shaped by intent; its other commands stay in the catalog.
+  - **View tools:** `view_get` / `view_set` (playhead, selection, in/out, zoom) are in the catalog, so agents can show the user what they mean. They are non-undoable. Since WP-2I.01 both are listed tools of the standard profile; the other `view.*` commands are reached through `cutweave_execute`.
 - **Resources:**
   - `cutweave://project`, `cutweave://sequence/{id}/timeline` (paginated, summarized first), `cutweave://transcript/{id}`, `cutweave://catalog/models`.
   - Subscriptions provide change notifications.
@@ -770,7 +772,7 @@ flowchart LR
   - A filesystem allowlist applies (project folder plus user-approved roots).
   - Destructive, irreversible or **paid** actions follow the three-tier authority model (§13). Dry-run `confirm_token`s never authorize spending beyond the user-set agent budget, and human-only approvals are minted only by the UI.
   - Transcript and metadata text returned to agents is marked as untrusted content (prompt-injection hygiene).
-- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a listed input schema that accepts exactly the same values as the RPC one. (Decided in WP-1J.01: listed schemas drop documentation such as titles and nullable wrappers to fit the tool-list budget; `cutweave_describe_command` returns the full input schema and the output schema of the MCP result: untrusted strings as their wrapper, no `render_frame` picture; ADR-0028, Proposed.)
+- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a listed input schema that accepts exactly the same values as the RPC one. (Decided in WP-1J.01: listed schemas drop documentation such as titles and nullable wrappers to fit the tool-list budget; since WP-2I.01 they drop every parameter description too, because the P2 core set does not fit 8k tokens with them, and the listed description carries one example instead ([ADR-0039](adr/0039-mcp-tool-list-budget-and-parameter-docs.md), accepted: the budget stays at 8k and the schemas stay validation-only); `cutweave_describe_command` returns the full input schema and the output schema of the MCP result: untrusted strings as their wrapper, no `render_frame` picture; ADR-0028, Proposed.)
 - **Hardening learned in Spike S5** *(feeds ADR-009)*:
   - `outputSchema` is about 45% of `tools/list`, so it's listed only on `/mcp/full` (in P1 not even there; `/mcp/full` equals the standard profile). Other profiles return structured content without advertising its schema.
   - Origin/Host validation must be enabled explicitly in rmcp; it is off by default.
@@ -1042,6 +1044,8 @@ MyVideo/                    ← project folder (user-chosen location)
 | 036 | Tags, ratings and notes on media and collections (manual and smart) in the project as optional fields, no schema bump; `MediaFilter` gains tags, rating and collection (no `imported_within_days`); WP-2F.06 splits into 2F.06a/b/c (§4.2, §5.1) | **Accepted** (product owner, 2026-11-27) |
 | 037 | New sequences made in the app start with a magnetic main track: an optional `main_magnetic` on `project.new` and `sequence.create` (absent: off), fed by the Timeline preference `timeline.magnetic_main` (default on) (§5.1, §16) | **Accepted** (product owner, 2026-11-27) |
 | 038 | A failed job carries an optional machine `error_code` beside its message, on `JobInfo` and `ExportQueueJob`; a short list of export codes, stored with the queued job and shown on the queue row (§7, §14) | **Accepted** (product owner, 2026-11-27) |
+| 039 | The standard MCP tool list keeps its 8,000-token budget with validation-only listed schemas: no parameter descriptions in `tools/list`, one example per tool, the docs through `cutweave_describe_command`. WP-2I.02 lists `render_contact_sheet` if it fits; the 36-tool cap is decided again at P3 (§14) | **Accepted** (product owner, 2026-11-27) |
+| 040 | MCP at scale: two audiences (the 8k / 36-tool standard list for clients that load every definition; a `described` endpoint with parameter docs, ≤ 16k tokens, for clients that defer them); from Phase 3 at most two core tools per feature area, by intent; an on-demand agent evaluation (WP-2I.09) before the next budget change; additive optional detail levels and concise reads (WP-2I.08) (§14) | **Accepted** (product owner, 2026-11-27) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 

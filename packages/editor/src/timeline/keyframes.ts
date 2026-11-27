@@ -124,6 +124,25 @@ export function findClip(project: Project | null, id: string): Clip | null {
   return null;
 }
 
+// ---- what is laid over the canvas follows the lanes -----------------------------------------
+
+/**
+ * Counts the times the canvas laid its tracks out again because a keyframe lane opened or
+ * closed. The header buttons and the marks over clips read their places from the canvas, so
+ * they follow this (as they follow scroll and zoom). It never changes while every lane is closed.
+ */
+export const lanesLaidStore = createStore<number>(() => 0);
+
+export function lanesRelaid(): void {
+  lanesLaidStore.setState((n) => n + 1, true);
+}
+
+/** Which clips have lanes open and how many each: what decides the track heights. */
+export function lanesShapeOf(lanes: readonly ItemLanes[]): string {
+  if (lanes.length === 0) return "";
+  return lanes.map((group) => `${group.itemId}:${group.lanes.length}`).join(",");
+}
+
 // ---- the lanes toggle ---------------------------------------------------------------------
 
 /** The toolbar's Keyframe lanes button: nothing to open, lanes closed, or lanes open. */

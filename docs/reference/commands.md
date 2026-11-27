@@ -21,21 +21,21 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | clip | `clip.reverse` | Play a clip backwards, or forwards again (linked partners follow) | command, undoable | catalog |
 | clip | `clip.ripple_trim` | Trim a clip's edge and move what follows by the same amount (ripple) | command, undoable | catalog |
 | clip | `clip.roll` | Move the cut between two adjacent clips (one gets longer, the other shorter) | command, undoable | catalog |
-| clip | `clip.set_speed` | Change a clip's playback speed (0.1x to 100x, exact; linked partners follow) | command, undoable, idempotent | catalog |
+| clip | `clip.set_speed` | Change a clip's playback speed (0.1x to 100x, exact; linked partners follow) | command, undoable, idempotent | core |
 | clip | `clip.slide` | Move a clip between its neighbours, which get longer or shorter to make room | command, undoable | catalog |
 | clip | `clip.slip` | Show an earlier or later part of a clip's media without moving the clip | command, undoable | catalog |
 | clip | `clip.split` | Split a clip (and its linked partners) at a timeline time | command, undoable | core |
 | clip | `clip.trim` | Trim the start or end edge of a clip (linked partners follow; the main track closes up) | command, undoable, idempotent | core |
 | edit | `edit.begin_tx` | Open a transaction (batch, gesture or proposal) that commits as one undo step | engine | catalog |
 | edit | `edit.cancel_tx` | Cancel your open transaction and roll back its changes | engine | catalog |
-| edit | `edit.checkpoint` | Save a restore point of the committed document (cheap; optional name) | engine | catalog |
+| edit | `edit.checkpoint` | Save a restore point of the committed document (cheap; optional name) | engine | core |
 | edit | `edit.commit_tx` | Commit your open transaction as one undo step | engine | catalog |
 | edit | `edit.delete_checkpoint` | Delete a checkpoint (the document is not changed) | engine, idempotent | catalog |
 | edit | `edit.history` | List the undo history (newest first, paginated) and each actor's undo/redo stacks | engine, read-only, idempotent | catalog |
 | edit | `edit.list_checkpoints` | List the checkpoints | engine, read-only, idempotent | catalog |
 | edit | `edit.locks` | List open transactions and the items they soft-lock (who is editing what) | engine, read-only, idempotent | catalog |
-| edit | `edit.redo` | Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone) | engine | catalog |
-| edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | catalog |
+| edit | `edit.redo` | Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone) | engine | core |
+| edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | core |
 | edit | `edit.set_history_limit` | Set how many undo steps are kept per person or agent | engine, destructive, idempotent, ui-only | catalog |
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
 | export | `export.cancel` | Cancel a queued or running export; the queue goes on with the next one | engine, idempotent | catalog |
@@ -145,7 +145,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | sequence | `sequence.rename` | Rename a sequence | command, undoable, idempotent | catalog |
 | sequence | `sequence.set_background` | Fill a sequence's background with a color, a blur of the picture, an image or nothing | command, undoable, idempotent | catalog |
 | sequence | `sequence.set_format` | Change a sequence's size, frame rate, sample rate or background | command, undoable, destructive, idempotent | core |
-| timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | catalog |
+| timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | core |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |
 | timeline | `timeline.copy` | Copy items and their linked partners into a clipboard payload | query | catalog |
 | timeline | `timeline.delete_gap` | Close the gap of a track at a time (what follows moves left; partners follow) | command, undoable | catalog |
@@ -161,16 +161,16 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | timeline | `timeline.ripple_delete` | Delete items on one track and close the space they leave (partners follow) | command, undoable, destructive | catalog |
 | timeline | `timeline.set_in_out` | Set the sequence's in and out points | command, undoable, idempotent | catalog |
 | timeline | `timeline.update_marker` | Change a marker's label, color, length or kind | command, undoable, idempotent | catalog |
-| track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |
+| track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | core |
 | track | `track.list` | List a sequence's tracks (flags, height, item counts) top to bottom | query | catalog |
 | track | `track.remove` | Remove a track and the items on it (fails if the track is locked) | command, undoable, destructive | catalog |
 | track | `track.reorder` | Move a track to another position in the track stack | command, undoable, idempotent | catalog |
 | track | `track.set` | Set a track's name, mute, hide, lock, solo or gain | command, undoable, idempotent | catalog |
 | track | `track.set_height` | Set a track's row height in the timeline (a saved UI hint) | command, undoable, idempotent | catalog |
 | track | `track.set_magnetic` | Make a video track the magnetic main track (gap-free from 0), or turn the magnet off | command, undoable, idempotent | catalog |
-| view | `view.get` | Get the UI view state (playhead, zoom, selection, ...) | engine, view, idempotent | catalog |
+| view | `view.get` | Get the UI view state (playhead, zoom, selection, ...) | engine, view, idempotent | core |
 | view | `view.select` | Select, add, remove or toggle entities in the selection | engine, view | catalog |
-| view | `view.set` | Update the UI view state (partial merge; not undoable) | engine, view, idempotent | catalog |
+| view | `view.set` | Update the UI view state (partial merge; not undoable) | engine, view, idempotent | core |
 | view | `view.set_active_sequence` | Show a sequence in the editor | engine, view, idempotent | catalog |
 | view | `view.set_playhead` | Move the playhead | engine, view, idempotent | catalog |
 | view | `view.set_zoom` | Set the timeline zoom (pixels per second) | engine, view, idempotent | catalog |

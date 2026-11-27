@@ -361,9 +361,10 @@ fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
         let client = ().serve(connect("/mcp")).await.expect("initialize");
         let tools = client.list_tools(None).await.unwrap().tools;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-        // 17 core tools (`render_frame` comes with the full engine's renderer, WP-1I.05) and the
-        // 4 generic ones: within the standard budget (R36, `cutweave_api::mcp::STANDARD_BUDGET`).
-        assert_eq!(names.len(), 24, "{names:?}");
+        // The 28 core tools of `mcp_core.toml` (WP-2I.01; `render_frame` comes with the full
+        // engine's renderer, WP-1I.05) and the 4 generic ones: within the standard budget (R36,
+        // `cutweave_api::mcp::STANDARD_BUDGET`).
+        assert_eq!(names.len(), 32, "{names:?}");
         for name in [
             "clip_split",
             "timeline_get",

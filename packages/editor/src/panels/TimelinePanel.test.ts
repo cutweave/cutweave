@@ -4,7 +4,7 @@
 // through `docStore` selectors, and follows `doc.patched` events. The canvas itself is stubbed
 // (jsdom has no Canvas2D); what matters here is the model the renderer receives.
 import type { DocPatched, PatchOp, Project } from "@cutweave/protocol";
-import type { TimelineCanvasProps } from "@cutweave/timeline";
+import type { TimelineCanvasProps, TimelinePointerEvent } from "@cutweave/timeline";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { createElement as h } from "react";
@@ -29,6 +29,19 @@ vi.mock("@cutweave/timeline", async (importOriginal) => ({
     });
   },
 }));
+
+/** The design system's icon buttons drawn, by label (what a drag must not draw again, #241). */
+const buttonDraws = new Map<string, number>();
+
+vi.mock("@cutweave/ui", async (importOriginal) => {
+  const ui = await importOriginal<typeof import("@cutweave/ui")>();
+  // React 19 passes `ref` as a prop: the counted button forwards it with the rest.
+  const IconButton = (props: Parameters<typeof ui.IconButton>[0]) => {
+    buttonDraws.set(props.label, (buttonDraws.get(props.label) ?? 0) + 1);
+    return h(ui.IconButton, props);
+  };
+  return { ...ui, IconButton };
+});
 
 const clip = (id: string, start: number) => ({
   kind: "clip",
@@ -96,6 +109,52 @@ const insertPatch = (rev: number, id: string, start: number): DocPatched =>
     ] as unknown as PatchOp[],
   }) as unknown as DocPatched;
 
+/** A drag update: the engine moved the clip from `old` (`item.move` with `_meta.tx`). */
+const movePatch = (rev: number, id: string, old: number, start: number): DocPatched =>
+  ({
+    rev,
+    prev_rev: rev - 1,
+    committed_rev: 1,
+    actor: "user",
+    tx_id: "tx_drag",
+    cause: "command",
+    request_id: null,
+    ops: [
+      {
+        op: "replace",
+        path: `/sequences/seq_1/tracks/trk_v/items/${id}/start`,
+        old,
+        value: start,
+      },
+    ] as unknown as PatchOp[],
+  }) as unknown as DocPatched;
+
+/** The pointer moving over the canvas where nothing is. */
+const hover = (x: number): TimelinePointerEvent => ({
+  type: "move",
+  x,
+  y: 30,
+  hit: {
+    zone: "none",
+    time: 0,
+    trackId: null,
+    trackIndex: -1,
+    itemId: null,
+    itemIndex: -1,
+    keyframeIndex: -1,
+    keyframeTime: null,
+    prop: null,
+    toggle: null,
+  },
+  button: 0,
+  buttons: 0,
+  shiftKey: false,
+  ctrlKey: false,
+  altKey: false,
+  metaKey: false,
+  original: new MouseEvent("pointermove"),
+});
+
 const renderPanel = () =>
   render(h(I18nextProvider, { i18n }, h(TooltipProvider, null, h(TimelinePanel))));
 
@@ -144,6 +203,33 @@ describe("TimelinePanel", () => {
       ["itm_1", 0],
       ["itm_2", 705_600_000],
     ]);
+  });
+
+  it("draws only the canvas again while the pointer moves and a drag moves a clip (#241)", () => {
+    engineStore.setState({ connection: "ready" });
+    docStore.getState().resync({ rev: 1, committed_rev: 1, project: project([clip("itm_1", 0)]) });
+    renderPanel();
+    expect(buttonDraws.get("Snapping")).toBeGreaterThan(0);
+    expect(buttonDraws.get("Add track")).toBeGreaterThan(0);
+    const drawn = seen.length;
+    buttonDraws.clear();
+    const pointer = seen.at(-1)?.onPointer;
+    act(() => {
+      for (let x = 200; x < 220; x += 1) pointer?.(hover(x));
+    });
+    act(() => {
+      let at = 0;
+      for (let rev = 2; rev <= 6; rev += 1) {
+        const patch = movePatch(rev, "itm_1", at, rev * 1_000);
+        expect(docStore.getState().applyEvent(patch)).toBe("applied");
+        at = rev * 1_000;
+      }
+    });
+    // The canvas has each position...
+    expect(seen.length).toBeGreaterThan(drawn);
+    expect(seen.at(-1)?.model.items.map((i) => i.start)).toEqual([6_000]);
+    // ...and nothing around it was drawn again: not the toolbar, not the track headers' corner.
+    expect([...buttonDraws.keys()]).toEqual([]);
   });
 
   it("feeds zoom, scroll, playhead and item selection from the view store", () => {

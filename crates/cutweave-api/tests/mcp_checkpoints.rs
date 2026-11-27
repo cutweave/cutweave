@@ -59,7 +59,7 @@ async fn checkpoints(client: &Client) -> Vec<Value> {
 }
 
 #[tokio::test]
-async fn checkpoints_are_catalog_commands_reachable_through_the_generic_tools() {
+async fn checkpoints_work_as_core_tools_and_through_the_generic_tools() {
     let h = Harness::start(None);
     let client = h.client(Profile::Standard, Revision::Stateful).await;
     let listed: Vec<String> = client
@@ -71,16 +71,15 @@ async fn checkpoints_are_catalog_commands_reachable_through_the_generic_tools() 
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    for name in [
-        "edit_checkpoint",
-        "edit_restore",
-        "edit_list_checkpoints",
-        "edit_delete_checkpoint",
+    // WP-2I.01: making and restoring a checkpoint are core tools; listing and deleting stay in
+    // the catalog.
+    for (name, core) in [
+        ("edit_checkpoint", true),
+        ("edit_restore", true),
+        ("edit_list_checkpoints", false),
+        ("edit_delete_checkpoint", false),
     ] {
-        assert!(
-            !listed.iter().any(|t| t == name),
-            "{name} is not a core tool"
-        );
+        assert_eq!(listed.iter().any(|t| t == name), core, "{name}");
     }
     let found = client
         .ok("cutweave_search_commands", json!({ "query": "checkpoint" }))
@@ -116,12 +115,27 @@ async fn checkpoints_are_catalog_commands_reachable_through_the_generic_tools() 
     // The restore is one undoable step.
     client.ok("edit_undo", json!({})).await;
     assert_ne!(tracks(&client, &sequence).await, before);
-    client
-        .ok(
-            "cutweave_execute",
-            json!({ "steps": [{ "cmd": "edit.delete_checkpoint", "args": { "checkpoint": "safe" } }] }),
-        )
+    // The same through the core tools, by the checkpoint's id.
+    let made = client
+        .ok("edit_checkpoint", json!({ "note": "before the restore" }))
         .await;
+    let restored = client
+        .ok("edit_restore", json!({ "checkpoint": "safe" }))
+        .await;
+    assert!(restored.is_object());
+    assert_eq!(tracks(&client, &sequence).await, before);
+    client
+        .ok("edit_restore", json!({ "checkpoint": made["checkpoint"] }))
+        .await;
+    assert_ne!(tracks(&client, &sequence).await, before);
+    for checkpoint in [json!("safe"), made["checkpoint"].clone()] {
+        client
+            .ok(
+                "cutweave_execute",
+                json!({ "steps": [{ "cmd": "edit.delete_checkpoint", "args": { "checkpoint": checkpoint } }] }),
+            )
+            .await;
+    }
     assert_eq!(checkpoints(&client).await.len(), 0);
     let missing = client
         .err(

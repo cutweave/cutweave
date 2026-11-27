@@ -23,10 +23,14 @@ mod mcp_support;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use cutweave_api::mcp::core::CoreTable;
 use cutweave_api::mcp::{Catalog, ListSize, Profile, STANDARD_BUDGET, catalog};
 use cutweave_commands::Registry;
 use cutweave_engine::Call;
-use mcp_support::{Client, Harness, INJECTION, Revision, SEC, http_client, must, text_of};
+use mcp_support::{
+    Client, Harness, INJECTION, Revision, SEC, example_args, http_client, must, schema_error,
+    text_of,
+};
 use rmcp::model::{CallToolResult, Tool};
 use serde_json::{Value, json};
 
@@ -94,11 +98,10 @@ async fn current_rev(client: &Client) -> u64 {
 
 // ----- catalog ------------------------------------------------------------------------------
 
-/// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
-/// P1 since `export_start`, WP-1E.03, 20 with `keyframe_set`, WP-2C.03, 21 with `audio_set`, WP-2E.01, 23 with `sequence_create` and `sequence_set_format`, WP-2B.01; the core engine has no
-/// renderer, so no `render_frame`: the
-/// full engine lists 23, tests/mcp_frames.rs), within the
-/// standard budget (R36), on both revisions.
+/// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools: 31
+/// since WP-2I.01 listed the P2 core set (`mcp_core.toml`). The core engine has no renderer, so
+/// no `render_frame`: the full engine lists 32 (tests/mcp_frames.rs). Within the standard budget
+/// (R36), on both revisions.
 #[tokio::test]
 async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
     let h = Harness::start(None);
@@ -107,7 +110,7 @@ async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
         .map(|t| t["name"].as_str().unwrap().to_owned())
         .collect();
     expected.extend(catalog::GENERIC_TOOLS.map(str::to_owned));
-    assert_eq!(expected.len(), 23);
+    assert_eq!(expected.len(), 31);
     for revision in Revision::ALL {
         let client = h.client(Profile::Standard, revision).await;
         assert_eq!(client.negotiated(), revision.version());
@@ -183,8 +186,8 @@ async fn minimal_lists_at_most_12_tools_within_3k_tokens_and_full_equals_standar
     }
 }
 
-/// The core tools are generated from the registry: the same list, descriptions and annotations
-/// as the committed `schema/mcp-tools.json`.
+/// The core tools are generated from the registry: the same list and annotations as the
+/// committed `schema/mcp-tools.json`, each described by the core table (`mcp_core.toml`).
 #[test]
 fn core_tools_are_the_committed_mcp_tools_catalog() {
     let catalog = Catalog::new(registry(), Profile::Standard);
@@ -197,10 +200,10 @@ fn core_tools_are_the_committed_mcp_tools_catalog() {
     assert_eq!(core.len(), committed.len());
     for (tool, entry) in core.iter().zip(&committed) {
         assert_eq!(tool.name, entry["name"].as_str().unwrap());
-        assert_eq!(
-            tool.description.as_deref(),
-            Some(entry["description"].as_str().unwrap())
-        );
+        let described = CoreTable::get()
+            .by_command(entry["command"].as_str().unwrap())
+            .unwrap_or_else(|| panic!("{} is not in mcp_core.toml", tool.name));
+        assert_eq!(tool.description.as_deref(), Some(&*described.listing()));
         assert_eq!(
             serde_json::to_value(tool.annotations.as_ref().unwrap()).unwrap(),
             entry["annotations"],
@@ -226,6 +229,16 @@ async fn every_tool_has_the_right_annotations() {
         ("item_set_props", false, false, true),
         ("keyframe_set", false, false, true),
         ("audio_set", false, false, true),
+        // WP-2I.01: the rest of the P2 core set.
+        ("clip_set_speed", false, false, true),
+        ("edit_checkpoint", false, false, false),
+        ("edit_redo", false, false, false),
+        ("edit_restore", false, false, true),
+        ("timeline_add_marker", false, false, false),
+        ("track_add", false, false, false),
+        // The registry keeps `readOnlyHint` for queries; `view.get` is an engine command.
+        ("view_get", false, false, true),
+        ("view_set", false, false, true),
         ("job_status", true, false, true),
         ("job_wait", true, false, true),
         ("media_import", false, false, true),
@@ -421,6 +434,101 @@ fn tools_list_snapshot() {
     }
 }
 
+// ----- the core tool table (WP-2I.01) -------------------------------------------------------
+
+/// `mcp_core.toml` is the checked-in gate of the list: it names exactly the registry's core
+/// tools (plus `render_frame`, which only the full engine registers: tests/mcp_frames.rs), its
+/// budget is the standard profile's, and the whole planned core set fits the tool count.
+#[test]
+fn the_core_table_names_the_registry_core_tools_and_the_budget() {
+    let table = CoreTable::get();
+    let registry = registry();
+    let mut expected: Vec<String> = registry
+        .list()
+        .filter(|e| catalog::is_core_tool(&e.meta))
+        .map(|e| e.meta.mcp_tool_name())
+        .collect();
+    expected.push("render_frame".to_owned());
+    expected.sort();
+    let listed: Vec<&str> = table.tools.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(
+        listed, expected,
+        "a core tool is added or removed in mcp_core.toml and in the registry together"
+    );
+    assert_eq!(
+        (table.budget.max_tools, table.budget.max_tokens),
+        (STANDARD_BUDGET.max_tools, STANDARD_BUDGET.max_tokens)
+    );
+    // WBS WP-2I.01: at most 32 core tools with the visual tools of WP-2I.02, 36 with the
+    // generic ones.
+    let planned = table.tools.len()
+        + table
+            .pending
+            .iter()
+            .filter(|p| p.arrives == "WP-2I.02")
+            .count();
+    assert_eq!(planned, 31);
+    assert!(planned + catalog::GENERIC_TOOLS.len() <= table.budget.max_tools);
+    for pending in &table.pending {
+        assert!(
+            registry
+                .get_by_tool_name(&pending.name)
+                .is_none_or(|e| !catalog::is_core_tool(&e.meta)),
+            "{} is listed: move it out of [[pending]]",
+            pending.name
+        );
+    }
+}
+
+/// Every core tool's example is a valid call: it validates against the registry's params schema
+/// (what RPC and the CLI accept), and so against the listed one.
+#[test]
+fn every_core_tool_example_is_valid_under_the_command_schema() {
+    let registry = registry();
+    let catalog = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    for tool in &CoreTable::get().tools {
+        // `render_frame`: tests/mcp_frames.rs, on the full engine.
+        let Some(entry) = registry.get(&tool.command) else {
+            assert_eq!(tool.name, "render_frame");
+            continue;
+        };
+        let args = example_args(tool);
+        assert_eq!(
+            schema_error(&entry.meta.input_schema, &args, ""),
+            None,
+            "{}",
+            tool.name
+        );
+        let listed = Value::Object(
+            catalog
+                .tool(&tool.name)
+                .unwrap()
+                .input_schema
+                .as_ref()
+                .clone(),
+        );
+        assert_eq!(
+            schema_error(&inline_defs(&listed), &args, ""),
+            None,
+            "{}",
+            tool.name
+        );
+    }
+    // The check does reject: a wrong type, an unknown param, a bad id, a missing param.
+    let split = &registry.get("clip.split").unwrap().meta.input_schema;
+    let id = format!("itm_{}", "0".repeat(32));
+    for (bad, at) in [
+        (json!({ "item": id, "at": true }), "/at"),
+        (json!({ "item": id, "at": 1, "bogus": 1 }), "/bogus"),
+        (json!({ "item": "itm_1", "at": "2s" }), "/item"),
+        (json!({ "item": id }), ""),
+        (json!({ "item": id, "at": "2 seconds" }), "/at"),
+    ] {
+        let error = schema_error(split, &bad, "").unwrap_or_else(|| panic!("{bad} passes"));
+        assert!(error.starts_with(&format!("{at}:")), "{error}");
+    }
+}
+
 // ----- parity -------------------------------------------------------------------------------
 
 /// Replaces the engine's temp folder in paths (as given, and canonicalized), so two engines'
@@ -526,9 +634,47 @@ async fn each_core_tool_returns_the_engine_output() {
             "audio_set",
             json!({ "item": split["right"], "set": { "kind": "fade", "in": "0.5s", "curve": "log" } })
         );
+        same!(
+            "clip_set_speed",
+            json!({ "item": split["left"], "speed": "2x" })
+        );
+        same!(
+            "timeline_add_marker",
+            json!({ "sequence": seq, "t": "1s", "label": "A" })
+        );
+        same!("track_add", json!({ "sequence": seq, "kind": "video" }));
+        // edit_checkpoint: each engine stamps it with its own clock.
+        let timeless = |mut v: Value| {
+            assert!(v["at"].is_string() || v["at"].is_number(), "{v}");
+            v["at"] = Value::Null;
+            v
+        };
+        let mcp = client
+            .ok("edit_checkpoint", json!({ "name": "safe" }))
+            .await;
+        let engine = must(&direct, "edit.checkpoint", json!({ "name": "safe" }));
+        compare("edit_checkpoint", &timeless(mcp), &timeless(engine));
+        step("edit_checkpoint");
         same!("item_delete", json!({ "items": [split["right"]] }));
         same!("edit_undo", json!({}));
+        same!("edit_redo", json!({}));
+        same!("edit_restore", json!({ "checkpoint": "safe" }));
         same!("timeline_get", json!({ "sequence": seq, "depth": 2 }));
+        let page = same!(
+            "timeline_get",
+            json!({ "sequence": seq, "depth": 2, "limit": 1 })
+        );
+        same!(
+            "timeline_get",
+            json!({ "sequence": seq, "depth": 2, "limit": 1, "cursor": page["next_cursor"],
+                    "range": { "from": "0s", "to": "20s" } })
+        );
+        same!(
+            "view_set",
+            json!({ "patch": { "playhead": "1s",
+                    "selection": [{ "kind": "item", "id": split["left"] }] } })
+        );
+        same!("view_get", json!({}));
         // export_start: these engines run without the media subsystem, so both validate the
         // export and refuse it the same way (`unsupported`), whichever `hw` policy is asked
         // for (the listed schema takes every form).
@@ -889,7 +1035,10 @@ async fn errors_are_tool_errors_with_code_message_path_and_hint() {
                 .contains("tool clip_split")
         );
         let e = client
-            .err("cutweave_query", json!({ "name": "track.add", "args": {} }))
+            .err(
+                "cutweave_query",
+                json!({ "name": "track.remove", "args": {} }),
+            )
             .await;
         assert!(
             e["error"]["message"]
@@ -962,7 +1111,17 @@ async fn search_and_describe_reach_the_long_tail() {
     assert_eq!(described["output_schema"], entry.meta.output_schema);
     assert!(described["description"].as_str().unwrap().len() > 100);
     let redo = client
-        .ok("cutweave_describe_command", json!({ "name": "edit.redo" }))
+        .ok(
+            "cutweave_describe_command",
+            json!({ "name": "edit.history" }),
+        )
+        .await;
+    assert!(redo["call"].as_str().unwrap().starts_with("cutweave_query"));
+    let redo = client
+        .ok(
+            "cutweave_describe_command",
+            json!({ "name": "track.remove" }),
+        )
         .await;
     assert!(
         redo["call"]

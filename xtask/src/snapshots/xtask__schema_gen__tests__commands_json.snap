@@ -4159,7 +4159,7 @@ expression: text
         "type": "object"
       },
       "kind": "command",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "clip_set_speed",
       "name": "clip.set_speed",
       "namespace": "clip",
@@ -6153,7 +6153,7 @@ expression: text
         "type": "object"
       },
       "kind": "engine",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "edit_checkpoint",
       "name": "edit.checkpoint",
       "namespace": "edit",
@@ -7132,7 +7132,7 @@ expression: text
         "type": "object"
       },
       "kind": "engine",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "edit_redo",
       "name": "edit.redo",
       "namespace": "edit",
@@ -7231,7 +7231,7 @@ expression: text
         "type": "object"
       },
       "kind": "engine",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "edit_restore",
       "name": "edit.restore",
       "namespace": "edit",
@@ -28500,7 +28500,7 @@ expression: text
         "type": "object"
       },
       "kind": "command",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "timeline_add_marker",
       "name": "timeline.add_marker",
       "namespace": "timeline",
@@ -34666,7 +34666,7 @@ expression: text
         "type": "object"
       },
       "kind": "command",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "track_add",
       "name": "track.add",
       "namespace": "track",
@@ -35361,7 +35361,7 @@ expression: text
         "type": "object"
       },
       "kind": "engine",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "view_get",
       "name": "view.get",
       "namespace": "view",
@@ -36222,7 +36222,7 @@ expression: text
         "type": "object"
       },
       "kind": "engine",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "view_set",
       "name": "view.set",
       "namespace": "view",

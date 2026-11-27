@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The hybrid tool catalog (arch §14, ADR-0009), generated from the command registry.
 //!
-//! - **Core tools:** every registry entry with `mcp = "core"` (never UI-only or `view`) is a
-//!   tool named after the command with `.` replaced by `_` (`clip_split`), described by its
-//!   `summary`, with the registry's MCP annotations. Its `inputSchema` is the registry params
-//!   schema in [lean](lean_schema) form: validation-identical, without the documentation-only
-//!   keywords that would blow the token budget, and with a subschema used by several params
-//!   (the time input) defined once under `$defs` (the full schema and docs are one
-//!   `cutweave_describe_command` away).
+//! - **Core tools:** every registry entry with `mcp = "core"` (never UI-only) is a tool named
+//!   after the command with `.` replaced by `_` (`clip_split`), with the registry's MCP
+//!   annotations. Its description comes from the core tool table
+//!   ([`core`](crate::mcp::core), `mcp_core.toml`, WP-2I.01): a sentence or two for an agent
+//!   and one example call; an entry the table does not know is described by its `summary`.
+//!   Its `inputSchema` is the registry params schema in [lean](lean_schema) form:
+//!   validation-identical, without the documentation (parameter docs are one
+//!   `cutweave_describe_command` away; the listed description and its example stand in for
+//!   them), and with a subschema used by several params (the time input) defined once under
+//!   `$defs`. `view_get` and `view_set` are the two `view` commands listed (arch §14).
 //! - **Generic tools** (always listed): [`SEARCH`], [`DESCRIBE`], [`EXECUTE`] and [`QUERY`]. They
 //!   reach every entry that is not `hidden`, including `catalog` ones (`edit.redo`, `track.add`).
 //! - **Profiles** pick the listed tools per endpoint, never per connection (the 2026-07-28
@@ -28,6 +31,8 @@ use std::{collections::HashMap, sync::Arc};
 use cutweave_commands::{CommandMeta, Entry, EntryKind, McpExposure, Registry, Scope};
 use rmcp::model::{JsonObject, Tool, ToolAnnotations};
 use serde_json::{Value, json};
+
+use crate::mcp::core::{CoreTable, CoreTool};
 
 /// `cutweave_search_commands{query, limit?}`.
 pub const SEARCH: &str = "cutweave_search_commands";
@@ -153,11 +158,11 @@ pub(crate) enum Target {
     Query,
 }
 
-/// Whether `meta` is listed as a tool of its own in the standard profile: `mcp = "core"`, any
-/// caller (never UI-only) and not a `view` command.
+/// Whether `meta` is listed as a tool of its own in the standard profile: `mcp = "core"` and
+/// any caller (never UI-only).
 #[must_use]
 pub fn is_core_tool(meta: &CommandMeta) -> bool {
-    meta.mcp == McpExposure::Core && meta.scope == Scope::Any && !meta.view
+    meta.mcp == McpExposure::Core && meta.scope == Scope::Any
 }
 
 fn listed(profile: Profile, meta: &CommandMeta) -> bool {
@@ -317,16 +322,13 @@ fn annotations(meta: &CommandMeta) -> ToolAnnotations {
         .open_world(a.open_world)
 }
 
-/// What a core tool's listing says: the registry summary, except where the MCP form differs
-/// from the engine's (`render_frame` returns an image block and cannot run in a transaction).
+/// What a core tool's listing says: the core table's description and example
+/// (`mcp_core.toml`), or the registry summary for an entry the table does not know (a plugin's
+/// core command).
 fn tool_description(meta: &CommandMeta) -> String {
-    if meta.name == crate::mcp::frame::COMMAND {
-        "Render the frame at a time as an image, with the items on screen. Not usable inside \
-         cutweave_execute"
-            .to_owned()
-    } else {
-        meta.summary.to_owned()
-    }
+    CoreTable::get()
+        .by_command(meta.name)
+        .map_or_else(|| meta.summary.to_owned(), CoreTool::listing)
 }
 
 fn entry_tool(meta: &CommandMeta) -> Tool {
@@ -339,14 +341,14 @@ fn entry_tool(meta: &CommandMeta) -> Tool {
 }
 
 /// The listed form of a registry params schema: the same validation, without the keywords that
-/// only document. Removes the root `description` (the long doc comment; the tool description is
-/// the summary), every `title` and the description of array elements (an ID's pattern says it
-/// all), drops `"default": null`, and flattens `anyOf[{anyOf[A, B], description}, {type: null}]`
-/// into `anyOf[A, B, {type: null}]` (keeping the outer description). Alternatives that several
-/// params repeat (the time input: flicks or text) are defined once under `$defs` and referenced
-/// (`{"$ref": "#/$defs/time"}`, next to `{"type": "null"}` for an optional one). Property
-/// descriptions, enums, patterns, bounds, `required` and `additionalProperties` are kept as they
-/// are, so a value is valid under the lean schema exactly when it is valid under the registry's.
+/// only document. Removes every `description` and `title` (WP-2I.01: the core set of arch §14
+/// fits the standard budget only without parameter docs; the tool description carries an
+/// example, and `cutweave_describe_command` the full docs), drops `"default": null`, and
+/// flattens `anyOf[{anyOf[A, B]}, {type: null}]` into `anyOf[A, B, {type: null}]`. Alternatives
+/// that several params repeat (the time input: flicks or text) are defined once under `$defs`
+/// and referenced (`{"$ref": "#/$defs/time"}`, next to `{"type": "null"}` for an optional one).
+/// Enums, patterns, bounds, `required` and `additionalProperties` are kept as they are, so a
+/// value is valid under the lean schema exactly when it is valid under the registry's.
 #[must_use]
 pub fn lean_schema(schema: &Value) -> Value {
     let mut out = schema.clone();
@@ -359,19 +361,7 @@ pub fn lean_schema(schema: &Value) -> Value {
     out
 }
 
-/// Descriptions of at most this many bytes that carry no code, number or quote only restate the
-/// property name ("Horizontal component.", "Frames."): the lean form drops them.
-const TRIVIAL_DESCRIPTION_BYTES: usize = 40;
-
-fn is_trivial_description(description: &str) -> bool {
-    description.len() <= TRIVIAL_DESCRIPTION_BYTES
-        && !description
-            .chars()
-            .any(|c| c.is_ascii_digit() || matches!(c, '`' | '"' | '{' | '(' | ':'))
-}
-
-/// Defines each subschema that occurs several times (ignoring its `description`) once under
-/// `$defs` and references it: an ID pattern, a 2D vector, an `interp`. Greedy, the biggest net
+/// Defines each subschema that occurs several times once under `$defs` and references it: an ID pattern, a 2D vector, an `interp`. Greedy, the biggest net
 /// saving first, until nothing saves bytes.
 fn share_subschemas(root: &mut Value) {
     let mut taken: Vec<String> = root
@@ -431,13 +421,6 @@ fn subschema_name(schema: &Value, taken: &[String]) -> String {
     name
 }
 
-/// A subschema without its `description`: the unit of sharing.
-fn without_description(map: &JsonObject) -> Value {
-    let mut copy = map.clone();
-    copy.remove("description");
-    Value::Object(copy)
-}
-
 fn is_candidate(map: &JsonObject) -> bool {
     !map.contains_key("$ref") && !map.contains_key("$defs") && !map.is_empty()
 }
@@ -464,7 +447,7 @@ fn collect_subschemas(schema: &Value, is_root: bool, counts: &mut Vec<(Value, us
         return;
     };
     if !is_root && is_candidate(map) {
-        let canonical = without_description(map);
+        let canonical = Value::Object(map.clone());
         match counts.iter_mut().find(|(c, _)| *c == canonical) {
             Some((_, n)) => *n += 1,
             None => counts.push((canonical, 1)),
@@ -477,12 +460,9 @@ fn replace_subschema(schema: &mut Value, is_root: bool, target: &Value, name: &s
     let Value::Object(map) = schema else {
         return;
     };
-    if !is_root && is_candidate(map) && without_description(map) == *target {
+    if !is_root && is_candidate(map) && Value::Object(map.clone()) == *target {
         let mut reference = JsonObject::new();
         reference.insert("$ref".into(), json!(format!("#/$defs/{name}")));
-        if let Some(description) = map.get("description") {
-            reference.insert("description".into(), description.clone());
-        }
         *map = reference;
         return;
     }
@@ -663,13 +643,9 @@ fn trim(schema: &mut Value) {
         map.remove("default");
     }
     flatten_nullable(map);
-    if map
-        .get("description")
-        .and_then(Value::as_str)
-        .is_some_and(is_trivial_description)
-    {
-        map.remove("description");
-    }
+    // The keyword of this schema; a property that is named `description` is a key of a
+    // `properties` map, which is not a schema.
+    map.remove("description");
     for (key, value) in map.iter_mut() {
         let key = key.as_str();
         if SCHEMA_MAPS.contains(&key) {
@@ -677,26 +653,11 @@ fn trim(schema: &mut Value) {
                 children.values_mut().for_each(trim);
             }
         } else if SCHEMA_VALUES.contains(&key) {
-            // An array element's description (`A Item id: ...`) repeats its pattern.
-            if key == "items"
-                && let Value::Object(element) = value
-            {
-                element.remove("description");
-            }
             trim(value);
         } else if SCHEMA_LISTS.contains(&key)
             && let Value::Array(list) = value
         {
             list.iter_mut().for_each(trim);
-            // An enum variant (`oneOf` of `const`s) loses its own description: the field's
-            // description names the values, and the variant docs cost more than they teach.
-            if key == "oneOf" {
-                for variant in list.iter_mut().filter_map(Value::as_object_mut) {
-                    if variant.contains_key("const") {
-                        variant.remove("description");
-                    }
-                }
-            }
         }
     }
     flatten_const_enum(map);
@@ -747,27 +708,18 @@ fn flatten_const_enum(map: &mut JsonObject) {
     }
 }
 
-/// `anyOf[A, {type: null}]` (an optional field): A's own description is dropped when the field
-/// has one, and a bare `A = {anyOf: [...]}` is spliced in.
+/// `anyOf[A, {type: null}]` (an optional field): a bare `A = {anyOf: [...]}` (once its
+/// description is gone) is spliced in.
 fn flatten_nullable(map: &mut JsonObject) {
-    let has_description = map.contains_key("description");
     let Some(Value::Array(any_of)) = map.get_mut("anyOf") else {
         return;
     };
     if any_of.len() != 2 || any_of[1] != json!({ "type": "null" }) {
         return;
     }
-    let Value::Object(inner) = &mut any_of[0] else {
-        return;
-    };
-    if let Some(description) = inner.remove("description")
-        && !has_description
-    {
-        map.insert("description".into(), description);
+    if let Value::Object(inner) = &mut any_of[0] {
+        inner.remove("description");
     }
-    let Some(Value::Array(any_of)) = map.get_mut("anyOf") else {
-        return;
-    };
     if let Value::Object(inner) = &any_of[0]
         && inner.len() == 1
         && let Some(Value::Array(alternatives)) = inner.get("anyOf")
@@ -935,6 +887,7 @@ mod tests {
             "additionalProperties": false,
             "properties": {
                 "title": { "type": "string", "description": "A property that is named title, not a keyword." },
+                "description": { "type": "string", "description": "A property, not a keyword." },
                 "to": {
                     "anyOf": [time, { "type": "null" }],
                     "default": null,
@@ -955,14 +908,14 @@ mod tests {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                    "title": { "type": "string", "description": "A property that is named title, not a keyword." },
+                    "title": { "type": "string" },
+                    "description": { "type": "string" },
                     "to": {
                         "anyOf": [
                             { "type": "integer", "maximum": 9, "minimum": -9 },
                             { "type": "string", "pattern": "^[0-9]+s$" },
                             { "type": "null" }
-                        ],
-                        "description": "Where the edge goes after the trim, in flicks."
+                        ]
                     },
                     "edge": { "oneOf": [{ "const": "start", "type": "string" }] },
                     "flag": { "type": ["boolean", "null"], "default": false }
@@ -994,16 +947,10 @@ mod tests {
         });
         let lean = lean_schema(&schema);
         assert_eq!(lean["$defs"]["time"]["anyOf"], time["anyOf"]);
-        assert_eq!(
-            lean["properties"]["at"],
-            json!({ "$ref": "#/$defs/time", "description": "When the clip starts on the timeline, in flicks." })
-        );
+        assert_eq!(lean["properties"]["at"], json!({ "$ref": "#/$defs/time" }));
         assert_eq!(
             lean["properties"]["delta"],
-            json!({
-                "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }],
-                "description": "How much to move the clip by, in flicks, either direction."
-            })
+            json!({ "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }] })
         );
         assert_eq!(
             lean["properties"]["items"]["items"],
@@ -1015,25 +962,56 @@ mod tests {
     }
 
     #[test]
-    fn an_undescribed_optional_field_keeps_the_inner_description() {
+    fn no_description_is_listed_at_any_depth() {
+        fn has_description_keyword(schema: &Value) -> bool {
+            let Value::Object(map) = schema else {
+                return false;
+            };
+            map.contains_key("description")
+                || map.iter().any(|(key, value)| match value {
+                    Value::Object(children) if SCHEMA_MAPS.contains(&key.as_str()) => {
+                        children.values().any(has_description_keyword)
+                    }
+                    Value::Array(list) => list.iter().any(has_description_keyword),
+                    other => has_description_keyword(other),
+                })
+        }
         let schema = json!({
             "type": "object",
+            "description": "Long doc comment.",
             "properties": {
                 "overlap": {
                     "anyOf": [
                         { "oneOf": [{ "const": "reject" }], "description": "What to do when the new clip overlaps another." },
                         { "type": "null" }
                     ]
+                },
+                "keys": {
+                    "type": "array",
+                    "description": "The keys.",
+                    "items": {
+                        "type": "object",
+                        "description": "One key.",
+                        "properties": { "t": { "type": "integer", "description": "Item time 0..9." } }
+                    }
                 }
             }
         });
+        assert!(has_description_keyword(&schema));
+        let lean = lean_schema(&schema);
+        assert!(!has_description_keyword(&lean), "{lean}");
         assert_eq!(
-            lean_schema(&schema)["properties"]["overlap"],
-            json!({
-                "anyOf": [{ "oneOf": [{ "const": "reject" }] }, { "type": "null" }],
-                "description": "What to do when the new clip overlaps another."
-            })
+            lean["properties"]["overlap"],
+            json!({ "anyOf": [{ "oneOf": [{ "const": "reject" }] }, { "type": "null" }] })
         );
+    }
+
+    #[test]
+    fn a_core_tool_is_described_by_the_table_and_others_by_their_summary() {
+        let table = CoreTable::get();
+        let split = table.by_command("clip.split").unwrap();
+        assert!(split.listing().contains(" E.g. {"));
+        assert!(table.by_command("clip.nope").is_none());
     }
 
     #[test]
@@ -1090,10 +1068,7 @@ mod tests {
         });
         let lean = lean_schema(&schema);
         let props = &lean["properties"];
-        assert_eq!(
-            props["scale"],
-            json!({ "$ref": "#/$defs/vec2", "description": "Size multiplier per axis, finite and not negative." })
-        );
+        assert_eq!(props["scale"], json!({ "$ref": "#/$defs/vec2" }));
         assert_eq!(
             lean["$defs"]["vec2"]["properties"]["x"],
             json!({ "type": "number" })

@@ -10,7 +10,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "undoable": true,
     "view": false,
     "scope": "any",
-    "mcp": "catalog",
+    "mcp": "core",
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": false,

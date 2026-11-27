@@ -11,7 +11,7 @@ Any MCP client can drive Cutweave: it starts `cutweave mcp` as a stdio MCP serve
 
 - **Attach** finds the running engine through its run-file in `~/.cutweave/run`. With several engines running it takes the app's engine whose window had the focus last, so the config needs no pid; see [Several engines](#several-engines). `--project <name or path>`, `--pid <pid>` and `--run-file <path>` name one directly.
 - **Headless** confines the agent to the `--allow-root` folders and the project folder (`--project <folder>` opens one at start); paths elsewhere fail with `invalid`. Without `--allow-root` or `--project` the agent cannot import media or save a project. Until the FFmpeg backend lands, add `--dev-stub-media` to import files with made-up probe data (dev only).
-- **Profiles:** `--profile minimal` lists at most 12 tools for small context windows; `standard` (the default) lists the core editing tools plus `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` and `cutweave_query`, which reach every other command.
+- **Profiles:** `--profile minimal` lists at most 12 tools for small context windows; `standard` (the default) lists the core editing tools ([mcp-core-tools.md](mcp-core-tools.md)) plus `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` and `cutweave_query`, which reach every other command.
 
 `cutweave` must be on your `PATH`; otherwise put the binary's absolute path in `command` (a dev build is `target/debug/cutweave`).
 

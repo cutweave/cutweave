@@ -76,13 +76,17 @@ const BIN: &str = env!("CARGO_BIN_EXE_cutweave");
 /// Flicks per second.
 const SEC: i64 = 705_600_000;
 
-/// The standard profile's tools in Phase 1: the registry's 15 core tools and the 4 generic
-/// ones. `render_frame` is not here: this suite runs the dev-stub engine, which has no renderer
-/// (the full engine lists 24; standard budget, R36).
-const CORE_TOOLS: [&str; 19] = [
+/// The standard profile's core tools (WP-2I.01, `crates/cutweave-api/mcp_core.toml`), listed
+/// next to the 4 generic ones. `render_frame` is not here: this suite runs the dev-stub engine,
+/// which has no renderer (the full engine lists 32 tools; standard budget, R36).
+const CORE_TOOLS: [&str; 27] = [
     "audio_set",
+    "clip_set_speed",
     "clip_split",
     "clip_trim",
+    "edit_checkpoint",
+    "edit_redo",
+    "edit_restore",
     "edit_undo",
     "export_start",
     "item_delete",
@@ -97,8 +101,12 @@ const CORE_TOOLS: [&str; 19] = [
     "project_open",
     "sequence_create",
     "sequence_set_format",
+    "timeline_add_marker",
     "timeline_get",
     "timeline_insert",
+    "track_add",
+    "view_get",
+    "view_set",
 ];
 const GENERIC_TOOLS: [&str; 4] = [
     "cutweave_search_commands",
@@ -805,6 +813,60 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
     .await;
     c.tool("item_delete", json!({ "items": [right] })).await;
     c.tool("edit_undo", json!({})).await;
+
+    // WP-2I.01, the rest of the P2 core set: edit_redo, track_add, timeline_add_marker,
+    // clip_set_speed, edit_checkpoint, edit_restore, a paged timeline_get, view_set, view_get.
+    c.tool("edit_redo", json!({})).await;
+    let lane = c
+        .tool(
+            "track_add",
+            json!({ "sequence": sequence, "kind": "video" }),
+        )
+        .await;
+    assert!(lane["track"].is_string(), "{lane}");
+    let marker = c
+        .tool(
+            "timeline_add_marker",
+            json!({ "sequence": sequence, "t": "1s", "label": "Intro" }),
+        )
+        .await;
+    assert!(marker["marker"].is_string(), "{marker}");
+    c.tool("clip_set_speed", json!({ "item": a, "speed": "2x" }))
+        .await;
+    let checkpoint = c.tool("edit_checkpoint", json!({ "name": "safe" })).await;
+    assert_eq!(checkpoint["name"], "safe", "{checkpoint}");
+    let before = c
+        .tool("timeline_get", json!({ "sequence": sequence, "depth": 2 }))
+        .await;
+    c.tool("item_delete", json!({ "items": [a] })).await;
+    c.tool("edit_restore", json!({ "checkpoint": "safe" }))
+        .await;
+    let after = c
+        .tool("timeline_get", json!({ "sequence": sequence, "depth": 2 }))
+        .await;
+    assert_eq!(after, before, "edit_restore brings the checkpoint back");
+    let page = c
+        .tool(
+            "timeline_get",
+            json!({ "sequence": sequence, "depth": 2, "limit": 1 }),
+        )
+        .await;
+    let listed: usize = page["tracks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["items"].as_array().unwrap().len())
+        .sum();
+    assert_eq!(listed, 1, "{page}");
+    assert!(page["next_cursor"].is_string(), "{page}");
+    c.tool(
+        "view_set",
+        json!({ "patch": { "playhead": "1s", "selection": [{ "kind": "item", "id": a }] } }),
+    )
+    .await;
+    let view = c.tool("view_get", json!({})).await;
+    assert_eq!(view["playhead"], SEC, "{view}");
+    assert_eq!(view["selection"][0]["id"], a, "{view}");
 
     // The undo history (before project_open replaces the document): every edit is the agent's.
     let history = c.query("edit.history", json!({})).await;

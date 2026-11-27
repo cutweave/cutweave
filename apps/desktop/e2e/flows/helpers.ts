@@ -617,6 +617,96 @@ export async function drag(
   await page.mouse.up();
 }
 
+/** How often a hand's pointer moves (a 60 Hz mouse), ms. */
+const HAND_MOVE_MS = 16;
+/** Moves of a hand-paced drag: about two seconds. */
+const HAND_MOVES = 120;
+
+/** What a hand-paced drag measured. */
+export interface PacedDrag {
+  /** Moves sent. */
+  readonly moves: number;
+  /** The page's frame intervals during the drag (its animation frames), ms. */
+  readonly frames: number[];
+  /** The app's round trips of the drag's updates (`cutweave.timeline.rtt`), ms. */
+  readonly rtt: number[];
+}
+
+/**
+ * A drag paced like a hand (issue #241): press at `from`, then a move every 16 ms whether or not
+ * the page has handled the one before, out to `reach` px right of the press and back, twice
+ * (about two seconds), and let go where it began. Playwright's own moves each wait for the page,
+ * so a page that falls behind never has a person's moves pile up on it; these do not wait (the
+ * timer paces the input, it does not wait for the app). The frame intervals are read in the page
+ * (an animation-frame loop of its own, changing nothing) and the round trips from the app's probe
+ * (the gesture's own User Timing entries).
+ */
+export async function handPacedDrag(
+  page: Page,
+  from: { x: number; y: number },
+  reach: number,
+): Promise<PacedDrag> {
+  await page.mouse.move(from.x, from.y);
+  await page.evaluate(() => {
+    const frames = { at: [] as number[], on: true };
+    (globalThis as unknown as { __flowFrames: typeof frames }).__flowFrames = frames;
+    const tick = (t: number) => {
+      frames.at.push(t);
+      if (frames.on) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.mouse.down();
+  const moves: Promise<void>[] = [];
+  for (let i = 1; i <= HAND_MOVES; i += 1) {
+    const dx = Math.round((reach * (1 - Math.cos((4 * Math.PI * i) / HAND_MOVES))) / 2);
+    moves.push(page.mouse.move(from.x + dx, from.y));
+    await new Promise((resolve) => setTimeout(resolve, HAND_MOVE_MS));
+  }
+  await Promise.all(moves);
+  await page.mouse.up();
+  await editorCaughtUp(page);
+  const { at, rtt } = await page.evaluate(() => {
+    const frames = (globalThis as unknown as { __flowFrames: { at: number[]; on: boolean } })
+      .__flowFrames;
+    frames.on = false;
+    return {
+      at: frames.at,
+      rtt: performance.getEntriesByName("cutweave.timeline.rtt", "measure").map((e) => e.duration),
+    };
+  });
+  return { moves: HAND_MOVES, frames: at.slice(1).map((t, i) => t - (at[i] as number)), rtt };
+}
+
+/** The `q` quantile (0..1) of `values` (nearest rank); `NaN` when empty. */
+export function quantile(values: readonly number[], q: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1)] ?? Number.NaN;
+}
+
+/**
+ * What a hand-paced drag must show (issue #241): the app keeps drawing (frame intervals p95 under
+ * 50 ms: 20 frames a second or more), the clip keeps up (at least 20 updates in the two seconds)
+ * and each update comes back promptly (round trips p95 under 100 ms). Generous on purpose: a drag
+ * at a few frames a second fails every one; a loaded machine passes them.
+ */
+export function expectKeptUp(drag: PacedDrag): void {
+  expect(drag.rtt.length, "updates during the drag").toBeGreaterThanOrEqual(20);
+  expect(quantile(drag.frames, 0.95), "frame interval p95 (ms)").toBeLessThan(50);
+  expect(quantile(drag.rtt, 0.95), "round trip p95 (ms)").toBeLessThan(100);
+}
+
+/** One line for the run's output: what a hand-paced drag measured. */
+export function describePacedDrag(drag: PacedDrag): string {
+  const ms = (v: number) => `${v.toFixed(1)} ms`;
+  return (
+    `hand-paced drag: ${drag.moves} moves, ${drag.frames.length} frames, frame interval ` +
+    `p50 ${ms(quantile(drag.frames, 0.5))} p95 ${ms(quantile(drag.frames, 0.95))} max ` +
+    `${ms(Math.max(...drag.frames))}; ${drag.rtt.length} updates, round trip p50 ` +
+    `${ms(quantile(drag.rtt, 0.5))} p95 ${ms(quantile(drag.rtt, 0.95))} max ${ms(Math.max(...drag.rtt))}`
+  );
+}
+
 /** Drags a media card from the bin onto a track at `atSec` (HTML drag and drop, as a hand does). */
 export async function dropCard(
   page: Page,

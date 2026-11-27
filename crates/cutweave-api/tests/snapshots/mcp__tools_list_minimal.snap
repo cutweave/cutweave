@@ -6,7 +6,7 @@ expression: catalog.tools_json()
   "tools": [
     {
       "name": "edit_undo",
-      "description": "Undo your last change, or another actor's (`actor`; `*` = anyone's latest)",
+      "description": "Undo your last change (`steps` for more); other actors' later edits are kept. E.g. {\"steps\":2}",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -16,7 +16,6 @@ expression: catalog.tools_json()
               "string",
               "null"
             ],
-            "description": "Whose change: `user`, `agent:<label>`, `plugin:<id>`, `system`, or `*` for the most\nrecent change by anyone. Default: the caller's own.",
             "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$"
           },
           "steps": {
@@ -24,7 +23,6 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "description": "How many changes to undo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
             "minimum": 0
           }
         }
@@ -38,7 +36,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "job_wait",
-      "description": "Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state",
+      "description": "Wait for a background job to finish, at most timeout_ms (max 60000); returns its state. Call again while it is running. E.g. {\"job_id\":\"job_…\",\"timeout_ms\":30000}",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -52,7 +50,6 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state).",
             "minimum": 0
           }
         },
@@ -69,7 +66,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "media_list",
-      "description": "List the project's media (filter, sort, paged; default by id)",
+      "description": "List the project's media with ids, kinds and durations; filter, sort and page. E.g. {\"filter\":{\"kinds\":[\"video\"],\"used\":false},\"limit\":20}",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -79,7 +76,6 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "description": "Page size, `1..=500` (default 50).",
             "minimum": 0
           },
           "cursor": {
@@ -87,8 +83,7 @@ expression: catalog.tools_json()
               "string",
               "null"
             ],
-            "pattern": "^med_[0-9a-f]{32}$",
-            "description": "`next_cursor` of the previous page."
+            "pattern": "^med_[0-9a-f]{32}$"
           },
           "filter": {
             "type": [
@@ -101,8 +96,7 @@ expression: catalog.tools_json()
                 "type": [
                   "string",
                   "null"
-                ],
-                "description": "Terms that must all occur in the name, tags or note, ignoring case and accents."
+                ]
               },
               "kinds": {
                 "type": [
@@ -128,8 +122,7 @@ expression: catalog.tools_json()
                   {
                     "type": "null"
                   }
-                ],
-                "description": "Shortest length (flicks), inclusive; stills never match a bound."
+                ]
               },
               "max_duration": {
                 "anyOf": [
@@ -139,22 +132,19 @@ expression: catalog.tools_json()
                   {
                     "type": "null"
                   }
-                ],
-                "description": "Longest length (flicks), inclusive."
+                ]
               },
               "used": {
                 "type": [
                   "boolean",
                   "null"
-                ],
-                "description": "Placed on a timeline of any sequence (`true`) or not (`false`)."
+                ]
               },
               "problems": {
                 "type": [
                   "boolean",
                   "null"
-                ],
-                "description": "`true`: only files nothing can be read from (no streams)."
+                ]
               },
               "folder": {
                 "type": [
@@ -167,8 +157,7 @@ expression: catalog.tools_json()
                 "type": [
                   "boolean",
                   "null"
-                ],
-                "description": "With subfolders (default: true without folder)."
+                ]
               },
               "tags": {
                 "type": [
@@ -184,9 +173,8 @@ expression: catalog.tools_json()
                   "integer",
                   "null"
                 ],
-                "description": "Rated at least this (1-5).",
-                "minimum": 1,
-                "maximum": 5
+                "maximum": 5,
+                "minimum": 1
               },
               "collection": {
                 "type": [
@@ -238,8 +226,7 @@ expression: catalog.tools_json()
                   "type": "string"
                 }
               ]
-            },
-            "description": "Extra fields per asset: `note`."
+            }
           }
         },
         "$defs": {
@@ -267,7 +254,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "project_info",
-      "description": "Get project name, default format and a summary of its sequences",
+      "description": "Get the project's name, default format and its sequences with their ids. Start here. E.g. {}",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false
@@ -281,7 +268,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "timeline_get",
-      "description": "Get a sequence: summary (depth 0), tracks (1) or tracks with items (2)",
+      "description": "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`. E.g. {\"sequence\":\"seq_…\",\"depth\":2,\"limit\":50}",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -295,9 +282,8 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "description": "Detail level `0..=2` (default 1).",
-            "minimum": 0,
-            "maximum": 255
+            "maximum": 255,
+            "minimum": 0
           },
           "fields": {
             "type": [
@@ -306,13 +292,70 @@ expression: catalog.tools_json()
             ],
             "items": {
               "type": "string"
-            },
-            "description": "Sections to include: any of `name`, `format`, `duration`, `tracks` (default all)."
+            }
+          },
+          "range": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "to": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$"
           }
         },
         "required": [
           "sequence"
-        ]
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": true,

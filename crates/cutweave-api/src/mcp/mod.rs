@@ -7,6 +7,8 @@
 //! - [`catalog`]: the tools, generated from the command registry (core tools plus
 //!   `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` and
 //!   `cutweave_query`), profiles and the tool-list budget.
+//! - [`core`]: the core tool table (`mcp_core.toml`, WP-2I.01): the list's checked-in gate and
+//!   each core tool's description and example.
 //! - [`execute`]: `cutweave_execute`, a transactional batch with `$ref`s and dry runs.
 //! - [`results`]: structured results, typed tool errors (`code`, `message`, `path`, `hint`) and
 //!   untrusted-text wrapping.
@@ -42,6 +44,7 @@
 //! default, Spike S5 finding 4).
 
 pub mod catalog;
+pub mod core;
 pub mod dispatch;
 pub mod execute;
 pub mod frame;
