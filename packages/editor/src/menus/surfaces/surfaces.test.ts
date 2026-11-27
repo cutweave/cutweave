@@ -19,12 +19,15 @@ import { engineStore } from "../../engine/engineStore.ts";
 import { i18n } from "../../i18n/index.ts";
 import { sectionsStore } from "../../inspector/sections.ts";
 import { forgetAppliedLayouts } from "../../layout/actions.ts";
-import { binStore } from "../../media/binStore.ts";
+import { binStore, initialBinState } from "../../media/binStore.ts";
 import { currentOpenFolder, folderUiStore } from "../../media/folderUi.ts";
 import { healthStore } from "../../media/health.ts";
 import { insertDurationStore } from "../../media/insertDuration.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { proxyStore } from "../../media/proxies.ts";
+import { currentOpenCollection, openCollection, sidebarUiStore } from "../../media/sidebar.ts";
+import { commandCatalog } from "../../palette/catalog.ts";
+import { buildEntries } from "../../palette/entries.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { initialViewState, viewStore } from "../../state/viewStore.ts";
@@ -1268,6 +1271,7 @@ describe("accessibility", () => {
     "dock.tab": { ids: ["inspector"], name: "Inspector" },
     "bin.card": { ids: [MED_V], name: "interview.mp4" },
     "bin.chip": { ids: ["kind-video"], name: "Video" },
+    "bin.collection": { ids: [hex("col", 1)], name: "Picks" },
     "timeline.clip": { ids: [C1] },
     "timeline.edge": { ids: [C1] },
     "timeline.lane": { place: { time: 0, trackId: V1 } },
@@ -1474,5 +1478,231 @@ describe("layouts (WP-2C.08)", () => {
     const mixed = menuFor("bin.card", { ids: [MED_V, MED_A] }).item("Place side by side");
     expect(mixed.disabled).toBe(true);
     expect(mixed.disabledReason).toBe("Select 2 to 4 videos or images");
+  });
+});
+
+describe("collections (WP-2F.06c)", () => {
+  const PICKS = hex("col", 1);
+  const KEEPERS = hex("col", 2);
+  const ARCHIVE = hex("col", 3);
+  const FLD = hex("fld", 1);
+
+  /** Picks (manual: the interview), Keepers (smart: tag keep), Archive (manual, empty). */
+  const withCollections = () => {
+    const p = project() as unknown as Record<string, unknown>;
+    p.folders = { [FLD]: { id: FLD, name: "Interviews", parent: null, custom: {} } };
+    p.collections = {
+      [PICKS]: { id: PICKS, name: "Picks", kind: { type: "manual", media: [MED_V] }, custom: {} },
+      [KEEPERS]: {
+        id: KEEPERS,
+        name: "Keepers",
+        kind: { type: "smart", filter: { tags: ["keep"] } },
+        custom: {},
+      },
+      [ARCHIVE]: { id: ARCHIVE, name: "Archive", kind: { type: "manual" }, custom: {} },
+    };
+    docStore.setState({
+      status: "ready",
+      rev: 2,
+      committedRev: 2,
+      project: p as unknown as Project,
+    });
+  };
+
+  const engine = (result: unknown = {}) => {
+    const engineCall = vi.fn(async () => result);
+    engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+    return engineCall;
+  };
+
+  beforeEach(() => {
+    withCollections();
+    binStore.setState({ ...initialBinState });
+    sidebarUiStore.setState({ renaming: null, dropOver: null, overlay: false });
+  });
+  afterEach(() => {
+    engineStore.setState({ rpc: null, connection: "none" });
+    binStore.setState({ ...initialBinState });
+  });
+
+  const submenu = (m: ReturnType<typeof menuFor>, label: string) => {
+    const found = m.menu.entries.find((e) => e.kind === "submenu" && e.label === label);
+    return found?.kind === "submenu" ? found.items.map((i) => ("label" in i ? i.label : "")) : null;
+  };
+
+  it("a card has Add to collection ▸ with New collection… and the manual collections by name", () => {
+    const m = menuFor("bin.card", { ids: [MED_A] });
+    // A smart collection takes no members: it is not listed.
+    expect(submenu(m, "Add to collection")).toEqual(["New collection…", "Archive", "Picks"]);
+    expect(m.item("Archive").disabled).toBeUndefined();
+    expect(m.item("Picks").disabled).toBeUndefined();
+    // It sits with Rename, Move to…, Add tag… and Set rating.
+    const labels = m.menu.entries.map((e) => ("label" in e ? e.label : "|"));
+    expect(labels.indexOf("Add to collection")).toBe(labels.indexOf("Set rating") + 1);
+  });
+
+  it("adds the selected cards with one media.add_to_collection, only the ones it does not hold", async () => {
+    const engineCall = engine({ collection_id: PICKS, added: [MED_A, MED_U], members: 3 });
+    viewStore.getState().setSelection([
+      { kind: "media", id: MED_V },
+      { kind: "media", id: MED_A },
+      { kind: "media", id: MED_U },
+    ] as never);
+    await menuFor("bin.card", { ids: [MED_A] }).choose("Picks");
+    expect(engineCall).toHaveBeenCalledExactlyOnceWith("media.add_to_collection", {
+      collection: PICKS,
+      media: [MED_A, MED_U],
+    });
+    expect(schemaProblems("media.add_to_collection", engineCall.mock.calls[0]?.[1])).toEqual([]);
+    expect(toastStore.getState().notices.map((n) => n.title)).toEqual(["Added 2 items to Picks"]);
+  });
+
+  it("shows a collection that holds every chosen card as disabled, and says why", () => {
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    expect(m.item("Picks").disabled).toBe(true);
+    expect(m.item("Picks").disabledReason).toBe("Already in this collection");
+    expect(m.item("Archive").disabled).toBeUndefined();
+  });
+
+  it("New collection… asks for a name for a collection of the chosen cards", async () => {
+    await menuFor("bin.card", { ids: [MED_V, MED_U] }).choose("New collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "new-collection",
+      media: [MED_V, MED_U],
+      filter: null,
+    });
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("Remove from collection is there only while a manual collection is open", async () => {
+    const has = (m: ReturnType<typeof menuFor>) =>
+      m.items.some((i) => i.label === "Remove from collection");
+    expect(has(menuFor("bin.card", { ids: [MED_V] }))).toBe(false);
+    openCollection(KEEPERS as never);
+    expect(has(menuFor("bin.card", { ids: [MED_V] }))).toBe(false);
+    openCollection(PICKS as never);
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    expect(m.item("Remove from collection").disabled).toBeUndefined();
+    await m.choose("Remove from collection");
+    expect(call).toHaveBeenCalledExactlyOnceWith("media.remove_from_collection", {
+      collection: PICKS,
+      media: [MED_V],
+    });
+    expect(schemaProblems("media.remove_from_collection", call.mock.calls[0]?.[1])).toEqual([]);
+    // Removing from the project is still its own row.
+    expect(m.item("Remove from project")).toBeDefined();
+  });
+
+  it("the bin's background offers New collection… always and Save as smart collection… with a filter on", async () => {
+    const plain = menuFor("bin.background");
+    expect(plain.item("New collection…").disabled).toBeUndefined();
+    expect(plain.items.some((i) => i.label === "Save as smart collection…")).toBe(false);
+    await plain.choose("New collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "new-collection",
+      media: [],
+      filter: null,
+    });
+    menuDialogStore.getState().close();
+
+    binStore.getState().toggleTag("keep");
+    binStore.getState().setUse("unused");
+    const filtered = menuFor("bin.background");
+    await filtered.choose("Save as smart collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "new-collection",
+      media: [],
+      filter: { used: false, tags: ["keep"] },
+    });
+    // Inside a collection there is nothing to save: a smart collection cannot name one.
+    openCollection(PICKS as never);
+    expect(
+      menuFor("bin.background").items.some((i) => i.label === "Save as smart collection…"),
+    ).toBe(false);
+  });
+
+  it("a collection row has its own menu: Open, Rename, Delete collection…", async () => {
+    const m = menuFor("bin.collection", { ids: [PICKS], name: "Picks" });
+    expect(m.menu.name).toBe("Collection actions for Picks");
+    expect(m.items.map((i) => i.label)).toEqual(["Open", "Rename", "Delete collection…"]);
+    expect(m.item("Delete collection…").variant).toBe("danger");
+    await m.choose("Open");
+    expect(currentOpenCollection()).toBe(PICKS);
+    await m.choose("Rename");
+    expect(sidebarUiStore.getState().renaming).toBe(PICKS);
+  });
+
+  it("Delete collection… asks when it lists something and deletes an empty one at once", async () => {
+    const engineCall = engine({ collection_id: ARCHIVE });
+    await menuFor("bin.collection", { ids: [PICKS] }).choose("Delete collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "delete-collection",
+      collection: PICKS,
+    });
+    expect(engineCall).not.toHaveBeenCalled();
+    menuDialogStore.getState().close();
+    await menuFor("bin.collection", { ids: [ARCHIVE] }).choose("Delete collection…");
+    expect(engineCall).toHaveBeenCalledExactlyOnceWith("media.delete_collection", {
+      collection: ARCHIVE,
+    });
+    expect(menuDialogStore.getState().dialog).toBeNull();
+  });
+
+  it("a smart collection has Update from current filters, which replaces its filter", async () => {
+    const engineCall = engine({ collection_id: KEEPERS, members: 1 });
+    const idle = menuFor("bin.collection", { ids: [KEEPERS], name: "Keepers" });
+    expect(idle.items.map((i) => i.label)).toEqual([
+      "Open",
+      "Rename",
+      "Update from current filters",
+      "Delete collection…",
+    ]);
+    expect(idle.item("Update from current filters").disabled).toBe(true);
+    expect(idle.item("Update from current filters").disabledReason).toBe(
+      "Search or set a filter first",
+    );
+
+    binStore.getState().setText("beach");
+    binStore.getState().openFolder("", FLD as never);
+    binStore.getState().setScope("folder");
+    await menuFor("bin.collection", { ids: [KEEPERS] }).choose("Update from current filters");
+    expect(engineCall).toHaveBeenCalledExactlyOnceWith("media.set_collection_filter", {
+      collection: KEEPERS,
+      filter: { text: "beach", folder: FLD, recursive: true },
+    });
+    expect(schemaProblems("media.set_collection_filter", engineCall.mock.calls[0]?.[1])).toEqual(
+      [],
+    );
+    expect(toastStore.getState().notices.map((n) => n.title)).toEqual([
+      "Updated Keepers from the current filters",
+    ]);
+
+    // With a collection open the bin's filters narrow that collection: nothing to store.
+    openCollection(PICKS as never);
+    const inside = menuFor("bin.collection", { ids: [KEEPERS] }).item(
+      "Update from current filters",
+    );
+    expect(inside.disabled).toBe(true);
+    expect(inside.disabledReason).toBe("Open All media or a folder first");
+  });
+
+  it("the palette lists New collection…, Add to collection… and Save as smart collection…", () => {
+    const entries = buildEntries({
+      services,
+      catalog: () => commandCatalog.getState().commands,
+      panels: () => [],
+      workspaceCommands: () => [],
+      settingsPages: () => [],
+      keys: () => ({ "engine.live": true, "project.readOnly": false, "selection.count": 0 }),
+      prefill: () => ({ items: [], playhead: 0 }),
+    });
+    const title = (command: string) => entries.find((e) => e.command === command)?.title;
+    expect(title("media.create_collection")).toBe("New collection…");
+    expect(title("media.add_to_collection")).toBe("Add to collection…");
+    expect(title("bin.save_smart_collection")).toBe("Save as smart collection…");
+    expect(entries.find((e) => e.command === "bin.save_smart_collection")?.kind).toBe("ui");
+    // The other menu commands stay out of the palette: they need a menu's target.
+    expect(entries.some((e) => e.command === "bin.add_to_collection")).toBe(false);
+    expect(entries.some((e) => e.command === "bin.open_collection")).toBe(false);
   });
 });

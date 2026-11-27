@@ -21,11 +21,15 @@ import { SIDEBAR_MIN_PANEL_WIDTH, sidebarUiStore } from "../media/sidebar.ts";
 import { placeholderThumbnails, setThumbnailSource } from "../media/thumbnails.ts";
 import { menuDialogStore } from "../menus/dialogs.ts";
 import { MenuDialogs } from "../menus/MenuDialogs.tsx";
+import { paletteAction } from "../palette/actions.ts";
+import { registerBuiltinPaletteActions } from "../palette/builtinActions.ts";
+import { historyLabel, undoText } from "../session/historyLabels.ts";
 import { sessionStore } from "../session/sessionStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
+import { translator } from "../timeline/errors.ts";
 import { MediaPanel } from "./MediaPanel.tsx";
 
 const F = 705_600_000;
@@ -668,5 +672,98 @@ describe("sidebar accessibility", () => {
     binStore.getState().setText("clip");
     await userEvent.click(await screen.findByRole("button", { name: "Save as smart collection…" }));
     expect((await axe.run(await screen.findByRole("dialog"))).violations).toEqual([]);
+  });
+});
+
+describe("undo labels", () => {
+  const t = translator(i18n.t.bind(i18n));
+
+  it("names the six collection commands", () => {
+    expect(historyLabel("media.create_collection", t)).toBe("New collection");
+    expect(historyLabel("media.rename_collection", t)).toBe("Rename collection");
+    expect(historyLabel("media.delete_collection", t)).toBe("Delete collection");
+    expect(historyLabel("media.add_to_collection", t)).toBe("Add to collection");
+    expect(historyLabel("media.remove_from_collection", t)).toBe("Remove from collection");
+    expect(historyLabel("media.set_collection_filter", t)).toBe("Update smart collection");
+    expect(
+      undoText(
+        {
+          canUndo: true,
+          canRedo: false,
+          nextUndo: "media.add_to_collection",
+          nextRedo: null,
+          nextUndoActor: "user",
+          nextRedoActor: null,
+        } as never,
+        t,
+      ),
+    ).toBe("Undo Add to collection");
+  });
+});
+
+describe("the palette's New collection… and Add to collection…", () => {
+  it("ask for a name, and list the manual collections for the selected cards", async () => {
+    registerBuiltinPaletteActions();
+    const create = paletteAction("media.create_collection");
+    const add = paletteAction("media.add_to_collection");
+    expect(create).toBeDefined();
+    expect(add).toBeDefined();
+    load(project());
+    connect();
+    call.mockResolvedValue({ collection_id: PICKS, added: ["med_2", "med_3"], members: 4 });
+    view();
+    // Nothing selected: there is nothing to add, and the palette says so.
+    expect(() => add?.({})).toThrow("Select media in the bin first.");
+    await create?.({});
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "new-collection",
+      media: [],
+      filter: null,
+    });
+    menuDialogStore.getState().close();
+
+    viewStore.getState().setSelection([
+      { kind: "media", id: "med_2" },
+      { kind: "media", id: "med_3" },
+    ] as never);
+    await add?.({});
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Add 2 items to a collection")).toBeDefined();
+    // The manual ones; a smart collection takes no members.
+    expect(
+      within(dialog)
+        .getAllByRole("radio")
+        .map((r) => r.closest("label")?.textContent),
+    ).toEqual(["Archive", "Picks"]);
+    expect((await axe.run(dialog)).violations).toEqual([]);
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Picks" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    expect(call).toHaveBeenCalledWith("media.add_to_collection", {
+      collection: PICKS,
+      media: ["med_2", "med_3"],
+    });
+  });
+
+  it("New collection… from the list makes a collection of the selected cards", async () => {
+    registerBuiltinPaletteActions();
+    load(project());
+    connect();
+    call.mockResolvedValue({ collection_id: "col_new", name: "Day 2" });
+    view();
+    viewStore.getState().setSelection([{ kind: "media", id: "med_2" }] as never);
+    await paletteAction("media.add_to_collection")?.({});
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "New collection…" }),
+    );
+    const field = await screen.findByRole("textbox", { name: "Collection name" });
+    expect(
+      screen.getByText("The selected item goes into it and stays in its folder."),
+    ).toBeDefined();
+    await userEvent.clear(field);
+    await userEvent.type(field, "Day 2{Enter}");
+    expect(call).toHaveBeenCalledWith("media.create_collection", {
+      name: "Day 2",
+      kind: { type: "manual", media: ["med_2"] },
+    });
   });
 });
