@@ -244,7 +244,13 @@ impl FrameSource for TestSource {
         }
         let mut marked = *request;
         marked.frame += target_offset(request.target);
-        self.inner.render(&marked, &CancelToken::never(), out)
+        // A frame asked for with proxies "shows a proxy" (the real source says what it used).
+        self.inner
+            .render(&marked, &CancelToken::never(), out)
+            .map(|r| Rendered {
+                proxy: request.quality.use_proxies,
+                ..r
+            })
     }
 
     fn cached(&mut self, request: &RenderRequest, out: &mut [u8]) -> Option<Rendered> {
@@ -1479,6 +1485,100 @@ fn the_ring_clock_plays_only_while_the_position_advances() {
     let rev = h.transport.clock_sample();
     assert_eq!((rev.state, rev.rate_milli), (ClockState::Playing, -1000));
     assert_eq!(rev.host_ns, h.host.now_ns());
+}
+
+// ----- the proxy toggle (WP-2F.02) -----------------------------------------------------------
+
+#[test]
+fn the_proxy_toggle_reaches_every_request_without_a_seek_and_the_state_says_what_is_shown() {
+    let asked: Arc<Mutex<Vec<(i64, bool)>>> = Arc::default();
+    let seen = Arc::clone(&asked);
+    let mut h = Harness::new(Setup {
+        during: Some(Box::new(move |_, request| {
+            seen.lock()
+                .unwrap()
+                .push((request.frame, request.quality.use_proxies));
+        })),
+        ..Setup::default()
+    });
+    let mut registry = Registry::new();
+    register(&mut registry).unwrap();
+    let transport = h.transport.clone();
+    let set = |params: serde_json::Value, access: Access| {
+        registry.invoke_engine_json(
+            "view.set_preview_quality",
+            params,
+            &mut transport.clone(),
+            access,
+        )
+    };
+    // On until told otherwise: the first still is asked for with proxies.
+    h.settle();
+    let s = h.transport.state();
+    assert!(s.use_proxies && s.proxy, "{s:?}");
+    assert!(asked.lock().unwrap().iter().all(|(_, proxies)| *proxies));
+    // The delivered frame keeps the rung's own quality: full, refined.
+    assert!(h.records().last().unwrap().quality.is_full());
+
+    // Playing: turning proxies off applies from the next frame, with no seek, no new epoch
+    // gap and no dropped frame.
+    h.transport.play();
+    h.run_ms(300);
+    let before = h.transport.state();
+    let epoch = h.transport.epoch();
+    let cut = h.last_seq();
+    asked.lock().unwrap().clear();
+    let s = set(json!({ "use_proxies": false }), Access::UI).unwrap();
+    assert_eq!(s["use_proxies"], json!(false));
+    assert_eq!(s["playing"], json!(true));
+    h.run_ms(300);
+    let after = h.transport.state();
+    assert!(!after.use_proxies && !after.proxy, "{after:?}");
+    assert_eq!(after.dropped, before.dropped, "no frame was skipped");
+    assert!(after.playing);
+    let frames: Vec<i64> = h.records_after(cut).iter().map(|r| r.frame).collect();
+    assert!(frames.len() >= 8, "{frames:?}");
+    assert!(
+        frames.windows(2).all(|w| w[1] == w[0] + 1),
+        "playback went on frame by frame: {frames:?}"
+    );
+    let asked_after = asked.lock().unwrap().clone();
+    assert!(
+        asked_after.iter().all(|(_, proxies)| !*proxies),
+        "{asked_after:?}"
+    );
+    // The toggle is a refresh, not a seek: the audio and the position carry on.
+    assert!(h.transport.epoch() > epoch);
+    assert!(after.t > before.t);
+
+    // Stopped: a change re-renders the frame on screen; the same choice again does nothing.
+    h.transport.pause();
+    h.run_ms(200);
+    let shown = h.records().last().unwrap().frame;
+    let cut = h.last_seq();
+    let s = set(json!({ "use_proxies": true }), Access::UI).unwrap();
+    assert_eq!(s["use_proxies"], json!(true));
+    h.run_ms(50);
+    let again = h.records_after(cut);
+    assert_eq!(again.len(), 1, "{again:?}");
+    assert_eq!(again[0].frame, shown);
+    assert!(h.transport.state().proxy);
+    let cut = h.last_seq();
+    set(json!({ "use_proxies": true }), Access::UI).unwrap();
+    // Absent: the choice is kept.
+    let s = set(json!({}), Access::UI).unwrap();
+    assert_eq!(s["use_proxies"], json!(true));
+    h.run_ms(50);
+    assert!(h.records_after(cut).is_empty());
+    assert!(h.transport.use_proxies());
+
+    // This computer's preference: the app's, not an agent's; a view command like the others.
+    let err = set(json!({ "use_proxies": false }), Access::STANDARD).unwrap_err();
+    assert_eq!(err.code(), "forbidden", "{err}");
+    assert!(h.transport.use_proxies());
+    let meta = &registry.get("view.set_preview_quality").unwrap().meta;
+    assert!(meta.view && !meta.undoable);
+    assert_eq!(meta.mcp, cutweave_commands::McpExposure::Hidden);
 }
 
 // ----- commands -----------------------------------------------------------------------------

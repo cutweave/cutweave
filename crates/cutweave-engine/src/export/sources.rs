@@ -13,7 +13,9 @@
 //!   gaps.
 //!
 //! Media are resolved through the exported document snapshot (`MediaAsset::path_abs`), so a
-//! relink after the export started does not change it. Planes move from the decoder's frame
+//! relink after the export started does not change it. An export reads **originals only**
+//! ([`export_path`]: the [`MediaResolver`] with [`MediaPurpose::Export`], WP-2F.02), whatever
+//! proxies the cache holds, so a project with proxies exports the same file as without. Planes move from the decoder's frame
 //! into the compositor's without a copy (same layout, see `cutweave_media::frame`).
 
 use std::collections::hash_map::Entry;
@@ -22,7 +24,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_audio::{PcmFormat, PcmSource, SourceError, SourceFactory, SourceRequest};
-use cutweave_media::{AudioDecoder, DecodeOpts, HwMode, MediaBackend, MediaError, VideoDecoder};
+use cutweave_media::{
+    AudioDecoder, DecodeOpts, HwMode, MediaBackend, MediaError, MediaPurpose, MediaResolver,
+    MediaSource, VideoDecoder,
+};
 use cutweave_model::{FLICKS_PER_SECOND, MediaAsset, MediaId, Project, Time};
 use cutweave_render::{FrameError, FrameId, FrameRequest, FrameSource, VideoFrame};
 
@@ -144,12 +149,21 @@ pub(crate) fn target_for_pixel_format(name: &str) -> Option<cutweave_media::Pixe
     }
 }
 
+/// The file an export (or an agent frame, which shows what an export would) reads for `asset`:
+/// the original, or the locator of an image sequence (ADR-0035). The export's resolver has no
+/// proxies to hand out, so no proxy file can be named here, whatever the cache holds.
+pub(crate) fn export_path(asset: &MediaAsset) -> Option<String> {
+    match MediaResolver::originals().open(asset, MediaPurpose::Export) {
+        MediaSource::Original => asset.source_path(),
+        MediaSource::Proxy(never) => match never {},
+    }
+}
+
 fn assets(doc: &Project) -> HashMap<MediaId, Asset> {
     doc.media
         .values()
         .filter_map(|m| {
-            // The file, or the locator of an image sequence (ADR-0035).
-            let path = m.source_path()?;
+            let path = export_path(m)?;
             let key = m.content_hash.as_deref().unwrap_or(&path);
             let target = m
                 .probe

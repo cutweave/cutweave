@@ -23,6 +23,7 @@ import type { PrefsBridge } from "../session/desktop.ts";
 import { historyLabel } from "../session/historyLabels.ts";
 import { docStore } from "../state/docStore.ts";
 import { translator } from "../timeline/errors.ts";
+import { formatWords } from "./newSequenceFormat.ts";
 import { ProjectSettingsDialog } from "./ProjectSettingsDialog.tsx";
 import {
   defaultsOf,
@@ -148,10 +149,28 @@ describe("the project settings form", () => {
   });
 
   it("maps the project's values to the app preferences that are defaults", () => {
-    expect(defaultsOf(settingsOf())).toEqual({ stillSeconds: 5, proxyPolicy: "auto" });
+    expect(defaultsOf(settingsOf())).toEqual({
+      stillSeconds: 5,
+      proxyPolicy: "auto",
+      sequenceFormat: "1920x1080 30/1 48000 rec709 #000000",
+    });
     expect(
       defaultsOf(settingsOf({ still_duration: 3 * FLICKS_PER_SECOND, proxy_policy: "all" })),
-    ).toEqual({ stillSeconds: 3, proxyPolicy: "all" });
+    ).toMatchObject({ stillSeconds: 3, proxyPolicy: "all" });
+    // The format is the project's format of new sequences (#221), whatever its sequences use.
+    expect(
+      defaultsOf(
+        settingsOf({
+          default_format: {
+            ...settingsOf().default_format,
+            width: 1080,
+            height: 1920,
+            frame_rate: { num: 30000, den: 1001 },
+          },
+        }),
+      ).sequenceFormat,
+    ).toBe("1080x1920 30000/1001 48000 rec709 #000000");
+    expect(formatWords(settingsOf().default_format, t)).toBe("1920 × 1080 at 30 fps");
     // The preference counts whole seconds, at least one.
     expect(defaultsOf(settingsOf({ still_duration: 0.2 * FLICKS_PER_SECOND })).stillSeconds).toBe(
       1,
@@ -217,9 +236,12 @@ describe("the Project settings dialog", () => {
       expect(prefs.calls).toEqual([
         ["editing.still_duration", 3],
         ["media.proxy_policy", "off"],
+        ["editing.sequence_format", "1920x1080 30/1 48000 rec709 #000000"],
       ]),
     );
-    expect((await within(dialog).findByRole("status")).textContent).toContain("3 s");
+    const said = (await within(dialog).findByRole("status")).textContent;
+    expect(said).toContain("3 s");
+    expect(said).toContain("1920 × 1080 at 30 fps");
   });
 
   // WP-2H.08's acceptance: an optional key added to `ProjectSettings` (a test build of the

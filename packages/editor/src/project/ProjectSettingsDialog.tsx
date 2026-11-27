@@ -3,7 +3,8 @@
 // Settings. A schema-driven form over the engine's `ProjectSettings`: every change is one
 // `project.set_settings` (one undo step, "Change project settings"), and since the form shows the
 // document, a change an agent makes (or an undo) shows at once. "Use as defaults for new
-// projects" copies the values that have an app preference into Settings.
+// projects" copies the values that have an app preference into Settings: the still image
+// duration, the proxy policy and the format of new sequences (#221).
 import { Button, Dialog, DialogNote, type OnChange, SchemaForm } from "@cutweave/ui";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +13,7 @@ import { engineStore } from "../engine/engineStore.ts";
 import { preferences } from "../prefs/prefsStore.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { translator } from "../timeline/errors.ts";
+import { formatWords } from "./newSequenceFormat.ts";
 import {
   applySetting,
   defaultsOf,
@@ -66,16 +68,25 @@ export function ProjectSettingsDialog() {
   const useAsDefaults = () => {
     if (settings === undefined) return;
     const next = defaultsOf(settings);
+    // A format with no spelling as a preference (none the engine accepts today) is left out.
+    const withFormat = next.sequenceFormat !== "";
     void Promise.all([
       preferences.set("editing.still_duration", next.stillSeconds),
       preferences.set("media.proxy_policy", next.proxyPolicy),
+      ...(withFormat ? [preferences.set("editing.sequence_format", next.sequenceFormat)] : []),
     ]).then(
       () =>
         projectSettingsStore.getState().set({
-          notice: t("projectSettings.defaultsSaved", {
-            seconds: String(next.stillSeconds),
-            proxies: t(`settings.rows.proxyPolicy.${next.proxyPolicy}`),
-          }),
+          notice: t(
+            withFormat
+              ? "projectSettings.defaultsSaved"
+              : "projectSettings.defaultsSavedWithoutFormat",
+            {
+              format: formatWords(settings.default_format, translator(t)),
+              seconds: String(next.stillSeconds),
+              proxies: t(`settings.rows.proxyPolicy.${next.proxyPolicy}`),
+            },
+          ),
         }),
       () => projectSettingsStore.getState().set({ notice: t("projectSettings.defaultsFailed") }),
     );

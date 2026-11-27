@@ -3,7 +3,7 @@
 //! arch §8, §10): the plan in `cutweave_playback::transport::source`.
 //!
 //! `render` takes the live document snapshot, evaluates the first sequence at the requested
-//! frame, applies the quality rung (proxy eligibility), builds the render graph for the output
+//! frame, applies the quality rung (the proxy toggle and each layer's drawn size), builds the render graph for the output
 //! size with source pictures from [`PreviewFrames`] (decodes cancelled with the render's epoch),
 //! composites it on the preview's own [`Compositor`] (the GPU device is shared with
 //! `render.frame` and export, the compositor is not, so preview never waits on their lock) and
@@ -424,8 +424,9 @@ impl FrameSource for PreviewSource {
         out: &mut [u8],
     ) -> Result<Rendered, SourceError> {
         let snapshot = self.doc.snapshot();
-        let rendered = Rendered {
+        let mut rendered = Rendered {
             rev: snapshot.rev.0,
+            proxy: false,
         };
         let PreviewSource {
             compositor,
@@ -462,14 +463,11 @@ impl FrameSource for PreviewSource {
             scene.width = request.layout.width();
             scene.height = request.layout.height();
         }
-        request.quality.apply(scene);
-        if request.purpose == RenderPurpose::Scrub {
-            // Scrub frames try proxies first (arch §10 step 5; WP-2F.01); the refine after the
-            // scrub settles shows the originals.
-            for layer in &mut scene.layers {
-                layer.request.proxy = true;
-            }
-        }
+        // Proxies as the preview's toggle says, each layer with the size it is drawn at: the
+        // media layer serves a proxy only when it holds those pixels (WP-2F.02).
+        request
+            .quality
+            .apply_for_output(scene, (request.layout.width(), request.layout.height()));
         let target = Target::rgba8(request.layout.width(), request.layout.height());
         let mode = match request.purpose {
             RenderPurpose::Playback => DecodeMode::Sequential,
@@ -523,6 +521,7 @@ impl FrameSource for PreviewSource {
             reused.graph.release_frames();
             reused.scratch.release_frames();
         });
+        rendered.proxy = source.showed_proxy();
         result?;
         if cancel.is_cancelled() {
             return Err(SourceError::Cancelled);

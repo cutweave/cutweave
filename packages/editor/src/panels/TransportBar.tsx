@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { PreviewQuality } from "@cutweave/protocol";
-import { Icon, IconButton, Slider, Toolbar, ToolbarSeparator, Tooltip } from "@cutweave/ui";
+import {
+  Icon,
+  IconButton,
+  Slider,
+  StatusChip,
+  Toolbar,
+  ToolbarSeparator,
+  Tooltip,
+} from "@cutweave/ui";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { useContextMenu } from "../menus/host.tsx";
-import { usePref } from "../prefs/prefsStore.ts";
+import { preferences, usePref } from "../prefs/prefsStore.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
@@ -31,6 +39,11 @@ const QUALITY_LABEL: Readonly<Record<PreviewQuality, TKey>> = {
  * transport; Space, J/K/L and the arrows reach the same actions through the keymap. Playback
  * controls are off without an engine, with an empty timeline, and for an engine that has no
  * transport.
+ *
+ * Proxies (WP-2F.02): a toggle turns the preview's use of proxies on or off (the preference
+ * `playback.proxies`, which the runtime sends to the engine as `view.set_preview_quality`), and
+ * a chip says what the frame on screen was decoded from, as the engine reports it: "Proxy" or
+ * "Original".
  */
 export function TransportBar() {
   const { t } = useTranslation();
@@ -39,6 +52,8 @@ export function TransportBar() {
   const support = usePlaybackStore((s) => s.transport);
   const playing = usePlaybackStore((s) => s.playing);
   const quality = usePlaybackStore((s) => s.quality);
+  const showsProxy = usePlaybackStore((s) => s.proxy);
+  const useProxies = usePref("playback.proxies");
   const source = usePlaybackStore((s) => s.source);
   const sourcePlayhead = usePlaybackStore((s) => s.sourcePlayhead);
   const playhead = useViewStore((s) => s.playhead);
@@ -65,6 +80,7 @@ export function TransportBar() {
   const dropFrame = usePref("timeline.drop_frame");
   const shown = { "timeline.time_display": timeDisplay, "timeline.drop_frame": dropFrame };
   const playLabel = playing ? t("transport.pause") : t("transport.play");
+  const sourceLabel = showsProxy ? t("transport.source.proxy") : t("transport.source.original");
   // Right-click or the Menu key: Copy timecode, the volume's Mute and Reset, the quality choices.
   const timeRef = useContextMenu<HTMLOutputElement>("transport.time", () => ({}));
   const volumeRef = useContextMenu<HTMLDivElement>("transport.volume", () => ({}));
@@ -137,6 +153,26 @@ export function TransportBar() {
           <Icon name="gauge" size="sm" />
           {t(QUALITY_LABEL[quality])}
         </output>
+        <Tooltip label={t("transport.sourceHint")}>
+          <output
+            className="cw-transport__source"
+            aria-label={t("transport.sourceValue", { source: sourceLabel })}
+            data-source={showsProxy ? "proxy" : "original"}
+          >
+            <StatusChip tone="neutral" icon={showsProxy ? "layers" : "film"}>
+              {sourceLabel}
+            </StatusChip>
+          </output>
+        </Tooltip>
+        <Tooltip label={t("transport.useProxies")}>
+          <IconButton
+            icon="layers"
+            size="sm"
+            label={t("transport.useProxies")}
+            pressed={useProxies}
+            onClick={() => void preferences.set("playback.proxies", !useProxies)}
+          />
+        </Tooltip>
         <Tooltip label={muted ? t("transport.unmute") : t("transport.mute")}>
           <IconButton
             icon={muted ? "volume-x" : "volume-2"}

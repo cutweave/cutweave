@@ -130,7 +130,10 @@ pub struct RenderRequest {
     pub frame: i64,
     /// Its start time (the frame's presentation timestamp).
     pub t: Time,
-    /// The quality rung.
+    /// The quality rung. Its `use_proxies` is the preview's proxy toggle
+    /// (`view.set_preview_quality`), whatever the rung: the source serves a layer from its
+    /// proxy only when that is on and the proxy holds the pixels the layer is drawn at
+    /// (`Quality::apply_for_output`, WP-2F.02).
     pub quality: Quality,
     /// Output geometry and pixel format (the preview canvas reduced by `quality.scale`): fill
     /// exactly `layout.len()` bytes, plane `i` at `layout.planes()[i].offset`.
@@ -144,6 +147,9 @@ pub struct RenderRequest {
 pub struct Rendered {
     /// The document revision the frame shows.
     pub rev: u64,
+    /// Whether a picture of the frame was decoded from a proxy instead of its original
+    /// (WP-2F.02: what the preview's "Proxy" / "Original" chip says).
+    pub proxy: bool,
 }
 
 /// A render that produced no frame.

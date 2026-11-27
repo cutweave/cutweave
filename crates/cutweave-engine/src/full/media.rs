@@ -86,10 +86,14 @@ pub struct MediaFile {
 impl MediaFile {
     /// The asset `id` of `snapshot`, if it has a file.
     #[must_use]
+    ///
+    /// This is the **original** (the file, or the locator of an image sequence, ADR-0035):
+    /// what agent frames, thumbnails, filmstrips, waveforms and analysis read. Only a preview
+    /// picture is ever read from a proxy, and that is the `MediaResolver`'s decision in
+    /// `PreviewFrames` (WP-2F.02).
     pub fn of(snapshot: &DocSnapshot, id: MediaId) -> Option<MediaFile> {
         let asset = snapshot.doc.media.get(&id)?;
-        // What the backend reads: the file, or the locator of an image sequence (ADR-0035).
-        let path = asset.source_path()?;
+        let path = crate::export::sources::export_path(asset)?;
         Some(MediaFile {
             id,
             path: PathBuf::from(path),

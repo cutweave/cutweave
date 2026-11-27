@@ -107,6 +107,7 @@ pub(super) fn layer(item: u128, media: u128, size: (u32, u32)) -> Layer {
             color: ColorTags::default(),
             still: false,
             proxy: false,
+            drawn_long_edge: None,
         },
         transform: identity(),
         opacity: 1.0,
