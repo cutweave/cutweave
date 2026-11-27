@@ -190,8 +190,8 @@ Keys that cannot be bound: F10 and Alt+F, E, V, H (the menu bar), Shift+F10 and 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
 | `notify.agent_connected` | Show a notice when an agent connects or disconnects | On | App | Renderer | — | WP-1J.05 |
-| `notify.export_done` | Notify when an export finishes while Cutweave is in the background | On | App | Main (OS notification) | — | WP-2G.04 |
-| `notify.sound` | Play a sound when an export finishes | Off | App | Renderer | — | WP-2G.04 |
+| `notify.export_done` | Notify when an export finishes (done or failed) while Cutweave is in the background: minimized, or another app has the focus | On | App | Main (OS notification; the editor writes its text) | — | WP-2G.04b |
+| `notify.sound` | Play a sound when an export finishes (two short notes the editor makes; no sound file) | Off | App | Renderer | — | WP-2G.04b |
 | `notify.ai_done` | Notify when an AI generation finishes while Cutweave is in the background | On | App | Main | — | WP-5F.04 |
 
 ### Agents and MCP
