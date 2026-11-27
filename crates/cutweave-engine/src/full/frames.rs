@@ -845,27 +845,25 @@ impl PreviewRequest<'_> {
         purpose: MediaPurpose,
         streaming: bool,
     ) -> Option<Arc<VideoFrame>> {
-        let wanted = purpose.may_use_proxy();
-        if !wanted && !streaming {
-            return None;
-        }
         let resolver = &self.frames.frames.resolver;
         let proxies = resolver.proxies()?;
         let asset = asset?;
         let at = (proxies.store().generation(), asset.proxy_mode);
         if held.proxy_resolved != Some(at) {
-            if !wanted {
-                // The proxy the stream was on may be gone, and this frame asks for none.
-                return None;
-            }
             // A proxy became ready or went away since this item was resolved, or the asset's
-            // proxies were turned on or off (allocates).
+            // proxies were turned on or off (allocates). Looked up whatever the toggle says
+            // now, so that switching proxies on in the middle of playback finds it held
+            // instead of reading the cache's database between two frames.
             held.proxy = alloc_scope::within(Scope::Media, || {
                 let backend = self.frames.frames.backend.as_ref()?;
-                let ready = resolver.candidate(asset, purpose)?;
+                let lookup = MediaPurpose::Preview(PreviewQuality::proxies(None));
+                let ready = resolver.candidate(asset, lookup)?;
                 Some(HeldProxy::new(backend, ready))
             });
             held.proxy_resolved = Some(at);
+        }
+        if !purpose.may_use_proxy() && !streaming {
+            return None;
         }
         let long_edge = held.proxy.as_ref()?.ready.long_edge();
         // The resolution rule: a picture drawn larger than the proxy reads the original. A
