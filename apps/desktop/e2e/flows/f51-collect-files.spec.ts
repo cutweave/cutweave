@@ -5,7 +5,8 @@
 // says where it is. On disk the folder holds the project file and every media file. Then the
 // originals go away (the media folder is renamed) and the collected project is opened: nothing is
 // missing, no relink dialog, no Offline badge. Archive (zip) is WP-2F.04b and is not driven here.
-import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
+// An image sequence (#208) comes along whole: three numbered pictures imported as one card.
+import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures.ts";
@@ -27,6 +28,8 @@ import {
 } from "./helpers.ts";
 
 const dialog = (page: Page, title: string) => page.getByRole("dialog", { name: title });
+/** The pictures of the image sequence the flow adds (one card, three files). */
+const PICTURES = ["shot_0001.png", "shot_0002.png", "shot_0003.png"] as const;
 
 /** Every file below `dir`, as paths relative to it with `/`. */
 function filesBelow(dir: string, prefix = ""): string[] {
@@ -53,6 +56,16 @@ test.describe("F51 collect files", () => {
           DEMO_FILES.map((f) => work.file(f)),
         );
         await expect(mediaCards(page)).toHaveCount(DEMO_FILES.length);
+        // Three numbered pictures, imported as one image sequence.
+        mkdirSync(path.join(work.media, "render"));
+        for (const name of PICTURES) writeFileSync(path.join(work.media, "render", name), name);
+        await pickFiles(
+          app,
+          PICTURES.map((name) => path.join(work.media, "render", name)),
+        );
+        await page.getByRole("button", { name: "Import", exact: true }).click();
+        await page.getByRole("button", { name: "Import as image sequence" }).click();
+        await expect(mediaCards(page)).toHaveCount(DEMO_FILES.length + 1);
         await shortcut(app, "Control+S");
         await expect(dirtyDot(page)).toBeHidden();
 
@@ -72,7 +85,9 @@ test.describe("F51 collect files", () => {
         await expect(form.getByRole("textbox", { name: "Location" })).toHaveValue(out);
         expect((await asked()).at(-1)?.properties).toContain("openDirectory");
         // The estimate: how many files and how much.
-        await expect(form.getByRole("status")).toContainText(`${DEMO_FILES.length} media files`);
+        // (Every picture of the sequence is a file to copy.)
+        const fileCount = DEMO_FILES.length + PICTURES.length;
+        await expect(form.getByRole("status")).toContainText(`${fileCount} media files`);
         await snapshot(page, info, "estimate");
         await expect(collect).toBeEnabled();
         await collect.click();
@@ -90,6 +105,7 @@ test.describe("F51 collect files", () => {
         const files = filesBelow(dest);
         expect(files).toContain("Handover.cutweave");
         for (const file of DEMO_FILES) expect(files).toContain(`media/media/${file}`);
+        for (const name of PICTURES) expect(files).toContain(`media/render/${name}`);
         expect(files.filter((f) => f.endsWith(".part"))).toEqual([]);
         // The open project is the original, untouched: nothing unsaved.
         await expect(page).toHaveTitle("Promo — Cutweave");
@@ -102,7 +118,7 @@ test.describe("F51 collect files", () => {
         await chooseMenu(page, app, "File", "Open project…");
         await expect(page).toHaveTitle("Handover — Cutweave");
         // (The copy is named after its folder.)
-        await expect(mediaCards(page)).toHaveCount(DEMO_FILES.length);
+        await expect(mediaCards(page)).toHaveCount(DEMO_FILES.length + 1);
         await expect(mediaCards(page).getByText("Offline", { exact: true })).toHaveCount(0);
         await expect(page.getByRole("dialog")).toHaveCount(0);
       } finally {
