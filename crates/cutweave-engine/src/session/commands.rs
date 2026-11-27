@@ -68,7 +68,8 @@ impl SessionCall {
 pub struct ProjectOpenOutput {
     /// The session now.
     pub project: ProjectStatus,
-    /// Media whose file was found at neither its absolute nor its project-relative path.
+    /// Media whose file was found at neither its absolute nor its project-relative path, and
+    /// image sequences with pictures of their run gone (`media.find_missing` tells which).
     pub missing_media: Vec<MediaId>,
     /// The schema version the document was migrated from, if it was.
     pub migrated_from: Option<u32>,

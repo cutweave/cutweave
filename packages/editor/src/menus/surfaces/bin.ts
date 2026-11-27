@@ -6,7 +6,9 @@
 // TODO(WP-2F.06): Add tag. Each work package adds its row
 // to these tables. Relink… (WP-2F.03) shows on a card whose file is missing. Regenerate proxies
 // and Delete proxies (WP-2F.03b) show on video. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
-import type { MediaId } from "@cutweave/protocol";
+// #215: Duration… on an image card (the length its next insert uses) and Proxy ▸ Auto / Always /
+// Never on video (`media.set_proxy_mode`, ADR-0027).
+import type { MediaId, ProxyMode } from "@cutweave/protocol";
 import { snapToFrame } from "@cutweave/timeline";
 import { placeable } from "../../layout/actions.ts";
 import { LAYOUT_NAMES } from "../../layout/names.ts";
@@ -14,6 +16,7 @@ import { LAYOUTS } from "../../layout/table.ts";
 import { binStore, SORT_CHOICES } from "../../media/binStore.ts";
 import { selectMediaCards, selectMediaUsage } from "../../media/cards.ts";
 import { healthStore } from "../../media/health.ts";
+import { insertDurationFor } from "../../media/insertDuration.ts";
 import { isMovingPicture } from "../../media/kinds.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { canHaveProxy, hasProxy, proxyStore } from "../../media/proxies.ts";
@@ -59,11 +62,14 @@ export function insertArgsFor(id: string | undefined, at: Placement) {
     at === "playhead"
       ? snapToFrame(viewStore.getState().playhead, { num: rate.num, den: rate.den })
       : sequenceEnd(found.sequence);
+  // A picture with a "Duration…" choice goes in with that length; else the engine decides.
+  const duration = insertDurationFor(docStore.getState().project, id);
   return {
     sequence: found.id,
     track: trackId,
     media: id,
     at: when,
+    ...(duration === undefined ? {} : { duration }),
     overlap: "new_track",
   };
 }
@@ -137,6 +143,43 @@ const anyProxy = (ctx: MenuContext): boolean => {
 /** Video and image sequences have proxies; a selection of several kinds may hold some. */
 const PROXY_KINDS =
   "selection.kind == video || selection.kind == image_sequence || selection.kind == mixed";
+
+/** Proxy ▸ Auto / Always / Never: the words for an asset's own proxy mode (ADR-0027). */
+const PROXY_MODES: readonly { readonly mode: ProxyMode; readonly label: LabelSpec }[] = [
+  { mode: "auto", label: { key: "contextMenu.item.proxyAuto" } },
+  { mode: "force", label: { key: "contextMenu.item.proxyAlways" } },
+  { mode: "off", label: { key: "contextMenu.item.proxyNever" } },
+];
+
+/** The assets of the target that have a proxy mode: video and image sequences. */
+const proxyModeTargets = (ctx: MenuContext): string[] =>
+  ctx.ids.filter((id) => {
+    const kind = mediaAsset(id)?.kind;
+    return kind === "video" || kind === "image_sequence";
+  });
+
+const proxyModeRows: readonly MenuRow[] = PROXY_MODES.map(
+  ({ mode, label }, order): MenuRow => ({
+    id: `proxy-mode-${mode}`,
+    command: "media.set_proxy_mode",
+    group: "file",
+    order,
+    radio: true,
+    label,
+    when: "engine.live",
+    enabledIf: (ctx) => proxyModeTargets(ctx).length > 0,
+    reason: (ctx) =>
+      proxyModeTargets(ctx).length > 0
+        ? "contextMenu.reason.noEngine"
+        : "contextMenu.reason.noProxyMedia",
+    // Checked when every asset the row would change has this mode (none: a mixed selection).
+    checked: (ctx) => {
+      const ids = proxyModeTargets(ctx);
+      return ids.length > 0 && ids.every((id) => (mediaAsset(id)?.proxy_mode ?? "auto") === mode);
+    },
+    args: (ctx) => ({ media: proxyModeTargets(ctx), mode }),
+  }),
+);
 
 /** What a card menu knows about its target. */
 export function binCardKeys(target: { ids: readonly string[] }): ContextValues {
@@ -230,6 +273,15 @@ export const BIN_CARD: MenuSurfaceDef = {
       submenu: { label: { key: "contextMenu.item.placeAs" }, rows: placeAsRows },
     },
     {
+      command: "bin.insert_duration",
+      group: "place",
+      order: 4,
+      visible: "selection.kind == image",
+      when: "selection.count == 1",
+      reason: "contextMenu.reason.oneImage",
+      args: (ctx) => ({ media: ctx.ids[0] }),
+    },
+    {
       command: "bin.play_in_source",
       group: "play",
       order: 0,
@@ -277,6 +329,13 @@ export const BIN_CARD: MenuSurfaceDef = {
       reason: (ctx) =>
         anyProxy(ctx) ? "contextMenu.reason.noEngine" : "contextMenu.reason.noProxyToDelete",
       args: (ctx) => ({ media: ctx.ids }),
+    },
+    {
+      id: "proxy-mode",
+      group: "file",
+      order: 4,
+      visible: PROXY_KINDS,
+      submenu: { label: { key: "contextMenu.item.proxy" }, rows: proxyModeRows },
     },
     {
       id: "copy-path",

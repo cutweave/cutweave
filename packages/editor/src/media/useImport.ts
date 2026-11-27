@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // `useImport()` (WP-1M.03 interface): the import actions of the media panel as a hook. The picker
-// and the OS drop both end in `importMedia` (one `media.import`).
+// and the OS drop both end in `importMedia` (one `media.import`), or, for a numbered run of
+// pictures the person wants as one item, in one `media.import_sequence` (`importPicked`).
 import type { FolderId } from "@cutweave/protocol";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +10,7 @@ import { preferences } from "../prefs/prefsStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { translator } from "../timeline/errors.ts";
 import { mediaFilesBridge, pickedPaths } from "./bridge.ts";
-import { type ImportSummary, importMedia } from "./import.ts";
+import { type ImportSummary, importMedia, validateImportPaths } from "./import.ts";
 import { importPicked } from "./sequence.ts";
 
 export interface UseImport {
@@ -17,7 +18,11 @@ export interface UseImport {
   readonly busy: boolean;
   /** Whether the native picker exists (the desktop app) and an engine is connected. */
   readonly canPick: boolean;
-  /** Imports these paths into `folder` (default: the top level). Resolves to the summary, or `null` when nothing was sent. */
+  /**
+   * Imports these paths (files dropped from the OS) into `folder` (default: the top level). Two
+   * or more numbered pictures are asked about first, like the picker's ("Import as an image
+   * sequence?"). Resolves to the summary, or `null` when nothing was sent.
+   */
   importPaths(paths: readonly unknown[], folder?: FolderId | null): Promise<ImportSummary | null>;
   /** Opens the native file dialog and imports what it returns into `folder`. */
   pickAndImport(folder?: FolderId | null): Promise<ImportSummary | null>;
@@ -36,7 +41,8 @@ export function useImport(): UseImport {
   translate.current = translator(t);
   const bridge = useMemo(() => mediaFilesBridge(), []);
 
-  const importPaths = useCallback(async (paths: readonly unknown[], folder?: FolderId | null) => {
+  /** One `media.import` for files and folders, as they are. */
+  const importAsIs = useCallback(async (paths: readonly unknown[], folder?: FolderId | null) => {
     setBusy(true);
     try {
       return await importMedia(
@@ -57,6 +63,35 @@ export function useImport(): UseImport {
     }
   }, []);
 
+  /** Files that may be a numbered run of pictures: asked about first, then imported. */
+  const importFiles = useCallback(async (paths: readonly string[], folder?: FolderId | null) => {
+    setBusy(true);
+    try {
+      return await importPicked(
+        {
+          engine: engineStore,
+          toasts: toastStore,
+          t: (key, vars) => translate.current(key, vars),
+        },
+        paths,
+        folder ?? null,
+        {
+          keepStructure: preferences.get("media.keep_structure"),
+          copyToProject: preferences.get("media.copy_on_import"),
+          fps: preferences.get("media.image_sequence_fps"),
+        },
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const importPaths = useCallback(
+    (paths: readonly unknown[], folder?: FolderId | null) =>
+      importFiles(validateImportPaths(paths), folder),
+    [importFiles],
+  );
+
   const pickAndImport = useCallback(
     async (folder?: FolderId | null) => {
       if (bridge.pickMediaFiles === undefined) {
@@ -67,29 +102,10 @@ export function useImport(): UseImport {
       }
       const answer = await bridge.pickMediaFiles().catch(() => null);
       const paths = pickedPaths(answer);
-      if (paths.length === 0) return null;
-      setBusy(true);
-      try {
-        // A numbered run of pictures is asked about first: one image sequence, or stills.
-        return await importPicked(
-          {
-            engine: engineStore,
-            toasts: toastStore,
-            t: (key, vars) => translate.current(key, vars),
-          },
-          paths,
-          folder ?? null,
-          {
-            keepStructure: preferences.get("media.keep_structure"),
-            copyToProject: preferences.get("media.copy_on_import"),
-            fps: preferences.get("media.image_sequence_fps"),
-          },
-        );
-      } finally {
-        setBusy(false);
-      }
+      // A numbered run of pictures is asked about first: one image sequence, or stills.
+      return paths.length === 0 ? null : importFiles(paths, folder);
     },
-    [bridge],
+    [bridge, importFiles],
   );
 
   const pickFoldersAndImport = useCallback(
@@ -102,9 +118,9 @@ export function useImport(): UseImport {
       }
       const answer = await bridge.pickMediaFolders().catch(() => null);
       const paths = pickedPaths(answer);
-      return paths.length === 0 ? null : importPaths(paths, folder ?? null);
+      return paths.length === 0 ? null : importAsIs(paths, folder ?? null);
     },
-    [bridge, importPaths],
+    [bridge, importAsIs],
   );
 
   const pathsOf = useCallback(

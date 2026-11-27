@@ -13,6 +13,7 @@ import { deleteFolder, moveTiles } from "../media/binActions.ts";
 import { selectMediaCards, selectMediaUsage } from "../media/cards.ts";
 import { canDrop, planFolderDelete, selectFolders } from "../media/folders.ts";
 import { folderDeleteText } from "../media/folderText.ts";
+import { InsertDurationDialog } from "../media/InsertDurationDialog.tsx";
 import { removeMedia } from "../media/remove.ts";
 import { requestFolderDelete } from "../media/requestDelete.ts";
 import { SlideshowDialog } from "../media/SlideshowDialog.tsx";
@@ -555,6 +556,8 @@ export function MenuDialogs() {
       return <MoveTo media={dialog.media} folders={dialog.folders} />;
     case "slideshow":
       return <SlideshowDialog key={dialog.files.join("\n")} files={dialog.files} />;
+    case "insert-duration":
+      return <InsertDurationDialog key={dialog.media} media={dialog.media} name={dialog.name} />;
     case "replace-clip":
       return <ReplaceClip key={dialog.item} item={dialog.item} />;
     case "paste-attributes":

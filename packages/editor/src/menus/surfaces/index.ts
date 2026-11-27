@@ -65,6 +65,12 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
     undoable: true,
   },
   { name: "job.cancel", label: "contextMenu.command.jobCancel" },
+  // Proxy ▸ Auto / Always / Never on a bin card (#215): one undo step for the assets chosen.
+  {
+    name: "media.set_proxy_mode",
+    label: "contextMenu.command.mediaSetProxyMode",
+    undoable: true,
+  },
   {
     name: "item.duplicate",
     label: "contextMenu.command.itemDuplicate",

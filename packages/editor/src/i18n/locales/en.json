@@ -1906,7 +1906,8 @@
       "layoutAssets": "Select 2 to 4 videos or images",
       "layoutSwap": "Apply a layout to the two clips first",
       "noProxyMedia": "Only video has proxies",
-      "noProxyToDelete": "There is no proxy to delete"
+      "noProxyToDelete": "There is no proxy to delete",
+      "oneImage": "Select one picture"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -1941,7 +1942,8 @@
       "viewSetPlayhead": "Move playhead here",
       "itemApplyLayout": "Apply layout",
       "mediaImportFrame": "Add frame to media bin",
-      "mediaImportImagesAsSlideshow": "Import as slideshow…"
+      "mediaImportImagesAsSlideshow": "Import as slideshow…",
+      "mediaSetProxyMode": "Set proxy mode"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -2078,7 +2080,12 @@
       "placeSideBySide": "Place side by side",
       "placeAs": "Place as",
       "regenerateProxies": "Regenerate proxies",
-      "deleteProxies": "Delete proxies"
+      "deleteProxies": "Delete proxies",
+      "insertDuration": "Duration…",
+      "proxy": "Proxy",
+      "proxyAuto": "Auto",
+      "proxyAlways": "Always",
+      "proxyNever": "Never"
     },
     "dialog": {
       "cancel": "Cancel",
@@ -2114,7 +2121,13 @@
         "flip": "Flip",
         "compositing": "Opacity and blend mode",
         "audio": "Volume, pan and fades"
-      }
+      },
+      "insertDurationTitle": "Duration of {{name}}",
+      "insertDurationBody": "How long this picture is the next time you put it on the timeline.",
+      "insertDurationSeconds": "Seconds",
+      "insertDurationSet": "Set duration",
+      "insertDurationDefault": "Use the project’s duration",
+      "insertDurationNote": "Clips already on the timeline keep their length. The choice lasts until you close Cutweave."
     },
     "diagnostics": {
       "connection": "Engine connection",

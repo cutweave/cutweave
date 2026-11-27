@@ -13,6 +13,7 @@ import { applyLayout, placeAssets, swapLayout } from "../../layout/actions.ts";
 import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
 import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";
+import { selectMediaCards } from "../../media/cards.ts";
 import {
   currentOpenFolder,
   folderUiStore,
@@ -31,6 +32,7 @@ import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
 import { projectController } from "../../session/useProject.ts";
 import { openSettings } from "../../settings/settingsStore.ts";
+import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
 import { activeTimelineController } from "../../timeline/activeController.ts";
@@ -242,6 +244,19 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     run: async (args) => {
       const media = arg<{ media?: MediaId[] }>(args).media ?? selectedTiles().media;
       await deleteProxies({ engine: engineStore, toasts: toastStore, t: tr() }, media);
+    },
+  },
+  // Duration… (#215; ADR-0035, Decision 1): the length the next insert of an image card uses.
+  // It opens the dialog; the choice is UI state, and the insert sends it as `duration`.
+  {
+    id: "bin.insert_duration",
+    label: "contextMenu.item.insertDuration",
+    icon: "clock",
+    run: (args) => {
+      const media = arg<{ media?: MediaId }>(args).media ?? selectedTiles().media[0];
+      const card = selectMediaCards(docStore.getState().project).find((c) => c.id === media);
+      if (card?.kind !== "image") return;
+      menuDialogStore.getState().open({ kind: "insert-duration", media: card.id, name: card.name });
     },
   },
   {

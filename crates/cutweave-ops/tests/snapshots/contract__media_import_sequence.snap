@@ -61,12 +61,20 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "pattern": "^fld_[0-9a-f]{32}$",
           "description": "Bin folder (default: top level).",
           "default": null
+        },
+        "copy_to_project": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Copy every picture of the run into the project's `media/` folder first (default false).",
+          "default": null
         }
       },
       "required": [
         "path"
       ],
-      "description": "Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that\nplays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:\nthe run is every file of that folder whose name differs only in the number at its end.\nFewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a\nsequence). Only the first picture is read, so a long run imports at once; the files are\nreferenced, not copied.\n\nNumbers without a file are allowed: they are listed in `image_sequence.missing`, named in\n`warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame\nrate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes\non video tracks only (it has no sound). One undo removes it. Agents and headless callers\nmay only import from the project folder and user-approved folders.",
+      "description": "Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that\nplays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:\nthe run is every file of that folder whose name differs only in the number at its end.\nFewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a\nsequence). Only the first picture is read, so a long run imports at once; the files are\nreferenced, not copied.\n\nWith `copy_to_project` every picture of the run is first copied into the project's\n`media/` folder, all into one folder (`media/<source folder name>/`, or `<name> (2)` when a\nname there is taken by another file) under its own file name, and the asset points at the\ncopy, so the project keeps working when the originals move. Each copy is compared with its\noriginal. A run already inside the project folder is not copied, and neither is one the\nproject already has (it is returned as a duplicate). The call fails with `Invalid` at\n`/copy_to_project` when the project has not been saved yet (it has no folder) or when the\npictures do not fit on its drive, and at `/path` when a picture cannot be copied; nothing\nis imported then. Undoing the import removes the asset; the copied files stay on disk.\n\nNumbers without a file are allowed: they are listed in `image_sequence.missing`, named in\n`warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame\nrate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes\non video tracks only (it has no sound). One undo removes it. Agents and headless callers\nmay only import from the project folder and user-approved folders.",
       "title": "MediaImportSequence"
     },
     "output_schema": {
@@ -114,7 +122,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         },
         "path": {
           "type": "string",
-          "description": "Absolute path of the first picture of the run."
+          "description": "Absolute path of the first picture of the run, where it was found (with\n`copy_to_project` the asset points at the copy in the project folder)."
         },
         "image_sequence": {
           "type": "object",
@@ -271,12 +279,20 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "pattern": "^fld_[0-9a-f]{32}$",
         "description": "Bin folder (default: top level).",
         "default": null
+      },
+      "copy_to_project": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Copy every picture of the run into the project's `media/` folder first (default false).",
+        "default": null
       }
     },
     "required": [
       "path"
     ],
-    "description": "Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that\nplays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:\nthe run is every file of that folder whose name differs only in the number at its end.\nFewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a\nsequence). Only the first picture is read, so a long run imports at once; the files are\nreferenced, not copied.\n\nNumbers without a file are allowed: they are listed in `image_sequence.missing`, named in\n`warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame\nrate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes\non video tracks only (it has no sound). One undo removes it. Agents and headless callers\nmay only import from the project folder and user-approved folders.",
+    "description": "Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that\nplays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:\nthe run is every file of that folder whose name differs only in the number at its end.\nFewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a\nsequence). Only the first picture is read, so a long run imports at once; the files are\nreferenced, not copied.\n\nWith `copy_to_project` every picture of the run is first copied into the project's\n`media/` folder, all into one folder (`media/<source folder name>/`, or `<name> (2)` when a\nname there is taken by another file) under its own file name, and the asset points at the\ncopy, so the project keeps working when the originals move. Each copy is compared with its\noriginal. A run already inside the project folder is not copied, and neither is one the\nproject already has (it is returned as a duplicate). The call fails with `Invalid` at\n`/copy_to_project` when the project has not been saved yet (it has no folder) or when the\npictures do not fit on its drive, and at `/path` when a picture cannot be copied; nothing\nis imported then. Undoing the import removes the asset; the copied files stay on disk.\n\nNumbers without a file are allowed: they are listed in `image_sequence.missing`, named in\n`warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame\nrate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes\non video tracks only (it has no sound). One undo removes it. Agents and headless callers\nmay only import from the project folder and user-approved folders.",
     "title": "MediaImportSequence"
   },
   "output": {
@@ -324,7 +340,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       },
       "path": {
         "type": "string",
-        "description": "Absolute path of the first picture of the run."
+        "description": "Absolute path of the first picture of the run, where it was found (with\n`copy_to_project` the asset points at the copy in the project folder)."
       },
       "image_sequence": {
         "type": "object",

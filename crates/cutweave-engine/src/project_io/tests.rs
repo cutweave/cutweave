@@ -273,6 +273,83 @@ fn missing_media_is_reported() {
     assert_eq!(o.report.missing_media.len(), 1);
 }
 
+/// A project `<t>/S` with one image sequence `<dir>/f_0001.png` to `f_0004.png` (number 3 had
+/// no file at import), closed again; returns the project folder.
+fn project_with_run(t: &TempDir, dir: &Path) -> PathBuf {
+    fs::create_dir_all(dir).expect("mkdir");
+    for n in [1, 2, 4] {
+        fs::write(dir.join(format!("f_{n:04}.png")), b"x").expect("picture");
+    }
+    let run = cutweave_model::ImageSequence {
+        pattern: "f_%04d.png".to_owned(),
+        first: 1,
+        count: 4,
+        fps: cutweave_model::FrameRate::FPS_30,
+        missing: vec![3],
+        extra: cutweave_model::Extra::default(),
+    };
+    let mut p = Project::new("S");
+    let id: MediaId = SeededGen::new(1).mint();
+    let first = dir.join("f_0001.png");
+    p.media.insert(
+        id,
+        MediaAsset::image_sequence(id, first.to_string_lossy(), run, ProbeInfo::default()),
+    );
+    let folder = t.0.join("S");
+    ProjectStore::create(&folder, &p)
+        .expect("create")
+        .close()
+        .expect("close");
+    folder
+}
+
+#[test]
+fn a_whole_image_sequence_is_not_reported() {
+    let t = TempDir::new();
+    // Number 3 never had a file: it is not looked for.
+    let folder = project_with_run(&t, &t.0.join("run"));
+    let o = ProjectStore::open(&folder).expect("open");
+    assert_eq!(o.report.missing_media, Vec::new());
+}
+
+#[test]
+fn an_image_sequence_with_a_picture_gone_is_reported() {
+    let t = TempDir::new();
+    let dir = t.0.join("run");
+    let folder = project_with_run(&t, &dir);
+    // The first picture is still there; one in the middle of the run is not.
+    fs::remove_file(dir.join("f_0004.png")).expect("remove");
+    let o = ProjectStore::open(&folder).expect("open");
+    assert_eq!(o.report.missing_media.len(), 1);
+    let first = dir.join("f_0001.png");
+    assert_eq!(
+        o.report.missing_media[0].path_abs.as_deref(),
+        Some(&*first.to_string_lossy())
+    );
+}
+
+#[test]
+fn a_moved_image_sequence_with_a_picture_gone_is_relinked_and_reported() {
+    let t = TempDir::new();
+    let a = t.0.join("S");
+    fs::create_dir_all(&a).expect("mkdir");
+    // The run is inside the project folder, which then moves.
+    let folder = project_with_run(&t, &a.join("media").join("run"));
+    assert_eq!(folder, a);
+    let b = t.0.join("T");
+    fs::rename(&a, &b).expect("move folder");
+    fs::rename(b.join("S.cutweave"), b.join("T.cutweave")).expect("rename doc");
+    let whole = ProjectStore::open(&b).expect("open");
+    assert_eq!(whole.report.relinked_media.len(), 1);
+    assert_eq!(whole.report.missing_media, Vec::new());
+    whole.store.close().expect("close");
+
+    fs::remove_file(b.join("media").join("run").join("f_0002.png")).expect("remove");
+    let o = ProjectStore::open(&b).expect("open");
+    assert_eq!(o.report.relinked_media.len(), 1);
+    assert_eq!(o.report.missing_media.len(), 1);
+}
+
 #[test]
 fn writes_never_leave_the_project_folder() {
     let layout = ProjectLayout::for_folder(Path::new("/p/Proj")).expect("layout");

@@ -9,7 +9,7 @@
 // The pictures are written by the flow (flat-colour PNGs, the frame number in the colour): no
 // media is committed. Needs an engine built with FFmpeg (`just e2e-flows` builds it when the
 // bundle is set up); without it the flow skips and says why.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
 import type { Page } from "@playwright/test";
@@ -230,6 +230,29 @@ test.describe("F53 image sequences", () => {
       await expect(mediaCards(page)).toHaveCount(0);
       await chooseMenu(page, app, "Edit", /^Redo/);
       await expect(mediaCards(page)).toHaveCount(1);
+
+      // With "Copy imported files into the project folder" on, a run is copied whole (#215):
+      // every picture under its own name in one folder of the project, and the card points there.
+      const media = await openSettingsPage(page, app, "Media and import");
+      await media
+        .getByRole("switch", { name: "Copy imported files into the project folder" })
+        .click();
+      await closeSettings(media);
+      const takes = path.join(work.media, "takes");
+      mkdirSync(takes);
+      const more = [1, 2, 3].map((n) => {
+        const file = path.join(takes, `take_0${n}.png`);
+        writeFileSync(file, png(64, 36, colourOf(n)));
+        return file;
+      });
+      await pickFiles(app, more);
+      await page.getByRole("button", { name: "Import", exact: true }).click();
+      await offer.getByRole("button", { name: "Import as image sequence" }).click();
+      await expect(mediaCard(page, "take_01.png")).toContainText("Image sequence");
+      const copied = path.join(work.dir, "Sequence", "media", "takes");
+      expect(readdirSync(copied).sort()).toEqual(["take_01.png", "take_02.png", "take_03.png"]);
+      const paths = await editorCall<{ media: { path: string | null }[] }>(page, "media.list");
+      expect(paths.media.map((m) => m.path)).toContain(path.join(copied, "take_01.png"));
     } finally {
       await closeApp();
       work.remove();

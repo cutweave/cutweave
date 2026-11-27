@@ -68,6 +68,7 @@ import {
 } from "../media/folderUi.ts";
 import { useIsOffline } from "../media/health.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
+import { insertDurationStore } from "../media/insertDuration.ts";
 import { isMovingPicture } from "../media/kinds.ts";
 import { layoutStore } from "../media/layoutStore.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
@@ -185,7 +186,11 @@ const dragOf = (card: MediaCard): MediaDrag | null =>
     : {
         id: card.id,
         kind: dropKind(card.kind),
-        duration: card.kind === "image" ? null : card.duration,
+        // A still has no length of its own: its "Duration…" choice, else the drop's default.
+        duration:
+          card.kind === "image"
+            ? (insertDurationStore.getState().byMedia.get(card.id) ?? null)
+            : card.duration,
       };
 
 /** What a drag of a bin tile is told about the tile it starts on. */

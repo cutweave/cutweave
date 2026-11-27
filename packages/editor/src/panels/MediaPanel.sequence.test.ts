@@ -4,7 +4,9 @@
 // the "Import as an image sequence?" question the Import… button asks for one, the single
 // `media.import_sequence` (with the frame rate setting) or `media.import` behind each answer,
 // and the toasts. The engine's side is in `crates/cutweave-engine/tests/sequence_ffmpeg.rs`.
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+// #215: a run dropped from the OS gets the same question, and the "copy imported files into the
+// project folder" setting is passed with a sequence too.
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Fragment, createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
@@ -16,6 +18,7 @@ import { mediaStore } from "../media/mediaStore.ts";
 import { SequenceOffer } from "../media/SequenceOffer.tsx";
 import { fpsText, runOfSelection, sequenceFps, sequenceOfferStore } from "../media/sequence.ts";
 import { placeholderThumbnails, setThumbnailSource } from "../media/thumbnails.ts";
+import { UI_COMMANDS } from "../menus/surfaces/uiCommands.ts";
 import { prefsStore } from "../prefs/prefsStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
@@ -78,6 +81,28 @@ function pick(paths: readonly string[]): void {
   };
 }
 
+/** The desktop's side of a drop from the OS: each file has its path, in `/r`. */
+function desktop(): void {
+  (globalThis as { cutweave?: unknown }).cutweave = {
+    files: { pathForFile: (f: File) => `/r/${f.name}` },
+  };
+}
+
+/** Drops files with these names from the OS on the bin. */
+function dropFiles(names: readonly string[]): void {
+  const dataTransfer = {
+    types: ["Files"],
+    files: names.map((name) => new File([], name)),
+    dropEffect: "",
+  };
+  fireEvent.drop(screen.getByRole("region", { name: "Media" }), { dataTransfer });
+}
+
+const setCopy = (on: boolean) =>
+  prefsStore.setState({
+    values: { ...prefsStore.getState().values, "media.copy_on_import": on },
+  });
+
 const view = () =>
   render(h(I18nextProvider, { i18n }, h(Fragment, null, h(MediaPanel), h(SequenceOffer))));
 const notices = () => toastStore.getState().notices;
@@ -105,6 +130,7 @@ beforeEach(() => {
   toastStore.getState().clear();
   setThumbnailSource(placeholderThumbnails);
   setFps("sequence");
+  setCopy(false);
   sequenceOfferStore.getState().answer("cancel");
   delete (globalThis as { cutweave?: unknown }).cutweave;
 });
@@ -255,5 +281,117 @@ describe("Import… with a numbered run of pictures", () => {
     const failed = notices().find((n) => n.tone === "danger");
     expect(failed?.title).toBe("The image sequence was not imported");
     expect(failed?.message).toContain("no readable file");
+  });
+});
+
+describe("a numbered run of pictures dropped from the OS", () => {
+  const names = ["shot_0002.png", "shot_0001.png", "shot_0003.png"];
+
+  it("asks like the Import… picker, and imports the run as one image sequence", async () => {
+    connect(() => sequenceOutput());
+    desktop();
+    view();
+    dropFiles(names);
+    const dialog = await screen.findByRole("dialog", { name: "Import as an image sequence?" });
+    expect(dialog.textContent).toContain(
+      "You chose 3 numbered pictures, shot_0001.png to shot_0003.png.",
+    );
+    expect(call).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Import as image sequence" }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import_sequence", { path: "/r/shot_0001.png" }),
+    );
+    expect(call).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("imports separate pictures when asked to, and nothing on Cancel", async () => {
+    const paths = names.map((name) => `/r/${name}`);
+    connect(() => importOutput(paths));
+    desktop();
+    view();
+    dropFiles(names);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Import as separate pictures" }),
+    );
+    await waitFor(() => expect(call).toHaveBeenCalledWith("media.import", { paths }));
+    expect(call).toHaveBeenCalledTimes(1);
+
+    dropFiles(names);
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not ask for one picture or for files that are not a run", async () => {
+    const paths = ["/r/shot_0001.png", "/r/clip.mp4"];
+    connect(() => importOutput(paths));
+    desktop();
+    view();
+    dropFiles(["shot_0001.png", "clip.mp4"]);
+    await waitFor(() => expect(call).toHaveBeenCalledWith("media.import", { paths }));
+    dropFiles(["shot_0001.png"]);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import", { paths: ["/r/shot_0001.png"] }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("with the copy on import setting on", () => {
+  it("a picked run is copied into the project with its sequence import", async () => {
+    setCopy(true);
+    connect(() => sequenceOutput());
+    pick(shots(1, 3));
+    view();
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Import as image sequence" }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import_sequence", {
+        path: "/r/shot_0001.png",
+        copy_to_project: true,
+      }),
+    );
+  });
+
+  it("a dropped run too, and so are separate pictures", async () => {
+    setCopy(true);
+    connect(() => sequenceOutput());
+    desktop();
+    view();
+    dropFiles(["a1.png", "a2.png"]);
+    await userEvent.click(await screen.findByRole("button", { name: "Import as image sequence" }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import_sequence", {
+        path: "/r/a1.png",
+        copy_to_project: true,
+      }),
+    );
+    connect(() => importOutput(["/r/a1.png", "/r/a2.png"]));
+    dropFiles(["a1.png", "a2.png"]);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Import as separate pictures" }),
+    );
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import", {
+        paths: ["/r/a1.png", "/r/a2.png"],
+        copy_to_project: true,
+      }),
+    );
+  });
+
+  it("the bin menu's Import item passes it with a run", async () => {
+    setCopy(true);
+    connect(() => sequenceOutput());
+    pick(shots(1, 2));
+    view();
+    const command = UI_COMMANDS.find((c) => c.id === "bin.import");
+    const done = command?.run(undefined, { target: "bin" as never, ids: [], call: vi.fn() });
+    await userEvent.click(await screen.findByRole("button", { name: "Import as image sequence" }));
+    await done;
+    expect(call).toHaveBeenCalledWith("media.import_sequence", {
+      path: "/r/shot_0001.png",
+      copy_to_project: true,
+    });
   });
 });
