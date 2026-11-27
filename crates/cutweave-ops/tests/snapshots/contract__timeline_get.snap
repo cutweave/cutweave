@@ -48,12 +48,86 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           },
           "description": "Sections to include: any of `name`, `format`, `duration`, `tracks` (default all).",
           "default": null
+        },
+        "range": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "anyOf": [
+                {
+                  "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start (default 0)."
+            },
+            "to": {
+              "anyOf": [
+                {
+                  "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End, exclusive (default: the sequence end)."
+            }
+          },
+          "description": "Depth 2: list only the items that overlap `{from, to}` (flicks, \"2.5s\" or \"f:60\").",
+          "default": null
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Depth 2: most items to list, `1..=1000` (default: all); see `next_cursor`.",
+          "default": null
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "Depth 2 with `limit`: the previous page's `next_cursor`.",
+          "default": null
         }
       },
       "required": [
         "sequence"
       ],
-      "description": "Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries\nonly, small), 2 adds every item. `fields` limits the sections returned (`name`, `format`,\n`duration`, `tracks`); the id and the counts are always included.",
+      "description": "Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries\nonly, small), 2 adds the items. `fields` limits the sections returned (`name`, `format`,\n`duration`, `tracks`); the id and the counts are always included and always describe the\nwhole sequence. At depth 2, `range` lists only the items that overlap `[from, to)`, and\n`limit` pages them in track order, then start order: `next_cursor` is the `cursor` of the\nnext page (absent on the last one). A long timeline is best read as the depth 1 overview,\nthen depth 2 pages of the part that matters.",
       "title": "TimelineGet"
     },
     "output_schema": {
@@ -385,6 +459,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                       "type": "string",
                       "pattern": "^itm_[0-9a-f]{32}$"
                     },
+                    "name": {
+                      "description": "Its own name, when it has one (`item.set_props`); otherwise its media's name is shown.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "kind": {
                       "description": "Item kind (`clip`).",
                       "type": "string"
@@ -460,6 +541,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             ]
           },
           "description": "The tracks in display order, top to bottom (depth >= 1, unless `fields` leaves them\nout)."
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "More items follow: pass it as `cursor` for the next page (only with `limit`)."
         }
       },
       "required": [
@@ -501,12 +590,86 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         },
         "description": "Sections to include: any of `name`, `format`, `duration`, `tracks` (default all).",
         "default": null
+      },
+      "range": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start (default 0)."
+          },
+          "to": {
+            "anyOf": [
+              {
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End, exclusive (default: the sequence end)."
+          }
+        },
+        "description": "Depth 2: list only the items that overlap `{from, to}` (flicks, \"2.5s\" or \"f:60\").",
+        "default": null
+      },
+      "limit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Depth 2: most items to list, `1..=1000` (default: all); see `next_cursor`.",
+        "default": null
+      },
+      "cursor": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "Depth 2 with `limit`: the previous page's `next_cursor`.",
+        "default": null
       }
     },
     "required": [
       "sequence"
     ],
-    "description": "Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries\nonly, small), 2 adds every item. `fields` limits the sections returned (`name`, `format`,\n`duration`, `tracks`); the id and the counts are always included.",
+    "description": "Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries\nonly, small), 2 adds the items. `fields` limits the sections returned (`name`, `format`,\n`duration`, `tracks`); the id and the counts are always included and always describe the\nwhole sequence. At depth 2, `range` lists only the items that overlap `[from, to)`, and\n`limit` pages them in track order, then start order: `next_cursor` is the `cursor` of the\nnext page (absent on the last one). A long timeline is best read as the depth 1 overview,\nthen depth 2 pages of the part that matters.",
     "title": "TimelineGet"
   },
   "output": {
@@ -838,6 +1001,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "type": "string",
                     "pattern": "^itm_[0-9a-f]{32}$"
                   },
+                  "name": {
+                    "description": "Its own name, when it has one (`item.set_props`); otherwise its media's name is shown.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "kind": {
                     "description": "Item kind (`clip`).",
                     "type": "string"
@@ -913,6 +1083,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ]
         },
         "description": "The tracks in display order, top to bottom (depth >= 1, unless `fields` leaves them\nout)."
+      },
+      "next_cursor": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "More items follow: pass it as `cursor` for the next page (only with `limit`)."
       }
     },
     "required": [

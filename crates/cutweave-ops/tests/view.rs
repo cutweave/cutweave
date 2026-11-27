@@ -103,7 +103,14 @@ fn registry_contract() {
             meta.view && !meta.undoable && !meta.is_journaled(),
             "{name}"
         );
-        assert_eq!(meta.mcp, McpExposure::Catalog, "{name}");
+        // WP-2I.01: `view_get` and `view_set` are listed tools; the rest stay in the catalog.
+        let listed = matches!(name, "view.get" | "view.set");
+        let expected = if listed {
+            McpExposure::Core
+        } else {
+            McpExposure::Catalog
+        };
+        assert_eq!(meta.mcp, expected, "{name}");
         assert_eq!(meta.scope, Scope::Any, "{name}");
         assert!(
             !meta.annotations.destructive && !meta.annotations.open_world,

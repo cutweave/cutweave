@@ -751,11 +751,7 @@ impl Query for ItemGet {
         Ok(ItemGetOutput {
             sequence: at.sequence.id,
             track: at.track.id,
-            // The name is this output's own field (`fields` can leave it out).
-            item: crate::timeline::ItemSummary {
-                name: None,
-                ..item_summary(at.item)
-            },
+            item: item_summary(at.item),
             name: clip.filter(|_| wants("name")).and_then(|c| c.name.clone()),
             source: clip.filter(|_| wants("source")).map(|c| ItemSource {
                 media: c.media,
