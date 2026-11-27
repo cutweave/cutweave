@@ -395,6 +395,7 @@ export class TimelineHost {
   /** Sends the fields that changed since the machine last heard. */
   #syncEnv(): void {
     if (this.#disposed) return;
+    if (this.#pruneSelection()) return; // the store change syncs again
     const next = this.#readEnv();
     const changed: Record<string, unknown> = {};
     let any = false;
@@ -406,6 +407,30 @@ export class TimelineHost {
     }
     this.#env = next;
     if (any) this.send({ type: "env", env: changed as Partial<MachineEnv> });
+  }
+
+  #prunedFor: unknown = null;
+
+  /**
+   * After a document change the selection keeps the clips that still exist (timeline spec
+   * INV-343): an undo, another actor or a delete can take selected clips away, and a selection
+   * naming clips the engine no longer has is refused when the view is saved. Returns whether it
+   * changed the selection.
+   */
+  #pruneSelection(): boolean {
+    const project = this.#deps.doc.getState().project;
+    if (project === null || project === this.#prunedFor) return false;
+    this.#prunedFor = project;
+    const view = this.#deps.view.getState();
+    const items = view.selection.filter((r) => r.kind === "item");
+    if (items.length === 0) return false;
+    const tracks = Object.values(project.sequences).flatMap((s) => Object.values(s.tracks));
+    const exists = (id: string) =>
+      tracks.some((t) => (t.items as Record<string, unknown>)[id] !== undefined);
+    const gone = new Set(items.filter((r) => !exists(r.id)).map((r) => r.id as string));
+    if (gone.size === 0) return false;
+    view.setSelection(view.selection.filter((r) => r.kind !== "item" || !gone.has(r.id)));
+    return true;
   }
 
   #itemSelection(refs: readonly SelectionRef[]): readonly string[] {

@@ -160,7 +160,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
 
       // The ruler menu's "Add marker here" at 26 s; the coffee dragged near it lands on it.
       g = await timelineGeometry(page);
-      await page.mouse.click(xAt(g, sec(26)), rulerY(g), { button: "right" });
+      await page.mouse.click(xAt(g, sec(26)) + 0.5, rulerY(g), { button: "right" });
       await page
         .getByRole("menu", { name: "Ruler actions" })
         .getByRole("menuitem", { name: /^Add marker here/ })

@@ -513,6 +513,18 @@ describe("timeline interactions against the real engine", () => {
     expect(await historyLength()).toBe(before + 1);
   });
 
+  live(
+    "the selection keeps only clips that still exist when another actor deletes one",
+    async () => {
+      const s = await seed();
+      click(xOf(sec(3)), laneOf(s.video));
+      expect(stores.view.getState().selection).toHaveLength(2);
+      await rpc.call("item.delete", { items: [s.clip as never] });
+      await until(() => model().items.length === 0);
+      await until(() => stores.view.getState().selection.length === 0);
+    },
+  );
+
   live("Shift+Delete on the magnetic main track leaves no gap, as one undo step", async () => {
     const [a, b, c] = await clips([0, 1], [1, 1], [2, 1]);
     const p = project as NonNullable<typeof project>;
