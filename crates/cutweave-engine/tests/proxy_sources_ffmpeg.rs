@@ -63,7 +63,7 @@ fn ffmpeg(tool: &Path, args: &[&str]) -> Vec<u8> {
 /// with a tone of `hz`: fine detail everywhere, so a frame decoded from a 960 × 540 proxy
 /// could not pass for the original's.
 fn generate(tool: &Path, out: &Path, source: &str, hz: u32) {
-    let video = format!("{source}=s=1280x720:r=30:d=1");
+    let video = format!("{source}=s=1280x720:r=30");
     let audio = format!("sine=frequency={hz}:sample_rate=48000:duration=1");
     ffmpeg(
         tool,
@@ -86,7 +86,8 @@ fn generate(tool: &Path, out: &Path, source: &str, hz: u32) {
             "yuv420p",
             "-c:a",
             "aac",
-            "-shortest",
+            "-t",
+            "1",
             &out.to_string_lossy(),
         ],
     );
@@ -348,7 +349,8 @@ fn an_export_reads_no_proxy_and_equals_the_export_without_proxies() {
 /// The measurement behind "toggling proxies during playback drops no more than 2 frames within
 /// 5 s" (WBS WP-2F.02): real time, this machine's own GPU. Plays the corpus 4K long-GOP clip
 /// when the corpus is fetched (the kind of file proxies are for), else a generated 1280 × 720
-/// one, at a docked preview size, and switches the proxies off and on every 500 ms for 5 s.
+/// one, at a docked preview size (960 × 540), starting on the original, and switches the proxies
+/// on and off every 500 ms for 5 s.
 /// Prints what it measured; run it alone on a quiet machine:
 /// `cargo nextest run -p cutweave-engine --features ffmpeg --test proxy_sources_ffmpeg
 /// --run-ignored ignored-only --no-capture`.
@@ -414,13 +416,27 @@ fn probe_toggling_proxies_during_playback() {
     .unwrap();
     let caps = call(&r.agent, "media.capabilities", json!({})).unwrap();
 
+    // Playback starts on the original (proxies off), so the first toggle is a real change of
+    // file in the middle of playback: original to proxy. The toggles after it find the clip
+    // on its proxy, which it keeps until the next seek (no seek into the original mid-stream).
     // Play for a second and a half first, so the start of playback is not in the measurement.
+    call(
+        &r.ui,
+        "view.set_preview_quality",
+        json!({ "use_proxies": false }),
+    )
+    .unwrap();
     call(&r.ui, "view.seek", json!({ "t": 0 })).unwrap();
     call(&r.ui, "view.play", json!({})).unwrap();
     std::thread::sleep(StdDuration::from_millis(1500));
+    let started_on = if r.state()["proxy"] == json!(true) {
+        "a proxy"
+    } else {
+        "the original"
+    };
     let before = r.handle.playback_stats().unwrap();
     let start = Instant::now();
-    let mut on = true;
+    let mut on = false;
     let mut toggles = 0;
     let mut shown_proxy = 0;
     let mut shown_original = 0;
@@ -446,7 +462,7 @@ fn probe_toggling_proxies_during_playback() {
     let dropped = after.dropped - before.dropped;
     let delivered = after.delivered - before.delivered;
     println!("WP-2F.02 probe: toggling proxies during playback");
-    println!("  clip: {what}");
+    println!("  clip: {what}; playback started on {started_on}");
     println!("  gpu: {}", caps["gpu"]);
     println!("  hw decode: {}", caps["hw_decode"]);
     println!(
