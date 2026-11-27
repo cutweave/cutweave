@@ -631,14 +631,25 @@ impl Fixture {
         self.manifest.tracks.iter().map(|t| t.items.len()).sum()
     }
 
-    /// Writes the project folder `<parent>/<name>` (replacing a fixture already there) with
-    /// its media pointed at `<folder>/media/`, and returns the folder. The media files
+    /// Writes the project folder `<parent>/<name>` (replacing a fixture already there, but
+    /// keeping its source files) with its media pointed at `<folder>/media/`, and returns the
+    /// folder. The media files
     /// themselves are made by [`crate::media::synthesize`].
     pub fn write(&self, parent: &Path) -> Result<PathBuf, BenchError> {
         let folder = parent.join(&self.manifest.spec.name);
         if folder.join(MARKER_FILE).is_file() {
-            fs::remove_dir_all(&folder)
+            // Everything but `media/`: the source files take a while to make.
+            let entries = fs::read_dir(&folder)
                 .map_err(|e| BenchError::io("replace the fixture", &folder, e))?;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let removed = match entry.file_type() {
+                    Ok(_) if entry.file_name() == "media" => Ok(()),
+                    Ok(kind) if kind.is_dir() => fs::remove_dir_all(&path),
+                    _ => fs::remove_file(&path),
+                };
+                removed.map_err(|e| BenchError::io("replace the fixture", &path, e))?;
+            }
         }
         let media_dir = folder.join("media");
         fs::create_dir_all(&media_dir)

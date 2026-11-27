@@ -5,13 +5,32 @@
 //!   registered commands (`cargo xtask gen-bench-project`).
 //! - [`media`]: the small synthetic source files, made with the FFmpeg bundle when a
 //!   benchmark has to decode something.
+//! - [`probes`]: the measurements (`cargo bench -p cutweave-bench`), over [`harness`] and
+//!   [`workload`]; [`result`] holds the result format and the budget comparison, [`cli`] the
+//!   commands of `cutweave-bench` and `cargo xtask gen-bench-project`.
 //!
 //! The UI benchmarks (WP-2J.02) and the playback benchmarks (WP-2J.03) open the same fixture
 //! folders and read the same [`fixture::FixtureManifest`].
 
+pub mod cli;
 pub mod fixture;
+pub mod harness;
+pub mod media;
+pub mod probes;
+pub mod result;
+pub mod stats;
+pub mod workload;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// The checkout this crate was built in (`bench/budgets.toml`, `bench-results/`).
+#[must_use]
+pub fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .map_or_else(PathBuf::new, Path::to_path_buf)
+}
 
 /// What can go wrong generating a fixture or running a probe.
 #[derive(Debug, thiserror::Error)]
