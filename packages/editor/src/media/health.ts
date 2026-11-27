@@ -4,6 +4,8 @@
 // the engine (`media.find_missing`) when a project opens, when the window gets the focus back,
 // and when a media path changes (a relink, its undo, an agent's relink). The bin's badges, the
 // "Relink…" menu rows and the relink dialog read `healthStore`.
+// An image sequence with pictures gone is in the list too (`incomplete`, or `missing` when its
+// first picture is gone), so it shows as offline and the dialog says how many are missing (#208).
 //
 // Relinking is `media.relink_folder` (search a folder: by content, then by name) or
 // `media.relink` (one asset, one file): catalog commands, so MCP and the CLI have the same calls,
@@ -26,7 +28,7 @@ export interface RelinkSummary {
 }
 
 export interface HealthState {
-  /** The assets whose file is missing or changed, by asset id. */
+  /** The assets whose file is missing, changed or (an image sequence) incomplete, by asset id. */
   readonly missing: ReadonlyMap<string, MissingMedia>;
   /** The relink dialog is open. */
   readonly dialogOpen: boolean;

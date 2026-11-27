@@ -112,10 +112,12 @@ export function RelinkDialog() {
                 <span className="body-strong cw-relink__name">{m.name}</span>
                 <span className="caption cw-relink__path">{m.path ?? ""}</span>
               </span>
-              <StatusChip tone={m.status === "changed" ? "warning" : "danger"}>
+              <StatusChip tone={m.status === "missing" ? "danger" : "warning"}>
                 {m.status === "changed"
                   ? t("mediaBin.status.changed")
-                  : t("mediaBin.status.offline")}
+                  : m.status === "incomplete"
+                    ? t("mediaBin.status.incomplete", { count: m.missing_frames ?? 0 })
+                    : t("mediaBin.status.offline")}
               </StatusChip>
               <IconButton
                 icon="folder-open"

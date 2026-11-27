@@ -1081,7 +1081,10 @@ export type CollectEstimate = {
 	free_bytes: number | null,
 	/**  Whether the files fit (true when the free space cannot be told). */
 	enough_space: boolean,
-	/**  Media whose file is missing: relink them first (`media.relink_folder`). */
+	/**
+	 *  Media whose file is missing, and image sequences with pictures that are gone: relink
+	 *  them first (`media.relink_folder`).
+	 */
 	missing: CollectMissing[],
 	/**  Media left out because no timeline uses them (`trim_unused`). */
 	trimmed: number,
@@ -1093,8 +1096,13 @@ export type CollectMissing = {
 	media_id: MediaId,
 	/**  The name the bin shows. */
 	name: string,
-	/**  Where the project says its file is. */
+	/**  Where the project says its file is (for an image sequence: its first picture). */
 	path: string,
+	/**
+	 *  For an image sequence: how many of its pictures are gone, the first one included (the
+	 *  numbers that had no file at import are not counted). Absent for other media.
+	 */
+	missing_frames: number | null,
 };
 
 /**  Where collected media go. */
@@ -3790,7 +3798,9 @@ export type MediaFilter = {
 /**
  *  Lists the media whose file is not where the project says (moved, renamed, deleted or on a
  *  drive that is not connected). With `verify` it also reads every file that is there and
- *  reports the ones whose content is no longer what was imported as `changed`. Relink them
+ *  reports the ones whose content is no longer what was imported as `changed`. An image
+ *  sequence is `missing` when its first picture is gone and `incomplete` when the first is
+ *  there but other pictures of the run are not; `missing_frames` counts them. Relink them
  *  with `media.relink_folder` or `media.relink`.
  */
 export type MediaFindMissing = {
@@ -3800,7 +3810,7 @@ export type MediaFindMissing = {
 
 /**  Result of `media.find_missing`. */
 export type MediaFindMissingOutput = {
-	/**  The assets whose file is missing or changed, by id. */
+	/**  The assets whose file is missing or changed and the incomplete image sequences, by id. */
 	missing: MissingMedia[],
 	/**  The number of media files that were checked. */
 	checked: number,
@@ -4153,11 +4163,19 @@ export type MediaRegistered = {
  *  `/path` when the file cannot be read or cannot stand in. One undo step puts the old path
  *  back. Agents and headless callers may only name files inside the project folder and the
  *  folders the user approved.
+ * 
+ *  For an image sequence, `path` is any picture of the run at its new place, or the folder
+ *  that holds it: the asset is pointed at the run there, which must have every picture (same
+ *  file names, same numbers; `Invalid` at `/path` says how many are not there). `to` is the
+ *  first picture.
  */
 export type MediaRelink = {
 	/**  The asset (a file, not a compound clip). */
 	media: MediaId,
-	/**  Absolute path of the file to use. */
+	/**
+	 *  Absolute path of the file to use (for an image sequence: one of its pictures at the
+	 *  new place, or the folder they are in).
+	 */
 	path: string,
 };
 
@@ -4166,7 +4184,10 @@ export type MediaRelink = {
  *  one undo step. A file is recognized by its content, so moved and renamed files are found;
  *  an asset whose content is nowhere in the folder takes the one file with its name, kind and
  *  duration, if there is exactly one. Assets whose file is where the project says are left
- *  alone. Reads at most 2,000 files per call (16 levels down, no links, no hidden files).
+ *  alone. An image sequence is found as a whole: by the file name of its first picture, in a
+ *  folder that holds every picture of the run (an incomplete run is passed over), by content
+ *  when the pictures are the same and else when it is the only such run. Reads at most 2,000
+ *  files per call (16 levels down, no links, no hidden files).
  *  Agents and headless callers may only search the project folder and the folders the user
  *  approved (`Invalid` at `/folder` otherwise).
  */
@@ -4183,9 +4204,9 @@ export type MediaRelinkFolder = {
 export type MediaRelinkFolderOutput = {
 	/**  The assets whose file was found, by asset id. */
 	relinked: Relinked[],
-	/**  The assets (of `media`, or of the project) that are still missing. */
+	/**  The assets (of `media`, or of the project) that are still missing or incomplete. */
 	still_missing: MediaId[],
-	/**  The number of files that were read. */
+	/**  The number of files that were read (an image sequence's run counts once). */
 	scanned: number,
 	/**  The folder holds more files than one call reads (2,000): run it on its subfolders. */
 	truncated: boolean,
@@ -4278,7 +4299,7 @@ export type MediaSetDecodePolicyOutput = {
  *  `media.relink_folder`, which check the file first: this command only writes the path, and
  *  the content hash and probe results when the file's content is not what was imported. The
  *  project-relative path is dropped (it named the old place) and recomputed when the project is
- *  saved.
+ *  saved. For an image sequence the path is the first picture of the run at its new place.
  */
 export type MediaSetLocation = {
 	/**  The asset (a file, not a compound clip). */
@@ -4315,7 +4336,12 @@ export type MediaStatus =
 /**  There is no readable file at the asset's path. */
 "missing" | 
 /**  There is a file, but its content is not what was imported (`verify` only). */
-"changed";
+"changed" | 
+/**
+ *  An image sequence whose first picture is there while other pictures of the run are
+ *  gone (`missing_frames` says how many).
+ */
+"incomplete";
 
 /**  Summary of one media asset. */
 export type MediaSummary = {
@@ -4345,7 +4371,7 @@ export type MediaTreeRegistered = {
 	folders: number,
 };
 
-/**  An asset whose file is missing or changed. */
+/**  An asset whose file is missing or changed, or an image sequence with pictures gone. */
 export type MissingMedia = {
 	/**  The asset. */
 	media_id: MediaId,
@@ -4353,8 +4379,13 @@ export type MissingMedia = {
 	name: string,
 	/**  Where the project says its file is. */
 	path: string | null,
-	/**  What is wrong: `missing` or `changed`. */
+	/**  What is wrong: `missing`, `changed` or `incomplete`. */
 	status: MediaStatus,
+	/**
+	 *  For an image sequence: how many of its pictures are gone, the first one included (the
+	 *  numbers that had no file at import are not counted). Absent for other media.
+	 */
+	missing_frames: number | null,
 };
 
 /**  Where one item ended up. */
@@ -4741,6 +4772,8 @@ export type ProjectClosed = {
  *  same folder after a cancel or a crash continues without copying finished files again.
  *  Fails with `Invalid` at `/dest` when the files do not fit on the drive or the folder
  *  already holds a project, and at `/media` when a media file is missing (relink it first).
+ *  An image sequence is copied whole, every picture under its own name in one folder; a
+ *  picture that is gone counts as a missing file.
  *  Agents and headless callers may only collect into folders the user approved.
  */
 export type ProjectCollect = {
@@ -4763,7 +4796,8 @@ export type ProjectCollect = {
 /**
  *  Says what `project.collect` with the same params would copy: how many media files, how many
  *  bytes, the free space on the destination drive and whether the files fit, and which media
- *  cannot be copied because their file is missing. Changes nothing.
+ *  cannot be copied because their file is missing (an image sequence counts every picture, and
+ *  is listed with `missing_frames` when some are gone). Changes nothing.
  */
 export type ProjectCollectEstimate = {
 	/**

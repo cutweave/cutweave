@@ -807,7 +807,8 @@
       "analysisFailed": "Analysis failed",
       "broken": "Unreadable",
       "offline": "Offline",
-      "changed": "Changed"
+      "changed": "Changed",
+      "incomplete": "{{count}} pictures missing"
     },
     "drop": {
       "title": "Drop to import",

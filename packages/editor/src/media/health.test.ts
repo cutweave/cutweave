@@ -23,6 +23,7 @@ const gone = (n: number, name: string): MissingMedia => ({
   name,
   path: `/old/${name}`,
   status: "missing",
+  missing_frames: null,
 });
 
 /** An engine whose disk has lost `missing`; relinking a folder finds everything. */

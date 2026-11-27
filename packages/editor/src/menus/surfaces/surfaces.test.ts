@@ -633,6 +633,7 @@ describe("the bin menus", () => {
         name: "interview.mp4",
         path: "/old/interview.mp4",
         status: "missing",
+        missing_frames: null,
       },
     ]);
     try {
