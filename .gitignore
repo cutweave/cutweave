@@ -42,3 +42,7 @@ playwright-report/
 packages/ui/__screenshots-actual__/
 .claude/launch.json
 __pycache__/
+
+# Benchmark fixtures and results (WP-2J.01): generated on each machine, never committed.
+/testdata/bench-projects/
+/bench-results/

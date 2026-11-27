@@ -853,6 +853,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cutweave-bench"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "cutweave-api",
+ "cutweave-commands",
+ "cutweave-engine",
+ "cutweave-model",
+ "cutweave-ops",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "cutweave-bridge"
 version = "0.0.0"
 dependencies = [
@@ -4496,6 +4516,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 name = "xtask"
 version = "0.0.0"
 dependencies = [
+ "cutweave-bench",
  "cutweave-cli",
  "cutweave-commands",
  "cutweave-engine",

@@ -1,0 +1,53 @@
+[package]
+name = "cutweave-bench"
+description = "Cutweave: seeded benchmark projects and the engine benchmark suite (WP-2J.01)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# `cutweave-bench gen|run|engine`: the generator, the suite without criterion and the engine
+# child process the start and memory probes measure. WP-2J.03 adds `playback|scrub|sync|export`.
+[[bin]]
+name = "cutweave-bench"
+path = "src/main.rs"
+bench = false
+
+# Only `benches/suite.rs` is a benchmark: the criterion flags of
+# `cargo bench -p cutweave-bench -- --save-baseline p2` must not reach the libtest harness.
+[lib]
+bench = false
+
+[features]
+# Real media in the measured engine process (decoders, thumbnails): needs the FFmpeg bundle
+# (`. scripts/ffmpeg/env.sh`), like every other `ffmpeg` feature in the workspace.
+ffmpeg = ["cutweave-engine/ffmpeg"]
+
+[dependencies]
+cutweave-api = { path = "../cutweave-api" }
+cutweave-commands = { path = "../cutweave-commands" }
+cutweave-engine = { path = "../cutweave-engine" }
+cutweave-model = { path = "../cutweave-model" }
+cutweave-ops = { path = "../cutweave-ops" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+# The WebSocket client of the round-trip and fan-out probes: the versions cutweave-api's server
+# and its tests already lock.
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+tokio-tungstenite = "=0.29.0"
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "suite"
+harness = false
+
+[lints]
+workspace = true
