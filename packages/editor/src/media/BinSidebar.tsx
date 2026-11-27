@@ -63,8 +63,8 @@ export interface BinSidebarProps {
   readonly dropOver: FolderId | null | undefined;
   /** What dropping on a folder does: the bin's own rule, shared with tiles and the breadcrumb. */
   dropOn(target: FolderId | null): SidebarDropHandlers;
-  /** Something was opened or Escape was pressed: an overlay closes. */
-  onDone(): void;
+  /** A row was opened, or Escape dismissed the sidebar: an overlay closes. */
+  onDone(how: "opened" | "dismissed"): void;
 }
 
 /** The keys a tree moves with (`treeMove`). */
@@ -253,11 +253,11 @@ export function BinSidebar({ mode, open, collection, dropOver, dropOn, onDone }:
 
   const openFolderRow = (row: FolderRow) => {
     openFolder(row.id);
-    onDone();
+    onDone("opened");
   };
   const openCollectionRow = (entry: CollectionEntry) => {
     openCollection(entry.id);
-    onDone();
+    onDone("opened");
   };
 
   const onFolderKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -271,7 +271,7 @@ export function BinSidebar({ mode, open, collection, dropOver, dropOn, onDone }:
     }
     if (e.key === "Escape" && mode === "overlay") {
       e.preventDefault();
-      onDone();
+      onDone("dismissed");
       return;
     }
     if (!TREE_KEYS.has(e.key)) return;
@@ -292,7 +292,7 @@ export function BinSidebar({ mode, open, collection, dropOver, dropOn, onDone }:
     const entry = collections[collectionStop];
     if (e.key === "Escape" && mode === "overlay") {
       e.preventDefault();
-      onDone();
+      onDone("dismissed");
       return;
     }
     if (entry === undefined) return;

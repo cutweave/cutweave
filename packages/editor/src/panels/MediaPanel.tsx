@@ -1087,10 +1087,12 @@ export function MediaPanel() {
     if (sidebarLayout === "inline") binStore.getState().setSidebar(!sidebarWanted);
     else sidebarUiStore.getState().setOverlay(!sidebarOverlay);
   };
-  const closeOverlay = () => {
+  const closeOverlay = (how: "opened" | "dismissed") => {
     if (sidebarLayout !== "overlay" || !sidebarUiStore.getState().overlay) return;
     sidebarUiStore.getState().setOverlay(false);
-    sidebarToggle.current?.focus();
+    // Escape goes back to the button that opened it; opening a row goes on into the grid.
+    if (how === "dismissed") sidebarToggle.current?.focus();
+    else focusRequest.current = true;
   };
 
   // Anywhere in the panel that is not a tile: Import, New folder, Sort by, View as (WP-2H.13). A

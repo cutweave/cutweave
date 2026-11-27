@@ -251,6 +251,8 @@ describe("the sidebar toggle", () => {
     await userEvent.click(folderRow("B-roll"));
     expect(screen.queryByRole("complementary")).toBeNull();
     expect(cardNames()).toEqual(["broll-a.mp4", "broll-b.mp4"]);
+    // The keyboard goes on into the grid.
+    expect(document.activeElement).toBe(card("broll-a.mp4"));
     expect(binStore.getState().sidebar).toBe(true);
     // Escape closes it too, and the focus is back on the toggle.
     await userEvent.click(toggle());
