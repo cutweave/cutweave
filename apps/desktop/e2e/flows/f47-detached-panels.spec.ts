@@ -40,6 +40,7 @@ import {
   pickFiles,
   profileDir,
   removeDir,
+  revealTime,
   rulerY,
   sec,
   shortcut,
@@ -455,7 +456,9 @@ test.describe("F47 detached panels", () => {
 
         // 3. Right-click the clip in the detached Timeline: its menu opens in that window. Split
         //    at playhead cuts it there; Ctrl+Z pressed there puts it back.
-        g = await timelineGeometry(page, timeline);
+        //    The timeline followed the playhead while it played (WP-2A.13): scroll back to the
+        //    clip's start first.
+        g = await revealTime(page, 0, timeline);
         const clipId = clipAt(g, "V1", 0).id;
         const box = clipBox(g, clipId);
         await timeline.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
@@ -482,7 +485,7 @@ test.describe("F47 detached panels", () => {
 
         // 5. A notice raised in the detached Timeline shows in that window, not in the main one
         //    (#191): drag a clip on a locked track there, and "Clip not moved" appears in it.
-        g = await timelineGeometry(page, timeline);
+        g = await revealTime(page, 0, timeline);
         const header = { x: g.box.x + 12, y: laneY(g, "V1") };
         await timeline.mouse.click(header.x, header.y, { button: "right" });
         const trackMenu = timeline.getByRole("menu", { name: "Track actions for V1" });
@@ -497,7 +500,7 @@ test.describe("F47 detached panels", () => {
         }).toPass({ timeout: 10_000 });
         await timeline.keyboard.press("Escape");
         await expect(timeline.getByRole("menu")).toHaveCount(0);
-        const lockedBox = clipBox(await timelineGeometry(page, timeline), clipId);
+        const lockedBox = clipBox(await revealTime(page, 0, timeline), clipId);
         const layoutBefore = await layout(page);
         await drag(
           timeline,
