@@ -128,7 +128,10 @@ describe("a new project takes the still image duration from Settings (WP-2F.05b)
     expect(await newProject()).toBe(true);
     // A value that is not a format is as good as not set.
     prefsStore.setState({
-      values: { ...defaultPreferences(), "editing.sequence_format": "99999x1 30/1 48000 x #000000" },
+      values: {
+        ...defaultPreferences(),
+        "editing.sequence_format": "99999x1 30/1 48000 x #000000",
+      },
     });
     expect(await newProject()).toBe(true);
     expect(sent.map((p) => p.settings)).toEqual([
