@@ -14,6 +14,7 @@ import type { TKey } from "../i18n/index.ts";
 import { commandCatalog } from "../palette/catalog.ts";
 import { asRpcError } from "../session/errors.ts";
 import type { Translate } from "../timeline/errors.ts";
+import { formatPreference } from "./newSequenceFormat.ts";
 
 /** The engine command the dialog sends. */
 export const SET_SETTINGS = "project.set_settings";
@@ -318,6 +319,8 @@ export async function applySetting(
 export function defaultsOf(settings: ProjectSettings): {
   readonly stillSeconds: number;
   readonly proxyPolicy: ProxyPolicy;
+  /** `editing.sequence_format`: the project's format of new sequences (#221); `""` if it has no spelling. */
+  readonly sequenceFormat: string;
 } {
   const flicks = settings.still_duration;
   const seconds = typeof flicks === "number" ? flicks / FLICKS_PER_SECOND : DEFAULT_STILL_SECONDS;
@@ -325,5 +328,7 @@ export function defaultsOf(settings: ProjectSettings): {
     // The preference counts whole seconds, from 1 to an hour.
     stillSeconds: Math.min(MAX_STILL_SECONDS, Math.max(1, Math.round(seconds))),
     proxyPolicy: settings.proxy_policy ?? "auto",
+    // The format the dialog shows under "New sequences", not the format of any one sequence.
+    sequenceFormat: formatPreference(settings.default_format),
   };
 }

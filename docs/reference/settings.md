@@ -85,6 +85,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
 | `editing.still_duration` | Still image duration for new projects (freeze frames default to 3 s, set per freeze with `clip.freeze_frame`'s `duration`) | 5 s | App, copied to the project | `project.new` (`still_duration`) | Read the project's value (`project.info`: `settings.still_duration`) and change it (`project.set_settings`) | WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)) |
+| `editing.sequence_format` | Format of new projects: the frame size, frame rate, audio sample rate, color space and background their sequences start with. Set by "Use as defaults for new projects" in File > Project settings… (the project's `default_format`); the Settings row shows it and puts Cutweave's own back. Stored as one line, `1080x1920 30000/1001 44100 rec709 #000000` | Not set (the engine's format: 1920 × 1080, 30 fps, 48 kHz) | App, copied to the project | `project.new` (`settings.default_format`) | Read the project's value (`project.info`: `settings.default_format`) and change it (`project.set_settings`) | #221 (split from WP-2H.08) |
 | `editing.text_duration` | Duration of new text | 5 s | App | Renderer | — | WP-3A.07 |
 | `editing.transition_duration` | Duration of new transitions | 0.5 s | App | Renderer | — | WP-4A.09 |
 | `editing.audio_fade` | Length of a fade added with one click | 0.5 s | App | Renderer | — | WP-2E.05 |
@@ -113,14 +114,16 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 
 ### Playback
 
+The quality, proxies and loop rows are also the transport bar's controls (its quality menu, proxy toggle and loop button): one preference each. `playback.scrub_audio` is not in the dialog yet: the engine plays no sound while scrubbing so far, and the row joins the page with the audio work that adds it.
+
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| `playback.quality_playing` | Preview quality while playing: auto, full, half, quarter | Auto | App | Engine (quality ladder) | — | WP-2H.10 |
-| `playback.quality_paused` | Preview quality when paused: full or auto | Full | App | Engine | — | WP-2H.10 |
-| `playback.proxies` | Use proxies in the preview when they are ready | On | App | Engine | Read | WP-2H.10 (uses WP-2F.02) |
-| `playback.scrub_audio` | Play audio while scrubbing | On | App | Engine | — | WP-2H.10 |
-| `playback.loop` | Loop playback | Off | App | Engine | — | WP-2H.10 |
-| `playback.return_to_start` | When playback stops, go back to where it started | Off | App | Renderer | — | WP-2H.10 |
+| `playback.quality_playing` | Preview quality while playing: Auto (the quality ladder: full size, smaller only when frames are late), or Full, Half or Quarter held whatever the frame times. Also the menu of the transport bar's quality indicator and the Preview's Quality menu | Auto | App | Engine (`view.set_preview_quality{playing}`, sent after each handshake and on change) | — | WP-2H.10 |
+| `playback.quality_paused` | Preview quality when paused: Full (the frame refines to full size) or Same as playing (it stays at the size playback uses) | Full | App | Engine (`view.set_preview_quality{paused}`) | — | WP-2H.10 |
+| `playback.proxies` | Use proxies in the preview when they are ready | On | App | Engine (`view.set_preview_quality{use_proxies}`, sent after each handshake and on change) | Read (`playback.state.use_proxies`) | The key and the transport bar's toggle: WP-2F.02; this row: WP-2H.10 |
+| `playback.scrub_audio` | Play audio while scrubbing | On | App | Engine | — | Not built: needs scrub audio in the audio engine (a follow-up to WP-2H.10) |
+| `playback.loop` | Loop playback: at the end, playback starts again from the beginning (reverse playback still stops at the start). Also the transport bar's loop button | Off | App | Engine (`view.set_loop`, sent after each handshake and on change) | — | WP-2H.10 |
+| `playback.return_to_start` | When playback stops (a pause, or playing into the end), go back to where it started. A step, and a pause an agent makes, stay where they are | Off | App | Renderer (the transport) | — | WP-2H.10 |
 
 ### Audio
 
@@ -285,7 +288,7 @@ Cutweave collects no usage analytics, so there is no setting for it (product bri
 
 Stored in the document, changed with undoable commands (`project.set_settings`, or the feature's own command), visible to agents through `project.info` (`settings`).
 
-`project.set_settings{patch}` takes any of the keys below as a merge patch: a key left out keeps its value, `null` puts an optional key back to its default, an object (`default_format`) merges key by key, and a key the settings do not have fails with `invalid` at its path. The feature commands that set one key (`media.set_proxy_policy`) send the same patch through the same checks. `project.new` takes the same object as `settings` (next to `format`, `still_duration` and `proxy_policy`, which name one key each; a key given both ways is refused). The dialog is drawn from the generated schema of the patch, so a key a later work package adds to `ProjectSettings` gets a row there without UI work. "Use as defaults for new projects" copies the values that have an app preference (`editing.still_duration` in whole seconds, `media.proxy_policy`); the format of new sequences has no app preference yet.
+`project.set_settings{patch}` takes any of the keys below as a merge patch: a key left out keeps its value, `null` puts an optional key back to its default, an object (`default_format`) merges key by key, and a key the settings do not have fails with `invalid` at its path. The feature commands that set one key (`media.set_proxy_policy`) send the same patch through the same checks. `project.new` takes the same object as `settings` (next to `format`, `still_duration` and `proxy_policy`, which name one key each; a key given both ways is refused). The dialog is drawn from the generated schema of the patch, so a key a later work package adds to `ProjectSettings` gets a row there without UI work. "Use as defaults for new projects" copies the values that have an app preference (`editing.still_duration` in whole seconds, `media.proxy_policy`, and `default_format` as `editing.sequence_format`). The format copied is the project's format of new sequences, the one this dialog shows, not the format of any one sequence; File > New project then passes it to `project.new` as `settings.default_format`, so the new project's first sequence and later ones start in it.
 
 | Key | Setting | Default | Agents | Ships in |
 |---|---|---|---|---|

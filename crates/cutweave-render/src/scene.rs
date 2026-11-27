@@ -99,6 +99,12 @@ pub struct FrameRequest {
     /// uses [`FrameRequest::source_size`], and a proxy only enters the display → texel map.
     #[serde(skip_serializing_if = "core::ops::Not::not")]
     pub proxy: bool,
+    /// The longest side, in pixels, the whole upright picture is drawn at on the output, never
+    /// more than the original has: what a proxy must hold to be served (WP-2F.02's resolution
+    /// rule). `None`: not known, or any size will do. Set with `proxy` by
+    /// [`crate::Quality::apply_for_output`]; layout never reads it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drawn_long_edge: Option<u32>,
 }
 
 /// Placement of a layer, in the model's normalized units (see the module docs).

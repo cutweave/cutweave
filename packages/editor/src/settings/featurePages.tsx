@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The pages of features that already exist (WP-1M.13): Export, which the Export dialog starts
-// from, and Media and import. Keyboard shortcuts (WP-2H.05) is `shortcuts.tsx`.
+// from, and Media and import. Keyboard shortcuts (WP-2H.05) is `shortcuts.tsx`. Editing
+// (WP-2F.05b) and Playback (WP-2H.10) are here too.
 
 import {
   EXPORT_FOLDER_CHOICES,
   EXPORT_HW_CHOICES,
   EXPORT_QUALITIES,
   IMAGE_SEQUENCE_FPS_CHOICES,
+  PAUSED_QUALITIES,
+  PLAYING_QUALITIES,
   PROXY_POLICIES,
   PROXY_SIZES,
   STILL_DURATION_MAX,
 } from "@cutweave/preferences";
 import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
+import { formatWords, parseFormatPreference } from "../project/newSequenceFormat.ts";
 import { type ChoiceOption, registerSettingsPage, type SettingsPageDef } from "./registry.ts";
 import { registerShortcutsPage } from "./shortcuts.tsx";
 
@@ -164,6 +168,98 @@ const editingPage: SettingsPageDef = {
         unit: "settings.rows.stillDuration.unit",
       },
     },
+    // The format new projects start with (#221): File > Project settings… > "Use as defaults
+    // for new projects" sets it; this row says what it is and puts Cutweave's own back.
+    {
+      id: "editing.sequence_format",
+      key: "editing.sequence_format",
+      label: "settings.rows.sequenceFormat.label",
+      description: "settings.rows.sequenceFormat.description",
+      keywords: "settings.rows.sequenceFormat.keywords",
+      noRowReset: true,
+      control: {
+        kind: "action",
+        label: "settings.rows.sequenceFormat.button",
+        run: (ctx) => ctx.client.reset(["editing.sequence_format"]),
+        disabled: (ctx) => ctx.values["editing.sequence_format"] === "",
+        status: (ctx) => {
+          const format = parseFormatPreference(ctx.values["editing.sequence_format"]);
+          return format === null
+            ? ctx.t("settings.rows.sequenceFormat.none")
+            : formatWords(format, ctx.t);
+        },
+      },
+    },
+  ],
+};
+
+// ---- Playback (WP-2H.10) ------------------------------------------------------------------------
+// The quality, proxies and loop rows are the transport bar's controls too: one preference each,
+// which the runtime sends to the engine (`view.set_preview_quality`, `view.set_loop`). Scrub
+// audio joins the page with the audio engine's support for it (docs/reference/settings.md).
+
+const PLAYING_QUALITY_LABELS = {
+  auto: "transport.quality.auto",
+  full: "transport.quality.full",
+  half: "transport.quality.half",
+  quarter: "transport.quality.quarter",
+} as const;
+const PAUSED_QUALITY_LABELS = {
+  full: "transport.quality.full",
+  auto: "settings.rows.qualityPaused.auto",
+} as const;
+
+const playbackPage: SettingsPageDef = {
+  id: "playback",
+  title: "settings.pages.playback",
+  icon: "play",
+  group: "preferences",
+  order: 50,
+  rows: [
+    {
+      id: "playback.quality_playing",
+      key: "playback.quality_playing",
+      label: "settings.rows.qualityPlaying.label",
+      description: "settings.rows.qualityPlaying.description",
+      keywords: "settings.rows.qualityPlaying.keywords",
+      control: { kind: "segmented", options: choices(PLAYING_QUALITIES, PLAYING_QUALITY_LABELS) },
+      applies: "engine",
+    },
+    {
+      id: "playback.quality_paused",
+      key: "playback.quality_paused",
+      label: "settings.rows.qualityPaused.label",
+      description: "settings.rows.qualityPaused.description",
+      keywords: "settings.rows.qualityPaused.keywords",
+      control: { kind: "segmented", options: choices(PAUSED_QUALITIES, PAUSED_QUALITY_LABELS) },
+      applies: "engine",
+    },
+    {
+      id: "playback.proxies",
+      key: "playback.proxies",
+      label: "settings.rows.previewProxies.label",
+      description: "settings.rows.previewProxies.description",
+      keywords: "settings.rows.previewProxies.keywords",
+      control: { kind: "switch" },
+      applies: "engine",
+    },
+    {
+      id: "playback.loop",
+      key: "playback.loop",
+      label: "settings.rows.loopPlayback.label",
+      description: "settings.rows.loopPlayback.description",
+      keywords: "settings.rows.loopPlayback.keywords",
+      control: { kind: "switch" },
+      applies: "engine",
+    },
+    {
+      id: "playback.return_to_start",
+      key: "playback.return_to_start",
+      label: "settings.rows.returnToStart.label",
+      description: "settings.rows.returnToStart.description",
+      keywords: "settings.rows.returnToStart.keywords",
+      control: { kind: "switch" },
+    },
   ],
 };
 
@@ -243,7 +339,12 @@ const mediaPage: SettingsPageDef = {
 };
 
 /** The pages of this work package. */
-export const FEATURE_PAGES: readonly SettingsPageDef[] = [editingPage, mediaPage, exportPage];
+export const FEATURE_PAGES: readonly SettingsPageDef[] = [
+  editingPage,
+  playbackPage,
+  mediaPage,
+  exportPage,
+];
 
 /** Registers them (idempotent). */
 export function registerFeaturePages(): void {

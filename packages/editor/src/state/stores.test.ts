@@ -111,6 +111,19 @@ describe("playbackStore", () => {
     expect(store.getState()).toMatchObject({ playing: false, sampledAt: 10 });
   });
 
+  it("reads whether the preview uses proxies and whether the frame shows one (WP-2F.02)", () => {
+    const store = createPlaybackStore(() => 0);
+    // Until the engine says otherwise: proxies on, nothing from a proxy on screen.
+    expect(store.getState()).toMatchObject({ useProxies: true, proxy: false });
+    store.getState().applyState({ state: "stopped", use_proxies: true, proxy: true });
+    expect(store.getState()).toMatchObject({ useProxies: true, proxy: true });
+    store.getState().applyState({ use_proxies: false, proxy: false });
+    expect(store.getState()).toMatchObject({ useProxies: false, proxy: false });
+    // A payload without the fields (an older engine, the fake) changes neither.
+    store.getState().applyState({ state: "playing", proxy: "yes", use_proxies: 1 });
+    expect(store.getState()).toMatchObject({ useProxies: false, proxy: false, mode: "playing" });
+  });
+
   it("holds the playhead while a seek is on its way", () => {
     const store = createPlaybackStore(() => 0);
     store.getState().setPlayhead(500);

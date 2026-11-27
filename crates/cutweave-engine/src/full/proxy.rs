@@ -56,7 +56,7 @@ use cutweave_cache::proxy::{
 use cutweave_cache::{CacheDb, ContentHash};
 use cutweave_commands::{CmdError, DocHandle};
 use cutweave_jobs::{JobId, JobManager, JobState};
-use cutweave_media::{CancelToken, MediaBackend};
+use cutweave_media::{CancelToken, MediaBackend, ProxyLookup};
 use cutweave_model::{Item, MediaAsset, MediaId, Project, ProxyMode, StreamKind, TrackKind};
 use cutweave_ops::media::proxy::{
     ImportProxy, ProxyInfo, ProxyService, ProxyStatus, proxyable, wanted,
@@ -427,6 +427,13 @@ impl FullProxies {
         Arc::clone(&self.activity)
     }
 
+    /// Whether the original of an asset is on this computer, as far as one look at the disk
+    /// says (`path_abs`; an image sequence: its first picture). A proxy is made from a file
+    /// that was there, so "not a file" means it is gone.
+    pub(crate) fn original_there(path_abs: Option<&str>) -> bool {
+        path_abs.is_some_and(|p| std::path::Path::new(p).is_file())
+    }
+
     /// The store.
     pub(crate) fn store(&self) -> &Arc<ProxyStore> {
         &self.store
@@ -726,6 +733,21 @@ fn fill(info: &mut ProxyInfo, record: &ProxyRecord) {
     info.error.clone_from(&record.error);
 }
 
+/// The [`MediaResolver`](cutweave_media::MediaResolver)'s lookup (WP-2F.02): the ready proxy
+/// the preview may read for `asset`. None for an asset whose proxies are off (ADR-0027), and
+/// none while its original is not on this computer: offline media shows the "media offline"
+/// slate everywhere, never a proxy picture of a file that is gone.
+impl ProxyLookup<MediaAsset> for FullProxies {
+    type Proxy = Arc<ReadyProxy>;
+
+    fn ready_proxy(&self, asset: &MediaAsset) -> Option<Arc<ReadyProxy>> {
+        if !FullProxies::original_there(asset.path_abs.as_deref()) {
+            return None;
+        }
+        self.ready(asset)
+    }
+}
+
 impl ProxyService for FullProxies {
     fn status(&self, doc: &Project, media: &[MediaId]) -> Vec<ProxyInfo> {
         let jobs = self.link.jobs();
@@ -823,7 +845,7 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use cutweave_cache::FrameCache;
-    use cutweave_commands::{DocActor, DocConfig, Registry};
+    use cutweave_commands::{DocActor, DocConfig, DocSnapshot, Registry};
     use cutweave_media::testing::{FakeBackend, FakeMedia, FakeVideo};
     use cutweave_media::{CancelToken, Capabilities, CodecSupport, DecodeMode, HashMode};
     use cutweave_model::{ColorTags, Duration, FrameRate, MediaKind, StreamKind, Time};
@@ -889,8 +911,13 @@ mod tests {
         }
     }
 
+    /// What the selection test is served: the picture's size and whether it is a proxy's.
+    const PROXY: ((u32, u32), bool) = ((960, 540), true);
+    const ORIGINAL: ((u32, u32), bool) = ((2560, 1440), false);
+
     #[test]
-    fn scrub_requests_use_a_ready_proxy_from_the_next_frame_and_others_the_original() {
+    #[allow(clippy::too_many_lines)] // one fixture, the cases in the order a session meets them
+    fn the_preview_uses_a_ready_proxy_from_the_next_frame_when_it_is_large_enough() {
         let dir =
             std::env::temp_dir().join(format!("cutweave-proxy-select-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -943,7 +970,7 @@ mod tests {
         let preview = PreviewFrames::new(frames);
         let snapshot = actor.handle().snapshot();
         let cancel = cutweave_playback::transport::CancelToken::never();
-        let request = |proxy: bool, t: Time| FrameRequest {
+        let request = |proxy: bool, drawn: Option<u32>, t: Time| FrameRequest {
             media: id,
             stream: Some(0),
             source_time: t,
@@ -952,13 +979,18 @@ mod tests {
             color: ColorTags::default(),
             still: false,
             proxy,
+            drawn_long_edge: drawn,
+        };
+        // The picture served and whether the render says it showed a proxy.
+        let served = |snapshot: &DocSnapshot, mode, proxy: bool, drawn: Option<u32>, t: Time| {
+            let render = preview.request(snapshot, &cancel, mode);
+            let f = render.frame(&request(proxy, drawn, t)).unwrap();
+            ((f.width, f.height), render.showed_proxy())
         };
         let size = |proxy: bool, t: Time| {
-            let f = preview
-                .request(&snapshot, &cancel, DecodeMode::Seek)
-                .frame(&request(proxy, t))
-                .unwrap();
-            (f.width, f.height)
+            let ((w, h), showed) = served(&snapshot, DecodeMode::Seek, proxy, None, t);
+            assert_eq!(showed, (w, h) == (960, 540));
+            (w, h)
         };
         let t = FrameRate::FPS_30.frame_to_time(17).unwrap();
         // No proxy yet: the original.
@@ -983,12 +1015,131 @@ mod tests {
             size(true, FrameRate::FPS_30.frame_to_time(18).unwrap()),
             (960, 540)
         );
-        // Requests that do not accept a proxy (paused frames, exports, agent frames) get the
-        // original.
+        // The preview's toggle is off (`proxy: false`): the original.
         assert_eq!(size(false, t), (2560, 1440));
-        // Deleted: the next scrub frame is the original's again.
+
+        // WP-2F.02, the resolution rule: playback, scrub and paused frames alike use the proxy
+        // when the picture is drawn no larger than it, and the original when it needs more.
+        for (drawn, want) in [
+            (480, (960, 540)),
+            (960, (960, 540)),
+            (961, (2560, 1440)),
+            (2560, (2560, 1440)),
+        ] {
+            let (got, showed) = served(&snapshot, DecodeMode::Seek, true, Some(drawn), t);
+            assert_eq!(got, want, "drawn at {drawn}");
+            assert_eq!(showed, want == (960, 540), "drawn at {drawn}");
+        }
+        // Off: the original at any size.
+        assert_eq!(
+            served(&snapshot, DecodeMode::Seek, false, Some(480), t),
+            ((2560, 1440), false)
+        );
+
+        // Playback (frames in order). A stream on the original turns to the proxy at once; a
+        // stream on the proxy keeps it when the answer turns to the original (the toggle off,
+        // or drawn larger): no seek into the original in the middle of playback. The original
+        // shows at the next seek, and playback after that seek stays on it.
+        let frame = |n: i64| FrameRate::FPS_30.frame_to_time(n).unwrap();
+        let play = |n: i64, proxy: bool, drawn: u32| {
+            served(
+                &snapshot,
+                DecodeMode::Sequential,
+                proxy,
+                Some(drawn),
+                frame(n),
+            )
+        };
+        assert_eq!(play(20, true, 1920), ORIGINAL);
+        assert_eq!(play(21, true, 480), PROXY, "to the proxy at once");
+        assert_eq!(play(22, true, 1920), PROXY, "kept: drawn larger");
+        assert_eq!(play(23, false, 480), PROXY, "kept: the toggle went off");
+        assert_eq!(play(24, false, 480), PROXY);
+        assert_eq!(
+            served(&snapshot, DecodeMode::Seek, false, Some(480), frame(24)),
+            ORIGINAL,
+            "the pause shows the original"
+        );
+        assert_eq!(play(25, false, 480), ORIGINAL);
+        assert_eq!(play(26, true, 480), PROXY);
+        // A render cancelled on the way (the toggle itself cancels the frame in flight) does
+        // not end the stream: the next frame still comes from the proxy.
+        let gate = Arc::new(cutweave_playback::transport::EpochGate::new());
+        let stale = gate.token(gate.current());
+        gate.advance();
+        assert!(stale.is_cancelled());
+        let _ = preview
+            .request(&snapshot, &stale, DecodeMode::Sequential)
+            .frame(&request(false, Some(480), frame(27)));
+        assert_eq!(
+            play(28, false, 480),
+            PROXY,
+            "kept across a cancelled render"
+        );
+        // A jump (another part of the file) is a seek anyway: the decision applies.
+        assert_eq!(play(59, false, 480), ORIGINAL);
+
+        // The asset's proxies turned off (ADR-0027): the original, from the next frame; on
+        // again: the proxy again. The store did not change in between.
+        let with_mode = |mode: ProxyMode| {
+            let mut doc = snapshot.doc.clone();
+            if let Some(a) = doc.media.get_mut(&id) {
+                a.proxy_mode = mode;
+            }
+            DocSnapshot {
+                doc,
+                rev: snapshot.rev,
+                committed_rev: snapshot.committed_rev,
+            }
+        };
+        let off = with_mode(ProxyMode::Off);
+        assert_eq!(
+            served(&off, DecodeMode::Seek, true, Some(480), t),
+            ((2560, 1440), false)
+        );
+        assert_eq!(
+            served(&snapshot, DecodeMode::Seek, true, Some(480), t),
+            ((960, 540), true)
+        );
+
+        // The original goes away: a paused frame, a seek or a scrub no longer shows its proxy
+        // (with a real backend the original's decode then fails and the slate shows; the fake
+        // serves its picture without the file).
+        std::fs::rename(&path, dir.join("moved.mp4")).unwrap();
+        assert_eq!(
+            served(&snapshot, DecodeMode::Seek, true, Some(480), t),
+            ((2560, 1440), false)
+        );
+        // And the lookup finds no proxy for it.
+        assert!(proxies.ready_proxy(&asset).is_none());
+        assert!(proxies.ready(&asset).is_some());
+        std::fs::rename(dir.join("moved.mp4"), &path).unwrap();
+        assert_eq!(
+            served(&snapshot, DecodeMode::Seek, true, Some(480), t),
+            ((960, 540), true)
+        );
+
+        // Deleted (or evicted): the next frame is the original's again.
         proxies.delete(&snapshot.doc, &[id]).unwrap();
         assert_eq!(size(true, t), (2560, 1440));
+        assert_eq!(
+            served(&snapshot, DecodeMode::Sequential, true, Some(480), t),
+            ((2560, 1440), false)
+        );
+        // Evicted in the middle of a stream that was on it: the original, with no error.
+        proxies
+            .generator
+            .generate(
+                &source,
+                &proxies.profile().unwrap(),
+                &CancelToken::new(),
+                &mut |_| {},
+            )
+            .unwrap();
+        assert_eq!(play(30, true, 480), PROXY);
+        proxies.delete(&snapshot.doc, &[id]).unwrap();
+        assert_eq!(play(31, false, 480), ORIGINAL);
+        assert_eq!(play(32, true, 480), ORIGINAL);
         drop(actor);
         let _ = std::fs::remove_dir_all(&dir);
     }

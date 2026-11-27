@@ -175,6 +175,7 @@ mod tests {
                 color: ColorTags::default(),
                 still: false,
                 proxy: false,
+                drawn_long_edge: None,
             },
             transform: LayerTransform {
                 position: Vec2::ZERO,

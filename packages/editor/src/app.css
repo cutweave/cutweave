@@ -969,6 +969,11 @@ body {
   color: var(--text-secondary);
   white-space: nowrap;
 }
+.cw-transport__source {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
 .cw-transport__volume {
   flex: 0 1 calc(var(--space-12) * 4);
   min-width: 0;

@@ -94,7 +94,10 @@ pub use sink::{
 pub use source::{
     FrameSource, PrefetchHint, RenderPurpose, RenderRequest, Rendered, SequenceTiming, SourceError,
 };
-pub use state::{FrameQuality, PlaybackState, Rate, Shuttle, TransportMode, shuttle};
+pub use state::{
+    FrameQuality, PausedQuality, PlaybackState, PlayingQuality, Rate, Shuttle, TransportMode,
+    shuttle,
+};
 pub use status::{MAX_STATE_HZ, PLAYBACK_STATE_EVENT, StateSink, StatusPoll, StatusPump};
 pub use synthetic::{MARKER_LEN, SyntheticSource, decode_frame_number};
 pub use target::{PlaybackTarget, SourceInfo, SourceResolver};

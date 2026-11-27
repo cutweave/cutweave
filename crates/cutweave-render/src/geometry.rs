@@ -401,6 +401,7 @@ mod tests {
                 color: ColorTags::default(),
                 still: false,
                 proxy: false,
+                drawn_long_edge: None,
             },
             transform,
             opacity: 1.0,

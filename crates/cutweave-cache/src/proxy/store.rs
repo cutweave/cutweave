@@ -117,6 +117,12 @@ impl ReadyProxy {
     }
 }
 
+impl cutweave_media::ProxyFile for ReadyProxy {
+    fn long_edge(&self) -> u32 {
+        self.record.size.0.max(self.record.size.1)
+    }
+}
+
 /// The proxies of a cache directory (see the module docs). `Send + Sync`.
 #[derive(Debug)]
 pub struct ProxyStore {

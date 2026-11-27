@@ -8,12 +8,15 @@
 //!   video-only JKL rates, plus the recent render time (capped by
 //!   [`RenderConfig::max_lead`]). Late frames are skipped, never waited for, and audio is
 //!   never touched: a slow render drops frames, it does not delay the clock. Frames come at
-//!   [`AutoQuality`]'s rung; after each one the source gets a [`PrefetchHint`].
+//!   [`AutoQuality`]'s rung, or at the size the person chose
+//!   (`view.set_preview_quality{playing}`, WP-2H.10); after each one the source gets a
+//!   [`PrefetchHint`].
 //! * **Stopped after a seek (scrubbing).** Latest wins: the frame cache first (a hit is final),
 //!   else a quarter-resolution frame at once (`LOWRES`), then the full-quality frame once no
 //!   newer seek arrived for [`RenderConfig::refine_after`] (100 ms, arch §10 step 5).
 //! * **Stopped otherwise** (pause, step, refresh): the full-quality frame, unless that exact
-//!   frame is already on screen.
+//!   frame is already on screen. With `paused: auto` (WP-2H.10) "full quality" here and after
+//!   a scrub is the playing size instead: the chosen one, or the ladder's last rung.
 //!
 //! A new request (any transport change) starts a new epoch: renders of older epochs are told
 //! through their [`CancelToken`](crate::transport::CancelToken) and can never be delivered
@@ -38,7 +41,9 @@ use crate::transport::sink::{FrameInfo, FrameSink, SinkError};
 use crate::transport::source::{
     FrameSource, PrefetchHint, RenderPurpose, RenderRequest, SourceError,
 };
-use crate::transport::state::{FrameQuality, Rate, Snapshot, flicks_to_ns, ns_to_flicks};
+use crate::transport::state::{
+    FrameQuality, PlayingQuality, Rate, Snapshot, flicks_to_ns, ns_to_flicks,
+};
 
 /// The shortest sleep the loop asks for (avoids spinning on sub-microsecond deadlines).
 const MIN_WAIT_NS: u64 = 100_000;
@@ -120,7 +125,7 @@ impl Progress {
 struct Shown {
     frame: i64,
     content: u64,
-    full: bool,
+    scale: Scale,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,6 +155,9 @@ pub struct RenderLoop {
     auto: AutoQuality,
     /// The frame rate `auto` measures against: the sequence rate times the speed.
     auto_rate: (FrameRate, u32),
+    /// The size of the ladder's playback rung, as of the last playback frame (kept while
+    /// stopped, where the policy itself answers "full").
+    auto_scale: Scale,
     buf: Vec<u8>,
     progress: Progress,
     shown: Option<Shown>,
@@ -190,6 +198,7 @@ impl RenderLoop {
             config,
             auto,
             auto_rate: (rate, 1),
+            auto_scale: Scale::Full,
             buf: vec![0; full.len()],
             progress: Progress::new(u64::MAX),
             shown: None,
@@ -220,6 +229,29 @@ impl RenderLoop {
     #[must_use]
     pub fn playback_quality(&self) -> Quality {
         self.auto.quality()
+    }
+
+    /// The size the person chose for playback frames (`view.set_preview_quality{playing}`,
+    /// one atomic load); `None` leaves it to the ladder.
+    fn chosen_scale(&self) -> Option<Scale> {
+        PlayingQuality::from_u8(self.shared.quality_playing.load(Ordering::Relaxed)).scale()
+    }
+
+    /// The quality of the next playback frame (while playing): the chosen size, else the
+    /// ladder's rung.
+    fn playing_quality(&self) -> Quality {
+        self.chosen_scale()
+            .map_or_else(|| self.auto.quality(), |scale| Quality::new(scale, false))
+    }
+
+    /// The quality a stopped frame settles at: full size, or the playing size when the person
+    /// chose `paused: auto`.
+    fn still_quality(&self) -> Quality {
+        if self.shared.quality_paused_auto.load(Ordering::Relaxed) {
+            Quality::new(self.chosen_scale().unwrap_or(self.auto_scale), false)
+        } else {
+            Quality::FULL
+        }
     }
 
     fn now(&self) -> u64 {
@@ -294,13 +326,14 @@ impl RenderLoop {
         let timing = snap.timing();
         let at = Time::from_flicks(snap.anchor).unwrap_or(Time::ZERO);
         let frame = timing.clamp_frame(timing.frame_at(at));
+        let still = self.still_quality();
         let on_screen = Shown {
             frame,
             content: snap.content,
-            full: true,
+            scale: still.scale,
         };
         if self.shown == Some(on_screen) {
-            // Paused on a frame playback already showed at full quality, or a seek back to it.
+            // Paused on a frame playback already showed at this quality, or a seek back to it.
             self.finish_still(snap.epoch);
             return self.idle(now, u64::MAX);
         }
@@ -309,7 +342,7 @@ impl RenderLoop {
             let outcome = self.produce(
                 snap,
                 frame,
-                Quality::FULL,
+                still,
                 RenderPurpose::Still,
                 false,
                 Produce::CacheThenRender,
@@ -324,7 +357,7 @@ impl RenderLoop {
             match self.produce(
                 snap,
                 frame,
-                Quality::FULL,
+                still,
                 RenderPurpose::Still,
                 false,
                 Produce::CacheOnly,
@@ -338,11 +371,12 @@ impl RenderLoop {
             }
             self.auto.set_mode(PlaybackMode::Scrubbing);
             let quick = self.auto.quality();
-            if quick.is_full() {
+            if quick.scale == still.scale {
+                // The quick frame is already the one to stay on.
                 let outcome = self.produce(
                     snap,
                     frame,
-                    quick,
+                    still,
                     RenderPurpose::Still,
                     false,
                     Produce::Render,
@@ -375,7 +409,7 @@ impl RenderLoop {
         if self.produce(
             snap,
             frame,
-            Quality::FULL,
+            still,
             RenderPurpose::Still,
             false,
             Produce::Render,
@@ -435,7 +469,8 @@ impl RenderLoop {
             let due = self.next_frame_due(snap, rate, &audio, target, predicted, now);
             return self.idle(now, due);
         }
-        let quality = self.auto.quality();
+        self.auto_scale = self.auto.quality().scale;
+        let quality = self.playing_quality();
         let outcome = self.produce(
             snap,
             target,
@@ -459,7 +494,11 @@ impl RenderLoop {
                     }
                 }
                 self.progress.last_frame = Some(target);
-                self.auto.record_frame(StdDuration::from_nanos(elapsed_ns));
+                // The ladder keeps measuring under a chosen size, so `auto` resumes informed.
+                self.auto_scale = self
+                    .auto
+                    .record_frame(StdDuration::from_nanos(elapsed_ns))
+                    .scale;
                 let ema = i128::from(self.render_ema_ns);
                 let next = ema + (i128::from(elapsed_ns) - ema) / 4;
                 self.render_ema_ns = u64::try_from(next.max(0)).unwrap_or(0);
@@ -468,7 +507,7 @@ impl RenderLoop {
                     next_frame: target.saturating_add(step),
                     step,
                     count: self.config.prefetch_frames,
-                    quality: self.auto.quality(),
+                    quality: self.playing_quality(),
                 });
             }
             // Skip a frame that cannot be rendered instead of retrying it in a hot loop.
@@ -535,7 +574,11 @@ impl RenderLoop {
             target: snap.target,
             frame,
             t: timing.frame_start(frame),
-            quality,
+            // The rung's size; proxies as the preview's toggle says (one atomic load).
+            quality: Quality::new(
+                quality.scale,
+                self.shared.use_proxies.load(Ordering::Relaxed),
+            ),
             layout,
             purpose,
         };
@@ -588,12 +631,13 @@ impl RenderLoop {
                 stats
                     .last_quality
                     .store(FrameQuality::of(quality.scale).to_u8(), Ordering::Relaxed);
+                stats.last_proxy.store(rendered.proxy, Ordering::Relaxed);
                 stats.last_seq.store(seq, Ordering::Relaxed);
                 stats.delivered.fetch_add(1, Ordering::Release);
                 self.shown = Some(Shown {
                     frame,
                     content: snap.content,
-                    full: quality.is_full(),
+                    scale: quality.scale,
                 });
                 let end = self.now();
                 self.last_heartbeat_ns = end;

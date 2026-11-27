@@ -79,6 +79,7 @@
       "general": "General",
       "appearance": "Appearance",
       "editing": "Editing",
+      "playback": "Playback",
       "media": "Media and import",
       "export": "Export",
       "shortcuts": "Keyboard shortcuts",
@@ -217,6 +218,39 @@
         "description": "How long a photo or other still is when you place it on the timeline. New projects take this value; clips already on a timeline keep their length.",
         "keywords": "image, photo, picture, still, length, default, seconds, new project",
         "unit": "seconds"
+      },
+      "sequenceFormat": {
+        "label": "Format of new projects",
+        "description": "The frame size, frame rate, audio sample rate and background a new project's sequences start with. To set it, choose \"Use as defaults for new projects\" in File > Project settings….",
+        "keywords": "format, resolution, size, frame rate, fps, vertical, sequence, default, new project",
+        "button": "Use Cutweave's format",
+        "none": "Cutweave's format: 1920 × 1080 at 30 fps"
+      },
+      "qualityPlaying": {
+        "label": "Preview quality while playing",
+        "description": "Auto shows full size and steps down only when your computer cannot keep up. Full, Half and Quarter always use that size; Full may skip frames on a heavy timeline.",
+        "keywords": "resolution, performance, lag, stutter, smooth, dropped frames, half, quarter, full, auto, playback, preview, slow computer"
+      },
+      "qualityPaused": {
+        "label": "Preview quality when paused",
+        "description": "Full sharpens the picture to full size when playback stops. Same as playing leaves it at the size playback uses, which is quicker on a heavy timeline.",
+        "keywords": "resolution, pause, stopped, still, sharp, refine, full, auto, preview, scrub",
+        "auto": "Same as playing"
+      },
+      "previewProxies": {
+        "label": "Use proxies in the preview",
+        "description": "Clips play and scrub from their proxies when those are ready and large enough for the preview. Off always reads the original files. Exports use the originals either way.",
+        "keywords": "proxy, proxies, original, optimized media, smooth, performance, 4k, playback, scrub, preview"
+      },
+      "loopPlayback": {
+        "label": "Loop playback",
+        "description": "When playback reaches the end, it starts again from the beginning and keeps going until you pause.",
+        "keywords": "loop, repeat, cycle, again, continuous, end, restart, transport, play"
+      },
+      "returnToStart": {
+        "label": "Go back to where playback started",
+        "description": "When you pause, or playback reaches the end, the playhead returns to where you pressed play. Off leaves it where playback stopped.",
+        "keywords": "stop, pause, return, rewind, playhead, position, start, play, space, transport, preview"
       },
       "hoverScrub": {
         "label": "Preview video on hover",
@@ -1002,12 +1036,12 @@
         "delete": "Could not delete the proxies"
       },
       "tip": {
-        "ready": "A proxy is ready: scrubbing uses this smaller copy. Exports always use the original file.",
+        "ready": "A proxy is ready: the preview uses this smaller copy when it is large enough for the picture. Exports always use the original file.",
         "generating": "Cutweave is making a smaller copy for smooth scrubbing. You can keep editing.",
         "queued": "A proxy will be made when the jobs before it finish.",
         "failed": "The proxy could not be made. Right-click and choose Regenerate proxies to try again.",
         "failedBecause": "The proxy could not be made: {{message}}. Right-click and choose Regenerate proxies to try again.",
-        "evicted": "The proxy was removed from the cache, so scrubbing uses the original file. Right-click and choose Regenerate proxies to make it again.",
+        "evicted": "The proxy was removed from the cache, so the preview uses the original file. Right-click and choose Regenerate proxies to make it again.",
         "incomplete": "Making the proxy was stopped before the end. Regenerate proxies continues from where it stopped."
       }
     },
@@ -1213,9 +1247,17 @@
     "volumeValue": "{{value}} %",
     "qualityValue": "Preview quality: {{quality}}",
     "quality": {
+      "auto": "Auto",
       "full": "Full",
       "half": "Half",
       "quarter": "Quarter"
+    },
+    "useProxies": "Use proxies in the preview",
+    "sourceValue": "Preview source: {{source}}",
+    "sourceHint": "What the frame in the preview was decoded from. Exports always use the original files.",
+    "source": {
+      "proxy": "Proxy",
+      "original": "Original"
     },
     "unsupportedTitle": "Playback not available",
     "unsupported": "This engine can't play the timeline yet. You can still edit and move the playhead."
@@ -1680,7 +1722,9 @@
     "formLabel": "Project settings",
     "close": "Close",
     "useAsDefaults": "Use as defaults for new projects",
-    "defaultsSaved": "New projects now start with a still image duration of {{seconds}} s and proxies set to {{proxies}}.",
+    "defaultsSaved": "New projects now start at {{format}}, with a still image duration of {{seconds}} s and proxies set to {{proxies}}.",
+    "defaultsSavedWithoutFormat": "New projects now start with a still image duration of {{seconds}} s and proxies set to {{proxies}}.",
+    "formatValue": "{{width}} × {{height}} at {{fps}} fps",
     "defaultsFailed": "The defaults could not be saved.",
     "refused": "The change was not made.",
     "noProject": "Open or create a project to change its settings.",

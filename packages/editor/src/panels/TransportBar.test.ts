@@ -11,6 +11,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineStore } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { preferences, prefsStore } from "../prefs/prefsStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { initialPlaybackState, playbackStore } from "../state/playbackStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
@@ -145,6 +146,63 @@ describe("TransportBar", () => {
     expect(playbackStore.getState().transport).toBe("unsupported");
     expect((screen.getByRole("button", { name: "Play" }) as HTMLButtonElement).disabled).toBe(true);
     warn.mockRestore();
+  });
+
+  it("the chip says what the frame was decoded from and the toggle keeps the proxy preference (WP-2F.02)", async () => {
+    connect();
+    renderBar();
+    // What the engine reports: nothing from a proxy yet.
+    expect(screen.getByLabelText("Preview source: Original").textContent).toBe("Original");
+    act(() => playbackStore.getState().applyState(state({ use_proxies: true, proxy: true })));
+    const chip = screen.getByLabelText("Preview source: Proxy");
+    expect(chip.textContent).toBe("Proxy");
+    expect(chip.getAttribute("data-source")).toBe("proxy");
+    // The toggle is the preference `playback.proxies` (on by default); the runtime sends it on.
+    const toggle = () => screen.getByRole("button", { name: "Use proxies in the preview" });
+    expect(preferences.get("playback.proxies")).toBe(true);
+    expect(toggle().getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      fireEvent.click(toggle());
+      await Promise.resolve();
+    });
+    expect(preferences.get("playback.proxies")).toBe(false);
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+    // The engine answers with the original on screen.
+    act(() => playbackStore.getState().applyState(state({ use_proxies: false, proxy: false })));
+    expect(screen.getByLabelText("Preview source: Original")).toBeTruthy();
+    expect(playbackStore.getState().useProxies).toBe(false);
+    await act(async () => {
+      fireEvent.click(toggle());
+      await Promise.resolve();
+    });
+    expect(preferences.get("playback.proxies")).toBe(true);
+    // The toggle works without an engine too: it is this computer's preference.
+    expect((toggle() as HTMLButtonElement).disabled).toBe(false);
+    prefsStore.setState({
+      values: { ...prefsStore.getState().values, "playback.proxies": true },
+    });
+  });
+
+  it("the loop button is the preference playback.loop, both ways (WP-2H.10)", async () => {
+    connect();
+    renderBar();
+    const loop = () => screen.getByRole("button", { name: "Loop playback" });
+    expect(preferences.get("playback.loop")).toBe(false);
+    expect(loop().getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      fireEvent.click(loop());
+      await Promise.resolve();
+    });
+    expect(preferences.get("playback.loop")).toBe(true);
+    expect(loop().getAttribute("aria-pressed")).toBe("true");
+    // Changed elsewhere (Settings > Playback): the button follows.
+    await act(async () => {
+      await preferences.set("playback.loop", false);
+    });
+    expect(loop().getAttribute("aria-pressed")).toBe("false");
+    // It is the person's preference: there with no engine, and never a command of its own.
+    expect((loop() as HTMLButtonElement).disabled).toBe(false);
+    expect(mock.requests.filter((r) => r.method === "view.set_loop")).toEqual([]);
   });
 
   it("mute and volume set master_gain; the quality indicator shows the frame's quality", async () => {

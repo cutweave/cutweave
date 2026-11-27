@@ -63,6 +63,13 @@ export const PROXY_JOB_CHOICES = [1, 2, 3, 4] as const;
 /** "Proxy size" (WP-2F.03b): the longest side of a proxy picture, in pixels. */
 export const PROXY_SIZES = [540, 720, 960] as const;
 /** "Proxies for new projects" (WP-2F.03b, ADR-0027): never, for video that is slow to scrub, always. */
+/** Preview quality while playing (WP-2H.10): the engine's `view.set_preview_quality{playing}`. */
+export const PLAYING_QUALITIES = ["auto", "full", "half", "quarter"] as const;
+export type PlayingQualityChoice = (typeof PLAYING_QUALITIES)[number];
+/** Preview quality when paused (WP-2H.10): the engine's `view.set_preview_quality{paused}`. */
+export const PAUSED_QUALITIES = ["full", "auto"] as const;
+export type PausedQualityChoice = (typeof PAUSED_QUALITIES)[number];
+
 export const PROXY_POLICIES = ["off", "auto", "all"] as const;
 export type ProxyPolicyChoice = (typeof PROXY_POLICIES)[number];
 /** "Memory for decoded frames": 0 is Auto (the smaller of 1 GiB and a quarter of the RAM). */
@@ -164,6 +171,21 @@ export interface PreferenceValues {
   // Editing (WP-2F.05b, ADR-0035)
   /** Seconds a still image gets in new projects when it is placed without a length. */
   "editing.still_duration": number;
+  /**
+   * The format new projects start with (#221), written by File > Project settings… > "Use as
+   * defaults for new projects": `1080x1920 30000/1001 44100 rec709 #000000` (see
+   * {@link SEQUENCE_FORMAT_LINE}). `""` is "not set": the engine's own format applies.
+   */
+  "editing.sequence_format": string;
+  // Playback (WP-2H.10)
+  /** The preview's quality while playing: the quality ladder (`auto`) or one size, held. */
+  "playback.quality_playing": PlayingQualityChoice;
+  /** The preview's quality when paused: refined to full size, or left at the playing size. */
+  "playback.quality_paused": PausedQualityChoice;
+  /** Playback starts again from the beginning when it reaches the end. */
+  "playback.loop": boolean;
+  /** Pausing, or playing into the end, puts the playhead back where playback began. */
+  "playback.return_to_start": boolean;
   // Media and import (WP-1M.14)
   /** Show a video's frames while the pointer moves across its card in the bin. */
   "media.hover_scrub": boolean;
@@ -177,6 +199,11 @@ export interface PreferenceValues {
   "media.proxy_policy": ProxyPolicyChoice;
   /** The longest side of the proxies this computer makes, in pixels. */
   "media.proxy_size": (typeof PROXY_SIZES)[number];
+  /**
+   * The preview uses proxies when they are ready and large enough (WP-2F.02): the transport
+   * bar's toggle. The editor sends it to the engine (`view.set_preview_quality`).
+   */
+  "playback.proxies": boolean;
   /** The History panel's sort order (#171), the person's, not the project's. */
   "history.order": HistoryOrder;
   // Keyboard shortcuts (WP-2H.05)
@@ -242,6 +269,13 @@ const MAX_RECORD_VALUE = 64;
 const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/;
 /** A file name pattern: no folder separator and nothing else a file name cannot hold. */
 const FILE_NAME_PATTERN = /^[^\\/:*?"<>|]+$/;
+
+/**
+ * A sequence format on one line: width x height, frame rate as num/den, audio sample rate in
+ * Hz, color space, background (`#rrggbb` or `#rrggbbaa`). The groups are in that order.
+ */
+export const SEQUENCE_FORMAT_LINE =
+  /^(\d{1,5})x(\d{1,5}) (\d{1,6})\/(\d{1,6}) (\d{4,6}) ([a-z][a-z0-9_-]{0,31}) (#[0-9a-f]{6}(?:[0-9a-f]{2})?)$/;
 
 export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "general.startup": { type: "enum", scope: "app", options: STARTUP_CHOICES, default: "empty" },
@@ -335,6 +369,30 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     max: STILL_DURATION_MAX,
     default: 5,
   },
+  // The format of new projects (#221): set from File > Project settings….
+  "editing.sequence_format": {
+    type: "text",
+    scope: "app",
+    default: "",
+    max: 64,
+    pattern: SEQUENCE_FORMAT_LINE,
+  },
+  // Playback (WP-2H.10): the engine applies the quality and the loop (`view.set_preview_quality`,
+  // `view.set_loop`); going back to the start is the editor's transport.
+  "playback.quality_playing": {
+    type: "enum",
+    scope: "app",
+    options: PLAYING_QUALITIES,
+    default: "auto",
+  },
+  "playback.quality_paused": {
+    type: "enum",
+    scope: "app",
+    options: PAUSED_QUALITIES,
+    default: "full",
+  },
+  "playback.loop": { type: "boolean", scope: "app", default: false },
+  "playback.return_to_start": { type: "boolean", scope: "app", default: false },
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
   "media.keep_structure": { type: "boolean", scope: "app", default: true },
@@ -349,6 +407,8 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   // this computer's.
   "media.proxy_policy": { type: "enum", scope: "app", options: PROXY_POLICIES, default: "auto" },
   "media.proxy_size": { type: "enum", scope: "machine", options: PROXY_SIZES, default: 960 },
+  // Playback (WP-2F.02): the transport bar's proxy toggle, and its row in Settings > Playback.
+  "playback.proxies": { type: "boolean", scope: "app", default: true },
   // Keyboard shortcuts (WP-2H.05)
   "history.order": { type: "enum", scope: "app", options: HISTORY_ORDERS, default: "oldest" },
   "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },
