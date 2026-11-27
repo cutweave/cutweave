@@ -128,9 +128,10 @@ describe("planPlacement", () => {
       ok: false,
       reason: "no_track",
     });
-    expect(
-      planPlacement({ ...base, marks: { in: LENGTH, out: null }, mode: "insert" }),
-    ).toEqual({ ok: false, reason: "invalid" });
+    expect(planPlacement({ ...base, marks: { in: LENGTH, out: null }, mode: "insert" })).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
   });
 });
 

@@ -81,7 +81,11 @@ export function SourceScrubBar() {
   const valueText =
     range === null
       ? code(at)
-      : t("preview.source.scrubValue", { time: code(at), in: code(range.in), out: code(range.out) });
+      : t("preview.source.scrubValue", {
+          time: code(at),
+          in: code(range.in),
+          out: code(range.out),
+        });
   return (
     <div className="cw-source__scrub" data-testid="source-scrub">
       <div

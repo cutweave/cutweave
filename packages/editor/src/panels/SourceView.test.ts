@@ -5,7 +5,7 @@
 // and its keys address the source, Esc and "Back to timeline" return to the sequence, and Enter
 // places the asset at the timeline's playhead. jsdom has no canvas: the pictures are covered by
 // the user flow (F31).
-import { MockTransport, RpcClient } from "@cutweave/protocol";
+import { type MediaId, MockTransport, RpcClient } from "@cutweave/protocol";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import axe from "axe-core";
@@ -14,6 +14,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { engineStore } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { dragStore } from "../media/dragStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { initialPlaybackState, playbackStore } from "../state/playbackStore.ts";
 import { sourceViewStore } from "../state/sourceViewStore.ts";
@@ -64,6 +65,7 @@ beforeEach(() => {
   }
   mock.handle("view.set_source", () => state({ t: 0, source: null }));
   mock.handle("timeline.insert", () => ({ clips: ["itm_new"] }));
+  mock.handle("timeline.overwrite", () => ({ clips: ["itm_new"] }));
   engineStore.setState({ rpc: new RpcClient(mock), connection: "ready" });
   docStore.getState().resync({ rev: 1, committed_rev: 1, project: sampleProject() });
 });
@@ -144,28 +146,139 @@ describe("the Preview's Source view", () => {
     expect(header()).toBeNull();
   });
 
-  it("Enter and the Insert button place the whole asset at the timeline's playhead", async () => {
+  it("Enter, the comma and the Insert button insert the whole asset at the timeline's playhead", async () => {
     renderPanel();
     viewStore.getState().setPlayhead(2 * FLICKS);
     playSource({ t: 3 * FLICKS });
     const stage = screen.getByRole("group", { name: /^Source: beach\.mp4/ });
-    await act(async () => {
-      fireEvent.keyDown(stage, { key: "Enter" });
-    });
-    expect(sent()).toEqual([
-      [
-        "timeline.insert",
-        { sequence: "seq_1", track: "trk_v", media: "med_a", at: 2 * FLICKS, overlap: "new_track" },
-      ],
-    ]);
+    const whole = [
+      "timeline.insert",
+      {
+        sequence: "seq_1",
+        track: "trk_v",
+        media: "med_a",
+        at: 2 * FLICKS,
+        source_in: 0,
+        duration: 10 * FLICKS,
+        mode: "insert",
+      },
+    ];
+    for (const key of ["Enter", ","]) {
+      mock.requests.length = 0;
+      await act(async () => {
+        fireEvent.keyDown(stage, { key });
+      });
+      expect(sent()).toEqual([whole]);
+    }
     // The source keeps playing: the timeline's playhead and the view stay as they were.
     expect(header()).not.toBeNull();
     expect(viewStore.getState().playhead).toBe(2 * FLICKS);
     mock.requests.length = 0;
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Add to the timeline at the playhead" }));
+      fireEvent.click(screen.getByRole("button", { name: "Insert at the playhead" }));
     });
-    expect(sent()).toHaveLength(1);
+    expect(sent()).toEqual([whole]);
+  });
+
+  it("I and O mark the source at its playhead; the comma inserts and the period overwrites the range", async () => {
+    renderPanel();
+    viewStore.getState().setPlayhead(6 * FLICKS);
+    playSource({ state: "stopped", playing: false, t: 2 * FLICKS });
+    const stage = screen.getByRole("group", { name: /^Source: beach\.mp4/ });
+    expect(screen.queryByTestId("source-range")).toBeNull();
+    expect(screen.getByRole("button", { name: "Clear in and out" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await act(async () => {
+      fireEvent.keyDown(stage, { key: "i" });
+    });
+    playSource({ state: "stopped", playing: false, t: 5 * FLICKS });
+    await act(async () => {
+      fireEvent.keyDown(stage, { key: "o" });
+    });
+    // View state, not the document: nothing is sent from here (viewSync mirrors it).
+    expect(sent()).toEqual([]);
+    expect(viewStore.getState().sourceMarks).toEqual({
+      med_a: { in: 2 * FLICKS, out: 5 * FLICKS },
+    });
+    // The range shows on the scrub bar (20% to 50% of 10 s) and in words.
+    const range = screen.getByTestId("source-range");
+    expect(range.style.insetInlineStart).toBe("20%");
+    expect(range.style.inlineSize).toBe("30%");
+    expect(screen.getByTestId("source-marks").textContent).toBe(
+      "In 00:00:02:00 · Out 00:00:05:00 · 00:00:03:00",
+    );
+    expect(
+      screen.getByRole("slider", { name: "Source position" }).getAttribute("aria-valuetext"),
+    ).toBe("00:00:05:00, in 00:00:02:00, out 00:00:05:00");
+    const args = {
+      sequence: "seq_1",
+      track: "trk_v",
+      media: "med_a",
+      at: 6 * FLICKS,
+      source_in: 2 * FLICKS,
+      duration: 3 * FLICKS,
+    };
+    await act(async () => {
+      fireEvent.keyDown(stage, { key: "," });
+    });
+    await act(async () => {
+      fireEvent.keyDown(stage, { key: "." });
+    });
+    expect(sent()).toEqual([
+      ["timeline.insert", { ...args, mode: "insert" }],
+      ["timeline.overwrite", args],
+    ]);
+    mock.requests.length = 0;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Overwrite at the playhead" }));
+    });
+    expect(sent()).toEqual([["timeline.overwrite", args]]);
+    // The buttons mark too, and Clear (Alt+X) removes both.
+    playSource({ state: "stopped", playing: false, t: 1 * FLICKS });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Set in point" }));
+    });
+    expect(viewStore.getState().sourceMarks.med_a).toEqual({ in: 1 * FLICKS, out: 5 * FLICKS });
+    await act(async () => {
+      fireEvent.keyDown(stage, { key: "x", altKey: true });
+    });
+    expect(viewStore.getState().sourceMarks).toEqual({});
+    expect(screen.queryByTestId("source-range")).toBeNull();
+  });
+
+  it("the scrub bar seeks the source on its own frames", async () => {
+    renderPanel();
+    playSource({ state: "stopped", playing: false, t: 2 * FLICKS });
+    const bar = screen.getByRole("slider", { name: "Source position" });
+    expect(bar.getAttribute("aria-valuenow")).toBe("60");
+    expect(bar.getAttribute("aria-valuemax")).toBe("299");
+    await act(async () => {
+      fireEvent.keyDown(bar, { key: "End" });
+    });
+    expect(sent()).toEqual([["view.seek", { t: 10 * FLICKS - FLICKS / 30 }]]);
+    expect(viewStore.getState().playhead).toBe(0);
+  });
+
+  it("dragging the picture carries the marked range; the picture grip leaves the sound behind", () => {
+    renderPanel();
+    playSource({ state: "stopped", playing: false });
+    act(() =>
+      viewStore.getState().setSourceMarks("med_a" as MediaId, { in: 2 * FLICKS, out: 5 * FLICKS }),
+    );
+    const data = { setData: () => undefined, effectAllowed: "" };
+    fireEvent.dragStart(screen.getByTestId("source-drag-video"), { dataTransfer: data });
+    expect(dragStore.getState().session).toEqual({
+      id: "med_a",
+      kind: "video",
+      duration: 3 * FLICKS,
+      range: { sourceIn: 2 * FLICKS, duration: 3 * FLICKS },
+      link: false,
+    });
+    fireEvent.dragStart(screen.getByTestId("source-drag-audio"), { dataTransfer: data });
+    expect(dragStore.getState().session).toMatchObject({ kind: "audio", duration: 3 * FLICKS });
+    act(() => dragStore.getState().end());
   });
 
   it("returns to the timeline when the engine ends the source (removed asset, another project)", () => {
@@ -179,6 +292,16 @@ describe("the Preview's Source view", () => {
   it("has no axe violations", async () => {
     const { container } = renderPanel();
     playSource();
+    expect((await axe.run(container)).violations).toEqual([]);
+  });
+
+  it("has no axe violations with marks set", async () => {
+    const { container } = renderPanel();
+    playSource({ state: "stopped", playing: false, t: 3 * FLICKS });
+    act(() =>
+      viewStore.getState().setSourceMarks("med_a" as MediaId, { in: 2 * FLICKS, out: 5 * FLICKS }),
+    );
+    expect(screen.getByTestId("source-range")).toBeTruthy();
     expect((await axe.run(container)).violations).toEqual([]);
   });
 });

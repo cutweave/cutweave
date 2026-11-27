@@ -129,9 +129,7 @@ export function SourceHeader() {
   const asset = useSourceAsset();
   const source = usePlaybackStore((s) => s.source);
   const at = usePlaybackStore((s) => s.sourcePlayhead);
-  const marked = useViewStore(
-    (s) => source !== null && s.sourceMarks[source.media] !== undefined,
-  );
+  const marked = useViewStore((s) => source !== null && s.sourceMarks[source.media] !== undefined);
   const menuRef = useContextMenu<HTMLElement>("source.view", () => ({}));
   if (source === null || asset === null) return null;
   const timecode = formatTimecode(at, source.fps, true);
