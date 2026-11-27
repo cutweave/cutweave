@@ -622,12 +622,13 @@ describe("ExportDialog: presets of your own (WP-2G.04b)", () => {
     await waitFor(() => expect(lastCall("export.delete_preset")).toEqual({ id: "my-review" }));
     await waitFor(() => expect(presetSelect(dialog).value).toBe("h264-mp4-1080p"));
     expect(presetSelect(dialog).querySelector('optgroup[label="Your presets"]')).toBeNull();
-    const notice = toastStore.getState().notices.at(-1);
-    expect(notice?.title).toBe("Preset deleted");
-    act(() => notice?.actions?.[0]?.onClick());
-    await waitFor(() =>
-      expect(presetSelect(dialog).querySelector('optgroup[label="Your presets"]')).not.toBeNull(),
-    );
+    // The dialog says so and offers Undo (a toast's button is out of reach behind a dialog).
+    const gone = await within(dialog).findByTestId("export-preset-deleted");
+    expect(gone.textContent).toContain("Deleted your preset “My review copy”.");
+    await user.click(within(gone).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(presetSelect(dialog).value).toBe("my-review"));
+    expect(within(dialog).queryByTestId("export-preset-deleted")).toBeNull();
+    expect(lastCall("export.save_preset")?.preset).toMatchObject({ id: "my-review" });
   });
 
   it("has no accessibility violations with the name row open", async () => {

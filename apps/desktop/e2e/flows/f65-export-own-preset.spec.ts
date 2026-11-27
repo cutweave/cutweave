@@ -6,7 +6,7 @@
 // the OS notification says the export is complete; back in the app, the Exports panel opens the
 // file from its row and from the row's menu, and the file has the preset's size; with
 // Settings > Notifications > Finished exports off, the next export is not announced; delete the
-// preset in the dialog and bring it back with the toast's Undo.
+// preset in the dialog and bring it back with Undo.
 // Needs the FFmpeg engine and the corpus (`just corpus`); without them the flow skips and says
 // why. Stubbed, in main, at the edge of the OS only: the save dialog, the shell's "open with the
 // default app" and the notification the OS would draw.
@@ -263,13 +263,13 @@ test.describe("F65 your own export preset, Open file and the notification", () =
       await expect(panel.getByRole("listitem", { name: "quiet.mp4, Done" })).toBeVisible(BOUND);
       expect(await os.notices()).toHaveLength(1);
 
-      // Delete the preset in the dialog; Undo on the toast brings it back.
+      // Delete the preset in the dialog; Undo brings it back.
       await shortcut(app, "Control+M");
       await expect(dialog).toBeVisible();
       await expect(preset).toHaveValue("review-copy");
       await dialog.getByRole("button", { name: "Delete this preset" }).click();
-      const deleted = toast(page, "Preset deleted");
-      await expect(deleted).toContainText("Review copy", BOUND);
+      const deleted = dialog.getByTestId("export-preset-deleted");
+      await expect(deleted).toContainText("Deleted your preset “Review copy”.", BOUND);
       await expect(preset).toHaveValue("h264-mp4-1080p");
       await expect(preset.locator('optgroup[label="Your presets"]')).toHaveCount(0);
       await expect(dialog.getByRole("button", { name: "Delete this preset" })).toBeHidden();
@@ -278,6 +278,8 @@ test.describe("F65 your own export preset, Open file and the notification", () =
         ["Review copy"],
         BOUND,
       );
+      await expect(preset).toHaveValue("review-copy");
+      await expect(deleted).toBeHidden();
     } finally {
       await close();
       work.remove();

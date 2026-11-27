@@ -8,7 +8,8 @@
 // Export starts it now; Add to queue leaves it to the export queue. Every refusal the engine
 // names a field for shows at that field. Missing media (WP-2F.03c) shows as one line with
 // Relink… and Export anyway. Save as preset (WP-2G.04b) keeps what the dialog shows now as a
-// preset of the person's, under a name; a preset of theirs can be deleted (and brought back).
+// preset of the person's, under a name; a preset of theirs can be deleted, and the line that
+// says so brings it back.
 
 import type {
   CodecEncoders,
@@ -373,6 +374,8 @@ function PresetForm({
     readonly tried: boolean;
     readonly refused: string | null;
   } | null>(null);
+  // The preset just deleted: the dialog offers to bring it back until another one is chosen.
+  const [deleted, setDeleted] = useState<ExportPresetSpec | null>(null);
 
   const groups = useMemo(() => groupPresets(entries, facts), [entries, facts]);
   const overrides = useMemo(() => overridesFor(spec, size, quality), [spec, size, quality]);
@@ -508,7 +511,9 @@ function PresetForm({
   };
   const choosePreset = (id: string): void => {
     const next = entries.find((e) => e.preset.id === id)?.preset;
-    if (next !== undefined) applyPreset(next);
+    if (next === undefined) return;
+    setDeleted(null);
+    applyPreset(next);
   };
 
   // ---- presets of the person's ----
@@ -516,6 +521,16 @@ function PresetForm({
   const typedName = naming?.name ?? "";
   const nameIssue = nameProblem(typedName);
   const target = presetIdFor(typedName, entries);
+  const undoDelete = async (): Promise<void> => {
+    if (deleted === null) return;
+    const outcome = await controller.savePreset(deleted);
+    if (outcome.ok) {
+      setDeleted(null);
+      applyPreset(deleted);
+    } else {
+      setRefusal({ message: outcome.message, pointer: null });
+    }
+  };
   const savePreset = async (): Promise<void> => {
     if (naming === null || naming.busy) return;
     if (nameIssue !== null || formatProblem !== null) {
@@ -551,11 +566,13 @@ function PresetForm({
   };
   const deletePreset = async (): Promise<void> => {
     if (!mine) return;
-    const outcome = await controller.deletePreset(spec);
+    const gone = spec;
+    const outcome = await controller.deletePreset(gone);
     if (!outcome.ok) {
       setRefusal({ message: outcome.message, pointer: null });
       return;
     }
+    setDeleted(gone);
     const left = entries.filter((e) => e.preset.id !== spec.id);
     const next = left.find((e) => e.preset.id === startingPreset(left, []))?.preset;
     if (next !== undefined) applyPreset(next);
@@ -754,6 +771,16 @@ function PresetForm({
             </Tooltip>
           ) : null}
         </InspectorRow>
+        {deleted !== null ? (
+          <div className="cw-export__options-head" data-testid="export-preset-deleted">
+            <span className="caption cw-export__hint" role="status">
+              {t("export.deletePreset.deleted", { name: deleted.name })}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => void undoDelete()}>
+              {t("export.deletePreset.undo")}
+            </Button>
+          </div>
+        ) : null}
         {naming !== null ? (
           <>
             <InspectorRow label={t("export.savePreset.name")} htmlFor={ids.presetName}>

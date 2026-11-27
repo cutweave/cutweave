@@ -325,7 +325,8 @@ export class ExportController {
 
   /**
    * Deletes a preset of the person's (`export.delete_preset`) and asks for the list again. The
-   * toast's Undo saves it back as it was.
+   * dialog offers Undo, which saves it back as it was (a toast lies behind the open dialog,
+   * where its button cannot be reached).
    */
   async deletePreset(preset: ExportPresetSpec): Promise<PresetOutcome> {
     const id = preset.id;
@@ -340,17 +341,6 @@ export class ExportController {
         if (this.#pref(key) === id) void this.#deps.prefs?.set(key, "").catch(() => undefined);
       }
       await this.loadPresets();
-      this.#deps.toasts.getState().push({
-        tone: "info",
-        title: this.#deps.t("export.deletePreset.deleted"),
-        message: preset.name,
-        actions: [
-          {
-            label: this.#deps.t("export.deletePreset.undo"),
-            onClick: () => void this.savePreset(preset),
-          },
-        ],
-      });
       return { ok: true, id, replaced: false };
     } catch (error) {
       const failure = asRpcError(error);
