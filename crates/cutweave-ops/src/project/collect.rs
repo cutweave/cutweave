@@ -40,7 +40,7 @@ use cutweave_commands::{
     Registrable, Registry, RegistryError, Scope, command, wire,
 };
 use cutweave_jobs::{JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
-use cutweave_model::{MediaAsset, MediaId, MediaKind, Project};
+use cutweave_model::{ImageSequence, MediaAsset, MediaId, MediaKind, Project};
 
 use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT, asset_name, used_media};
 use crate::util::check_abs_path;
@@ -173,13 +173,29 @@ fn run_names(asset: &MediaAsset) -> Option<Vec<String>> {
         .image_sequence
         .as_ref()
         .filter(|_| asset.kind == MediaKind::ImageSequence)?;
-    let names: Vec<String> = run
-        .segments()
+    let names = picture_names(run);
+    (!names.is_empty()).then_some(names)
+}
+
+/// The file names of the pictures of `run`, the first one first: the numbers that had a file
+/// at import.
+fn picture_names(run: &ImageSequence) -> Vec<String> {
+    run.segments()
         .into_iter()
         .flat_map(|(start, len)| start..start.saturating_add(len))
         .filter_map(|number| run.file_name(number))
-        .collect();
-    (!names.is_empty()).then_some(names)
+        .collect()
+}
+
+/// The n-th folder tried for a run that wants the folder `name`: `name`, then `name (2)` and
+/// so on (a run stays together under its own file names, so it is the folder that gets the
+/// number).
+fn numbered_folder(name: &str, n: u32) -> String {
+    if n <= 1 {
+        name.to_owned()
+    } else {
+        format!("{name} ({n})")
+    }
 }
 
 /// The files planned so far and the names they took.
@@ -279,8 +295,8 @@ impl Planner<'_> {
             let mut folder = base.clone();
             if n > 1 {
                 match folder.last_mut() {
-                    Some(last) => *last = format!("{last} ({n})"),
-                    None => folder.push(format!("{MEDIA_FOLDER} ({n})")),
+                    Some(last) => *last = numbered_folder(last, n),
+                    None => folder.push(numbered_folder(MEDIA_FOLDER, n)),
                 }
             }
             let free = names.iter().zip(&sources).all(|(name, source)| {

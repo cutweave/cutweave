@@ -23,8 +23,9 @@ use cutweave_model::{
 
 use super::{
     AnalysisInput, ImportCtx, ImportProxy, MediaProbe, MediaRegister, OUTSIDE_ROOTS_HINT,
-    ProbeError, policy,
+    ProbeError, SAVE_FIRST, policy,
 };
+use crate::project::collect::on_import::{CopyOutcome, copy_run_into_project};
 use crate::util::check_abs_path;
 
 /// The extensions a directory is searched for (a file you name yourself may have any).
@@ -257,7 +258,8 @@ pub struct MediaImportSequenceOutput {
     pub kind: MediaKind,
     /// `true` when the run was already in the project and nothing was added.
     pub duplicate: bool,
-    /// Absolute path of the first picture of the run.
+    /// Absolute path of the first picture of the run, where it was found (with
+    /// `copy_to_project` the asset points at the copy in the project folder).
     pub path: String,
     /// The run as stored on the asset: pattern, first number, count, frame rate and the
     /// numbers that have no file.
@@ -276,6 +278,16 @@ pub struct MediaImportSequenceOutput {
 /// Fewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a
 /// sequence). Only the first picture is read, so a long run imports at once; the files are
 /// referenced, not copied.
+///
+/// With `copy_to_project` every picture of the run is first copied into the project's
+/// `media/` folder, all into one folder (`media/<source folder name>/`, or `<name> (2)` when a
+/// name there is taken by another file) under its own file name, and the asset points at the
+/// copy, so the project keeps working when the originals move. Each copy is compared with its
+/// original. A run already inside the project folder is not copied, and neither is one the
+/// project already has (it is returned as a duplicate). The call fails with `Invalid` at
+/// `/copy_to_project` when the project has not been saved yet (it has no folder) or when the
+/// pictures do not fit on its drive, and at `/path` when a picture cannot be copied; nothing
+/// is imported then. Undoing the import removes the asset; the copied files stay on disk.
 ///
 /// Numbers without a file are allowed: they are listed in `image_sequence.missing`, named in
 /// `warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame
@@ -298,6 +310,8 @@ pub struct MediaImportSequence {
     pub fps: Option<FrameRate>,
     /// Bin folder (default: top level).
     pub folder: Option<FolderId>,
+    /// Copy every picture of the run into the project's `media/` folder first (default false).
+    pub copy_to_project: Option<bool>,
 }
 
 fn probe_failure(error: &ProbeError) -> CmdError {
@@ -321,6 +335,10 @@ impl EngineCommand for MediaImportSequence {
                     self.path
                 ),
             ));
+        }
+        let copy = self.copy_to_project.unwrap_or(false);
+        if copy && ctx.project.is_none() {
+            return Err(CmdError::invalid("/copy_to_project", SAVE_FIRST));
         }
         let found = detect(ctx.prober.as_ref(), &self.path)?;
         let run = ImageSequence {
@@ -346,9 +364,25 @@ impl EngineCommand for MediaImportSequence {
         .pop()
         .unwrap_or_else(|| Err(ProbeError::NotFound(found.first_file.clone())))
         .map_err(|e| probe_failure(&e))?;
+        // `copy_to_project`: the pictures go into the project folder and the asset points
+        // at the copy; the hash stays the one of the run that was read.
+        let mut first_file = found.first_file.clone();
+        if copy && let Some(project) = &ctx.project {
+            match copy_run_into_project(project, &first_file, &run, &probed.content_hash)? {
+                CopyOutcome::Stays => {}
+                CopyOutcome::At(path) => first_file = path,
+                CopyOutcome::Failed(error) => {
+                    return Err(CmdError::invalid(
+                        "/path",
+                        format!("the run could not be copied into the project: {error}"),
+                    ));
+                }
+            }
+        }
+        let locator = run.locator(&first_file);
         let register = MediaRegister {
             media_id: None,
-            path: found.first_file.clone(),
+            path: first_file,
             probe: probed.probe,
             content_hash: probed.content_hash,
             folder: self.folder,

@@ -1024,8 +1024,12 @@ fn media_import_sequence(p: &Pools) -> BoxedStrategy<Value> {
         select(places),
         fps,
         option::weighted(0.3, one_of(p.folders.clone())),
+        // Absent and `false` both leave the pictures where they are.
+        option::weighted(0.2, Just(false)),
     )
-        .prop_map(|(path, fps, folder)| json!({"path": path, "fps": fps, "folder": folder}))
+        .prop_map(|(path, fps, folder, copy)| {
+            json!({"path": path, "fps": fps, "folder": folder, "copy_to_project": copy})
+        })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"path": "import/render/shot_0001.png"})),
@@ -1034,6 +1038,8 @@ fn media_import_sequence(p: &Pools) -> BoxedStrategy<Value> {
         Just(json!({"path": "/import"})),
         Just(json!({"path": "/import/render/shot_0004.png"})),
         Just(json!({"path": SEQUENCE_PATHS[0], "fps": {"num": 0, "den": 1}})),
+        // The harness document is untitled: it has no folder to copy into (#215).
+        Just(json!({"path": SEQUENCE_PATHS[0], "copy_to_project": true})),
     ]
     .boxed();
     mix(valid, invalid)

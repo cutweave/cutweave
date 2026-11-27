@@ -6,8 +6,8 @@
 //   name but for the number at its end, a picture extension, two or more). The engine never
 //   guesses: `media.import` keeps every picture a still, so the app asks (`SequenceOffer.tsx`).
 // - `importSequence` sends the one `media.import_sequence` and says what happened with toasts.
-// - `importPicked` is what the Import… picker runs: the offer when the selection is a run, then
-//   the import the person chose.
+// - `importPicked` is what the Import… picker and a drop of files from the OS run: the offer
+//   when the files are a run, then the import the person chose.
 
 import type { ImageSequenceFps } from "@cutweave/preferences";
 import type { FolderId, FrameRate } from "@cutweave/protocol";
@@ -114,6 +114,11 @@ export function fpsText(rate: FrameRate): string {
 export interface SequenceImportOptions {
   /** The setting `media.image_sequence_fps`. */
   readonly fps: ImageSequenceFps;
+  /**
+   * Whether every picture of the run is first copied into the project's `media/` folder (the
+   * setting `media.copy_on_import`). Only `true` is sent; the engine's default is off.
+   */
+  readonly copyToProject?: boolean;
 }
 
 /**
@@ -137,6 +142,7 @@ export async function importSequence(
       path,
       ...(fps === undefined ? {} : { fps }),
       ...(folder === null ? {} : { folder }),
+      ...(options.copyToProject === true ? { copy_to_project: true } : {}),
     });
     toasts.getState().dismiss(progress);
     const run = out.image_sequence;
@@ -210,8 +216,8 @@ export const sequenceOfferStore = createStore<SequenceOfferStore>()((set) => ({
 export interface PickedImportOptions extends ImportOptions, SequenceImportOptions {}
 
 /**
- * Imports what the Import… picker returned. A selection that is a numbered run of pictures is
- * asked about first: as one image sequence, as separate pictures, or not at all. Resolves like
+ * Imports the files the Import… picker returned, or that were dropped from the OS. Files that
+ * are a numbered run of pictures are asked about first: as one image sequence, as separate pictures, or not at all. Resolves like
  * `importMedia` (a sequence counts as one asset added), or `null` when nothing was imported.
  */
 export async function importPicked(

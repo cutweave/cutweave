@@ -4055,6 +4055,16 @@ export type MediaImportProgress = {
  *  sequence). Only the first picture is read, so a long run imports at once; the files are
  *  referenced, not copied.
  * 
+ *  With `copy_to_project` every picture of the run is first copied into the project's
+ *  `media/` folder, all into one folder (`media/<source folder name>/`, or `<name> (2)` when a
+ *  name there is taken by another file) under its own file name, and the asset points at the
+ *  copy, so the project keeps working when the originals move. Each copy is compared with its
+ *  original. A run already inside the project folder is not copied, and neither is one the
+ *  project already has (it is returned as a duplicate). The call fails with `Invalid` at
+ *  `/copy_to_project` when the project has not been saved yet (it has no folder) or when the
+ *  pictures do not fit on its drive, and at `/path` when a picture cannot be copied; nothing
+ *  is imported then. Undoing the import removes the asset; the copied files stay on disk.
+ * 
  *  Numbers without a file are allowed: they are listed in `image_sequence.missing`, named in
  *  `warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame
  *  rate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes
@@ -4071,6 +4081,8 @@ export type MediaImportSequence = {
 	fps?: FrameRate | null,
 	/**  Bin folder (default: top level). */
 	folder?: FolderId | null,
+	/**  Copy every picture of the run into the project's `media/` folder first (default false). */
+	copy_to_project?: boolean | null,
 };
 
 /**  Result of `media.import_sequence`. */
@@ -4081,7 +4093,10 @@ export type MediaImportSequenceOutput = {
 	kind: MediaKind,
 	/**  `true` when the run was already in the project and nothing was added. */
 	duplicate: boolean,
-	/**  Absolute path of the first picture of the run. */
+	/**
+	 *  Absolute path of the first picture of the run, where it was found (with
+	 *  `copy_to_project` the asset points at the copy in the project folder).
+	 */
 	path: string,
 	/**
 	 *  The run as stored on the asset: pattern, first number, count, frame rate and the
