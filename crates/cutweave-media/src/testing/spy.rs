@@ -193,6 +193,6 @@ mod tests {
         assert_eq!(log.under(Path::new("/media")).len(), 4);
         assert_eq!(fake.decoders_opened(), 1);
         log.clear();
-        assert!(log.opens().is_empty());
+        assert_eq!(log.opens(), Vec::new());
     }
 }

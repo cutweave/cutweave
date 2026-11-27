@@ -911,7 +911,12 @@ mod tests {
         }
     }
 
+    /// What the selection test is served: the picture's size and whether it is a proxy's.
+    const PROXY: ((u32, u32), bool) = ((960, 540), true);
+    const ORIGINAL: ((u32, u32), bool) = ((2560, 1440), false);
+
     #[test]
+    #[allow(clippy::too_many_lines)] // one fixture, the cases in the order a session meets them
     fn the_preview_uses_a_ready_proxy_from_the_next_frame_when_it_is_large_enough() {
         let dir =
             std::env::temp_dir().join(format!("cutweave-proxy-select-{}", std::process::id()));
@@ -1045,8 +1050,6 @@ mod tests {
                 frame(n),
             )
         };
-        const PROXY: ((u32, u32), bool) = ((960, 540), true);
-        const ORIGINAL: ((u32, u32), bool) = ((2560, 1440), false);
         assert_eq!(play(20, true, 1920), ORIGINAL);
         assert_eq!(play(21, true, 480), PROXY, "to the proxy at once");
         assert_eq!(play(22, true, 1920), PROXY, "kept: drawn larger");

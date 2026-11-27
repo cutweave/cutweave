@@ -852,8 +852,8 @@ impl PreviewRequest<'_> {
         let resolver = &self.frames.frames.resolver;
         let proxies = resolver.proxies()?;
         let asset = asset?;
-        let resolved = (proxies.store().generation(), asset.proxy_mode);
-        if held.proxy_resolved != Some(resolved) {
+        let at = (proxies.store().generation(), asset.proxy_mode);
+        if held.proxy_resolved != Some(at) {
             if !wanted {
                 // The proxy the stream was on may be gone, and this frame asks for none.
                 return None;
@@ -865,12 +865,12 @@ impl PreviewRequest<'_> {
                 let ready = resolver.candidate(asset, purpose)?;
                 Some(HeldProxy::new(backend, ready))
             });
-            held.proxy_resolved = Some(resolved);
+            held.proxy_resolved = Some(at);
         }
         let long_edge = held.proxy.as_ref()?.ready.long_edge();
         // The resolution rule: a picture drawn larger than the proxy reads the original. A
         // stream on the proxy keeps it until its next seek.
-        let decided = if Resolver::serves(purpose, long_edge) {
+        let rule = if Resolver::serves(purpose, long_edge) {
             Rendition::Proxy
         } else {
             Rendition::Original
@@ -880,7 +880,7 @@ impl PreviewRequest<'_> {
         } else {
             Rendition::Original
         };
-        if Resolver::streaming(current, decided) == Rendition::Original {
+        if Resolver::streaming(current, rule) == Rendition::Original {
             return None;
         }
         // A paused frame, a seek or a scrub looks at the disk again: an original that went
