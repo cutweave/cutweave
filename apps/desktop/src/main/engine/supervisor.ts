@@ -175,6 +175,10 @@ interface Run {
   startingMs: number;
   /** "Still starting" was logged. */
   slowLogged: boolean;
+  /** When it was spawned, its first stdout line came and its ready line came (`now()`). */
+  spawnedAt: number;
+  firstLineAt: number | null;
+  readyLineAt: number | null;
   exited: boolean;
   errorLine: EngineErrorLine | null;
 }
@@ -466,6 +470,9 @@ export class EngineSupervisor {
       progressed: false,
       startingMs: 0,
       slowLogged: false,
+      spawnedAt: this.#now(),
+      firstLineAt: null,
+      readyLineAt: null,
       exited: false,
       errorLine: null,
     };
@@ -530,6 +537,7 @@ export class EngineSupervisor {
     }
     // Any line from a starting engine shows it is alive.
     this.#armSilence(run);
+    run.firstLineAt ??= this.#now();
     const parsed = parseEngineLine(line);
     if (parsed === null) return;
     if (parsed.event === "error") {
@@ -550,6 +558,7 @@ export class EngineSupervisor {
       return;
     }
     run.sawReady = true;
+    run.readyLineAt = this.#now();
     this.#clearStartTimers(run);
     void this.#afterReady(run, parsed.ready);
   }
@@ -620,7 +629,18 @@ export class EngineSupervisor {
       this.#lastError = recoveryError;
     }
     this.#recovery = recovery;
+    // Where a start spent its time (issue #224): loading the process (its first line), the
+    // engine's own start (to the ready line), then main's connection.
+    const since = (at: number | null) => (at === null ? "?" : `${at - run.spawnedAt} ms`);
+    this.#log(
+      `engine ready ${since(this.#now())} after its spawn ` +
+        `(first line at ${since(run.firstLineAt)}, ready line at ${since(run.readyLineAt)})`,
+    );
     this.#set("ready");
+  }
+
+  #now(): number {
+    return (this.#o.now ?? Date.now)();
   }
 
   /** Open main's connection to `run`'s engine and follow its project events. */

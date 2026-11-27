@@ -468,7 +468,14 @@ impl FullSubsystems {
             .name("cw-gpu-init".into())
             .spawn(move || {
                 let began = std::time::Instant::now();
-                let opened = match gpu::open(&choice) {
+                let opened = gpu::open(&choice).inspect_err(|reason| {
+                    tracing::warn!(
+                        reason = %reason,
+                        elapsed_ms = crate::startup::ms(began.elapsed()),
+                        "the GPU did not open"
+                    );
+                });
+                let opened = match opened {
                     Ok(opened) => Some(opened),
                     Err(reason) if gui && gpu.fail_start(&reason) => return,
                     Err(reason) => {
@@ -665,6 +672,7 @@ impl FullSubsystems {
     /// Asks the backend for its capabilities on a worker thread, so the per-process hardware
     /// probes (encoders, WP-1E.02; decoders, WP-1D.04: seconds) run before the first import,
     /// scrub or export dialog needs them (`media.capabilities` then answers from the cache).
+    /// Nothing on the way to the ready line reads them (issue #224).
     fn warm_capabilities(&self) -> Option<JoinHandle<()>> {
         let backend = Arc::clone(self.inner.config.media.as_ref()?);
         std::thread::Builder::new()

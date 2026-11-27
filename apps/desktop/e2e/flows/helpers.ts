@@ -119,6 +119,9 @@ export function removeDir(dir: string): void {
   }
 }
 
+/** How long a launch waits for "Engine connected" once the editor is up (issue #224). */
+const ENGINE_START_MS = 30_000;
+
 /**
  * Launches the built app with the real engine (`cutweave-engine-serve`), stub media probing and
  * the workspace allowed as an engine root, and waits until the editor shows "Engine connected".
@@ -160,7 +163,12 @@ export async function launchFlowApp(
     home === undefined ? {} : { home },
   );
   await editorHandle(launched.page);
-  await expect.poll(async () => (await editorState(launched.page)).connection).toBe("ready");
+  // On a machine busy starting other processes the OS alone took up to 14 s to load the engine
+  // and as long again for the run-file's `whoami` and `icacls` (issue #224); the app waits for
+  // a start that reports progress (ADR-0025), and so does the flow, up to ENGINE_START_MS.
+  await expect
+    .poll(async () => (await editorState(launched.page)).connection, { timeout: ENGINE_START_MS })
+    .toBe("ready");
   await expect(engineChip(launched.page)).toHaveText("Engine connected");
   return launched;
 }

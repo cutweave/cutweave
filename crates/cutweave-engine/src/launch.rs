@@ -29,10 +29,10 @@ use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
-use cutweave_api::Token;
 use cutweave_api::launch::{LaunchArgs, ready_line};
 use cutweave_api::mcp::McpOptions;
 use cutweave_api::rpc::RpcConfig;
+use cutweave_api::{RunFile, Token};
 use serde_json::{Value, json};
 
 use crate::config::{ApiOptions, EngineConfig, EngineMode};
@@ -372,6 +372,11 @@ pub fn run(
     if let Err(message) = args.check_deterministic_ids() {
         return fail(stdout, "usage", EXIT_USAGE, &message, Value::Null);
     }
+    // The run-file's private file first, on a spare thread: on Windows restricting it starts
+    // `whoami` and `icacls`, which take seconds on a machine busy starting other processes
+    // (issue #224), and a start without a GPU to wait for (headless, `--dev-stub-media`) has
+    // little else to hide them behind. Whatever was not used is removed at the end.
+    let run_dir = prepare_run_file(args);
     let log_config = if args.no_log {
         LogConfig::disabled()
     } else {
@@ -392,6 +397,11 @@ pub fn run(
         None
     };
     let code = run_logged(args, mode, &began, stdin, stdout);
+    if let Some(dir) = run_dir {
+        // A start that failed before the server filled it (a run that served wrote it, and
+        // this does nothing then).
+        RunFile::discard_prepared(&dir);
+    }
     if let Some(log) = log {
         if code == EXIT_OK {
             logging::remove_crash_marker(log.dir());
@@ -399,6 +409,25 @@ pub fn run(
         log.finish();
     }
     code
+}
+
+/// Starts making the run-file's private file in the run-file folder (`--run-dir`, else the
+/// default) on its own thread ([`RunFile::prepare`]); the folder, or `None` when there is none.
+fn prepare_run_file(args: &EngineArgs) -> Option<PathBuf> {
+    let dir = args.base.run_dir.clone().or_else(RunFile::default_dir)?;
+    let spawned = std::thread::Builder::new()
+        .name("cw-run-file".into())
+        .spawn({
+            let dir = dir.clone();
+            move || RunFile::prepare(&dir)
+        });
+    match spawned {
+        Ok(_) => Some(dir),
+        Err(e) => {
+            tracing::debug!(error = %e, "cannot prepare the run-file early");
+            None
+        }
+    }
 }
 
 /// The UI credential: the first stdin line, within `timeout`.
