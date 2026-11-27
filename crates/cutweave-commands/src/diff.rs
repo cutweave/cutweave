@@ -244,7 +244,7 @@ fn diff_collection(
     Ok(())
 }
 
-fn add<T: Serialize + ?Sized>(path: &DocPath, value: &T, out: &mut Ops) -> Result<(), PatchError> {
+fn add<T: Serialize>(path: &DocPath, value: &T, out: &mut Ops) -> Result<(), PatchError> {
     out.push(PatchOp::Add {
         path: path.clone(),
         value: to_json(value, path)?,
@@ -252,11 +252,7 @@ fn add<T: Serialize + ?Sized>(path: &DocPath, value: &T, out: &mut Ops) -> Resul
     Ok(())
 }
 
-fn remove<T: Serialize + ?Sized>(
-    path: &DocPath,
-    value: &T,
-    out: &mut Ops,
-) -> Result<(), PatchError> {
+fn remove<T: Serialize>(path: &DocPath, value: &T, out: &mut Ops) -> Result<(), PatchError> {
     out.push(PatchOp::Remove {
         path: path.clone(),
         old: to_json(value, path)?,
