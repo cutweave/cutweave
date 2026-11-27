@@ -157,7 +157,7 @@ pub(crate) enum Target {
 /// caller (never UI-only) and not a `view` command.
 #[must_use]
 pub fn is_core_tool(meta: &CommandMeta) -> bool {
-    meta.mcp == McpExposure::Core && meta.scope == Scope::Any && !meta.view
+    meta.mcp == McpExposure::Core && meta.scope == Scope::Any
 }
 
 fn listed(profile: Profile, meta: &CommandMeta) -> bool {

@@ -100,7 +100,7 @@ pub struct TrackAddOutput {
     name = "track.add",
     summary = "Add an empty video or audio track to a sequence",
     undoable,
-    mcp = "catalog",
+    mcp = "core",
     annotations(destructive = false, idempotent = false)
 )]
 pub struct TrackAdd {

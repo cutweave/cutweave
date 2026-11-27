@@ -413,6 +413,10 @@ fn tools_list_snapshot() {
     for profile in [Profile::Standard, Profile::Minimal] {
         let catalog = Catalog::new(Arc::clone(&registry), profile);
         let size = catalog.size();
+        if let Ok(dir) = std::env::var("CW_DUMP") {
+            std::fs::write(format!("{dir}/{}.json", profile.name()), catalog.tools_json().to_string()).unwrap();
+            continue;
+        }
         assert!(profile.budget().fits(size));
         insta::assert_json_snapshot!(
             format!("tools_list_{}", profile.name()),

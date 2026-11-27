@@ -737,6 +737,178 @@ fn get_depth_two_includes_items_in_start_order() {
     assert!(items[0]["media"].is_string());
 }
 
+/// WP-2I.01: `limit` pages the items of a depth-2 read; `next_cursor` continues it, and every
+/// item comes back exactly once, in track order then start order.
+#[test]
+fn get_pages_items_with_limit_and_cursor() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 7);
+    let all = h
+        .query("timeline.get", json!({"sequence": p.sequence, "depth": 2}))
+        .unwrap();
+    assert!(all.get("next_cursor").is_none(), "no limit: everything");
+    let ids = |out: &Value| -> Vec<Value> {
+        out["tracks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|t| {
+                t["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|i| i["id"].clone())
+            })
+            .collect()
+    };
+    let every = ids(&all);
+    assert_eq!(every.len(), 7);
+
+    let mut seen = Vec::new();
+    let mut cursor = Value::Null;
+    let mut pages = 0;
+    loop {
+        let mut args = json!({"sequence": p.sequence, "depth": 2, "limit": 3});
+        if !cursor.is_null() {
+            args["cursor"] = cursor.clone();
+        }
+        let page = h.query("timeline.get", args).unwrap();
+        let got = ids(&page);
+        assert!(got.len() <= 3);
+        assert_eq!(page["item_count"], 7, "counts describe the whole sequence");
+        assert_eq!(page["tracks"][0]["item_count"], 7);
+        seen.extend(got);
+        pages += 1;
+        match page.get("next_cursor") {
+            Some(next) => cursor = next.clone(),
+            None => break,
+        }
+        assert!(pages < 10);
+    }
+    assert_eq!(pages, 3);
+    assert_eq!(seen, every);
+}
+
+/// WP-2I.01: `range` lists only the items that overlap `[from, to)`.
+#[test]
+fn get_range_lists_the_items_that_overlap_it() {
+    let (mut h, p) = H::project();
+    // Clips of 1 s at 0, 2, 4, 6 and 8 s.
+    fill(&mut h, p, 5);
+    let starts = |args: Value| -> Vec<i64> {
+        let out = h.query("timeline.get", args).unwrap();
+        out["tracks"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["start"].as_i64().unwrap() / FLICKS)
+            .collect()
+    };
+    let seq = json!(p.sequence);
+    assert_eq!(
+        starts(json!({"sequence": seq, "depth": 2, "range": {"from": "2.5s", "to": "6s"}})),
+        [2, 4],
+        "the clip at 2 s reaches into the range; the one at 6 s starts at its end"
+    );
+    assert_eq!(
+        starts(json!({"sequence": seq, "depth": 2, "range": {"from": "6s"}})),
+        [6, 8]
+    );
+    assert_eq!(
+        starts(json!({"sequence": seq, "depth": 2, "range": {"to": "f:30"}})),
+        [0]
+    );
+    // A range and a limit together: the cursor continues inside the range.
+    let first = h
+        .query(
+            "timeline.get",
+            json!({"sequence": seq, "depth": 2, "range": {"from": "2s"}, "limit": 2}),
+        )
+        .unwrap();
+    assert_eq!(first["tracks"][0]["items"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        starts(
+            json!({"sequence": seq, "depth": 2, "range": {"from": "2s"}, "limit": 2,
+                      "cursor": first["next_cursor"]})
+        ),
+        [6, 8]
+    );
+}
+
+#[test]
+fn get_paging_params_are_validated_with_paths() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 2);
+    let seq = json!(p.sequence);
+    for (args, path) in [
+        (json!({"sequence": seq, "depth": 2, "limit": 0}), "/limit"),
+        (
+            json!({"sequence": seq, "depth": 2, "limit": 1001}),
+            "/limit",
+        ),
+        (json!({"sequence": seq, "limit": 5}), "/limit"),
+        (
+            json!({"sequence": seq, "depth": 2, "range": {"from": "4s", "to": "2s"}}),
+            "/range/to",
+        ),
+        (
+            json!({"sequence": seq, "depth": 1, "range": {"from": "4s"}}),
+            "/range",
+        ),
+        (
+            json!({"sequence": seq, "depth": 2, "limit": 1,
+                   "cursor": cutweave_model::ItemId::from_u128(77)}),
+            "/cursor",
+        ),
+    ] {
+        assert_invalid(h.query("timeline.get", args), path);
+    }
+}
+
+/// WP-2I.01: an item's own name is listed (not the media's, which `media.list` has).
+#[test]
+fn get_lists_an_items_own_name() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 2);
+    let out = h
+        .query("timeline.get", json!({"sequence": p.sequence, "depth": 2}))
+        .unwrap();
+    let first = out["tracks"][0]["items"][0].clone();
+    assert!(first.get("name").is_none(), "unnamed: no field");
+    h.run(
+        "item.set_props",
+        json!({"item": first["id"], "props": {"name": "Intro"}}),
+    )
+    .unwrap();
+    let out = h
+        .query("timeline.get", json!({"sequence": p.sequence, "depth": 2}))
+        .unwrap();
+    assert_eq!(out["tracks"][0]["items"][0]["name"], "Intro");
+}
+
+/// WP-2I.01: the default read of a 400-item sequence is an overview under 4k tokens
+/// (`ceil(bytes / 4)`, the tool-list estimate), and so is each page of 50 items.
+#[test]
+fn get_default_of_a_400_item_sequence_is_under_4k_tokens() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 400);
+    let tokens = |v: &Value| serde_json::to_vec(v).unwrap().len().div_ceil(4);
+    let overview = h
+        .query("timeline.get", json!({"sequence": p.sequence}))
+        .unwrap();
+    assert_eq!(overview["item_count"], 400);
+    assert!(tokens(&overview) < 4000, "{} tokens", tokens(&overview));
+    let page = h
+        .query(
+            "timeline.get",
+            json!({"sequence": p.sequence, "depth": 2, "limit": 50}),
+        )
+        .unwrap();
+    assert_eq!(page["tracks"][0]["items"].as_array().unwrap().len(), 50);
+    assert!(page.get("next_cursor").is_some());
+    assert!(tokens(&page) < 4000, "{} tokens", tokens(&page));
+}
+
 #[test]
 fn get_fields_limit_the_sections() {
     let (h, p) = H::project();

@@ -11,8 +11,8 @@
 
 use cutweave_commands::{CmdError, Query, QueryCtx, Registry, RegistryError, query, wire};
 use cutweave_model::{
-    Color, Duration, GroupId, Item, ItemId, MediaId, SequenceFormat, SequenceId, Time, TrackId,
-    TrackKind,
+    Color, Duration, GroupId, Item, ItemId, MediaId, Sequence, SequenceFormat, SequenceId, Time,
+    TimeInput, TrackId, TrackKind,
 };
 
 /// Length of a still image when `duration` is omitted and the project stores no still
@@ -82,11 +82,17 @@ pub enum OverlapPolicy {
 /// Deepest `depth` of `timeline.get`.
 pub const MAX_GET_DEPTH: u8 = 2;
 
+/// Largest `limit` of `timeline.get`.
+pub const MAX_GET_LIMIT: u32 = 1000;
+
 /// One item of a track (depth 2).
 #[wire]
 pub struct ItemSummary {
     /// The item.
     pub id: ItemId,
+    /// Its own name, when it has one (`item.set_props`); otherwise its media's name is shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Item kind (`clip`).
     pub kind: String,
     /// Timeline position of the first frame.
@@ -159,14 +165,30 @@ pub struct TimelineGetOutput {
     /// out).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tracks: Option<Vec<TrackSummary>>,
+    /// More items follow: pass it as `cursor` for the next page (only with `limit`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<ItemId>,
+}
+
+/// The part of the timeline whose items `timeline.get` lists: `[from, to)`.
+#[wire]
+pub struct GetRange {
+    /// Start (default 0).
+    pub from: Option<TimeInput>,
+    /// End, exclusive (default: the sequence end).
+    pub to: Option<TimeInput>,
 }
 
 /// Sections `timeline.get` can be limited to with `fields`.
 pub const GET_FIELDS: [&str; 4] = ["name", "format", "duration", "tracks"];
 
 /// Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries
-/// only, small), 2 adds every item. `fields` limits the sections returned (`name`, `format`,
-/// `duration`, `tracks`); the id and the counts are always included.
+/// only, small), 2 adds the items. `fields` limits the sections returned (`name`, `format`,
+/// `duration`, `tracks`); the id and the counts are always included and always describe the
+/// whole sequence. At depth 2, `range` lists only the items that overlap `[from, to)`, and
+/// `limit` pages them in track order, then start order: `next_cursor` is the `cursor` of the
+/// next page (absent on the last one). A long timeline is best read as the depth 1 overview,
+/// then depth 2 pages of the part that matters.
 #[query(
     name = "timeline.get",
     summary = "Get a sequence: summary (depth 0), tracks (1) or tracks with items (2)",
@@ -179,6 +201,128 @@ pub struct TimelineGet {
     pub depth: Option<u8>,
     /// Sections to include: any of `name`, `format`, `duration`, `tracks` (default all).
     pub fields: Option<Vec<String>>,
+    /// Depth 2: list only the items that overlap `{from, to}` (flicks, "2.5s" or "f:60").
+    pub range: Option<GetRange>,
+    /// Depth 2: most items to list, `1..=1000` (default: all); see `next_cursor`.
+    pub limit: Option<u32>,
+    /// Depth 2 with `limit`: the previous page's `next_cursor`.
+    pub cursor: Option<ItemId>,
+}
+
+/// The items `timeline.get` lists at depth 2: which of them, and how many.
+struct ItemPage {
+    /// `[from, to)` in flicks.
+    range: Option<(i64, i64)>,
+    limit: Option<usize>,
+    cursor: Option<ItemId>,
+}
+
+/// The listed items of each track, in track order, and the next page's cursor.
+type Picked = (Vec<Vec<ItemSummary>>, Option<ItemId>);
+
+impl ItemPage {
+    fn of(get: &TimelineGet, sequence: &Sequence, depth: u8) -> Result<ItemPage, CmdError> {
+        if depth < 2 {
+            for (given, pointer) in [
+                (get.range.is_some(), "/range"),
+                (get.limit.is_some(), "/limit"),
+                (get.cursor.is_some(), "/cursor"),
+            ] {
+                if given {
+                    return Err(CmdError::invalid(
+                        pointer,
+                        "it selects items, which only depth 2 lists",
+                    ));
+                }
+            }
+        }
+        let rate = sequence.format.frame_rate;
+        let range = match &get.range {
+            None => None,
+            Some(range) => {
+                let from = match range.from {
+                    Some(t) => crate::util::resolve_time("/range/from", t, rate)?.flicks(),
+                    None => 0,
+                };
+                let to = match range.to {
+                    Some(t) => crate::util::resolve_time("/range/to", t, rate)?.flicks(),
+                    None => i64::MAX,
+                };
+                if to <= from {
+                    return Err(CmdError::invalid(
+                        "/range/to",
+                        "the range must end after it starts",
+                    ));
+                }
+                Some((from, to))
+            }
+        };
+        let limit = match get.limit {
+            None => None,
+            Some(n) if (1..=MAX_GET_LIMIT).contains(&n) => usize::try_from(n).ok(),
+            Some(_) => {
+                return Err(CmdError::invalid(
+                    "/limit",
+                    format!("the limit must be 1..={MAX_GET_LIMIT}"),
+                ));
+            }
+        };
+        if get.cursor.is_some() && limit.is_none() {
+            return Err(CmdError::invalid(
+                "/cursor",
+                "a cursor continues a paged read: pass the same `limit` again",
+            ));
+        }
+        Ok(ItemPage {
+            range,
+            limit,
+            cursor: get.cursor,
+        })
+    }
+
+    fn overlaps(&self, item: &Item) -> bool {
+        self.range.is_none_or(|(from, to)| {
+            let start = item.start().flicks();
+            let end = start.saturating_add(item.duration().flicks());
+            start < to && end > from
+        })
+    }
+
+    fn pick(&self, sequence: &Sequence) -> Result<Picked, CmdError> {
+        // Nothing is listed up to the cursor's item: it is the last one of the previous page.
+        let mut waiting = self.cursor;
+        let mut left = self.limit.unwrap_or(usize::MAX);
+        let mut last = None;
+        let mut next_cursor = None;
+        let mut tracks = Vec::new();
+        for track in sequence.tracks_in_order() {
+            let mut items = Vec::new();
+            for item in track.items.iter().filter(|i| self.overlaps(i)) {
+                if let Some(cursor) = waiting {
+                    if item.id() == cursor {
+                        waiting = None;
+                    }
+                    continue;
+                }
+                if left == 0 {
+                    next_cursor = next_cursor.or(last);
+                    break;
+                }
+                left -= 1;
+                last = Some(item.id());
+                items.push(item_summary(item));
+            }
+            tracks.push(items);
+        }
+        if waiting.is_some() {
+            return Err(CmdError::invalid(
+                "/cursor",
+                "no listed item has this id any more (the timeline changed): read again \
+                 without a cursor",
+            ));
+        }
+        Ok((tracks, next_cursor))
+    }
 }
 
 fn count(n: usize) -> u32 {
@@ -188,6 +332,10 @@ fn count(n: usize) -> u32 {
 pub(crate) fn item_summary(item: &Item) -> ItemSummary {
     ItemSummary {
         id: item.id(),
+        name: match item {
+            Item::Clip(c) => c.name.clone(),
+            _ => None,
+        },
         kind: match item {
             Item::Clip(_) => "clip",
             _ => "other",
@@ -229,6 +377,13 @@ impl Query for TimelineGet {
                 }
             }
         }
+        let page = ItemPage::of(self, sequence, depth)?;
+        let (listed, next_cursor) = if depth >= 2 && wants("tracks") {
+            page.pick(sequence)?
+        } else {
+            (Vec::new(), None)
+        };
+        let mut listed = listed.into_iter();
         let tracks = (depth >= 1 && wants("tracks")).then(|| {
             sequence
                 .tracks_in_order()
@@ -245,7 +400,7 @@ impl Query for TimelineGet {
                     gain: t.gain,
                     item_count: count(t.items.len()),
                     end: t.items.end(),
-                    items: (depth >= 2).then(|| t.items.iter().map(item_summary).collect()),
+                    items: (depth >= 2).then(|| listed.next().unwrap_or_default()),
                 })
                 .collect()
         });
@@ -257,6 +412,7 @@ impl Query for TimelineGet {
             track_count: count(sequence.tracks.len()),
             item_count: count(sequence.tracks.values().map(|t| t.items.len()).sum()),
             tracks,
+            next_cursor,
         })
     }
 }

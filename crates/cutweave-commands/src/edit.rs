@@ -327,7 +327,7 @@ impl EngineCommand for Undo {
     summary = "Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone)",
     engine,
     undoable = false,
-    mcp = "catalog",
+    mcp = "core",
     annotations(destructive = false)
 )]
 pub struct Redo {
@@ -470,7 +470,7 @@ impl EngineCommand for SetHistoryLimit {
     summary = "Save a restore point of the committed document (cheap; optional name)",
     engine,
     undoable = false,
-    mcp = "catalog",
+    mcp = "core",
     annotations(destructive = false)
 )]
 pub struct Checkpoint {
@@ -501,7 +501,7 @@ impl EngineCommand for Checkpoint {
     summary = "Restore a checkpoint as one undoable change",
     engine,
     undoable,
-    mcp = "catalog",
+    mcp = "core",
     annotations(destructive = false, idempotent = true)
 )]
 pub struct Restore {

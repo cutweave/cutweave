@@ -183,7 +183,7 @@ pub struct ClipFreezeFrameOutput {
     name = "clip.set_speed",
     summary = "Change a clip's playback speed (0.1x to 100x, exact; linked partners follow)",
     undoable,
-    mcp = "catalog",
+    mcp = "core",
     annotations(destructive = false, idempotent = true)
 )]
 pub struct ClipSetSpeed {
