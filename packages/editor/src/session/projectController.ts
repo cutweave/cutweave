@@ -15,6 +15,7 @@ import { type ProjectStatus, RpcError } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
 import { preferences } from "../prefs/prefsStore.ts";
+import { parseFormatPreference } from "../project/newSequenceFormat.ts";
 import { activeDocument } from "../shell/windows.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
@@ -321,10 +322,14 @@ export class ProjectController {
         this.#applyStatus(closed.project);
         // Settings > Editing > Still image duration becomes the project's own (ADR-0035), and
         // Settings > Media and import > Proxies for new projects its proxy policy (ADR-0027).
+        // The format saved with "Use as defaults for new projects" (#221) becomes the format of
+        // the first sequence and of new ones; not set, the engine's own applies.
+        const format = parseFormatPreference(preferences.get("editing.sequence_format"));
         await this.#call("project.new", {
           name: target.name,
           still_duration: `${preferences.get("editing.still_duration")}s`,
           proxy_policy: preferences.get("media.proxy_policy"),
+          ...(format === null ? {} : { settings: { default_format: format } }),
         });
         const saved = (await this.#call("project.save_as", { path: target.path })) as {
           path: string;
