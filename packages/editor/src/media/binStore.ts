@@ -4,7 +4,7 @@
 // session and cleared when another project opens (`clearSearch`, called from the engine runtime).
 // Tags (WP-2F.06b) are a project's own words, so the tag filter goes with the text: it is not
 // saved and another project starts without it. The minimum rating is saved like the other filters.
-import type { FolderId, MediaKind, MediaSort } from "@cutweave/protocol";
+import type { CollectionId, FolderId, MediaKind, MediaSort } from "@cutweave/protocol";
 import { FLICKS_PER_SECOND } from "@cutweave/timeline";
 import { useStore } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
@@ -71,7 +71,7 @@ export const SORT_CHOICES: readonly Required<MediaSort>[] = [
 export const SEARCH_SCOPES = ["all", "folder"] as const;
 export type SearchScope = (typeof SEARCH_SCOPES)[number];
 
-/** How many projects keep their open folder (the oldest are forgotten). */
+/** How many projects keep their open folder or collection (the oldest are forgotten). */
 const MAX_OPEN_FOLDERS = 50;
 
 export interface BinState {
@@ -86,6 +86,14 @@ export interface BinState {
    * that no longer exists reads as the top level (`resolveOpenFolder`).
    */
   readonly openFolders: Readonly<Record<string, FolderId>>;
+  /**
+   * The collection the bin has open instead of a folder, per project (WP-2F.06c). A project has
+   * an open folder or an open collection, never both; a collection that no longer exists reads as
+   * none (`resolveOpenCollection`).
+   */
+  readonly openCollections: Readonly<Record<string, CollectionId>>;
+  /** Whether the bin's sidebar (folders and collections) is shown: editor state (ADR-0036). */
+  readonly sidebar: boolean;
 }
 
 export interface BinActions {
@@ -101,6 +109,9 @@ export interface BinActions {
   setScope(scope: SearchScope): void;
   /** Opens `folder` (`null`: the top level) for the project at `project`. */
   openFolder(project: string, folder: FolderId | null): void;
+  /** Opens `collection` for the project at `project` (it leaves the folder); `null` closes it. */
+  openCollection(project: string, collection: CollectionId | null): void;
+  setSidebar(shown: boolean): void;
   /** Drops the filters, keeps the text. */
   clearFilters(): void;
   /** Drops the text and the filters. */
@@ -147,7 +158,9 @@ const isOneOf = <T extends string>(list: readonly T[], value: unknown): value is
 /** Keeps only well-formed persisted values, so a stale or hand-edited blob cannot break the bin. */
 function sanitize(
   persisted: unknown,
-): Partial<Pick<BinState, "filters" | "sort" | "scope" | "openFolders">> {
+): Partial<
+  Pick<BinState, "filters" | "sort" | "scope" | "openFolders" | "openCollections" | "sidebar">
+> {
   if (typeof persisted !== "object" || persisted === null) return {};
   const p = persisted as Record<string, unknown>;
   const out: {
@@ -155,8 +168,18 @@ function sanitize(
     sort?: Required<MediaSort>;
     scope?: SearchScope;
     openFolders?: Record<string, FolderId>;
+    openCollections?: Record<string, CollectionId>;
+    sidebar?: boolean;
   } = {};
   if (isOneOf(SEARCH_SCOPES, p.scope)) out.scope = p.scope;
+  if (typeof p.sidebar === "boolean") out.sidebar = p.sidebar;
+  if (typeof p.openCollections === "object" && p.openCollections !== null) {
+    out.openCollections = Object.fromEntries(
+      Object.entries(p.openCollections).filter(
+        (entry): entry is [string, CollectionId] => typeof entry[1] === "string",
+      ),
+    );
+  }
   if (typeof p.openFolders === "object" && p.openFolders !== null) {
     out.openFolders = Object.fromEntries(
       Object.entries(p.openFolders).filter(
@@ -212,6 +235,8 @@ export const initialBinState: BinState = {
   sort: DEFAULT_BIN_SORT,
   scope: "all",
   openFolders: {},
+  openCollections: {},
+  sidebar: false,
 };
 
 /** Builds a bin store; pass `storage` to persist the filters and the sort (the app uses localStorage). */
@@ -253,11 +278,28 @@ export function createBinStore(storage?: StateStorage) {
         openFolder: (project, folder) =>
           set((s) => {
             const { [project]: _gone, ...rest } = s.openFolders;
-            if (folder === null) return { openFolders: rest };
+            // A folder (or the top level) is the place now: the collection closes.
+            const { [project]: _closed, ...openCollections } = s.openCollections;
+            if (folder === null) return { openFolders: rest, openCollections };
             // Newest last; the oldest projects fall off.
             const kept = Object.entries(rest).slice(-(MAX_OPEN_FOLDERS - 1));
-            return { openFolders: { ...Object.fromEntries(kept), [project]: folder } };
+            return {
+              openFolders: { ...Object.fromEntries(kept), [project]: folder },
+              openCollections,
+            };
           }),
+        openCollection: (project, collection) =>
+          set((s) => {
+            const { [project]: _gone, ...rest } = s.openCollections;
+            if (collection === null) return { openCollections: rest };
+            const { [project]: _left, ...openFolders } = s.openFolders;
+            const kept = Object.entries(rest).slice(-(MAX_OPEN_FOLDERS - 1));
+            return {
+              openCollections: { ...Object.fromEntries(kept), [project]: collection },
+              openFolders,
+            };
+          }),
+        setSidebar: (sidebar) => set(() => ({ sidebar })),
         clearFilters: () => set(() => ({ filters: NO_FILTERS })),
         clearAll: () => set(() => ({ text: "", filters: NO_FILTERS })),
         clearSearch: () => set((s) => ({ text: "", filters: { ...s.filters, tags: [] } })),
@@ -271,6 +313,8 @@ export function createBinStore(storage?: StateStorage) {
           sort: s.sort,
           scope: s.scope,
           openFolders: s.openFolders,
+          openCollections: s.openCollections,
+          sidebar: s.sidebar,
         }),
         merge: (persisted, current) => ({ ...current, ...sanitize(persisted) }),
       },

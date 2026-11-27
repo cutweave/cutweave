@@ -10,6 +10,7 @@ import { binStore } from "./binStore.ts";
 import { computeBinView } from "./binView.ts";
 import { currentOpenFolder, folderUiStore, openFolder } from "./folderUi.ts";
 import { binDeps } from "./requestDelete.ts";
+import { currentOpenCollection } from "./sidebar.ts";
 
 /**
  * Creates a folder in `parent` (`null`: the top level) and starts renaming it where it shows. A
@@ -20,7 +21,8 @@ export async function newFolder(parent: FolderId | null): Promise<FolderId | nul
   binStore.getState().clearAll();
   const id = await createFolder(binDeps(), parent);
   if (id === null) return null;
-  if (parent !== currentOpenFolder()) openFolder(parent);
+  // An open collection shows no folders: the new one's parent opens in its place.
+  if (currentOpenCollection() !== null || parent !== currentOpenFolder()) openFolder(parent);
   viewStore.getState().setSelection([]);
   const tile = { kind: "folder", id } as const;
   folderUiStore.getState().setFolders([id], tile);
@@ -35,6 +37,7 @@ export function selectAllInBin(): void {
     docStore.getState().project,
     { text: bin.text, filters: bin.filters, sort: bin.sort, scope: bin.scope },
     currentOpenFolder(),
+    currentOpenCollection(),
   );
   folderUiStore.getState().setFolders(
     view.folders.map((f) => f.id),
