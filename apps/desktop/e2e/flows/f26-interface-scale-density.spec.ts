@@ -9,10 +9,9 @@
 // by 100 CSS px moves it by the same time as at 100%, and the preview canvas's backing store is
 // its CSS size × the device pixel ratio.
 //
-// At another interface scale Playwright still places its pointer in the window's own points, so
-// a click by element would land beside it: `hand` asks the page where an element is and converts
-// (it measures the conversion once per scale by moving the mouse and reading where the page saw
-// it). The keyboard and the OS's reduced-motion setting (`emulateMedia`) need no conversion.
+// Real clicks, drags and keys at every scale: the pointer's positions are the page's CSS pixels,
+// as a person's are. The system's reduced-motion setting is the driver's stand-in for the OS's
+// (`emulateMedia`).
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -22,24 +21,23 @@ import {
   clipAt,
   clipBox,
   createProject,
+  drag,
   dropCard,
   editorCaughtUp,
   hasRealEngine,
   importWithButton,
+  laneY,
   launchFlowApp,
   layout,
   profileDir,
   removeDir,
   shortcut,
   snapshot,
+  type TimelineGeometry,
+  timelineCanvas,
   timelineGeometry,
   workspace,
 } from "./helpers.ts";
-
-declare global {
-  /** Where the page last saw the mouse, in its own CSS pixels (set by `hand`). */
-  var __cutweaveFlowMouse: { x: number; y: number } | undefined;
-}
 
 type Scale = 90 | 100 | 110 | 125 | 150;
 
@@ -70,56 +68,9 @@ const token = (page: Page, name: string) =>
     name,
   );
 
-/**
- * A hand on the mouse at the window's current interface scale: `click`, `rightClick` and `drag`
- * take positions in the page's CSS pixels.
- */
-async function hand(page: Page) {
-  await page.evaluate(() => {
-    globalThis.__cutweaveFlowMouse = undefined;
-    window.addEventListener(
-      "mousemove",
-      (event) => {
-        globalThis.__cutweaveFlowMouse = { x: event.clientX, y: event.clientY };
-      },
-      { capture: true, passive: true },
-    );
-  });
-  // Over the preview's stage: nothing there reacts to a pointer passing by.
-  const probe = { x: 400, y: 200 };
-  await page.mouse.move(probe.x - 20, probe.y - 20);
-  await page.mouse.move(probe.x, probe.y);
-  await expect
-    .poll(() => page.evaluate(() => globalThis.__cutweaveFlowMouse?.x))
-    .toBeGreaterThan(0);
-  const seen = await page.evaluate(() => globalThis.__cutweaveFlowMouse ?? { x: 0, y: 0 });
-  /** Pointer units per CSS pixel. */
-  const k = probe.x / seen.x;
-  const at = (x: number, y: number) => ({ x: x * k, y: y * k });
-  const centre = async (target: Locator) => {
-    await target.scrollIntoViewIfNeeded();
-    const box = await cssBox(target);
-    return at(box.x + box.width / 2, box.y + box.height / 2);
-  };
-  return {
-    /** Pointer units per CSS pixel: 1 at 100%, the zoom factor at another scale. */
-    k,
-    async click(target: Locator, button: "left" | "right" = "left"): Promise<void> {
-      await expect(target).toBeVisible();
-      const p = await centre(target);
-      await page.mouse.click(p.x, p.y, { button });
-    },
-    /** A drag with the left button between two points given in CSS pixels, in small steps. */
-    async drag(from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
-      const a = at(from.x, from.y);
-      const b = at(to.x, to.y);
-      await page.mouse.move(a.x, a.y);
-      await page.mouse.down();
-      await page.mouse.move(a.x + Math.sign(b.x - a.x) * 4, a.y, { steps: 2 });
-      await page.mouse.move(b.x, b.y, { steps: 12 });
-      await page.mouse.up();
-    },
-  };
+/** Where the timeline draws things, with the canvas's box in the page's CSS pixels. */
+async function geometry(page: Page): Promise<TimelineGeometry> {
+  return { ...(await timelineGeometry(page)), box: await cssBox(timelineCanvas(page)) };
 }
 
 /** Settings, opened with Ctrl+, on its Appearance page. */
@@ -128,7 +79,7 @@ async function openAppearance(app: ElectronApplication, page: Page): Promise<Loc
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings).toBeVisible();
   const tab = settings.getByRole("tab", { name: "Appearance" });
-  await (await hand(page)).click(tab);
+  await tab.click();
   await expect(settings.getByRole("heading", { name: "Appearance", level: 3 })).toBeVisible();
   return settings;
 }
@@ -137,24 +88,24 @@ const choice = (settings: Locator, group: string, name: string): Locator =>
   settings.getByRole("radiogroup", { name: group }).getByRole("radio", { name, exact: true });
 
 /** Picks a choice of a row of the open Settings dialog and waits until it is the chosen one. */
-async function choose(page: Page, settings: Locator, group: string, name: string): Promise<void> {
+async function choose(settings: Locator, group: string, name: string): Promise<void> {
   const radio = choice(settings, group, name);
-  await (await hand(page)).click(radio);
+  await radio.click();
   await expect(radio).toHaveAttribute("aria-checked", "true");
 }
 
-/** Closes Settings with Done, at any scale. */
-async function done(page: Page, settings: Locator): Promise<void> {
-  await (await hand(page)).click(settings.getByRole("button", { name: "Done" }));
+/** Closes Settings with Done. */
+async function done(settings: Locator): Promise<void> {
+  await settings.getByRole("button", { name: "Done" }).click();
   await expect(settings).toBeHidden();
 }
 
 /** Settings > Appearance > Interface scale, then Done: resolves once the window has the zoom. */
 async function setScale(app: ElectronApplication, page: Page, scale: Scale): Promise<void> {
   const settings = await openAppearance(app, page);
-  await choose(page, settings, "Interface scale", `${scale}%`);
+  await choose(settings, "Interface scale", `${scale}%`);
   await expect.poll(() => zoomFactor(app)).toBeCloseTo(scale / 100, 3);
-  await done(page, settings);
+  await done(settings);
 }
 
 /** axe's findings for the open Settings dialog, as `rule: first node`. */
@@ -222,17 +173,17 @@ test.describe("F26 interface scale and density", () => {
       );
       expect(await settingsViolations(page)).toEqual([]);
       const doneButton = settings.getByRole("button", { name: "Done" });
-      expect((await cssBox(doneButton)).height).toBe(await token(page, "--control-md"));
+      expect(await token(page, "--control-lg")).toBe(32);
+      expect((await cssBox(doneButton)).height).toBe(32);
       await snapshot(page, info, "appearance standard 100");
 
       // 125%: at once, with Settings still open. The page has fewer CSS pixels, each one more
       // device pixels, so everything is a quarter larger on screen.
-      await choose(page, settings, "Interface scale", "125%");
+      await choose(settings, "Interface scale", "125%");
       await expect.poll(() => zoomFactor(app)).toBeCloseTo(1.25, 3);
       await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBeCloseTo(dpr * 1.25, 2);
       await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThan(width / 1.25 - 2);
       expect(await page.evaluate(() => innerWidth)).toBeLessThan(width / 1.25 + 2);
-      expect((await hand(page)).k).toBeCloseTo(1.25, 2);
       // The OS window controls stay as tall as the top bar (Windows and Linux draw them).
       const overlay = () =>
         page.evaluate(() => {
@@ -249,27 +200,40 @@ test.describe("F26 interface scale and density", () => {
       await snapshot(page, info, "appearance standard 125");
 
       // Comfortable: at once too. The top bar and the controls are taller, the text is not.
-      await choose(page, settings, "Density", "Comfortable");
+      await choose(settings, "Density", "Comfortable");
       await expect.poll(() => rootAttribute(page, "data-density")).toBe("comfortable");
       await expect.poll(async () => (await cssBox(topBar)).height).toBe(44);
-      expect(await token(page, "--control-md")).toBe(32);
-      expect((await cssBox(doneButton)).height).toBe(32);
+      expect(await token(page, "--control-lg")).toBe(36);
+      expect((await cssBox(doneButton)).height).toBe(36);
       expect(await token(page, "--track-md")).toBe(56);
       if ((await overlay()) !== null) {
         await expect.poll(async () => Math.abs(((await overlay()) ?? 0) - 44)).toBeLessThan(1);
       }
       expect(await settingsViolations(page)).toEqual([]);
       await snapshot(page, info, "appearance comfortable 125");
-      await done(page, settings);
+      await done(settings);
+      // The timeline's lanes are taller, and each track's lock, mute and hide buttons are still
+      // in the middle of its header.
+      const lanes = await geometry(page);
+      expect(lanes.laneHeight).toBe(56 + 2 * 4);
+      expect(lanes.rulerHeight).toBe(32);
+      for (const track of lanes.tracks) {
+        const toggles = page.locator(`.cw-timeline__toggles[data-track="${track.id}"]`);
+        await expect
+          .poll(async () => {
+            const box = await cssBox(toggles);
+            return Math.abs(box.y + box.height / 2 - laneY(lanes, track.name));
+          })
+          .toBeLessThanOrEqual(1);
+      }
       await snapshot(page, info, "editor comfortable 125");
 
       // A detached panel's window (F47) has the same scale and density.
       const opened = app.waitForEvent("window");
-      const pointer = await hand(page);
-      await pointer.click(page.getByRole("tab", { name: "Inspector", exact: true }), "right");
+      await page.getByRole("tab", { name: "Inspector", exact: true }).click({ button: "right" });
       const menu = page.getByRole("menu", { name: "Panel actions for Inspector" });
       await expect(menu).toBeVisible();
-      await pointer.click(menu.getByRole("menuitem", { name: /^Move to new window/ }));
+      await menu.getByRole("menuitem", { name: /^Move to new window/ }).click();
       const popout = await opened;
       await popout.waitForLoadState("domcontentloaded");
       await expect(popout.getByRole("region", { name: "Inspector", exact: true })).toBeVisible();
@@ -318,9 +282,9 @@ test.describe("F26 interface scale and density", () => {
         expect(await openingAnimation(settings)).toBe("cw-fade-in");
 
         // Reduce motion On: dialogs open with no transition, and nothing else animates either.
-        await choose(page2, settings, "Reduce motion", "On");
+        await choose(settings, "Reduce motion", "On");
         await expect.poll(() => rootAttribute(page2, "data-motion")).toBe("reduce");
-        await done(page2, settings);
+        await done(settings);
         settings = await openAppearance(second.app, page2);
         expect(await openingAnimation(settings)).toBe("none");
         expect(await settings.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
@@ -332,17 +296,17 @@ test.describe("F26 interface scale and density", () => {
 
         // The system asks to reduce motion: Off keeps it, and Match system follows the system.
         await page2.emulateMedia({ reducedMotion: "reduce" });
-        await choose(page2, settings, "Reduce motion", "Off");
+        await choose(settings, "Reduce motion", "Off");
         await expect.poll(() => rootAttribute(page2, "data-motion")).toBe("full");
-        await done(page2, settings);
+        await done(settings);
         settings = await openAppearance(second.app, page2);
         expect(await openingAnimation(settings)).toBe("cw-fade-in");
-        await choose(page2, settings, "Reduce motion", "Match system");
+        await choose(settings, "Reduce motion", "Match system");
         await expect.poll(() => rootAttribute(page2, "data-motion")).toBeNull();
-        await done(page2, settings);
+        await done(settings);
         settings = await openAppearance(second.app, page2);
         expect(await openingAnimation(settings)).toBe("none");
-        await done(page2, settings);
+        await done(settings);
       } finally {
         await second.close();
       }
@@ -416,15 +380,13 @@ test.describe("F26 interface scale and density", () => {
           .toBe("sharp");
 
         // The clip, where the page draws it (CSS pixels), dragged 100 CSS px to the right.
-        const g = await timelineGeometry(page);
+        const g = await geometry(page);
         const clip = clipBox(g, clipAt(g, "V1", 2).id);
-        const pointer = await hand(page);
-        expect(pointer.k).toBeCloseTo(scale / 100, 2);
-        // On a 20 px grid, so the pointer is on a whole point at 90% and at 125% too and the
-        // three drags are the same drag.
+        // On a 20 px grid, so the pointer is on a whole screen point at 90% and at 125% too and
+        // the three drags are the same drag.
         const grid = (value: number) => Math.round(value / 20) * 20;
         const from = { x: grid(clip.x + 40), y: grid(clip.y) };
-        await pointer.drag(from, { x: from.x + 100, y: from.y });
+        await drag(page, from, { x: from.x + 100, y: from.y });
         await expect.poll(async () => (await layout(page))[0]?.clips[0]?.[0]).not.toBe(2);
         await editorCaughtUp(page);
         const start = (await layout(page))[0]?.clips[0]?.[0] ?? Number.NaN;
@@ -440,7 +402,7 @@ test.describe("F26 interface scale and density", () => {
       const px100 = await moved(100);
       const px90 = await moved(90);
       const px125 = await moved(125);
-      const zoom = (await timelineGeometry(page)).pxPerSec;
+      const zoom = (await geometry(page)).pxPerSec;
       const frame = zoom / 30;
       expect(Math.abs(px100 - 100)).toBeLessThanOrEqual(frame);
       expect(px90).toBeCloseTo(px100, 6);
