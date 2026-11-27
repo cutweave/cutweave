@@ -38,6 +38,11 @@
 //! hardware encoder fails during the export), `off` (software) or `{"force": "<implementation>"}`,
 //! which must name one of the machine's `Capabilities::hw_encode` entries for the plan's codec
 //! (`Invalid` at `/hw/force` otherwise) and never falls back.
+//!
+//! **Offline media** (WP-2F.03c): a request that would play media whose file is gone is refused
+//! (`cutweave_ops::export::offline`; [`ExportSources::offline`] is the disk) unless it says
+//! `allow_offline`; an export without it that finds a file gone when its turn comes fails with
+//! the same list. With it, such clips export as the "media offline" slate and silence.
 
 pub mod disk;
 pub mod pipeline;
@@ -63,6 +68,7 @@ pub use pipeline::{
 };
 pub use sources::{
     DecoderFrameSource, DecoderPcmFactory, DecoderSources, ExportSources, FORWARD_DECODE_LIMIT,
+    media_offline,
 };
 
 use crate::Subsystems;
@@ -284,6 +290,13 @@ impl ExportStarter for Starter {
 
     fn free_space(&self, folder: &Path) -> Option<u64> {
         (self.free_space)(folder)
+    }
+
+    fn media_offline(&self, asset: &cutweave_model::MediaAsset) -> bool {
+        // Without export services nothing is refused here: `start` says what is missing.
+        self.subsystems
+            .export_services()
+            .is_some_and(|services| services.sources.offline(asset))
     }
 
     fn queue(&mut self) -> Result<ExportJobs, CmdError> {

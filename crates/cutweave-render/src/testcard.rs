@@ -379,10 +379,7 @@ impl SyntheticSource {
 impl FrameSource for SyntheticSource {
     fn frame(&self, request: &FrameRequest) -> Result<Arc<VideoFrame>, FrameError> {
         if self.offline.contains(&request.media) {
-            return Err(FrameError::Offline(format!(
-                "no file for {}",
-                request.media
-            )));
+            return Err(FrameError::Offline(request.media));
         }
         let proxy = request
             .proxy

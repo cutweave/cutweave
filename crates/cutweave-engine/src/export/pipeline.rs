@@ -64,6 +64,7 @@ use cutweave_media::{
     VideoAdvanced, VideoEncodeSpec, VideoFrame, encode_with_fallback,
 };
 use cutweave_model::{ColorTags, Project, Rounding, SampleRate, SequenceId, Time};
+use cutweave_ops::export::offline::{describe as describe_offline, offline_media};
 use cutweave_ops::export::presets::{AudioCodec, PlanRate, VideoCodec};
 use cutweave_ops::export::{ExportHw, ExportPlan, ExportQuality};
 use cutweave_render::graph::{GraphOptions, RenderGraph, build};
@@ -252,7 +253,8 @@ pub struct ExportSummary {
     /// The hardware encoder that failed during the export, after which it was encoded again
     /// in software.
     pub failed_encoder: Option<String>,
-    /// Frames on which some layer's media was unavailable (drawn without it).
+    /// Frames on which some layer's media was offline (drawn as the "media offline" slate) or
+    /// could not be read (drawn without it).
     pub frames_missing_media: u32,
     /// Audio clips whose source failed (silent in the mix).
     pub audio_source_errors: u64,
@@ -279,7 +281,8 @@ impl ExportSummary {
         if self.frames_missing_media > 0 {
             let _ = write!(
                 msg,
-                "; {} frames were drawn without unavailable media",
+                "; {} frames have offline or unreadable media (offline clips show the \"media \
+                 offline\" slate)",
                 self.frames_missing_media
             );
         }
@@ -913,6 +916,25 @@ pub fn run_export(
              with overwrite: true)",
             plan.path.display()
         )));
+    }
+    if !plan.allow_offline {
+        // The request was checked when it was queued; a file can go missing while it waits.
+        let doc = &plan.snapshot.doc;
+        let missing = doc
+            .sequences
+            .get(&plan.sequence)
+            .map_or_else(Vec::new, |seq| {
+                offline_media(doc, seq, &[(plan.start, plan.end)], &|asset| {
+                    services.sources.offline(asset)
+                })
+            });
+        if !missing.is_empty() {
+            return Err(failed(format!(
+                "{}; relink them and export again, or export with allow_offline: true to get a \
+                 \"media offline\" slate in their place",
+                describe_offline(&missing)
+            )));
+        }
     }
     let written = Arc::new(AtomicI64::new(0));
     let bytes = Arc::new(AtomicU64::new(0));

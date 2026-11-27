@@ -16,14 +16,14 @@
 //! relink after the export started does not change it. Planes move from the decoder's frame
 //! into the compositor's without a copy (same layout, see `cutweave_media::frame`).
 
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_audio::{PcmFormat, PcmSource, SourceError, SourceFactory, SourceRequest};
 use cutweave_media::{AudioDecoder, DecodeOpts, HwMode, MediaBackend, MediaError, VideoDecoder};
-use cutweave_model::{FLICKS_PER_SECOND, MediaId, Project, Time};
+use cutweave_model::{FLICKS_PER_SECOND, MediaAsset, MediaId, Project, Time};
 use cutweave_render::{FrameError, FrameId, FrameRequest, FrameSource, VideoFrame};
 
 /// A source time further ahead of the frame shown last than this many flicks (2 s) is reached
@@ -39,6 +39,12 @@ pub trait ExportSources: Send + Sync {
 
     /// The audio sources for mixing `doc` down.
     fn audio(&self, doc: &Project) -> Arc<dyn SourceFactory>;
+
+    /// Whether the file of `asset` is not on this computer, so its clips export as the "media
+    /// offline" slate and silence (WP-2F.03c). Sources that cannot tell say `false`.
+    fn offline(&self, _asset: &MediaAsset) -> bool {
+        false
+    }
 }
 
 /// [`ExportSources`] over a [`MediaBackend`]'s decoders (see the module docs).
@@ -68,6 +74,10 @@ impl ExportSources for DecoderSources {
 
     fn audio(&self, doc: &Project) -> Arc<dyn SourceFactory> {
         Arc::new(DecoderPcmFactory::new(Arc::clone(&self.backend), doc))
+    }
+
+    fn offline(&self, asset: &MediaAsset) -> bool {
+        media_offline(&*self.backend, asset)
     }
 }
 
@@ -229,6 +239,9 @@ pub struct DecoderFrameSource {
     backend: Arc<dyn MediaBackend>,
     assets: HashMap<MediaId, Asset>,
     streams: Mutex<HashMap<MediaId, Stream>>,
+    /// Media whose file was not there when the export first asked for it: offline for the
+    /// whole export (one picture per clip, whatever happens on the disk meanwhile).
+    offline: Mutex<HashSet<MediaId>>,
 }
 
 impl std::fmt::Debug for DecoderFrameSource {
@@ -239,8 +252,37 @@ impl std::fmt::Debug for DecoderFrameSource {
     }
 }
 
+/// The compositor's error for a media-layer failure on `media`: [`FrameError::Offline`] when
+/// its file is not there (the layer then shows the "media offline" slate, WP-2F.03c), else
+/// [`FrameError::Unavailable`] (the layer is left out).
+pub(crate) fn frame_error(media: MediaId, e: &MediaError) -> FrameError {
+    match e {
+        MediaError::NotFound { .. } => FrameError::Offline(media),
+        _ => FrameError::Unavailable(format!("media {media}: {e}")),
+    }
+}
+
 fn unavailable(media: MediaId, e: &MediaError) -> FrameError {
-    FrameError::Unavailable(format!("media {media}: {e}"))
+    frame_error(media, e)
+}
+
+/// Whether the file of `asset` is not on this computer, as `backend` sees it: a file the disk
+/// has is there without asking the backend; otherwise the backend's probe says whether it can
+/// find it ([`MediaError::NotFound`]). An image sequence is asked for by its first picture,
+/// then by its locator. Media without a file is never offline.
+#[must_use]
+pub fn media_offline(backend: &dyn MediaBackend, asset: &MediaAsset) -> bool {
+    let Some(first) = asset.path_abs.as_deref() else {
+        return false;
+    };
+    if std::path::Path::new(first).is_file() {
+        return false;
+    }
+    let path = asset.source_path().unwrap_or_else(|| first.to_owned());
+    matches!(
+        backend.probe(std::path::Path::new(&path)),
+        Err(MediaError::NotFound { .. })
+    )
 }
 
 impl DecoderFrameSource {
@@ -251,6 +293,7 @@ impl DecoderFrameSource {
             backend,
             assets: assets(doc),
             streams: Mutex::new(HashMap::new()),
+            offline: Mutex::new(HashSet::new()),
         }
     }
 
@@ -329,6 +372,10 @@ impl FrameSource for DecoderFrameSource {
         } else {
             request.source_time
         };
+        let mut offline = self.offline.lock().unwrap_or_else(PoisonError::into_inner);
+        if offline.contains(&request.media) {
+            return Err(FrameError::Offline(request.media));
+        }
         let mut streams = self.streams.lock().unwrap_or_else(PoisonError::into_inner);
         let stream = match streams.entry(request.media) {
             Entry::Occupied(e) => e.into_mut(),
@@ -338,7 +385,13 @@ impl FrameSource for DecoderFrameSource {
                 let decoder = self
                     .backend
                     .open_decoder(&asset.path, &export_decode_opts(asset.target))
-                    .map_err(|err| unavailable(request.media, &err))?;
+                    .map_err(|err| {
+                        let error = unavailable(request.media, &err);
+                        if matches!(error, FrameError::Offline(_)) {
+                            offline.insert(request.media);
+                        }
+                        error
+                    })?;
                 e.insert(Stream {
                     decoder,
                     current: None,
