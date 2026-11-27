@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
 import { comboText, strokesOf } from "../keymap/store.ts";
 import { TIMELINE_COMMANDS } from "../keymap/timeline.ts";
+import { usePref } from "../prefs/prefsStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import type { TimelineHost, TimelineUi } from "./host.ts";
 
@@ -76,6 +77,9 @@ export const TimelineToolbar = memo(function TimelineToolbar({
 }): ReactElement {
   const { t } = useTranslation();
   const snapping = useViewStore((s) => s.snapping);
+  // The tooltips name each action's keys: a rebinding in Settings shows at once.
+  usePref("shortcuts.preset");
+  usePref("shortcuts.bindings");
   const off = !live;
   return (
     <Toolbar aria-label={t("timeline.toolbarLabel")} className="cw-timeline__tools">
