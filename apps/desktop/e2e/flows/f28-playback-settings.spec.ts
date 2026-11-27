@@ -222,13 +222,13 @@ test.describe("F28 playback preferences", () => {
         await expect(quality(page, "Quarter")).toBeVisible({ timeout: 20_000 });
         await press(page, "Space");
         await expect(playButton(page)).toBeVisible();
+        await expect(proxyButton(page)).toHaveAttribute("aria-pressed", "true");
         settings = await openSettingsPage(page, app, "Playback");
         await expect(
           playingQuality(settings).getByRole("radio", { name: "Quarter" }),
         ).toBeChecked();
 
         // Proxies: the setting and the transport bar's toggle are one value.
-        await expect(proxyButton(page)).toHaveAttribute("aria-pressed", "true");
         await settings.getByRole("switch", { name: PROXIES }).click();
         await expect(settings.getByRole("switch", { name: PROXIES })).not.toBeChecked();
         await closeSettings(settings);
