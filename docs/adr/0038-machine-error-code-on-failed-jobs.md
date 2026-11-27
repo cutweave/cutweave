@@ -1,6 +1,6 @@
 # ADR-0038: A failed job carries a machine error code beside its message
 
-- **Status:** Proposed (drafted by WP-2G.04b; not built)
+- **Status:** Accepted (product owner, 2026-11-27); built under issue #226
 - **Date:** 2026-11-27
 - **Deciders:** product owner (issue #202)
 - **Supersedes:** none
@@ -18,7 +18,9 @@ Adding a field to `JobInfo` and `ExportQueueJob` changes the command schemas and
 2. Prefix the message with a code (`DiskFull: …`): no schema change, but every reader has to parse text, and the existing messages would change under agents that read them.
 3. Leave it: the row shows only the message.
 
-## Decision (proposed)
+## Decision
+
+Accepted by the product owner on 2026-11-27 as drafted: an optional `error_code` on `JobInfo` and `ExportQueueJob`, the export codes below, stored with the queued job and shown on the queue row.
 
 A failed job carries `error_code: string | null` next to `error`, on `JobInfo` (so `job.status`, `job.list`, `job.wait` and the `job.progress` event) and on `ExportQueueJob` (`export.queue` and the queue commands). It is optional and absent on old data, so no schema version changes.
 
@@ -31,4 +33,4 @@ A failed job carries `error_code: string | null` next to `error`, on `JobInfo` (
 
 - An implementation work package follows: `cutweave-jobs` (the error type and `JobInfo`), the export pipeline's failure sites, the queue store's column, the generated schema and TS types, the queue row and its tests, and the F65 flow's failed row.
 - Other job kinds (analysis, proxy, collect, archive) report `failed` until their own work packages name codes.
-- Until this is accepted and built, a failed export row shows the engine's message only.
+- Until #226 is built, a failed export row shows the engine's message only.

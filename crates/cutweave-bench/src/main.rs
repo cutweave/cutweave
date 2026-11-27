@@ -7,6 +7,8 @@
 //!                               the engine suite without criterion: table and result JSON
 //! cutweave-bench engine [...]   an engine process (the launch protocol), which the start and
 //!                               memory probes measure
+//! cutweave-bench crash [...]    the crash-injection harness (WP-2J.05): kill the engine during
+//!                               seeded work, restart it, check that nothing is lost
 //! ```
 //!
 //! WP-2J.03 adds `playback`, `scrub`, `sync` and `export`.
@@ -17,11 +19,14 @@ use std::process::ExitCode;
 use cutweave_bench::probes::{Scale, Workspace, run_all};
 use cutweave_bench::{BenchError, cli, workspace_root};
 
-const USAGE: &str = "usage: cutweave-bench <gen|run|engine> [options]
+const USAGE: &str = "usage: cutweave-bench <gen|run|engine|crash> [options]
   gen [...]     write fixture projects (`gen --help`)
   run [--smoke] [--with-media] [--out FILE]
                 run the engine suite once and write the result JSON
-  engine [...]  run an engine process (docs/reference/launch-protocol.md)";
+  engine [...]  run an engine process (docs/reference/launch-protocol.md)
+  crash [--count N] [--seed S] [...]
+                kill the engine N times during editing work and check its recovery
+                (`crash --help`)";
 
 fn run(args: &[String]) -> Result<bool, BenchError> {
     let (mut scale, mut with_media, mut out) = (Scale::full(), false, None);
@@ -68,6 +73,17 @@ fn main() -> ExitCode {
             true
         }),
         Some("run") => run(&args[1..]),
+        Some("crash") if args.iter().any(|a| a == "--help") => {
+            println!("{}", cutweave_bench::crash::USAGE);
+            Ok(true)
+        }
+        Some("crash") => std::env::current_exe()
+            .map_err(|e| BenchError::Other(e.to_string()))
+            .and_then(|exe| cutweave_bench::crash::command(&workspace_root(), &exe, &args[1..]))
+            .map(|(report, passed)| {
+                print!("{report}");
+                passed
+            }),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);

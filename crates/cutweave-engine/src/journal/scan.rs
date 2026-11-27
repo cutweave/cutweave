@@ -6,8 +6,11 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use cutweave_commands::{CheckpointLedger, DedupRecord, JournaledCommit, Rev, TxId, WallTime};
-use cutweave_model::Project;
+use cutweave_commands::{
+    CheckpointLedger, DedupRecord, JournaledCommit, Patch, PatchOp, Rev, TxId, WallTime,
+};
+use cutweave_model::{MediaId, Project};
+use serde_json::Value;
 
 use super::{
     format::{Decoded, Entry, SegmentHeader, StopReason, decode_segment},
@@ -221,6 +224,56 @@ pub(crate) struct Replayed {
     pub resume: ResumePoint,
 }
 
+/// `doc` with the `path_rel`s the session that wrote `patch` had; `None`: they are the same.
+///
+/// A save writes every asset's `path_rel` (its path relative to the project folder) into the
+/// file ([`ProjectStore::persisted_form`](crate::project_io::ProjectStore::persisted_form)),
+/// but the open document keeps its own: nothing, for a file imported in that session. A
+/// transaction after the save that carries an asset (removing it, undoing its import) or its
+/// `path_rel` as an old value was therefore made on a document that differs from the one on
+/// disk in that field, and replay would stop at it and drop every transaction after it
+/// (issue #236). `path_rel` is derived (the next save computes it again), so before such a
+/// patch is applied the asset is given the value the session had: the one in the patch's
+/// first old value for it. Any other difference still stops the replay.
+fn with_session_path_rel(doc: &Project, patch: &Patch) -> Option<Project> {
+    let mut out: Option<Project> = None;
+    let mut seen: Vec<MediaId> = Vec::new();
+    for op in &patch.0 {
+        let (PatchOp::Remove { path, old } | PatchOp::Replace { path, old, .. }) = op else {
+            continue;
+        };
+        let mut segments = path.segments();
+        if segments.next().as_deref() != Some("media") {
+            continue;
+        }
+        let Some(id) = segments.next().and_then(|s| s.parse::<MediaId>().ok()) else {
+            continue;
+        };
+        let was = match (segments.next().as_deref(), segments.next()) {
+            (None, _) => old.get("path_rel"),
+            (Some("path_rel"), None) => Some(old),
+            _ => None,
+        };
+        let was = match was {
+            Some(Value::Null) => None,
+            Some(Value::String(rel)) => Some(rel.clone()),
+            _ => continue,
+        };
+        if seen.contains(&id) {
+            continue;
+        }
+        seen.push(id);
+        let now = out.as_ref().unwrap_or(doc).media.get(&id);
+        if now.is_some_and(|asset| asset.path_rel != was) {
+            let doc = out.get_or_insert_with(|| doc.clone());
+            if let Some(asset) = doc.media.get_mut(&id) {
+                asset.path_rel = was;
+            }
+        }
+    }
+    out
+}
+
 /// Replays the chain of `scan` onto `base` (the saved document): every transaction in commit
 /// order, validated (checksum and decoding happened in the scan; here: revision continuity and
 /// the patch's preimages against the document), stopping at the first record that fails.
@@ -356,7 +409,8 @@ fn replay_inner(scan: &DirScan, base: &Project, apply: bool, check_each: bool) -
                         }));
                         break 'segments;
                     }
-                    let next = match c.patch.apply(&out.project) {
+                    let session = with_session_path_rel(&out.project, &c.patch);
+                    let next = match c.patch.apply(session.as_ref().unwrap_or(&out.project)) {
                         Ok(doc) => doc,
                         Err(e) => {
                             out.report.stopped =
