@@ -99,16 +99,19 @@ impl ProjectSettings {
 )]
 pub struct ProjectSettings {
     /// Format of new sequences.
+    #[schemars(extend("x-ui" = { "group": "New sequences", "order": 0 }))]
     pub default_format: SequenceFormat,
     /// How long a still image is when it is placed without a length (ADR-0035). Absent: five
     /// seconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so
     /// documents written before the field read the same. Changing it never alters clips that
     /// already exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-ui" = { "group": "Media", "order": 10 }))]
     pub still_duration: Option<Duration>,
     /// Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so
     /// documents written before the field read the same.
     #[serde(default, skip_serializing_if = "ProxyPolicy::is_auto")]
+    #[schemars(extend("x-ui" = { "group": "Media", "order": 11 }))]
     pub proxy_policy: ProxyPolicy,
     /// Fields unknown to this version.
     #[serde(flatten)]

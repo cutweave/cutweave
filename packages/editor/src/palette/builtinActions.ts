@@ -12,6 +12,7 @@ import { selectedTiles } from "../media/folderUi.ts";
 import { openRatingDialog } from "../media/RatingDialog.tsx";
 import { addShownFrameToBin, pickSlideshow } from "../media/slideshowCommands.ts";
 import { openTagEditor } from "../media/TagEditor.tsx";
+import { openProjectSettings } from "../project/projectSettings.ts";
 import { projectController } from "../session/useProject.ts";
 import { activeTimelineController } from "../timeline/activeController.ts";
 import { registerPaletteAction } from "./actions.ts";
@@ -46,6 +47,8 @@ export function registerBuiltinPaletteActions(): void {
   registerPaletteAction("media.import_frame", async () => void (await addShownFrameToBin()));
   registerPaletteAction("media.import_images_as_slideshow", () => pickSlideshow());
   registerPaletteAction("project.archive", () => openArchiveDialog());
+  // Project settings… opens the dialog (a form over every key) instead of asking for a patch.
+  registerPaletteAction("project.set_settings", () => openProjectSettings());
   // Add tag… and Set rating (WP-2F.06b) act on the cards selected in the bin: the tag editor and
   // the stars, as the card's menu and the media info have them, instead of a form asking for IDs.
   const needMedia = (): void => {

@@ -30,6 +30,7 @@ export type AppCommand =
   | "export"
   | "collect"
   | "archive"
+  | "projectSettings"
   | "quit"
   | "undo"
   | "redo"
@@ -64,6 +65,7 @@ export const COMMAND_IDS: Readonly<Record<AppCommand, string>> = {
   export: "export.start",
   collect: "project.collect",
   archive: "project.archive",
+  projectSettings: "project.set_settings",
   quit: "app.quit",
   undo: "edit.undo",
   redo: "edit.redo",
@@ -286,6 +288,8 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
     command("collect", t("menu.collect"), live && !recovering),
     command("archive", t("menu.archive"), live && !recovering),
     sep("file-3"),
+    // The settings saved in the project (WP-2H.08), then the app's own.
+    command("projectSettings", t("menu.projectSettings"), live && !recovering),
     // App preferences (the theme); the engine need not be connected.
     command("settings", t("menu.settings"), true),
     sep("file-4"),

@@ -1,0 +1,32 @@
+{
+  "description": "Project settings (WP-2H.08): a new project that takes its settings, project.set_settings patching one key and several, the still duration applied to a still that is placed, null putting a key back to its default, the proxy policy shortcut, undo, project.info returning the settings, and the failing cases (an unknown key, a value out of range, a key given twice to project.new).",
+  "steps": [
+    {
+      "cmd": "project.new",
+      "args": { "name": "Settings", "format": { "width": 1280, "height": 720 }, "settings": { "still_duration": "4s", "proxy_policy": "off" } }
+    },
+    { "cmd": "project.info" },
+    { "cmd": "project.set_settings", "args": { "patch": { "still_duration": "3s" } } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "photo.png" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[3].output.media_ids[0]" },
+        "at": 0
+      }
+    },
+    {
+      "cmd": "project.set_settings",
+      "args": { "patch": { "proxy_policy": "all", "default_format": { "width": 1080, "height": 1920, "frame_rate": { "num": 25, "den": 1 } } } }
+    },
+    { "cmd": "project.set_settings", "args": { "patch": { "still_duration": null } } },
+    { "cmd": "media.set_proxy_policy", "args": { "policy": "auto" } },
+    { "cmd": "edit.undo" },
+    { "cmd": "project.set_settings", "args": { "patch": { "render_everything": true } }, "expect": { "error": "invalid" } },
+    { "cmd": "project.set_settings", "args": { "patch": { "still_duration": "7200s" } }, "expect": { "error": "invalid" } },
+    { "cmd": "project.set_settings", "args": { "patch": { "default_format": { "width": 0 } } }, "expect": { "error": "invalid" } },
+    { "cmd": "project.info" }
+  ]
+}
