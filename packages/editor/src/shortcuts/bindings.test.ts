@@ -174,12 +174,12 @@ describe("the playback keys", () => {
     );
   });
 
-  it("lists the Source view's keys (WP-1M.15) with the playback keys", () => {
+  it("lists the Source view's keys (WP-1M.15, WP-2A.14) with the playback keys", () => {
     const listed = listBindings("windows")
       .filter((b) => b.id.startsWith("source."))
       .flatMap((b) => b.combos.map((c) => c.key))
       .sort();
-    expect(listed).toEqual(["Enter", "Escape"]);
+    expect(listed).toEqual([",", ".", "Enter", "Escape", "I", "O", "X"]);
     expect(Object.values(SOURCE_COMMANDS).sort()).toEqual(
       listBindings("windows")
         .filter((b) => b.id.startsWith("source."))
@@ -188,6 +188,12 @@ describe("the playback keys", () => {
     );
     expect(sourceKeyAction(event("Escape"))).toBe("back");
     expect(sourceKeyAction(event("Enter"))).toBe("insert");
+    // Marks and three-point edits (WP-2A.14): the timeline's own I, O, comma and period, by focus.
+    expect(sourceKeyAction(event(","))).toBe("insert");
+    expect(sourceKeyAction(event("."))).toBe("overwrite");
+    expect(sourceKeyAction(event("i"))).toBe("markIn");
+    expect(sourceKeyAction(event("o"))).toBe("markOut");
+    expect(sourceKeyAction(event("x", { altKey: true }))).toBe("clearMarks");
     expect(sourceKeyAction(event("Enter", { ctrlKey: true }))).toBeNull();
     expect(sourceKeyAction(event("a"))).toBeNull();
   });
@@ -302,6 +308,8 @@ describe("every key handler in the editor is accounted for", () => {
       "name field: Enter commits, Escape puts the old text back (dialogs group)",
     "panels/MediaPanel.tsx": "the bin's keys: the keymap's `bin` context (binKeys.ts)",
     "panels/PreviewPanel.tsx": "the Source view's keys: the keymap's `source` context",
+    "panels/SourceScrubBar.tsx":
+      "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
     "preview/overlays/TransformOverlay.tsx":
       "the picture's handles: the keymap's `preview` context (nudges, crop); Escape ends a drag or crop mode",
     "settings/shortcuts.tsx": "record-a-shortcut: the next key press is the shortcut",
