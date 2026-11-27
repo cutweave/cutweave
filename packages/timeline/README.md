@@ -2,6 +2,10 @@
 
 The editor's timeline: a virtualized Canvas2D renderer (`TimelineView`, WP-2A.09), shared snapping through the engine's math module (`snap/`, WP-2A.07), and the interaction state machine that turns pointer and keyboard input into edits (`interaction/`, WP-2A.08). Nothing here talks to the engine; the editor wires it (WP-2A.10).
 
+## Keyframe lanes (WP-2C.05)
+
+`TimelineView.setKeyframeLanes(lanes)` (the `keyframeLanes` prop of `TimelineCanvas`) opens rows under a clip, one per animated property (`keyframes/`). The host projects them from the document: per lane the key times in sequence flicks, a glyph per key for its interpolation (diamond linear, square hold, circle bezier, triangle spring) and the selected keys. The clip's track grows by one `control-sm` row per lane; only the track geometry is rebuilt, the item index is the model's. Drawing is virtualized like the clips (only keys in the repainted range are walked), keys closer than 3 px collapse into one bar, and the marks of a track are batched into at most ten fills. Hit-testing answers zone `keyframe` with `prop` and `keyframeTime` for a mark (also inside a collapsed run: the nearest key), `keyframe-lane` for the empty part of a lane. Which lanes are open and which keys are selected is the host's view state, never the model's.
+
 ## Interaction state machine (WP-2A.08)
 
 A framework-free, explicit finite state machine ([architecture §16](../../docs/01-architecture.md#16-ui-architecture-packageseditor-packagestimeline-appsdesktop), [timeline spec §5–§7](../../docs/spec/timeline-edit-semantics.md#5-gestures-and-soft-locks)). Events go in, intents come out:
@@ -101,7 +105,7 @@ Each gesture is one `gesture` transaction and one undo step ([spec §3.9](../../
 | select                                     | clip body         | `moving`            | `item.move{items, start, to_track?, mode, unlink?}`                         |
 | select, Alt held when the drag starts      | clip body         | `moving`            | `item.duplicate{items, offset, mode:"new_track"}` (main track: no offset)   |
 | select                                     | clip edge         | `trimming`          | `clip.trim{item, edge, to, unlink?}` (the engine ripples on the main track) |
-| select (with a keyframe handler, WP-2C.05) | keyframe          | `keyframe_dragging` | the handler's command (`keyframe.move`)                                     |
+| select (with a keyframe handler, WP-2C.05) | keyframe          | `keyframe_dragging` | the handler's command (`keyframe.move`); it gets the lane's `prop`          |
 | ripple                                     | clip edge         | `ripple_trimming`   | `clip.ripple_trim{item, edge, to, unlink?}`                                 |
 | roll                                       | the edge at a cut | `rolling`           | `clip.roll{left, right, to}`; an edge with a gap beside it trims            |
 | slip                                       | clip              | `slipping`          | `clip.slip{item, delta}` (drag right: earlier media); stills cannot slip    |
@@ -115,6 +119,8 @@ Each gesture is one `gesture` transaction and one undo step ([spec §3.9](../../
 Placement ([spec §3.6, INV-40, D8](../../docs/spec/timeline-edit-semantics.md#36-placement)): on the main track a clip or card goes in at the nearest cut of the layout without the movers (`mode: "insert"`); on a free track a dragged clip asks for `new_track` (a track above when it overlaps), and a card dropped onto a clip uses the Editing preference `dropOnClip` (`overwrite` by default, or `insert`), onto free space too short for it `new_track`. Tracks of another kind, and locked tracks, are never targets.
 
 Modifiers: Shift+click adds or removes a clip's linked group, a Shift marquee adds; Shift during a drag constrains it to its main axis (time only, or track only). Alt+click selects one member of a linked group, an Alt marquee only the touched clips, Alt on an edge trims one member (`unlink: true`), Alt when a drag starts duplicates. Ctrl or Cmd held suspends snapping (the frame grid stays). A selection holding only part of a linked group edits with `unlink: true`, or, for commands without it (delete, ripple delete, split, slip, slide, roll), is refused with a `partial_group` notice (INV-342).
+
+A key in a keyframe lane pressed with Shift, Ctrl or Cmd changes nothing in the machine (the host adds it to its key selection), and a press on the empty part of a lane is the host's too (a double-click adds a key). A key drag is not held back by a partly selected linked group: a key belongs to its clip alone.
 
 Snapping ([spec §6](../../docs/spec/timeline-edit-semantics.md#6-snapping)) runs the engine's own code through `createSnapPort()`: candidates come from the document as it was when the drag started, without the movers and their linked partners, so the edge kind is rebuilt once per drag.
 

@@ -742,7 +742,13 @@
       "toolZoom": "Zoom tool",
       "toolZoomHelp": "Timeline. Click to zoom in, Alt+click to zoom out, drag to zoom to a range.",
       "matchFrame": "Match frame",
-      "matchFrameHelp": "Timeline. Opens the clip under the playhead in the Source view at the same frame."
+      "matchFrameHelp": "Timeline. Opens the clip under the playhead in the Source view at the same frame.",
+      "keyframeLanes": "Show or hide keyframe lanes",
+      "keyframeLanesHelp": "Timeline. Opens the keyframe lanes under the selected clips, or closes them.",
+      "keyframeNext": "Select next keyframe",
+      "keyframeNextHelp": "Timeline. Selects the next keyframe of the selected clip and moves the playhead to it.",
+      "keyframePrevious": "Select previous keyframe",
+      "keyframePreviousHelp": "Timeline. Selects the previous keyframe of the selected clip and moves the playhead to it."
     },
     "preview": {
       "nudgeLeft": "Nudge the picture left",
@@ -1958,7 +1964,11 @@
       "marker": "Marker not changed",
       "inOut": "In and out not set",
       "track": "Track not changed",
-      "replace": "Clip not replaced"
+      "replace": "Clip not replaced",
+      "keyframeDelete": "Keyframe not deleted",
+      "keyframeAdd": "Keyframe not added",
+      "keyframeCopy": "Keyframes not copied",
+      "keyframePaste": "Keyframes not pasted"
     },
     "rename": {
       "label": "Track name",
@@ -2006,7 +2016,9 @@
     "matchFrame": {
       "label": "Match frame",
       "none": "No clip under the playhead"
-    }
+    },
+    "keyframeLanes": "Keyframe lanes",
+    "keyframeLanesNone": "Keyframe lanes (select a clip with keyframes)"
   },
   "engine": {
     "status": {
@@ -2446,7 +2458,8 @@
       "trackReorder": "Move track",
       "timelineUpdateMarker": "Edit marker",
       "itemSetLabelColor": "Color label",
-      "timelineOverwrite": "Overwrite at playhead"
+      "timelineOverwrite": "Overwrite at playhead",
+      "keyframeSetInterp": "Change easing"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -2482,7 +2495,8 @@
       "toast": "Notice actions",
       "engine": "Engine actions",
       "binCollection": "Collection actions for {{name}}",
-      "marker": "Marker actions for {{name}}"
+      "marker": "Marker actions for {{name}}",
+      "keyframe": "Keyframe actions"
     },
     "item": {
       "cut": "Cut",
@@ -2624,7 +2638,19 @@
       "convertToChapter": "Convert to chapter",
       "convertToMarker": "Convert to marker",
       "colorLabel": "Color label",
-      "colorLabelNone": "None"
+      "colorLabelNone": "None",
+      "interpolation": "Interpolation",
+      "easingLinear": "Linear",
+      "easingHold": "Hold",
+      "easingEaseIn": "Ease in",
+      "easingEaseOut": "Ease out",
+      "easingEaseInOut": "Ease in-out",
+      "easingBezier": "Bezier…",
+      "easingEdit": "Easing…",
+      "copyKeyframe": "Copy",
+      "deleteKeyframe": "Delete keyframe",
+      "deleteKeyframes": "Delete {{count}} keyframes",
+      "goToKeyframe": "Go to keyframe"
     },
     "dialog": {
       "cancel": "Cancel",
@@ -2672,7 +2698,12 @@
       "markerName": "Marker name",
       "markerColor": "Marker color",
       "markerLength": "Length in seconds",
-      "save": "Save"
+      "save": "Save",
+      "keyframeCurveTitle": "Easing",
+      "keyframeCurveBody": "How {{property}} moves from this keyframe to the next.",
+      "keyframeCurveLast": "This is the last keyframe: the easing applies once another keyframe follows it.",
+      "keyframeCurveGone": "This keyframe no longer exists.",
+      "done": "Done"
     },
     "diagnostics": {
       "connection": "Engine connection",
@@ -2724,6 +2755,52 @@
       "columns3": "Three columns",
       "oneLargeTwoSmall": "One large, two small",
       "grid2x2": "2 × 2 grid"
+    }
+  },
+  "easing": {
+    "presets": {
+      "hold": "Hold",
+      "linear": "Linear",
+      "easeIn": "Ease in",
+      "easeOut": "Ease out",
+      "easeInOut": "Ease in-out",
+      "sineIn": "Sine in",
+      "sineOut": "Sine out",
+      "sineInOut": "Sine in-out",
+      "cubicIn": "Cubic in",
+      "cubicOut": "Cubic out",
+      "cubicInOut": "Cubic in-out",
+      "expoIn": "Expo in",
+      "expoOut": "Expo out",
+      "expoInOut": "Expo in-out",
+      "backIn": "Back in",
+      "backOut": "Back out",
+      "backInOut": "Back in-out",
+      "spring": "Spring",
+      "springGentle": "Spring, gentle",
+      "springWobbly": "Spring, wobbly",
+      "springStiff": "Spring, stiff",
+      "elastic": "Elastic",
+      "bounce": "Bounce"
+    },
+    "editor": {
+      "kind": "Interpolation",
+      "hold": "Hold",
+      "linear": "Linear",
+      "bezier": "Bezier",
+      "spring": "Spring",
+      "preset": "Preset",
+      "custom": "Custom",
+      "graph": "Easing curve",
+      "time": "Time",
+      "value": "Value",
+      "handleStart": "Start handle",
+      "handleEnd": "End handle",
+      "handleAt": "time {{time}}, value {{value}}",
+      "stiffness": "Stiffness",
+      "damping": "Damping",
+      "mass": "Mass",
+      "bounce": "Bounce"
     }
   }
 }

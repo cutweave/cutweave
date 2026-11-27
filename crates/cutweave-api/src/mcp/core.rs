@@ -9,7 +9,7 @@
 //! checked-in gate of the list: the tests fail when the table and the registry's core entries
 //! differ, when an example is not valid, or when the list leaves the table's budget.
 
-use std::sync::LazyLock;
+use std::{collections::BTreeMap, sync::LazyLock};
 
 use serde::Deserialize;
 
@@ -18,6 +18,20 @@ pub const SOURCE: &str = include_str!("../../mcp_core.toml");
 
 /// Longest listed description ([`CoreTool::listing`]), in characters.
 pub const MAX_DESCRIPTION_CHARS: usize = 300;
+
+/// The tool `_meta` key that asks a client which defers tool definitions to load this tool at
+/// the start (WP-2I.07). It is Claude Code's, read on 2026-11-27 at
+/// <https://code.claude.com/docs/en/mcp> ("Mark a tool to load upfront or stay deferred"): "To
+/// control how one of your server's tools loads, set `"anthropic/alwaysLoad"` in that tool's
+/// `_meta` object"; with the JSON boolean `true` "the tool loads upfront". The person who
+/// configures the server can still defer all of its tools. A client that does not know the key
+/// ignores it: both MCP revisions allow a `_meta` key with a vendor prefix (only prefixes whose
+/// second label is `modelcontextprotocol` or `mcp` are reserved).
+pub const META_ALWAYS_LOAD: &str = "anthropic/alwaysLoad";
+
+/// Most tools the table may mark `always_load`: each one costs every session its definition,
+/// which is what deferring avoids.
+pub const MAX_ALWAYS_LOAD: usize = 5;
 
 /// What stands for the 32 hex digits of an id in an example.
 pub const ID_PLACEHOLDER: &str = "…";
@@ -50,6 +64,9 @@ pub struct CoreTool {
     pub description: String,
     /// One valid arguments object, as JSON text ([`ID_PLACEHOLDER`] for an id's hex digits).
     pub example: String,
+    /// Whether the listing carries the [always-load hint](META_ALWAYS_LOAD).
+    #[serde(default)]
+    pub always_load: bool,
 }
 
 impl CoreTool {
@@ -70,18 +87,52 @@ pub struct PendingTool {
     pub arrives: String,
 }
 
+/// What the table says about one of the generic tools (their listings are in
+/// [`catalog`](crate::mcp::catalog)).
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GenericTool {
+    /// The tool name (`cutweave_execute`).
+    pub name: String,
+    /// Whether the listing carries the [always-load hint](META_ALWAYS_LOAD).
+    #[serde(default)]
+    pub always_load: bool,
+}
+
+/// One command namespace and what it is for, as the server instructions say it.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Namespace {
+    /// The namespace (`clip` of `clip.split`).
+    pub name: String,
+    /// One line, without a full stop: what its commands are for.
+    pub purpose: String,
+}
+
 /// `mcp_core.toml`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CoreTable {
     /// The budget of the standard profile's list.
     pub budget: TableBudget,
+    /// The budget of the described profile's list (`/mcp/described`; ADR-0040, WP-2I.07).
+    pub described_budget: TableBudget,
     /// The listed core tools.
     #[serde(rename = "tool", default)]
     pub tools: Vec<CoreTool>,
     /// Planned tools that are not listed yet.
     #[serde(default)]
     pub pending: Vec<PendingTool>,
+    /// What the table says about the generic tools.
+    #[serde(default)]
+    pub generic: Vec<GenericTool>,
+    /// The command namespaces and their purposes, for the server instructions.
+    #[serde(rename = "namespace", default)]
+    pub namespaces: Vec<Namespace>,
+    /// Words a user would say, by command or query name: `cutweave_search_commands` matches
+    /// them next to names and summaries.
+    #[serde(default)]
+    pub keywords: BTreeMap<String, Vec<String>>,
 }
 
 impl CoreTable {
@@ -97,13 +148,18 @@ impl CoreTable {
         static TABLE: LazyLock<CoreTable> = LazyLock::new(|| {
             CoreTable::parse(SOURCE).unwrap_or_else(|error| {
                 tracing::error!(%error, "mcp_core.toml does not parse; using registry summaries");
+                let none = TableBudget {
+                    max_tools: 0,
+                    max_tokens: 0,
+                };
                 CoreTable {
-                    budget: TableBudget {
-                        max_tools: 0,
-                        max_tokens: 0,
-                    },
+                    budget: none,
+                    described_budget: none,
                     tools: Vec::new(),
                     pending: Vec::new(),
+                    generic: Vec::new(),
+                    namespaces: Vec::new(),
+                    keywords: BTreeMap::new(),
                 }
             })
         });
@@ -114,6 +170,39 @@ impl CoreTable {
     #[must_use]
     pub fn by_command(&self, command: &str) -> Option<&CoreTool> {
         self.tools.iter().find(|t| t.command == command)
+    }
+
+    /// Whether the tool `name` (core or generic) is marked `always_load`.
+    #[must_use]
+    pub fn always_load(&self, name: &str) -> bool {
+        self.always_loaded().contains(&name)
+    }
+
+    /// The names of the tools marked `always_load`, core tools first, in table order.
+    #[must_use]
+    pub fn always_loaded(&self) -> Vec<&str> {
+        let core = self.tools.iter().filter(|t| t.always_load).map(|t| &t.name);
+        let generic = self
+            .generic
+            .iter()
+            .filter(|g| g.always_load)
+            .map(|g| &g.name);
+        core.chain(generic).map(String::as_str).collect()
+    }
+
+    /// The purpose of the namespace `name`.
+    #[must_use]
+    pub fn purpose(&self, name: &str) -> Option<&str> {
+        self.namespaces
+            .iter()
+            .find(|n| n.name == name)
+            .map(|n| n.purpose.as_str())
+    }
+
+    /// The search keywords of the command or query `command`.
+    #[must_use]
+    pub fn keywords_of(&self, command: &str) -> &[String] {
+        self.keywords.get(command).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -159,8 +248,64 @@ mod tests {
     }
 
     #[test]
+    fn the_always_load_marks_are_the_five_of_wp_2i_07() {
+        let table = CoreTable::get();
+        assert_eq!(
+            table.always_loaded(),
+            [
+                "project_info",
+                "timeline_get",
+                "cutweave_search_commands",
+                "cutweave_describe_command",
+                "cutweave_execute"
+            ]
+        );
+        assert!(table.always_loaded().len() <= MAX_ALWAYS_LOAD);
+        assert!(table.always_load("timeline_get") && !table.always_load("clip_split"));
+        assert!(!table.always_load("cutweave_query"));
+        // The key is legal in `_meta` under both revisions: one prefix label that is not
+        // reserved, a slash, an alphanumeric name.
+        let (prefix, name) = META_ALWAYS_LOAD.split_once('/').unwrap();
+        assert!(prefix.chars().all(|c| c.is_ascii_alphabetic()));
+        assert!(name.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn namespaces_and_keywords_are_well_formed() {
+        let table = CoreTable::get();
+        let names: Vec<&str> = table.namespaces.iter().map(|n| n.name.as_str()).collect();
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted, names, "namespaces are in name order, once each");
+        for ns in &table.namespaces {
+            assert!(!ns.purpose.is_empty() && !ns.purpose.contains('\n'));
+            assert!(!ns.purpose.ends_with('.'), "{}: no full stop", ns.name);
+            assert!(ns.purpose.chars().count() <= 120, "{}", ns.name);
+        }
+        assert!(!table.keywords.is_empty());
+        for (command, words) in &table.keywords {
+            assert!(!words.is_empty(), "{command}");
+            let mut unique = words.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            assert_eq!(unique.len(), words.len(), "{command}: a keyword twice");
+            for word in words {
+                assert!(
+                    word.len() >= 2
+                        && word
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+                    "{command}: `{word}` is not one lower-case word"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_table_with_an_unknown_key_is_refused() {
-        let text = "[budget]\nmax_tools = 1\nmax_tokens = 1\n[[tool]]\nname = \"a_b\"\n\
+        let text = "[budget]\nmax_tools = 1\nmax_tokens = 1\n[described_budget]\n\
+                    max_tools = 1\nmax_tokens = 1\n[[tool]]\nname = \"a_b\"\n\
                     command = \"a.b\"\ndescription = \"X.\"\nexample = '{}'\nextra = 1\n";
         assert!(CoreTable::parse(text).unwrap_err().contains("extra"));
     }

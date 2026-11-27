@@ -28,6 +28,7 @@ import { useDocStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { ATTRIBUTE_GROUPS, type AttributeGroup } from "../timeline/clipboard.ts";
 import { translator } from "../timeline/errors.ts";
+import { KeyframeCurveDialog } from "../timeline/KeyframeCurveDialog.tsx";
 import { MarkerDialog } from "../timeline/MarkerDialog.tsx";
 import { canReplaceWith, pickedMedia, replaceClip } from "../timeline/replacePick.ts";
 import { menuServices } from "./defaults.ts";
@@ -588,5 +589,14 @@ export function MenuDialogs() {
       return <ReplaceClip key={dialog.item} item={dialog.item} />;
     case "paste-attributes":
       return <PasteAttributes key={dialog.from} from={dialog.from} to={dialog.to} />;
+    case "keyframe-curve":
+      return (
+        <KeyframeCurveDialog
+          key={`${dialog.item}:${dialog.prop}:${dialog.t}`}
+          item={dialog.item}
+          prop={dialog.prop}
+          t={dialog.t}
+        />
+      );
   }
 }

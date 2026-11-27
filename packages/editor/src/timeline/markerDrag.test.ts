@@ -33,6 +33,7 @@ const hit = (zone: HitResult["zone"]): HitResult => ({
   itemIndex: -1,
   keyframeIndex: -1,
   keyframeTime: null,
+  prop: null,
   toggle: null,
 });
 

@@ -17,10 +17,12 @@ import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { InUseMarks } from "../timeline/InUseMarks.tsx";
+import { lanesRelaid, lanesShapeOf } from "../timeline/keyframes.ts";
 import { timelineDisplay } from "../timeline/prefs.ts";
 import { DropGhost, TrackHeaderControls } from "../timeline/TimelineOverlays.tsx";
 import { TimelineToolbar } from "../timeline/TimelineToolbar.tsx";
 import { TrackRenameInput } from "../timeline/TrackRenameInput.tsx";
+import { useKeyframeLanes } from "../timeline/useKeyframeLanes.ts";
 import { type TimelineBinding, useTimelineHost } from "../timeline/useTimelineHost.ts";
 import { transportController } from "../transport/useTransport.ts";
 
@@ -55,6 +57,12 @@ const EngineTimeline = memo(function EngineTimeline({
     [mediaLoaders, ownerWindow],
   );
   const model = useMemo(() => selectTimelineModel(project), [project]);
+  // The open keyframe lanes (WP-2C.05): view state, drawn from the document.
+  const keyframeLanes = useKeyframeLanes(project);
+  // Opening or closing a lane moves the tracks below it: once the canvas has laid them out (its
+  // effect runs before this one), what is placed over the headers and clips follows.
+  const lanesShape = lanesShapeOf(keyframeLanes);
+  useEffect(() => lanesRelaid(), [lanesShape]);
   // The sequence's in and out points shade the timeline (markers come with the model).
   const range = selectInOut(project);
   const playhead = useViewStore((s) => s.playhead);
@@ -103,6 +111,7 @@ const EngineTimeline = memo(function EngineTimeline({
           className="cw-timeline__canvas"
           aria-label={t("timeline.canvasLabel")}
           model={model}
+          keyframeLanes={keyframeLanes}
           viewState={viewState}
           loaders={loaders}
           display={display}

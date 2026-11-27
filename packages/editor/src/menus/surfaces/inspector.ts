@@ -129,6 +129,28 @@ export const INSPECTOR_ROW: MenuSurfaceDef = {
       },
     },
     {
+      // WP-2C.05: the curve editor for the key the playhead sits on.
+      command: "timeline.edit_keyframe_curve",
+      group: "keyframe",
+      order: 2,
+      enabledIf: (ctx) => {
+        const s = keyState(ctx);
+        return s !== null && !s.locked && s.key !== null;
+      },
+      reason: (ctx) => {
+        const s = keyState(ctx);
+        if (ctx.ids.length !== 1) return "contextMenu.reason.oneClip" as const;
+        if (s?.locked === true) return LOCKED;
+        return s?.animated === true
+          ? ("contextMenu.reason.noKeyframeHere" as const)
+          : ("contextMenu.reason.noKeyframes" as const);
+      },
+      args: (ctx) => {
+        const s = keyState(ctx);
+        return { item: ctx.ids[0], prop: s?.prop, t: s?.key ?? undefined };
+      },
+    },
+    {
       id: "reset-row",
       command: "item.reset_props",
       group: "reset",

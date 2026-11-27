@@ -52,6 +52,14 @@ export type MenuDialog =
   | { readonly kind: "add-to-collection"; readonly media: readonly string[] }
   // Deleting a collection that lists something: a yes (the media stay).
   | { readonly kind: "delete-collection"; readonly collection: string }
+  // Bezier… on a keyframe and Easing… on an Inspector row (WP-2C.05): the curve editor for
+  // the key of `prop` at item time `t`.
+  | {
+      readonly kind: "keyframe-curve";
+      readonly item: string;
+      readonly prop: string;
+      readonly t: number;
+    }
   // The folder picker of "Move to…" for the assets and folders chosen.
   | {
       readonly kind: "move-to";

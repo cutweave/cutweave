@@ -43,6 +43,16 @@ import {
 import { describeRefusal, FAILED_TITLE, type TimelineEdit, translator } from "./errors.ts";
 import { toRpcError } from "./gestureTx.ts";
 import { type LaneBox, TimelineHost, type TimelineUi, withCode } from "./host.ts";
+import {
+  copyKeys,
+  deleteKeys,
+  isWritingKeys,
+  KEY_CLIPBOARD_MIME,
+  keyClipboardStore,
+  keySelectionStore,
+  parseKeyPayload,
+  pasteKeys,
+} from "./keyframes.ts";
 import { locksStore } from "./locks.ts";
 import { MarkerDrag, onRuler } from "./markerDrag.ts";
 import { machinePrefs, newTrackHeight } from "./prefs.ts";
@@ -219,6 +229,8 @@ export function useTimelineHost(): TimelineBinding {
           });
           return;
         }
+        // A right-click on a key acts on it: it joins (or becomes) the key selection first.
+        host.contextKey(e.hit);
         const request = requestForCanvasEvent(e);
         if (request === null) closeContextMenu();
         else openContextMenu(request);
@@ -284,15 +296,53 @@ export function useTimelineHost(): TimelineBinding {
         void work().catch((error: unknown) => refused(edit, error));
       };
       // Copy, Cut and Paste come as clipboard events, from the keys and from the Edit menu alike.
+      /** A keyframe edit from the clipboard keys; a refusal is a toast. */
+      const runKeys = (
+        title: "timeline.failed.keyframeCopy" | "timeline.failed.keyframePaste",
+        work: () => Promise<void>,
+      ) => {
+        void work().catch((error: unknown) => {
+          const tr = translator(t);
+          const refusal = toRpcError(error);
+          toastStore.getState().push({
+            tone: "warning",
+            title: tr(title),
+            message: withCode(describeRefusal(refusal, tr), refusal.code),
+          });
+        });
+      };
       const onCopy = (e: ClipboardEvent): void => {
-        if (isWritingClipboard() || isTextEntry(e.target)) return;
+        if (isWritingClipboard() || isWritingKeys() || isTextEntry(e.target)) return;
+        // Selected keys are what Copy copies (WP-2C.05); else the selected clips.
+        const keys = keySelectionStore.getState();
+        if (keys.item !== null && keys.keys.length > 0) {
+          const item = keys.item;
+          e.preventDefault();
+          runKeys(
+            "timeline.failed.keyframeCopy",
+            async () => void (await copyKeys(engineCall, item, keys.keys)),
+          );
+          return;
+        }
         const ids = selectedClips();
         if (ids.length === 0) return;
         e.preventDefault();
+        keyClipboardStore.setState({ payload: null });
         run("copy", async () => void (await copyClips(engineCall, ids)));
       };
       const onCut = (e: ClipboardEvent): void => {
         if (isTextEntry(e.target)) return;
+        // Selected keys are what Cut takes (never their clip): copied, then deleted in one step.
+        const keys = keySelectionStore.getState();
+        if (keys.item !== null && keys.keys.length > 0) {
+          const item = keys.item;
+          e.preventDefault();
+          runKeys("timeline.failed.keyframeCopy", async () => {
+            await copyKeys(engineCall, item, keys.keys);
+            await deleteKeys(engineCall, item, keys.keys);
+          });
+          return;
+        }
         const ids = selectedClips();
         if (ids.length === 0) return;
         e.preventDefault();
@@ -300,6 +350,21 @@ export function useTimelineHost(): TimelineBinding {
       };
       const onPaste = (e: ClipboardEvent): void => {
         if (isTextEntry(e.target)) return;
+        // Copied keys go onto the clip whose keys are selected, else the one selected clip, with
+        // the earliest at the playhead (WP-2C.05).
+        const text = e.clipboardData?.getData(KEY_CLIPBOARD_MIME) ?? "";
+        const clips = e.clipboardData?.getData(CLIPBOARD_MIME) ?? "";
+        const copied =
+          parseKeyPayload(text) ?? (clips === "" ? keyClipboardStore.getState().payload : null);
+        if (copied !== null) {
+          const onto = host.keyPasteTarget();
+          if (onto !== null) {
+            e.preventDefault();
+            const at = viewStore.getState().playhead;
+            runKeys("timeline.failed.keyframePaste", () => pasteKeys(engineCall, copied, onto, at));
+            return;
+          }
+        }
         const system = parsePayload(e.clipboardData?.getData(CLIPBOARD_MIME) ?? "");
         const payload = system ?? clipboardStore.getState().payload;
         if (payload === null) return;

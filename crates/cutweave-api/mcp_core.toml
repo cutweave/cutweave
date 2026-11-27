@@ -14,6 +14,18 @@
 #   `cutweave_describe_command` (listed schemas carry validation only, to fit the budget).
 # - `example`: one valid arguments object. `…` stands for the 32 hex digits of an id. The
 #   listed description is `<description> E.g. <example>` and is at most 300 characters.
+# - `always_load` (WP-2I.07, default false): the listing carries `_meta`
+#   `"anthropic/alwaysLoad": true`, which asks a client that defers tool definitions (Claude
+#   Code's tool search) to load this tool at the start. At most 5 tools: the ones an agent
+#   needs before it can search. Clients that do not know the key ignore it. `[[generic]]` sets
+#   it for the generic tools, whose listings are in `src/mcp/catalog.rs`.
+#
+# `[[namespace]]` gives each command namespace one line for the server instructions (the list
+# of namespaces itself comes from the registry; a test fails when the two differ).
+#
+# `[keywords]` holds words a user would say, by command or query name (one lower-case word
+# each): `cutweave_search_commands` matches them next to names and summaries. A key that is not
+# a registered command fails the tests. No command is renamed for search.
 #
 # `[[pending]]` names tools of the plan that are not listed yet, and what brings them.
 #
@@ -24,6 +36,13 @@
 # included) in at most this many tokens (`ceil(bytes / 4)` of the compact `tools/list` result).
 max_tools = 36
 max_tokens = 8000
+
+[described_budget]
+# ADR-0040, question 2 (WP-2I.07): `/mcp/described` lists the same tools in the same order with
+# full parameter descriptions, for clients that defer tool definitions (Claude Code, Copilot
+# CLI) and so do not pay for the list at the start. Its own budget, enforced like the one above.
+max_tools = 36
+max_tokens = 16000
 
 [[tool]]
 name = "audio_set"
@@ -132,6 +151,7 @@ name = "project_info"
 command = "project.info"
 description = "Get the project's name, default format and its sequences with their ids. Start here."
 example = '{}'
+always_load = true
 
 [[tool]]
 name = "project_open"
@@ -168,6 +188,7 @@ name = "timeline_get"
 command = "timeline.get"
 description = "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`."
 example = '{"sequence":"seq_…","depth":2,"limit":50}'
+always_load = true
 
 [[tool]]
 name = "timeline_insert"
@@ -233,3 +254,134 @@ arrives = "P3-P5"
 [[pending]]
 name = "ai_*"
 arrives = "P3-P5"
+
+# ----- the generic tools ---------------------------------------------------------------------
+
+[[generic]]
+name = "cutweave_search_commands"
+always_load = true
+
+[[generic]]
+name = "cutweave_describe_command"
+always_load = true
+
+[[generic]]
+name = "cutweave_execute"
+always_load = true
+
+[[generic]]
+name = "cutweave_query"
+
+# ----- the namespaces, for the server instructions -------------------------------------------
+
+[[namespace]]
+name = "audio"
+purpose = "a clip's volume, fades and pan; loudness of the mix"
+
+[[namespace]]
+name = "clip"
+purpose = "edit one clip: split, trim, ripple, roll, slip, slide, speed, reverse, freeze, replace"
+
+[[namespace]]
+name = "edit"
+purpose = "undo, redo, history, checkpoints and transactions"
+
+[[namespace]]
+name = "export"
+purpose = "render a sequence to a file: presets, encoders and the export queue"
+
+[[namespace]]
+name = "item"
+purpose = "anything on a track: move, delete, duplicate, link, properties (opacity, transform, crop), layouts"
+
+[[namespace]]
+name = "job"
+purpose = "background work (import analysis, proxies, export): status, wait, cancel"
+
+[[namespace]]
+name = "keyframe"
+purpose = "animate a property over time: set, move, delete keys, easing"
+
+[[namespace]]
+name = "media"
+purpose = "the media bin: import, list, folders, tags, collections, proxies, relink missing files"
+
+[[namespace]]
+name = "project"
+purpose = "open, save, close, settings, collect and archive"
+
+[[namespace]]
+name = "render"
+purpose = "see a frame of the timeline as a picture"
+
+[[namespace]]
+name = "sequence"
+purpose = "timelines of the project: create, duplicate, size and frame rate, background"
+
+[[namespace]]
+name = "timeline"
+purpose = "read a sequence and place things on it: insert, overwrite, gaps, ripple delete, markers, copy and paste"
+
+[[namespace]]
+name = "track"
+purpose = "add, remove, reorder tracks; mute, solo, lock, hide"
+
+[[namespace]]
+name = "view"
+purpose = "what the user sees in the app: playhead, selection, zoom"
+
+# ----- words a user would say ----------------------------------------------------------------
+
+[keywords]
+"audio.get_levels" = ["loud", "loudness", "meter", "measure", "level", "lufs", "clipping", "quiet"]
+"audio.set" = ["sound", "music", "louder", "quieter"]
+"audio.set_fade" = ["music", "sound", "crossfade"]
+"audio.set_gain" = ["boost", "louder", "quieter", "normalize"]
+"audio.set_pan" = ["left", "right", "stereo", "balance", "sound"]
+"audio.set_volume" = ["louder", "quieter", "loud", "quiet", "sound", "music", "turn"]
+"clip.freeze_frame" = ["still", "pause", "hold", "picture"]
+"clip.paste_attributes" = ["look", "style", "settings", "same", "match"]
+"clip.replace" = ["swap", "exchange", "footage", "different"]
+"clip.reset_speed" = ["normal"]
+"clip.reverse" = ["backward", "rewind", "reversed"]
+"clip.ripple_trim" = ["shorten", "tighten"]
+"clip.set_speed" = ["faster", "slower", "slow", "fast", "slowmo", "timelapse", "retime", "speedup"]
+"clip.slip" = ["earlier", "later"]
+"clip.split" = ["cut", "blade", "razor", "divide", "slice"]
+"clip.trim" = ["shorten", "shorter", "longer", "lengthen", "extend"]
+"edit.checkpoint" = ["snapshot", "backup", "bookmark", "version"]
+"edit.redo" = ["again", "reapply", "undid"]
+"edit.restore" = ["revert", "rollback", "back"]
+"edit.undo" = ["revert", "oops", "mistake"]
+"export.cancel" = ["stop", "abort"]
+"export.start" = ["render", "youtube", "mp4", "publish", "save", "file", "tiktok", "instagram"]
+"item.apply_layout" = ["screen", "split", "collage", "pip", "arrange"]
+"item.delete" = ["remove", "clip", "erase", "clear"]
+"item.duplicate" = ["copy", "clone", "clip"]
+"item.link" = ["group", "together", "sync"]
+"item.move" = ["nudge", "shift", "drag", "reposition", "slide", "clip", "later", "earlier"]
+"item.set_props" = ["zoom", "scale", "resize", "bigger", "smaller", "rotate", "position", "transparent", "mirror", "hide", "disable", "rename", "size", "crop", "clip", "flip"]
+"item.unlink" = ["separate", "ungroup", "sound", "apart"]
+"keyframe.set" = ["animate", "animation", "keyframe", "ramp", "move"]
+"media.find_missing" = ["offline", "lost", "broken"]
+"media.generate_proxy" = ["smooth", "laggy", "preview", "optimize"]
+"media.import" = ["add", "load", "footage", "file", "bring", "photo"]
+"media.import_images_as_slideshow" = ["photos", "images", "photo"]
+"media.relink" = ["reconnect", "offline", "moved", "missing"]
+"media.remove" = ["delete", "unused"]
+"media.set_rating" = ["star", "favorite", "best"]
+"project.collect" = ["consolidate", "gather", "portable", "share"]
+"project.archive" = ["backup", "zip", "bundle"]
+"sequence.create" = ["timeline", "new", "vertical", "square", "short"]
+"sequence.duplicate" = ["timeline", "version", "clone"]
+"sequence.set_background" = ["blurred", "fill", "bars"]
+"sequence.set_format" = ["resolution", "fps", "aspect", "vertical", "portrait", "landscape", "ratio", "rate", "resize", "framerate"]
+"timeline.add_marker" = ["note", "bookmark", "flag", "chapter", "mark"]
+"timeline.delete_gap" = ["remove", "empty", "space", "hole", "blank"]
+"timeline.extract" = ["remove", "section", "part", "range"]
+"timeline.insert" = ["add", "place", "put", "drop", "clip", "append"]
+"timeline.overwrite" = ["replace", "cover"]
+"timeline.ripple_delete" = ["remove", "clip", "shift"]
+"track.add" = ["layer", "new"]
+"track.set" = ["silence", "unmute", "unlock", "show", "volume", "rename"]
+"view.set_playhead" = ["seek", "jump", "go", "scrub"]

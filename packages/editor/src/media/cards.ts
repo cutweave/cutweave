@@ -33,7 +33,10 @@ export interface MediaCard {
   readonly note: string | null;
 }
 
-const cache = new WeakMap<Project, readonly MediaCard[]>();
+// Keyed on the media table, not the project: a patch elsewhere (a clip dragged on the timeline,
+// issue #244) leaves `project.media` itself, so the cards keep their identity and the bin's
+// tiles do not draw again.
+const cache = new WeakMap<Project["media"], readonly MediaCard[]>();
 const NO_TAGS: readonly string[] = [];
 
 function toCard(asset: MediaAsset): MediaCard {
@@ -62,7 +65,7 @@ function toCard(asset: MediaAsset): MediaCard {
 /** The project's media as cards, ordered by ID; the same `Project` yields the same array. */
 export function selectMediaCards(project: Project | null): readonly MediaCard[] {
   if (project === null) return [];
-  let cards = cache.get(project);
+  let cards = cache.get(project.media);
   if (cards === undefined) {
     cards = Object.keys(project.media)
       .sort()
@@ -70,19 +73,28 @@ export function selectMediaCards(project: Project | null): readonly MediaCard[] 
         const asset = project.media[key as MediaId];
         return asset === undefined ? [] : [toCard(asset)];
       });
-    cache.set(project, cards);
+    cache.set(project.media, cards);
   }
   return cards;
 }
 
 const usageCache = new WeakMap<Project, ReadonlyMap<string, number>>();
+const NO_USAGE: ReadonlyMap<string, number> = new Map();
+/** The last counts handed out: the same counts come back as the same map (see below). */
+let lastUsage: ReadonlyMap<string, number> = new Map();
+
+function sameCounts(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, n] of a) if (b.get(id) !== n) return false;
+  return true;
+}
 
 /**
  * How many timeline clips use each asset (assets with none are absent). A sequence's background
  * image counts as one, as in the engine (`used_media`, WP-2B.02).
  */
 export function selectMediaUsage(project: Project | null): ReadonlyMap<string, number> {
-  if (project === null) return new Map();
+  if (project === null) return NO_USAGE;
   let usage = usageCache.get(project);
   if (usage === undefined) {
     const counts = new Map<string, number>();
@@ -97,7 +109,10 @@ export function selectMediaUsage(project: Project | null): ReadonlyMap<string, n
       const fill = format?.background_fill;
       if (fill?.kind === "image") counts.set(fill.media, (counts.get(fill.media) ?? 0) + 1);
     }
-    usage = counts;
+    // A clip moved on the timeline changes the project but not how many clips use each asset:
+    // the same counts are the same map, so what is drawn from them is not drawn again (#244).
+    usage = sameCounts(lastUsage, counts) ? lastUsage : counts;
+    lastUsage = usage;
     usageCache.set(project, usage);
   }
   return usage;

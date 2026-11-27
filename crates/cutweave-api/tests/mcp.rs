@@ -24,7 +24,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cutweave_api::mcp::core::CoreTable;
-use cutweave_api::mcp::{Catalog, ListSize, Profile, STANDARD_BUDGET, catalog};
+use cutweave_api::mcp::{
+    Catalog, DESCRIBED_BUDGET, ListSize, Profile, STANDARD_BUDGET, catalog, instructions, search,
+};
 use cutweave_commands::Registry;
 use cutweave_engine::Call;
 use mcp_support::{
@@ -423,7 +425,7 @@ fn listed_input_schemas_validate_like_the_registry_schemas() {
 #[test]
 fn tools_list_snapshot() {
     let registry = registry();
-    for profile in [Profile::Standard, Profile::Minimal] {
+    for profile in [Profile::Standard, Profile::Minimal, Profile::Described] {
         let catalog = Catalog::new(Arc::clone(&registry), profile);
         let size = catalog.size();
         assert!(profile.budget().fits(size));
@@ -431,6 +433,372 @@ fn tools_list_snapshot() {
             format!("tools_list_{}", profile.name()),
             catalog.tools_json()
         );
+    }
+}
+
+// ----- ready for tool search (WP-2I.07) -----------------------------------------------------
+
+/// Acceptance: the always-load hint is on the five tools an agent needs before it can search,
+/// and on no other; no other tool has a `_meta` at all. The hint is `_meta`, so no input schema
+/// changes: a listed schema is still the lean form of the registry's.
+#[test]
+fn the_always_load_hint_is_on_five_tools_and_nowhere_else() {
+    let registry = registry();
+    let five = [
+        "project_info",
+        "timeline_get",
+        "cutweave_search_commands",
+        "cutweave_describe_command",
+        "cutweave_execute",
+    ];
+    for profile in Profile::ALL {
+        let catalog = Catalog::new(Arc::clone(&registry), profile);
+        let listed = catalog.tools_json();
+        let mut marked = Vec::new();
+        for tool in listed["tools"].as_array().unwrap() {
+            let name = tool["name"].as_str().unwrap();
+            match tool.get("_meta") {
+                None => {}
+                Some(meta) => {
+                    assert_eq!(meta, &json!({ "anthropic/alwaysLoad": true }), "{name}");
+                    marked.push(name);
+                }
+            }
+            if let Some(entry) = registry.get_by_tool_name(name) {
+                let schema = &entry.meta.input_schema;
+                let expected = if profile.describes_parameters() {
+                    catalog::described_schema(schema)
+                } else {
+                    catalog::lean_schema(schema)
+                };
+                assert_eq!(tool["inputSchema"], expected, "{name}");
+            }
+        }
+        marked.sort_unstable();
+        let mut expected = five.to_vec();
+        expected.sort_unstable();
+        assert_eq!(marked, expected, "{profile:?}");
+    }
+    // What the hint costs the standard list.
+    let with = Catalog::new(Arc::clone(&registry), Profile::Standard).size();
+    let hint = r#","_meta":{"anthropic/alwaysLoad":true}"#.len();
+    println!(
+        "always-load hint: {} bytes (~{} tokens) of {} bytes (~{} tokens)",
+        hint * five.len(),
+        (hint * five.len()).div_ceil(4),
+        with.bytes,
+        with.tokens()
+    );
+    assert!(STANDARD_BUDGET.fits(with));
+}
+
+/// Every `[[generic]]` entry of the table is a generic tool and the reverse; every
+/// `[[namespace]]` is a namespace of the registry (plus `render`, which only the full engine
+/// registers) and the reverse; every `[keywords]` key is a command or query an agent can reach.
+#[test]
+fn the_core_table_names_real_generic_tools_namespaces_and_commands() {
+    let table = CoreTable::get();
+    let registry = registry();
+    let generic: Vec<&str> = table.generic.iter().map(|g| g.name.as_str()).collect();
+    assert_eq!(generic, catalog::GENERIC_TOOLS);
+    let mut namespaces = instructions::namespaces(&registry);
+    namespaces.push("render");
+    namespaces.sort_unstable();
+    let described: Vec<&str> = table.namespaces.iter().map(|n| n.name.as_str()).collect();
+    assert_eq!(
+        described, namespaces,
+        "a namespace is added or removed in mcp_core.toml and in the registry together"
+    );
+    let catalog = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    for command in table.keywords.keys() {
+        let entry = catalog
+            .reachable(command)
+            .unwrap_or_else(|| panic!("[keywords]: `{command}` is not a reachable command"));
+        assert_eq!(
+            entry.meta.name, command,
+            "keyed by command name, not tool name"
+        );
+    }
+}
+
+/// The server instructions are a map of the catalog in at most 4,096 characters, on every
+/// profile: every namespace with its purpose, describe before first use, batch through
+/// `cutweave_execute`, the revision, undo and checkpoints. They name a command as a tool only
+/// where it is listed.
+#[tokio::test]
+async fn the_instructions_are_a_map_of_the_catalog_within_4096_characters() {
+    let registry = registry();
+    let table = CoreTable::get();
+    for profile in Profile::ALL {
+        let catalog = Catalog::new(Arc::clone(&registry), profile);
+        let text = catalog.instructions();
+        let chars = text.chars().count();
+        println!("instructions ({}): {chars} characters", profile.name());
+        assert!(
+            chars <= instructions::MAX_INSTRUCTIONS_CHARS,
+            "{profile:?}: {chars} characters"
+        );
+        for namespace in instructions::namespaces(&registry) {
+            let line = format!("- {namespace}: {}\n", table.purpose(namespace).unwrap());
+            assert!(text.contains(&line), "{profile:?}: {namespace}");
+        }
+        for needle in [
+            "Describe a command before its first use",
+            "Batch related changes through cutweave_execute",
+            "one undo step",
+            "io.cutweave/rev",
+            "expected_rev",
+            "cutweave_search_commands",
+            "cutweave_query",
+            "untrusted",
+        ] {
+            assert!(text.contains(needle), "{profile:?}: `{needle}`");
+        }
+    }
+    let standard = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    assert!(standard.instructions().contains("edit_checkpoint"));
+    assert!(standard.instructions().contains("edit_redo brings it back"));
+    let minimal = Catalog::new(Arc::clone(&registry), Profile::Minimal);
+    assert!(minimal.instructions().contains("edit_undo takes back"));
+    assert!(minimal.instructions().contains("edit.redo brings it back"));
+    assert!(minimal.instructions().contains("edit.checkpoint"));
+
+    // Served as built, on both revisions.
+    let h = Harness::start(None);
+    for revision in Revision::ALL {
+        let client = h.client(Profile::Standard, revision).await;
+        assert_eq!(
+            client.service.peer_info().unwrap().instructions.as_deref(),
+            Some(standard.instructions()),
+            "{revision:?}"
+        );
+        client.close().await;
+    }
+}
+
+/// Acceptance: 30 phrases in a user's words each find the right command among the first three
+/// results of `cutweave_search_commands`.
+#[test]
+fn search_understands_the_words_a_user_would_say() {
+    const PHRASES: [(&str, &str); 30] = [
+        ("make the clip faster", "clip.set_speed"),
+        ("slow this down", "clip.set_speed"),
+        ("fade the music out", "audio.set_fade"),
+        ("cut here", "clip.split"),
+        ("remove the gap", "timeline.delete_gap"),
+        ("turn the volume down", "audio.set_volume"),
+        ("make it louder", "audio.set_volume"),
+        ("mute the track", "track.set"),
+        ("play it backwards", "clip.reverse"),
+        ("freeze the picture", "clip.freeze_frame"),
+        ("crop the video", "item.set_props"),
+        ("rotate the clip", "item.set_props"),
+        ("make the picture bigger", "item.set_props"),
+        ("shorten the clip", "clip.trim"),
+        ("undo that", "edit.undo"),
+        ("save a restore point", "edit.checkpoint"),
+        ("export for youtube", "export.start"),
+        ("add my footage", "media.import"),
+        ("make it vertical for tiktok", "sequence.set_format"),
+        ("picture in picture", "item.apply_layout"),
+        ("split screen", "item.apply_layout"),
+        ("swap the footage", "clip.replace"),
+        ("animate the opacity", "keyframe.set"),
+        ("delete the clip", "item.delete"),
+        ("find missing files", "media.find_missing"),
+        ("bookmark this moment", "timeline.add_marker"),
+        ("change the frame rate", "sequence.set_format"),
+        ("separate the sound from the video", "item.unlink"),
+        ("pan the sound to the left", "audio.set_pan"),
+        ("how loud is it", "audio.get_levels"),
+    ];
+    let catalog = Catalog::new(registry(), Profile::Standard);
+    let mut failures = Vec::new();
+    for (phrase, command) in PHRASES {
+        assert!(catalog.reachable(command).is_some(), "{command}");
+        let found = search::find(&catalog, phrase, 3);
+        let names: Vec<&str> = found.entries.iter().map(|e| e.meta.name).collect();
+        if !names.contains(&command) {
+            failures.push(format!("\"{phrase}\": {command} is not in {names:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+// ----- the described profile (WP-2I.07 part 2, ADR-0040) ------------------------------------
+
+fn schema_of(tool: &Tool) -> Value {
+    Value::Object(tool.input_schema.as_ref().clone())
+}
+
+/// Values to try a tool's two listed schemas with: the example (when there is one), nothing,
+/// an unknown parameter, and each parameter of the example in turn missing or of a wrong type.
+fn samples(example: Option<Value>) -> Vec<Value> {
+    let mut out = vec![json!({}), json!({ "no_such_parameter": 1 })];
+    let Some(example) = example else {
+        return out;
+    };
+    let fields = example.as_object().unwrap().clone();
+    for key in fields.keys() {
+        let mut without = fields.clone();
+        without.remove(key);
+        out.push(Value::Object(without));
+        for wrong in [
+            json!([[true]]),
+            json!(-7.25),
+            json!("no such value"),
+            json!(null),
+        ] {
+            let mut changed = fields.clone();
+            changed.insert(key.clone(), wrong);
+            out.push(Value::Object(changed));
+        }
+    }
+    let mut extra = fields;
+    extra.insert("no_such_parameter".to_owned(), json!(1));
+    out.push(Value::Object(extra));
+    out.push(example);
+    out
+}
+
+/// Whether the parameter schema `param` says what the parameter is: a description of its own.
+fn documented(param: &Value) -> bool {
+    param
+        .get("description")
+        .and_then(Value::as_str)
+        .is_some_and(|d| !d.trim().is_empty())
+}
+
+/// Acceptance (part 2): `/mcp/described` lists the same names in the same order as `/mcp`,
+/// with the same descriptions, annotations and hints; every listed parameter has a
+/// description; both lists accept and refuse the same values; and the list fits its own budget
+/// of 16,000 tokens, which `mcp_core.toml` states.
+#[test]
+fn the_described_profile_is_the_standard_list_with_parameter_docs() {
+    let registry = registry();
+    let table = CoreTable::get();
+    assert_eq!(
+        (
+            table.described_budget.max_tools,
+            table.described_budget.max_tokens
+        ),
+        (DESCRIBED_BUDGET.max_tools, DESCRIBED_BUDGET.max_tokens)
+    );
+    assert_eq!(Profile::Described.budget(), DESCRIBED_BUDGET);
+    assert_eq!(Profile::parse("described"), Some(Profile::Described));
+    assert_eq!(Profile::Described.route(), "/described");
+
+    let standard = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    let described = Catalog::new(Arc::clone(&registry), Profile::Described);
+    assert_eq!(names(described.tools()), names(standard.tools()));
+    assert_eq!(described.instructions(), standard.instructions());
+    let size = described.size();
+    println!(
+        "/mcp/described: {} tools, {} bytes, ~{} tokens (gate {} / {}); /mcp: ~{} tokens",
+        size.tools,
+        size.bytes,
+        size.tokens(),
+        DESCRIBED_BUDGET.max_tools,
+        DESCRIBED_BUDGET.max_tokens,
+        standard.size().tokens()
+    );
+    assert!(
+        DESCRIBED_BUDGET.fits(size),
+        "{size:?} exceeds the described budget"
+    );
+    assert!(
+        size.bytes > standard.size().bytes,
+        "the parameter docs are there"
+    );
+
+    let mut undocumented = Vec::new();
+    let mut tried = 0;
+    for (with_docs, lean) in described.tools().iter().zip(standard.tools()) {
+        let name = lean.name.as_ref();
+        // Everything but the input schema is the same listing.
+        let mut a = serde_json::to_value(with_docs).unwrap();
+        let mut b = serde_json::to_value(lean).unwrap();
+        a.as_object_mut().unwrap().remove("inputSchema");
+        b.as_object_mut().unwrap().remove("inputSchema");
+        assert_eq!(a, b, "{name}");
+
+        let (full, listed) = (schema_of(with_docs), schema_of(lean));
+        let entry = registry.get_by_tool_name(name);
+        if let Some(entry) = entry {
+            // A core tool: both are forms of the registry's schema, one with the parameter
+            // docs, one without, and both accept what the registry's accepts.
+            assert_eq!(
+                full,
+                catalog::described_schema(&entry.meta.input_schema),
+                "{name}"
+            );
+            assert_eq!(
+                listed,
+                catalog::lean_schema(&entry.meta.input_schema),
+                "{name}"
+            );
+        } else {
+            assert!(catalog::GENERIC_TOOLS.contains(&name), "{name}");
+        }
+        let registry_schema = entry.map(|e| e.meta.input_schema.clone());
+        let full = inline_defs(&full);
+        for (param, schema) in full["properties"].as_object().into_iter().flatten() {
+            if !documented(schema) {
+                undocumented.push(format!("{name}.{param}"));
+            }
+        }
+        // The same values pass and fail under both.
+        let example = table
+            .tools
+            .iter()
+            .find(|t| t.name == name)
+            .map(example_args);
+        let listed = inline_defs(&listed);
+        for value in samples(example.clone()) {
+            let (by_full, by_listed) = (
+                schema_error(&full, &value, "").is_none(),
+                schema_error(&listed, &value, "").is_none(),
+            );
+            assert_eq!(by_full, by_listed, "{name}: the lists disagree on {value}");
+            if let Some(schema) = &registry_schema {
+                let by_registry = schema_error(schema, &value, "").is_none();
+                assert_eq!(by_full, by_registry, "{name}: not the command's on {value}");
+            }
+            if Some(&value) == example.as_ref() {
+                assert!(by_full, "{name}: the example is valid");
+            }
+            tried += 1;
+        }
+    }
+    assert!(tried > 300, "{tried} samples");
+    assert!(
+        undocumented.is_empty(),
+        "parameters without a description on /mcp/described: {undocumented:?}"
+    );
+}
+
+/// `/mcp/described` is served on both revisions, as built, and its tools run the same commands.
+#[tokio::test]
+async fn the_described_endpoint_serves_its_list_and_runs_the_same_tools() {
+    let h = Harness::start(None);
+    let catalog = Catalog::new(registry(), Profile::Described);
+    assert!(h.url(Profile::Described).ends_with("/mcp/described"));
+    for revision in Revision::ALL {
+        let client = h.client(Profile::Described, revision).await;
+        let listed = client.service.list_tools(None).await.unwrap();
+        assert_eq!(
+            json!({ "tools": listed.tools }),
+            catalog.tools_json(),
+            "{revision:?}"
+        );
+        let info = client.ok("project_info", json!({})).await;
+        assert!(info["sequences"].is_array(), "{info}");
+        let found = client
+            .ok("cutweave_search_commands", json!({ "query": "cut here" }))
+            .await;
+        assert_eq!(found["matches"][0]["name"], "clip.split");
+        assert_eq!(found["matches"][0]["call"], "tool clip_split");
+        client.close().await;
     }
 }
 

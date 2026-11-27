@@ -623,6 +623,11 @@ function pressItem(st: Step, e: PointerPoint, hit: HitResult): void {
   const { env, keys } = st.s;
   const id = hit.itemId as string;
   const unit = clickUnit(env.model, id, { alt: keys.alt, linked: env.linkedSelection });
+  // A key in a keyframe lane with Shift, Ctrl or Cmd adds to the host's key selection: the
+  // clips stay as they are and nothing is dragged.
+  if (hit.zone === "keyframe" && hit.prop !== null && (keys.shift || keys.ctrl || keys.meta)) {
+    return;
+  }
   if (keys.shift) {
     // Shift+click adds or removes the clip (its group); it never starts a drag.
     st.select(toggled(env.selection, unit));
@@ -655,7 +660,9 @@ function pressTarget(st: Step, hit: HitResult): PressTarget {
     st.deps.keyframes !== undefined &&
     hit.keyframeTime !== null
   ) {
-    return partial ? blocked : { kind: "keyframe", item: id, keyframeTime: hit.keyframeTime };
+    // A key belongs to its clip alone: a linked partner has nothing to follow, so a partly
+    // selected group does not stop the drag.
+    return { kind: "keyframe", item: id, keyframeTime: hit.keyframeTime, prop: hit.prop };
   }
   const edge = hit.zone === "left-edge" ? "start" : hit.zone === "right-edge" ? "end" : null;
   const unlink = keys.alt || partial;
@@ -845,12 +852,13 @@ function beginDrag(st: Step, m: PressedMode, t: Exclude<PressTarget, { kind: "no
         tx: newTx(
           gesture,
           "keyframe",
-          st.deps.keyframes?.command(t.item, t.keyframeTime, t.keyframeTime) ?? null,
+          st.deps.keyframes?.command(t.item, t.keyframeTime, t.keyframeTime, t.prop) ?? null,
         ),
         origin: origin(null),
         scroll: null,
         item: t.item,
         keyframeTime: t.keyframeTime,
+        prop: t.prop,
       };
       label = "threshold [keyframe]";
       break;
@@ -958,7 +966,7 @@ function evaluate(st: Step): void {
       const s = snapAt(st, snapshot, null, m.keyframeTime + dt, [0]);
       const t = Math.max(0, s.t);
       place = {
-        command: st.deps.keyframes?.command(m.item, m.keyframeTime, t) ?? null,
+        command: st.deps.keyframes?.command(m.item, m.keyframeTime, t, m.prop) ?? null,
         guide: s.target,
         preview: null,
       };

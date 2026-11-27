@@ -21,6 +21,8 @@
 //! Tokens are estimated as `ceil(bytes / 4)` of the compact JSON of the `tools/list` result
 //! (`{"tools":[...]}`), [`ListSize`]. There is no offline tokenizer; the estimate is close for
 //! prose and low for dense JSON, so budgets keep headroom. Minimal: <= 12 tools / <= 3k tokens.
+//! Described ([`Profile::Described`], `/mcp/described`; ADR-0040, WP-2I.07): the standard
+//! tools with their parameter docs, [`DESCRIBED_BUDGET`], <= 36 tools / <= 16k tokens.
 //! Standard: [`STANDARD_BUDGET`], <= 36 tools / <= 8k tokens, the gate of the `/mcp` list since
 //! M1 (R36; the Phase 1 gate of <= 20 tools / <= 5k tokens, R33, ended with M1). Full: standard
 //! plus the search-based long tail, so it lists exactly the standard tools for now. `outputSchema`s are not listed (Spike S5: about 45% of the bytes); results
@@ -29,10 +31,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use cutweave_commands::{CommandMeta, Entry, EntryKind, McpExposure, Registry, Scope};
-use rmcp::model::{JsonObject, Tool, ToolAnnotations};
+use rmcp::model::{JsonObject, MetaObject, Tool, ToolAnnotations};
 use serde_json::{Value, json};
 
-use crate::mcp::core::{CoreTable, CoreTool};
+use crate::mcp::core::{CoreTable, CoreTool, META_ALWAYS_LOAD};
 
 /// `cutweave_search_commands{query, limit?}`.
 pub const SEARCH: &str = "cutweave_search_commands";
@@ -90,8 +92,16 @@ pub const STANDARD_BUDGET: Budget = Budget {
     max_tokens: 8_000,
 };
 
-/// A tool profile, chosen by the endpoint (`/mcp`, `/mcp/minimal`, `/mcp/full`) or, on stdio,
-/// by `--profile` (WP-1J.03).
+/// The budget of the described profile (ADR-0040, question 2; WP-2I.07): the standard
+/// profile's tools, in at most 16k tokens. It is stated in `mcp_core.toml`
+/// (`[described_budget]`) and a test holds the two equal.
+pub const DESCRIBED_BUDGET: Budget = Budget {
+    max_tools: 36,
+    max_tokens: 16_000,
+};
+
+/// A tool profile, chosen by the endpoint (`/mcp`, `/mcp/minimal`, `/mcp/full`,
+/// `/mcp/described`) or, on stdio, by `--profile` (WP-1J.03).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Profile {
     /// Small-context clients: the [`MINIMAL_CORE`] tools plus the 4 generic tools.
@@ -101,19 +111,34 @@ pub enum Profile {
     /// Standard plus the search-based long tail, with no extra listed tools (Phase 1: the same
     /// list as standard).
     Full,
+    /// For clients that defer tool definitions and load one when a model asks for it (Claude
+    /// Code's tool search, Copilot CLI): the standard profile's tools, in the same order, with
+    /// the same names, descriptions, annotations and hints, and with **full parameter
+    /// descriptions**: each input schema is the registry's in [described](described_schema)
+    /// form, not its [lean](lean_schema) form. For such a client the size of the list is not
+    /// what a session costs, and the parameter docs save a `cutweave_describe_command` call
+    /// per tool (ADR-0040, question 2; WP-2I.07). A schema here accepts exactly the values the
+    /// standard profile's does.
+    Described,
 }
 
 impl Profile {
     /// Every profile.
-    pub const ALL: [Profile; 3] = [Profile::Minimal, Profile::Standard, Profile::Full];
+    pub const ALL: [Profile; 4] = [
+        Profile::Minimal,
+        Profile::Standard,
+        Profile::Full,
+        Profile::Described,
+    ];
 
-    /// `minimal`, `standard` or `full`.
+    /// `minimal`, `standard`, `full` or `described`.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
             Profile::Minimal => "minimal",
             Profile::Standard => "standard",
             Profile::Full => "full",
+            Profile::Described => "described",
         }
     }
 
@@ -123,13 +148,14 @@ impl Profile {
         Profile::ALL.into_iter().find(|p| p.name() == name)
     }
 
-    /// The route under the `/mcp` mount: `/` (`/mcp`), `/minimal`, `/full`.
+    /// The route under the `/mcp` mount: `/` (`/mcp`), `/minimal`, `/full`, `/described`.
     #[must_use]
     pub const fn route(self) -> &'static str {
         match self {
             Profile::Minimal => "/minimal",
             Profile::Standard => "/",
             Profile::Full => "/full",
+            Profile::Described => "/described",
         }
     }
 
@@ -139,7 +165,15 @@ impl Profile {
         match self {
             Profile::Minimal => MINIMAL_BUDGET,
             Profile::Standard | Profile::Full => STANDARD_BUDGET,
+            Profile::Described => DESCRIBED_BUDGET,
         }
+    }
+
+    /// Whether listed input schemas carry their parameter documentation
+    /// ([`described_schema`]) instead of the [lean](lean_schema) form.
+    #[must_use]
+    pub const fn describes_parameters(self) -> bool {
+        matches!(self, Profile::Described)
     }
 }
 
@@ -175,6 +209,7 @@ pub struct Catalog {
     registry: Arc<Registry>,
     tools: Vec<Tool>,
     targets: HashMap<String, Target>,
+    instructions: String,
 }
 
 impl std::fmt::Debug for Catalog {
@@ -199,19 +234,26 @@ impl Catalog {
         let mut tools = Vec::new();
         let mut targets = HashMap::new();
         for entry in entries {
-            let tool = entry_tool(&entry.meta);
+            let tool = entry_tool(&entry.meta, profile);
             targets.insert(tool.name.to_string(), Target::Entry(entry.meta.name));
             tools.push(tool);
         }
-        for (tool, target) in generic_tools() {
+        for (tool, target) in generic_tools(profile.describes_parameters()) {
+            let tool = with_hints(tool);
             targets.insert(tool.name.to_string(), target);
             tools.push(tool);
         }
+        let instructions = crate::mcp::instructions::instructions(&registry, |command| {
+            registry
+                .get(command)
+                .is_some_and(|e| listed(profile, &e.meta))
+        });
         Catalog {
             profile,
             registry,
             tools,
             targets,
+            instructions,
         }
     }
 
@@ -225,6 +267,13 @@ impl Catalog {
     #[must_use]
     pub fn registry(&self) -> &Registry {
         &self.registry
+    }
+
+    /// The server instructions of this endpoint
+    /// ([`instructions`](crate::mcp::instructions)): the same for every connection.
+    #[must_use]
+    pub fn instructions(&self) -> &str {
+        &self.instructions
     }
 
     /// The listed tools, in `tools/list` order.
@@ -331,13 +380,29 @@ fn tool_description(meta: &CommandMeta) -> String {
         .map_or_else(|| meta.summary.to_owned(), CoreTool::listing)
 }
 
-fn entry_tool(meta: &CommandMeta) -> Tool {
-    Tool::new(
-        meta.mcp_tool_name(),
-        tool_description(meta),
-        object(lean_schema(&meta.input_schema)),
+/// Adds what the core table says beyond the listing's text: the
+/// [always-load hint](META_ALWAYS_LOAD) (WP-2I.07) on a tool marked `always_load`. A tool
+/// without a mark gets no `_meta` at all.
+fn with_hints(tool: Tool) -> Tool {
+    if CoreTable::get().always_load(&tool.name) {
+        let mut meta = MetaObject::new();
+        meta.insert(META_ALWAYS_LOAD.to_owned(), json!(true));
+        tool.with_meta(meta)
+    } else {
+        tool
+    }
+}
+
+fn entry_tool(meta: &CommandMeta, profile: Profile) -> Tool {
+    let schema = if profile.describes_parameters() {
+        described_schema(&meta.input_schema)
+    } else {
+        lean_schema(&meta.input_schema)
+    };
+    with_hints(
+        Tool::new(meta.mcp_tool_name(), tool_description(meta), object(schema))
+            .with_annotations(annotations(meta)),
     )
-    .with_annotations(annotations(meta))
 }
 
 /// The listed form of a registry params schema: the same validation, without the keywords that
@@ -355,10 +420,36 @@ pub fn lean_schema(schema: &Value) -> Value {
     if let Value::Object(root) = &mut out {
         root.remove("description");
     }
-    trim(&mut out);
+    trim(&mut out, Docs::Drop);
     share_repeated(&mut out);
     share_subschemas(&mut out);
     out
+}
+
+/// The form of a registry params schema the described profile lists
+/// ([`Profile::Described`]): the same validation, with **every parameter description kept**,
+/// at any depth. What goes is what an agent does not read as parameter documentation: the
+/// root `description` (the command's long doc; the listed description stands for it and
+/// `cutweave_describe_command` returns it), `title`, `x-ui`, width-only `format`s and
+/// `"default": null`. A subschema that several parameters repeat with the same description (the
+/// time input, an id) is defined once under `$defs`, description included, and referenced; a
+/// reference stands alone, so a description is never lost to it.
+#[must_use]
+pub fn described_schema(schema: &Value) -> Value {
+    let mut out = schema.clone();
+    if let Value::Object(root) = &mut out {
+        root.remove("description");
+    }
+    trim(&mut out, Docs::Keep);
+    share_subschemas(&mut out);
+    out
+}
+
+/// Whether [`trim`] keeps the `description` keywords.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Docs {
+    Keep,
+    Drop,
 }
 
 /// Defines each subschema that occurs several times once under `$defs` and references it: an ID pattern, a 2D vector, an `interp`. Greedy, the biggest net
@@ -401,6 +492,10 @@ fn share_subschemas(root: &mut Value) {
 }
 
 fn subschema_name(schema: &Value, taken: &[String]) -> String {
+    let time = schema
+        .get("anyOf")
+        .is_some_and(is_time_input)
+        .then(|| "time".to_owned());
     let base = schema["pattern"]
         .as_str()
         .and_then(|p| p.strip_prefix('^'))
@@ -411,6 +506,7 @@ fn subschema_name(schema: &Value, taken: &[String]) -> String {
             (props.len() == 2 && props.contains_key("x") && props.contains_key("y"))
                 .then(|| "vec2".to_owned())
         })
+        .or(time)
         .unwrap_or_else(|| "d".to_owned());
     let mut name = base.clone();
     let mut n = 1;
@@ -622,7 +718,7 @@ const SCHEMA_VALUES: &[&str] = &[
 /// Keywords whose value is a list of subschemas.
 const SCHEMA_LISTS: &[&str] = &["anyOf", "oneOf", "allOf", "prefixItems"];
 
-fn trim(schema: &mut Value) {
+fn trim(schema: &mut Value, docs: Docs) {
     let Value::Object(map) = schema else {
         return;
     };
@@ -642,22 +738,28 @@ fn trim(schema: &mut Value) {
     if map.get("default") == Some(&Value::Null) {
         map.remove("default");
     }
-    flatten_nullable(map);
-    // The keyword of this schema; a property that is named `description` is a key of a
-    // `properties` map, which is not a schema.
-    map.remove("description");
+    if docs == Docs::Drop {
+        flatten_nullable(map);
+        // The keyword of this schema; a property that is named `description` is a key of a
+        // `properties` map, which is not a schema.
+        map.remove("description");
+    }
     for (key, value) in map.iter_mut() {
         let key = key.as_str();
         if SCHEMA_MAPS.contains(&key) {
             if let Value::Object(children) = value {
-                children.values_mut().for_each(trim);
+                for child in children.values_mut() {
+                    trim(child, docs);
+                }
             }
         } else if SCHEMA_VALUES.contains(&key) {
-            trim(value);
+            trim(value, docs);
         } else if SCHEMA_LISTS.contains(&key)
             && let Value::Array(list) = value
         {
-            list.iter_mut().for_each(trim);
+            for child in list.iter_mut() {
+                trim(child, docs);
+            }
         }
     }
     flatten_const_enum(map);
@@ -738,7 +840,49 @@ fn generic_annotations(read_only: bool) -> ToolAnnotations {
         .open_world(false)
 }
 
-fn generic_tools() -> Vec<(Tool, Target)> {
+/// Parameter descriptions the generic tools carry on the described profile only, by tool and
+/// JSON Pointer into its input schema: the parameters whose standard listing has none (their
+/// names say enough where every token counts).
+const GENERIC_PARAMETER_DOCS: &[(&str, &str, &str)] = &[
+    (
+        EXECUTE,
+        "/properties/steps",
+        "The commands to run, in order, as one transaction",
+    ),
+    (
+        QUERY,
+        "/properties/name",
+        "A query's name, e.g. item.get; cutweave_search_commands finds them",
+    ),
+    (
+        QUERY,
+        "/properties/args",
+        "The query's params; cutweave_describe_command documents them",
+    ),
+];
+
+/// The generic tools; with `described`, every parameter has a description
+/// ([`Profile::Described`]).
+fn generic_tools(described: bool) -> Vec<(Tool, Target)> {
+    let mut tools = standard_generic_tools();
+    if described {
+        for (tool, _) in &mut tools {
+            let mut schema = Value::Object((*tool.input_schema).clone());
+            for (_, pointer, doc) in GENERIC_PARAMETER_DOCS
+                .iter()
+                .filter(|(name, ..)| *name == tool.name)
+            {
+                if let Some(Value::Object(param)) = schema.pointer_mut(pointer) {
+                    param.insert("description".to_owned(), json!(doc));
+                }
+            }
+            tool.input_schema = Arc::new(object(schema));
+        }
+    }
+    tools
+}
+
+fn standard_generic_tools() -> Vec<(Tool, Target)> {
     vec![
         (
             Tool::new(
@@ -1003,6 +1147,64 @@ mod tests {
         assert_eq!(
             lean["properties"]["overlap"],
             json!({ "anyOf": [{ "oneOf": [{ "const": "reject" }] }, { "type": "null" }] })
+        );
+    }
+
+    #[test]
+    fn described_schema_keeps_parameter_docs_and_defines_repeats_once() {
+        let time = json!({
+            "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^-?[0-9]+$|^f:[0-9]+$" }
+            ],
+            "description": "A time: integer flicks, or a string such as a frame \"f:60\"."
+        });
+        let schema = json!({
+            "type": "object",
+            "title": "Params",
+            "description": "The command's long doc.",
+            "properties": {
+                "at": time,
+                "to": time,
+                "end": { "anyOf": [time, { "type": "null" }], "description": "Where it ends.", "default": null },
+                "count": { "type": "integer", "format": "uint32", "minimum": 1, "description": "How many." },
+                "keys": {
+                    "type": "array",
+                    "description": "The keys.",
+                    "items": {
+                        "type": "object",
+                        "properties": { "t": { "type": "integer", "description": "Item time." } }
+                    }
+                }
+            },
+            "required": ["at"]
+        });
+        let described = described_schema(&schema);
+        assert!(described.get("description").is_none() && described.get("title").is_none());
+        assert_eq!(
+            described["$defs"]["time"], time,
+            "defined once, with its description"
+        );
+        let reference = json!({ "$ref": "#/$defs/time" });
+        assert_eq!(described["properties"]["at"], reference);
+        assert_eq!(described["properties"]["to"], reference);
+        assert_eq!(
+            described["properties"]["end"],
+            json!({ "anyOf": [reference, { "type": "null" }], "description": "Where it ends." })
+        );
+        assert_eq!(
+            described["properties"]["count"],
+            json!({ "type": "integer", "minimum": 1, "description": "How many." })
+        );
+        assert_eq!(
+            described["properties"]["keys"]["items"]["properties"]["t"]["description"],
+            "Item time."
+        );
+        assert_eq!(described["required"], json!(["at"]));
+        // The lean form of the same parameter: the validation without the documentation.
+        assert_eq!(
+            lean_schema(&schema)["properties"]["count"],
+            json!({ "type": "integer", "minimum": 1 })
         );
     }
 

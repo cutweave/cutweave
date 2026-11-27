@@ -268,7 +268,7 @@ fn jpeg_size(bytes: &[u8]) -> Option<(u32, u32)> {
 #[tokio::test]
 async fn the_standard_list_fits_the_standard_budget_with_render_frame() {
     let h = Full::start();
-    for profile in [Profile::Standard, Profile::Minimal] {
+    for profile in [Profile::Standard, Profile::Minimal, Profile::Described] {
         for revision in Revision::ALL {
             let client = http_client(&h.url(profile), &h.token, revision).await;
             let tools = client.service.list_tools(None).await.unwrap().tools;

@@ -437,12 +437,13 @@ export function PreviewCanvas({
   const forced = useForcedJpeg();
   const ready = useEngineStore((s) => s.connection === "ready");
   const ringKnown = useEngineStore((s) => s.previewRing !== undefined);
-  const project = useDocStore((s) => s.project);
-  const empty = useMemo(() => {
-    const id = selectActiveSequenceId(project);
-    const sequence = id === null ? undefined : project?.sequences[id];
+  // Whether there is anything to show, not the document: a clip dragged on the timeline changes
+  // it on every update (issue #244).
+  const empty = useDocStore((s) => {
+    const id = selectActiveSequenceId(s.project);
+    const sequence = id === null ? undefined : s.project?.sequences[id];
     return !Object.values(sequence?.tracks ?? {}).some((tr) => Object.keys(tr.items).length > 0);
-  }, [project]);
+  });
 
   // Decide once, when the engine has said whether it streams frames.
   useEffect(() => {
