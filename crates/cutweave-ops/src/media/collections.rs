@@ -14,7 +14,7 @@
 //! from before collections removed it, or a collected copy left it out). Queries skip such a
 //! member and every command that edits the collection drops it. This build never leaves one
 //! behind: `media.remove` and `media.delete_folder` take the removed assets out of every manual
-//! collection in the same transaction ([`drop_members`]), so undo puts them back.
+//! collection in the same transaction (`drop_members`), so undo puts them back.
 
 use std::collections::{BTreeMap, HashSet};
 

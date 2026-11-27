@@ -1223,8 +1223,8 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "min_rating": {
           "description": "Rated at least this (1-5).",
           "format": "uint8",
-          "maximum": 255,
-          "minimum": 0,
+          "maximum": 5,
+          "minimum": 1,
           "type": [
             "integer",
             "null"

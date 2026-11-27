@@ -181,8 +181,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "format": "uint8",
-              "minimum": 0,
-              "maximum": 255,
+              "minimum": 1,
+              "maximum": 5,
               "description": "Rated at least this (1-5)."
             },
             "collection": {
@@ -568,8 +568,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "format": "uint8",
-            "minimum": 0,
-            "maximum": 255,
+            "minimum": 1,
+            "maximum": 5,
             "description": "Rated at least this (1-5)."
           },
           "collection": {
