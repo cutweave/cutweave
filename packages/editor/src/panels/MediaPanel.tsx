@@ -47,7 +47,7 @@ import {
   useBinStore,
 } from "../media/binStore.ts";
 import { computeBinView } from "../media/binView.ts";
-import { formatDuration, type MediaCard, selectMediaUsage } from "../media/cards.ts";
+import { formatDuration, type MediaCard } from "../media/cards.ts";
 import { openSaveSmartCollection } from "../media/collectionCommands.ts";
 import { resolveOpenCollection } from "../media/collections.ts";
 import { dragStore, MEDIA_DRAG_TYPE, TILE_DRAG_TYPE, tileDragStore } from "../media/dragStore.ts";
@@ -80,13 +80,14 @@ import { requestDeleteSelection } from "../media/requestDelete.ts";
 import { sidebarMode, sidebarUiStore, useSidebarUi } from "../media/sidebar.ts";
 import { projectTags, RATINGS, tagKey } from "../media/tags.ts";
 import { useThumbnailSource } from "../media/thumbnails.ts";
+import { useBinProject, useMediaUsage } from "../media/useBinProject.ts";
 import { useCardScrub } from "../media/useCardScrub.ts";
 import { useImport } from "../media/useImport.ts";
 import { ContextSurface, registerContextSurface, useContextMenu } from "../menus/host.tsx";
 import { useSessionStore } from "../session/sessionStore.ts";
 import { documentOf, forEveryWindow, observeSize } from "../shell/windows.ts";
 import { markedRange } from "../source/marks.ts";
-import { docStore, useDocStore } from "../state/docStore.ts";
+import { docStore } from "../state/docStore.ts";
 import { useJobStore } from "../state/jobStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { useSourceViewStore } from "../state/sourceViewStore.ts";
@@ -580,7 +581,9 @@ function FolderView({
  */
 export function MediaPanel() {
   const { t } = useTranslation();
-  const project = useDocStore((s) => s.project);
+  // Not the whole document: a clip dragged on the timeline changes it on every update (#244).
+  const project = useBinProject();
+  const usage = useMediaUsage();
   const projectPath = useSessionStore((s) => s.path) ?? "";
   const text = useBinStore((s) => s.text);
   const filters = useBinStore((s) => s.filters);
@@ -600,10 +603,9 @@ export function MediaPanel() {
   // The bin shows what the engine's `media.list` would list for the same filter, sort and folder
   // (the same predicate, run on the mirror: no round trip per keystroke).
   const view = useMemo(
-    () => computeBinView(project, { text, filters, sort, scope }, open, collection),
-    [project, text, filters, sort, scope, open, collection],
+    () => computeBinView(project, { text, filters, sort, scope }, open, collection, usage),
+    [project, text, filters, sort, scope, open, collection, usage],
   );
-  const usage = useMemo(() => selectMediaUsage(project), [project]);
   const openCollectionEntry = collection === null ? undefined : project?.collections?.[collection];
   const manualOpen = openCollectionEntry?.kind.type === "manual";
   const allCards = view.all;

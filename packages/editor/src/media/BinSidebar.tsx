@@ -20,8 +20,7 @@ import { useTranslation } from "react-i18next";
 import { useEngineReady } from "../engine/engineStore.ts";
 import { useContextMenu } from "../menus/host.tsx";
 import { binKeyAction } from "../panels/binKeys.ts";
-import { useDocStore } from "../state/docStore.ts";
-import { selectMediaCards, selectMediaUsage } from "./cards.ts";
+import { selectMediaCards } from "./cards.ts";
 import { renameCollection } from "./collectionActions.ts";
 import {
   addMediaToCollection,
@@ -43,6 +42,7 @@ import {
   treeMove,
   useSidebarUi,
 } from "./sidebar.ts";
+import { useBinProject, useMediaUsage } from "./useBinProject.ts";
 
 /** The drag events of a drop target, as the bin hands them out for a folder. */
 export interface SidebarDropHandlers {
@@ -104,7 +104,7 @@ function CollectionRow({
   onFocus,
 }: CollectionRowProps) {
   const { t } = useTranslation();
-  const project = useDocStore((s) => s.project);
+  const project = useBinProject();
   const menuRef = useContextMenu<HTMLDivElement>("bin.collection", () => ({
     ids: [entry.id],
     name: entry.name,
@@ -193,15 +193,16 @@ function CollectionRow({
 /** The sidebar of the media bin: Folders, then Collections. */
 export function BinSidebar({ mode, open, collection, dropOver, dropOn, onDone }: BinSidebarProps) {
   const { t } = useTranslation();
-  const project = useDocStore((s) => s.project);
+  const project = useBinProject();
+  const usage = useMediaUsage();
   const ready = useEngineReady();
   const collapsed = useSidebarUi((s) => s.collapsed);
   const renaming = useSidebarUi((s) => s.renaming);
   const dropCollection = useSidebarUi((s) => s.dropOver);
   const rows = useMemo(() => folderRows(project, collapsed), [project, collapsed]);
   const collections = useMemo(
-    () => selectCollections(project, selectMediaCards(project), selectMediaUsage(project)),
-    [project],
+    () => selectCollections(project, selectMediaCards(project), usage),
+    [project, usage],
   );
   const foldersId = useId();
   const collectionsId = useId();

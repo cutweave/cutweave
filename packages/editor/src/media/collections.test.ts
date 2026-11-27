@@ -169,8 +169,11 @@ describe("an open collection", () => {
       m(1),
     ]);
     // An asset that gets the tag joins it: nothing is stored.
-    (p.media[m(6)] as { tags?: string[] }).tags = ["keep"];
-    const next = { ...p };
+    // The next revision of the document: its media table is a new object, as a patch makes it.
+    const next = {
+      ...p,
+      media: { ...p.media, [m(6)]: { ...p.media[m(6)], tags: ["keep"] } },
+    } as typeof p;
     expect(
       ids(
         collectionCards(
