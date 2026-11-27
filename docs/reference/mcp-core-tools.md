@@ -7,11 +7,12 @@ The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §
 - **Listed:** 32 tools (28 core and the 4 generic ones), 30965 bytes, about 7742 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
 - **`/mcp/minimal`** (minimal): 10 tools, about 1853 tokens of 3000.
 - **`/mcp/full`** (full): 32 tools, about 7742 tokens of 8000.
+- **`/mcp/described`** (described): 32 tools, about 13920 tokens of 16000.
 - **Server instructions:** 3344 characters of at most 4096: a map of the command namespaces, how to find, describe and run a command, batches, the revision and undo. Built from the registry and the `[[namespace]]` lines of the core tool table.
 - **Loaded at the start:** `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` carry `_meta` `"anthropic/alwaysLoad": true`, which asks a client that defers tool definitions (Claude Code's tool search) to load them at the start. They are what an agent needs before it can search; other clients ignore the key. Marked **always** below.
 - **Names:** a tool is named after its command with `.` replaced by `_` (`clip.split` is `clip_split`). A core tool is only that command: the same input schema, result and errors as over JSON-RPC and the CLI.
 - **Descriptions:** the text below followed by `E.g.` and the example, at most 300 characters. In an example `…` stands for the 32 hex digits of an id.
-- **Parameters:** a listed input schema validates exactly like the command's, but carries no parameter descriptions (they do not fit the budget). `cutweave_describe_command` returns them, with the output schema.
+- **Parameters:** a listed input schema validates exactly like the command's. On `/mcp` it carries no parameter descriptions (they do not fit the budget); `cutweave_describe_command` returns them, with the output schema. `/mcp/described` lists the same tools in the same order with every parameter description, for clients that defer tool definitions and load one when the model asks for it (ADR-0040); the two lists accept the same values.
 - **Results:** the command's output as `structuredContent`; the document revision after the call is in the result's `_meta` (`io.cutweave/rev`) and in its first text line. An error is a result with `isError`, a `code`, a `message`, the `path` of the argument when known and a `hint` on what to do next.
 
 ## Core tools

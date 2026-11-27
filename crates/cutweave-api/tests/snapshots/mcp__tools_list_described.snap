@@ -1,0 +1,3176 @@
+---
+source: crates/cutweave-api/tests/mcp.rs
+expression: catalog.tools_json()
+---
+{
+  "tools": [
+    {
+      "name": "audio_set",
+      "description": "Set a clip's fades, volume (dB) or pan; `set.kind` picks which. E.g. {\"item\":\"itm_…\",\"set\":{\"kind\":\"fade\",\"in\":\"0.5s\",\"out\":\"1s\"}}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items to change the same way."
+          },
+          "set": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "fade"
+                  },
+                  "in": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Length of the fade in, `0` removes it. Seconds (`\"0.5s\"`), flicks or a timecode."
+                  },
+                  "out": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Length of the fade out, `0` removes it."
+                  },
+                  "curve": {
+                    "anyOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "const": "linear",
+                            "description": "Gain rises in a straight line (the default)."
+                          },
+                          {
+                            "type": "string",
+                            "const": "log",
+                            "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in."
+                          },
+                          {
+                            "type": "string",
+                            "const": "equal_power",
+                            "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`."
+                          },
+                          {
+                            "type": "string",
+                            "const": "s_curve",
+                            "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`."
+                          }
+                        ],
+                        "description": "The shape of a fade: how the gain goes from 0 to 1 over the fade's duration (a fade out runs\nit backwards)."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The shape of the fades being set (both when neither `in` nor `out` is given): `linear`\n(default), `log`, `equal_power`, `s_curve`."
+                  }
+                },
+                "description": "Fade in and/or out.",
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "volume"
+                  },
+                  "db": {
+                    "type": "number",
+                    "description": "The volume."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "db"
+                ],
+                "description": "Clip volume in dB (`-144..=12`; at or below `-144` is silence). Keyed at `at` when the\nvolume is animated."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "pan"
+                  },
+                  "pan": {
+                    "type": "number",
+                    "description": "The position."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "pan"
+                ],
+                "description": "Stereo position, `-1` (left) to `1` (right); centre is `0`. Keyed at `at` when animated."
+              }
+            ],
+            "description": "What to change."
+          },
+          "auto_key": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Key an animated volume or pan at `at` (default true)."
+          },
+          "at": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sequence time (the playhead) to key at."
+          }
+        },
+        "required": [
+          "set"
+        ],
+        "$defs": {
+          "time": {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "clip_set_speed",
+      "description": "Change a clip's playback speed, 0.1x to 100x; its length changes unless keep is \"duration\". Linked partners follow. E.g. {\"item\":\"itm_…\",\"speed\":\"2x\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The clip (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Clips to change at once."
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "description": "A number, exact as written (`0.1` is 1/10)."
+              },
+              {
+                "type": "string",
+                "description": "`\"1/3\"`, `\"2x\"`, `\"0.5\"`, `\"50%\"`."
+              },
+              {
+                "description": "An exact fraction.",
+                "type": "object",
+                "properties": {
+                  "num": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000,
+                    "description": "Numerator."
+                  },
+                  "den": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000,
+                    "description": "Denominator."
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "description": "The speed: `2`, `0.5`, `\"1/3\"`, `\"2x\"`, `\"50%\"` or `{num, den}` (0.1 to 100)."
+          },
+          "keep": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "in_point",
+              "duration",
+              null
+            ],
+            "description": "`in_point` (default): same media, new length; `duration`: same length, more or less media."
+          },
+          "ripple": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "On a free track, move what follows instead of failing at the next item (default `false`;\nthe main track always ripples)."
+          },
+          "keyframes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "keep",
+              "scale",
+              null
+            ],
+            "description": "`keep` (default): keys stay at their item times; `scale`: they stretch with the speed."
+          }
+        },
+        "required": [
+          "speed"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "clip_split",
+      "description": "Split a clip and its linked partners at a timeline time inside it; returns the left and right ids. E.g. {\"item\":\"itm_…\",\"at\":\"2.5s\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The clip (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Clips to split at once."
+          },
+          "at": {
+            "description": "Timeline time to split at: strictly inside the clip.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Audio sample grid."
+          }
+        },
+        "required": [
+          "at"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "clip_trim",
+      "description": "Move a clip's start or end edge to a time (`to`) or by an amount (`delta`). Linked partners follow; the main track closes up. E.g. {\"item\":\"itm_…\",\"edge\":\"end\",\"delta\":\"-0.5s\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The clip."
+          },
+          "edge": {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "start",
+                "description": "The first frame (changes `start`, `source_in` and the length)."
+              },
+              {
+                "type": "string",
+                "const": "end",
+                "description": "The last frame (changes the length)."
+              }
+            ],
+            "description": "The edge to move."
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timeline time of the edge afterwards (frame-snapped)."
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the edge from where it is now (negative: earlier). Use seconds or flicks for\nnegative values."
+          },
+          "unlink": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Trim only this clip and remove it from its linked group (default `false`)."
+          },
+          "clamp": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Stop at the nearest limit instead of failing (default `false`)."
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Snap to the audio sample grid (audio clips only)."
+          },
+          "prune_keyframes": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it\n(default `false`: trims keep every key)."
+          }
+        },
+        "required": [
+          "item",
+          "edge"
+        ],
+        "$defs": {
+          "time": {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "edit_checkpoint",
+      "description": "Save a restore point of the document before risky edits; cheap. Returns its id. E.g. {\"name\":\"before-recut\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A name to restore it by (1..=64 characters, not `cp_<n>`)."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A note (at most 1000 characters)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "edit_redo",
+      "description": "Redo your last undone change (`steps` for more). E.g. {}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Whose change (see `edit.undo`). Default: the caller's own.",
+            "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$"
+          },
+          "steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "How many changes to redo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
+            "minimum": 0
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "edit_restore",
+      "description": "Bring the document back to a checkpoint (id or name) as one undoable change; refuses to revert other actors' edits unless force is true. E.g. {\"checkpoint\":\"before-recut\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint": {
+            "type": "string",
+            "description": "The checkpoint: its id (`cp_<n>`) or name."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Also revert other actors' changes made since the checkpoint.",
+            "default": false
+          }
+        },
+        "required": [
+          "checkpoint"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "edit_undo",
+      "description": "Undo your last change (`steps` for more); other actors' later edits are kept. E.g. {\"steps\":2}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Whose change: `user`, `agent:<label>`, `plugin:<id>`, `system`, or `*` for the most\nrecent change by anyone. Default: the caller's own.",
+            "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$"
+          },
+          "steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "How many changes to undo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
+            "minimum": 0
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "export_start",
+      "description": "Export a sequence to a video file as a background job; returns job_id for job_wait. Presets: export.list_presets. E.g. {\"path\":\"C:/out/cut.mp4\",\"preset\":\"youtube-1080p\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "Sequence; optional when the project has one."
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path of the output file (`.mp4`; `.mov` for ProRes presets)."
+          },
+          "range": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "anyOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "const": "sequence",
+                        "description": "The whole sequence."
+                      },
+                      {
+                        "type": "string",
+                        "const": "in_out",
+                        "description": "Between the sequence's in and out points."
+                      },
+                      {
+                        "type": "string",
+                        "const": "custom",
+                        "description": "`in` to `out`."
+                      },
+                      {
+                        "type": "string",
+                        "const": "markers",
+                        "description": "One file per marker."
+                      }
+                    ],
+                    "description": "Which part of the sequence to export."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "\"sequence\", \"in_out\", \"custom\" or \"markers\" (default: from the other fields)."
+              },
+              "in": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Custom start: flicks, \"2.5s\", \"f:60\" or a timecode."
+              },
+              "out": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Custom end, exclusive: at most the sequence end."
+              },
+              "markers": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "description": "A Marker id: `^mrk_[0-9a-f]{32}$`.",
+                  "type": "string",
+                  "pattern": "^mrk_[0-9a-f]{32}$"
+                },
+                "description": "Marker kind: the markers to export (default: all of the sequence's markers)."
+              },
+              "pair_mode": {
+                "anyOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "const": "duration",
+                        "description": "Each marker's own `duration` (the default)."
+                      },
+                      {
+                        "type": "string",
+                        "const": "pairs",
+                        "description": "Each marker to the next one."
+                      }
+                    ],
+                    "description": "How markers become regions."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Marker kind: \"duration\" (default; each marker's own duration) or \"pairs\" (each marker to\nthe next)."
+              }
+            },
+            "description": "Part of the sequence to export (default: all of it): {kind: \"sequence\" | \"in_out\" |\n\"custom\" | \"markers\", in, out, markers: [ids], pair_mode: \"duration\" | \"pairs\"}."
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "h264-mp4-1080p",
+                    "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "custom": {
+                        "description": "Custom output settings; absent fields take the sequence's value (quality: high).",
+                        "type": "object",
+                        "properties": {
+                          "width": {
+                            "description": "Frame width in pixels: even, 16-8192.",
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "minimum": 0
+                          },
+                          "height": {
+                            "description": "Frame height in pixels: even, 16-8192.",
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "minimum": 0
+                          },
+                          "fps": {
+                            "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "num": {
+                                "description": "Frames.",
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 4294967295
+                              },
+                              "den": {
+                                "description": "Seconds.",
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 4294967295
+                              }
+                            },
+                            "required": [
+                              "num",
+                              "den"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "quality": {
+                            "description": "\"low\", \"medium\" or \"high\".",
+                            "anyOf": [
+                              {
+                                "description": "How hard the encoder works for picture quality (and file size).",
+                                "oneOf": [
+                                  {
+                                    "description": "Small files, visible compression.",
+                                    "type": "string",
+                                    "const": "low"
+                                  },
+                                  {
+                                    "description": "Balanced.",
+                                    "type": "string",
+                                    "const": "medium"
+                                  },
+                                  {
+                                    "description": "Close to the original (the default).",
+                                    "type": "string",
+                                    "const": "high"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "preset": {
+                            "description": "Base preset id; the other fields replace its values.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "custom"
+                    ],
+                    "additionalProperties": false,
+                    "description": "MP4, H.264 + AAC at a custom size, frame rate and quality."
+                  },
+                  {
+                    "type": "string",
+                    "description": "A preset id (export.list_presets)."
+                  }
+                ],
+                "description": "What to make: the preset, or custom settings."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}."
+          },
+          "hw": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "auto",
+                    "description": "The first hardware encoder of the codec that works here (`export.list_encoders`), else\nsoftware; if it fails during the export, the export starts again in software."
+                  },
+                  {
+                    "type": "string",
+                    "const": "off",
+                    "description": "Software (x264, x265, SVT-AV1) only."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "force": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "force"
+                    ],
+                    "additionalProperties": false,
+                    "description": "This hardware encoder and no other, e.g. \"hevc_nvenc\" (the `implementation` names of\nthe machine's hardware encoders, `export.list_encoders`); fails instead of falling back."
+                  }
+                ],
+                "description": "Whether to use a hardware video encoder."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"hevc_nvenc\"}."
+          },
+          "overwrite": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Replace an existing file at `path` (default false); same as `collision: \"overwrite\"`."
+          },
+          "collision": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "rename",
+                    "description": "Pick a free name (`name (1).mp4`)."
+                  },
+                  {
+                    "type": "string",
+                    "const": "overwrite",
+                    "description": "Replace the file once the export has succeeded."
+                  },
+                  {
+                    "type": "string",
+                    "const": "fail",
+                    "description": "Refuse (the default)."
+                  }
+                ],
+                "description": "What to do when the output file exists."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\"."
+          },
+          "allow_offline": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Export although media files are missing: their clips show a \"media offline\" slate and\nare silent (default false: fails with `Invalid` at `/media/<id>` naming them)."
+          },
+          "advanced": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Fine control (export.describe_options{codec} gives a codec's options as a JSON Schema):\nvideo{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},\ngop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,\nprofile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only},\naudio{codec, bitrate_kbps, sample_rate, channels}. Impossible combinations fail with\nInvalid and a hint.",
+            "properties": {
+              "video": {
+                "type": "object"
+              },
+              "color": {
+                "type": "object"
+              },
+              "audio": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$defs": {
+          "time": {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "item_delete",
+      "description": "Delete items and their linked partners; the main track closes up, other tracks keep the gap. E.g. {\"items\":[\"itm_…\"]}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "The items to delete, at least one."
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "item_move",
+      "description": "Move items to a time (`start`) or by `delta`, and/or to another track (`to_track`). Linked partners follow. E.g. {\"item\":\"itm_…\",\"start\":\"6s\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items; the first leads."
+          },
+          "start": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New start, `>= 0` (or `delta`)."
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the start."
+          },
+          "to_track": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "Target track (default: stay)."
+          },
+          "unlink": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Move only the given items, unlinked."
+          },
+          "overlap": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "description": "Alias of `mode`."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "description": "Default: `insert` on the main track, else `reject`."
+          },
+          "ripple_all_tracks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Ripples reach every track."
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Audio sample grid."
+          }
+        },
+        "$defs": {
+          "time": {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "item_set_props",
+      "description": "Set some of an item's properties: name, enabled, opacity, audio gain and pan, transform, crop, flip, blend mode. The rest stay. E.g. {\"item\":\"itm_…\",\"props\":{\"opacity\":0.5,\"transform\":{\"scale\":{\"x\":1.2,\"y\":1.2}}}}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items to give the same properties."
+          },
+          "props": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Display name; an empty string clears it (the media name is shown again)."
+              },
+              "enabled": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Rendered and heard (`true`) or kept but skipped (`false`)."
+              },
+              "opacity": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "maximum": 1.0,
+                "description": "Opacity `0.0..=1.0`.",
+                "minimum": 0.0
+              },
+              "audio_gain": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "maximum": 48.0,
+                "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+                "minimum": -144.0
+              },
+              "audio_pan": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "maximum": 1.0,
+                "description": "Stereo position, `-1` (left) to `1` (right).",
+                "minimum": -1.0
+              },
+              "transform": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "position": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "$ref": "#/$defs/d2"
+                      },
+                      "y": {
+                        "$ref": "#/$defs/d"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "description": "Offset of the anchor from the canvas center, in canvas units (+y is down)."
+                  },
+                  "scale": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "$ref": "#/$defs/d2"
+                      },
+                      "y": {
+                        "$ref": "#/$defs/d"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`."
+                  },
+                  "rotation": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "Clockwise rotation in degrees."
+                  },
+                  "anchor": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "$ref": "#/$defs/d2"
+                      },
+                      "y": {
+                        "$ref": "#/$defs/d"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "description": "The item point `position` places and rotation turns around, in item units."
+                  }
+                },
+                "description": "Placement on the canvas (partial)."
+              },
+              "crop": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "left": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the left edge.",
+                    "minimum": 0.0
+                  },
+                  "top": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the top edge.",
+                    "minimum": 0.0
+                  },
+                  "right": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the right edge.",
+                    "minimum": 0.0
+                  },
+                  "bottom": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the bottom edge.",
+                    "minimum": 0.0
+                  }
+                },
+                "description": "Edges of the source picture cut away (partial)."
+              },
+              "flip": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "horizontal": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Mirror left-right."
+                  },
+                  "vertical": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Mirror top-bottom."
+                  }
+                },
+                "description": "Mirroring (partial)."
+              },
+              "blend_mode": {
+                "description": "How the item combines with what is below.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "normal",
+                  "multiply",
+                  "screen",
+                  "overlay",
+                  "darken",
+                  "lighten",
+                  "add",
+                  "soft_light",
+                  null
+                ]
+              }
+            },
+            "description": "The properties to change; at least one."
+          },
+          "auto_key": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Key animated properties at `at` (default true)."
+          },
+          "at": {
+            "anyOf": [
+              {
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sequence time (the playhead) to key animated properties at."
+          }
+        },
+        "required": [
+          "props"
+        ],
+        "$defs": {
+          "d": {
+            "type": "number",
+            "description": "Vertical component (down is positive)."
+          },
+          "d2": {
+            "type": "number",
+            "description": "Horizontal component."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "job_status",
+      "description": "Get a background job's state, progress and error (media analysis, export). E.g. {\"id\":\"job_…\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "description": "The job (from `media.import`'s `job_ids`, `export.start`, …)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "job_wait",
+      "description": "Wait for a background job to finish, at most timeout_ms (max 60000); returns its state. Call again while it is running. E.g. {\"job_id\":\"job_…\",\"timeout_ms\":30000}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "description": "The job."
+          },
+          "timeout_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state).",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "job_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "keyframe_set",
+      "description": "Animate one property of an item: add or replace keys at sequence times (`at`) or item times (`t`), with an easing to the next key. E.g. {\"item\":\"itm_…\",\"prop\":\"opacity\",\"keys\":[{\"at\":\"6s\",\"value\":0,\"easing\":\"ease_out\"},{\"at\":\"8s\",\"value\":1}]}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items to give the same keys."
+          },
+          "prop": {
+            "description": "The property.",
+            "type": "string",
+            "enum": [
+              "transform.position",
+              "transform.scale",
+              "transform.rotation",
+              "transform.anchor",
+              "opacity",
+              "crop.left",
+              "crop.top",
+              "crop.right",
+              "crop.bottom",
+              "flip.horizontal",
+              "flip.vertical",
+              "audio_gain",
+              "audio_pan"
+            ]
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "description": "A key to write.",
+              "type": "object",
+              "properties": {
+                "t": {
+                  "description": "Item time (flicks, seconds like \"1.5s\", or \"f:N\" frames from the item's start).",
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "at": {
+                  "description": "Sequence time. Give `t` or `at`; both snap to frames.",
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "value": {
+                  "description": "The value; omitted: the property's current value there.",
+                  "anyOf": [
+                    {
+                      "description": "A property value: a number, `{x, y}` (position, scale, anchor) or a boolean (flip); the\nproperty decides which.",
+                      "anyOf": [
+                        {
+                          "description": "A boolean.",
+                          "type": "boolean"
+                        },
+                        {
+                          "description": "A number.",
+                          "type": "number"
+                        },
+                        {
+                          "description": "A 2D vector.",
+                          "type": "object",
+                          "properties": {
+                            "x": {
+                              "description": "Horizontal component.",
+                              "type": "number"
+                            },
+                            "y": {
+                              "description": "Vertical component (down is positive).",
+                              "type": "number"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "x",
+                            "y"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "interp": {
+                  "description": "Shapes the move to the next key; or use `easing`.",
+                  "anyOf": [
+                    {
+                      "description": "How a key's segment moves to the next key (stored form; `bounce` may be omitted). Prefer\n`easing` for the presets.",
+                      "oneOf": [
+                        {
+                          "description": "Jump at the next key.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "hold"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "description": "Constant speed.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "linear"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "description": "CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "bezier"
+                            },
+                            "x1": {
+                              "description": "Control point 1 x.",
+                              "type": "number"
+                            },
+                            "y1": {
+                              "description": "Control point 1 y.",
+                              "type": "number"
+                            },
+                            "x2": {
+                              "description": "Control point 2 x.",
+                              "type": "number"
+                            },
+                            "y2": {
+                              "description": "Control point 2 y.",
+                              "type": "number"
+                            },
+                            "preset": {
+                              "$ref": "#/$defs/d"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "x1",
+                            "y1",
+                            "x2",
+                            "y2"
+                          ]
+                        },
+                        {
+                          "description": "Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "spring"
+                            },
+                            "stiffness": {
+                              "description": "Stiffness.",
+                              "type": "number"
+                            },
+                            "damping": {
+                              "description": "Damping.",
+                              "type": "number"
+                            },
+                            "mass": {
+                              "description": "Mass.",
+                              "type": "number"
+                            },
+                            "bounce": {
+                              "description": "Hard stop at the target (default false).",
+                              "type": [
+                                "boolean",
+                                "null"
+                              ]
+                            },
+                            "preset": {
+                              "$ref": "#/$defs/d"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "stiffness",
+                            "damping",
+                            "mass"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "easing": {
+                  "description": "A preset name, `linear` or `hold`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "hold",
+                    "linear",
+                    "ease_in",
+                    "ease_out",
+                    "ease_in_out",
+                    "sine_in",
+                    "sine_out",
+                    "sine_in_out",
+                    "cubic_in",
+                    "cubic_out",
+                    "cubic_in_out",
+                    "expo_in",
+                    "expo_out",
+                    "expo_in_out",
+                    "back_in",
+                    "back_out",
+                    "back_in_out",
+                    "spring",
+                    "spring_gentle",
+                    "spring_wobbly",
+                    "spring_stiff",
+                    "elastic",
+                    "bounce",
+                    null
+                  ]
+                },
+                "preset": {
+                  "description": "Preset name hint for `interp`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "The keys, 1 to 10,000."
+          },
+          "replace": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Make the result exactly these keys."
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Snap to audio samples (audio properties)."
+          }
+        },
+        "required": [
+          "prop",
+          "keys"
+        ],
+        "$defs": {
+          "time": {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          "d": {
+            "description": "Preset name hint.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "media_import",
+      "description": "Import media files by absolute path. Returns media_ids at once; analysis runs as jobs (job_ids) that job_wait waits for. E.g. {\"paths\":[\"C:/footage/a.mp4\"]}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Absolute paths of files or folders (1..=256, no repeats)."
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "description": "Bin folder (default: top level)."
+          },
+          "keep_structure": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "For folders in `paths`: mirror their directories as bin folders (default true); false\nputs every file straight into `folder`."
+          },
+          "copy_to_project": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Copy each new file into the project's `media/` folder first (default false)."
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "media_list",
+      "description": "List the project's media with ids, kinds and durations; filter, sort and page. E.g. {\"filter\":{\"kinds\":[\"video\"],\"used\":false},\"limit\":20}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Page size, `1..=500` (default 50).",
+            "minimum": 0
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^med_[0-9a-f]{32}$",
+            "description": "`next_cursor` of the previous page."
+          },
+          "filter": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Terms that must all occur in the name, tags or note, ignoring case and accents."
+              },
+              "kinds": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "description": "What a [`MediaAsset`] is.",
+                  "oneOf": [
+                    {
+                      "description": "A video file (may also carry audio).",
+                      "type": "string",
+                      "const": "video"
+                    },
+                    {
+                      "description": "An audio-only file.",
+                      "type": "string",
+                      "const": "audio"
+                    },
+                    {
+                      "description": "A still image (no duration).",
+                      "type": "string",
+                      "const": "image"
+                    },
+                    {
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string",
+                      "const": "image_sequence"
+                    },
+                    {
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string",
+                      "const": "sequence_ref"
+                    }
+                  ]
+                },
+                "description": "Only these kinds."
+              },
+              "min_duration": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/d"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Shortest length (flicks), inclusive; stills never match a bound."
+              },
+              "max_duration": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/d"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Longest length (flicks), inclusive."
+              },
+              "used": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Placed on a timeline of any sequence (`true`) or not (`false`)."
+              },
+              "problems": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "`true`: only files nothing can be read from (no streams)."
+              },
+              "folder": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^fld_[0-9a-f]{32}$",
+                "description": "Only this bin folder."
+              },
+              "recursive": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "With subfolders (default: true without folder)."
+              },
+              "tags": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Has all these tags."
+              },
+              "min_rating": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Rated at least this (1-5).",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "collection": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^col_[0-9a-f]{32}$",
+                "description": "On this collection."
+              }
+            },
+            "description": "Keep only matching media."
+          },
+          "sort": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "by": {
+                "type": "string",
+                "enum": [
+                  "imported",
+                  "name",
+                  "duration",
+                  "kind"
+                ],
+                "description": "What to order by."
+              },
+              "order": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Direction.",
+                "default": "asc"
+              }
+            },
+            "required": [
+              "by"
+            ],
+            "description": "Order."
+          },
+          "include": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "What `media.list` adds to each asset on request.",
+              "oneOf": [
+                {
+                  "description": "The asset's note.",
+                  "type": "string",
+                  "const": "note"
+                }
+              ]
+            },
+            "description": "Extra fields per asset: `note`."
+          }
+        },
+        "$defs": {
+          "d": {
+            "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "project_info",
+      "description": "Get the project's name, default format and its sequences with their ids. Start here. E.g. {}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
+      }
+    },
+    {
+      "name": "project_open",
+      "description": "Open a project folder or .cutweave file; the current project closes. Fails if that would lose unsaved changes. E.g. {\"path\":\"C:/projects/trip\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute path of the project folder or of its `.cutweave` document."
+          },
+          "discard_unsaved": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Drop the open document's unsaved changes (`true`); otherwise they make the open fail."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "sequence_create",
+      "description": "Add a sequence from an aspect preset (\"16:9\", \"9:16\", \"1:1\", ...) or an explicit format; returns its id and tracks. E.g. {\"name\":\"Short\",\"preset\":\"9:16\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name (1..=200 characters)."
+          },
+          "preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Aspect preset ID: `16:9`, `16:9-4k`, `9:16`, `1:1`, `4:5` or `21:9`."
+          },
+          "format": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "width": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Canvas width in pixels, `1..=16384`.",
+                "minimum": 0
+              },
+              "height": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Canvas height in pixels, `1..=16384`.",
+                "minimum": 0
+              },
+              "frame_rate": {
+                "description": "The edit grid, `1..=1000` fps and a whole number of flicks per frame.",
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "num": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4294967295,
+                    "description": "Frames."
+                  },
+                  "den": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4294967295,
+                    "description": "Seconds."
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "additionalProperties": false
+              },
+              "sample_rate": {
+                "description": "The mix rate in Hz, `8000..=384000`.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "maximum": 352800000
+              },
+              "background": {
+                "description": "The canvas color behind all tracks, `#rrggbb`.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+              }
+            },
+            "description": "Format fields; they win over the preset."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "sequence_set_format",
+      "description": "Change a sequence's size, frame rate, sample rate or background; `reframe` says how items adapt to a new size. E.g. {\"sequence\":\"seq_…\",\"width\":1080,\"height\":1920}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence."
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Canvas width in pixels, `1..=16384`.",
+            "minimum": 0
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Canvas height in pixels, `1..=16384`.",
+            "minimum": 0
+          },
+          "frame_rate": {
+            "description": "The edit grid.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "num": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Frames."
+              },
+              "den": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Seconds."
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "sample_rate": {
+            "description": "The mix rate in Hz.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 352800000
+          },
+          "background": {
+            "description": "Canvas color, `#rrggbb`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          },
+          "reframe": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "keep_scale",
+                    "description": "Keep each clip's pixel size and pixel offset from the centre."
+                  },
+                  {
+                    "type": "string",
+                    "const": "fit",
+                    "description": "Scale the composition to sit whole inside the new canvas."
+                  },
+                  {
+                    "type": "string",
+                    "const": "fill",
+                    "description": "Scale the composition to cover the new canvas."
+                  },
+                  {
+                    "type": "string",
+                    "const": "none",
+                    "description": "Leave transforms alone."
+                  }
+                ],
+                "description": "How clip transforms follow a new canvas (see the module docs)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How clips follow a new canvas size (default `fit`)."
+          }
+        },
+        "required": [
+          "sequence"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "timeline_add_marker",
+      "description": "Add a marker at a time of a sequence, or on one of its items (`item`; then `t` is from the item's start). `duration` makes it a range. E.g. {\"sequence\":\"seq_…\",\"t\":\"12s\",\"label\":\"Cut here\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence."
+          },
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "Put the marker on this item of the sequence instead of on the sequence."
+          },
+          "t": {
+            "description": "Where, `>= 0` (snapped to the frame grid; relative to the item for an item marker).",
+            "anyOf": [
+              {
+                "$ref": "#/$defs/d2"
+              },
+              {
+                "$ref": "#/$defs/d"
+              }
+            ]
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/d2"
+                  },
+                  {
+                    "$ref": "#/$defs/d"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Length of a range marker, `> 0` (snapped to whole frames)."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Text shown with the marker (default empty), at most 200 characters."
+          },
+          "color": {
+            "description": "Display color, `#rrggbb` (default marigold).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "user",
+                    "description": "Placed by a person or an agent."
+                  },
+                  {
+                    "type": "string",
+                    "const": "beat",
+                    "description": "A beat found by analysis (snaps like a marker, spec §6)."
+                  },
+                  {
+                    "type": "string",
+                    "const": "chapter",
+                    "description": "A chapter start (exported to chaptered formats)."
+                  }
+                ],
+                "description": "What a marker means."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`user` (default), `beat` or `chapter`."
+          }
+        },
+        "required": [
+          "sequence",
+          "t"
+        ],
+        "$defs": {
+          "d": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          },
+          "d2": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "timeline_get",
+      "description": "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`. E.g. {\"sequence\":\"seq_…\",\"depth\":2,\"limit\":50}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence."
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Detail level `0..=2` (default 1).",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "fields": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Sections to include: any of `name`, `format`, `duration`, `tracks` (default all)."
+          },
+          "range": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Start (default 0)."
+              },
+              "to": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "End, exclusive (default: the sequence end)."
+              }
+            },
+            "description": "Depth 2: list only the items that overlap `{from, to}` (flicks, \"2.5s\" or \"f:60\")."
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Depth 2: most items to list, `1..=1000` (default: all); see `next_cursor`.",
+            "minimum": 0
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "Depth 2 with `limit`: the previous page's `next_cursor`."
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "$defs": {
+          "time": {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
+      }
+    },
+    {
+      "name": "timeline_insert",
+      "description": "Place a media clip on a track at a time; video with sound also gets a linked audio clip. Returns the new clip ids. E.g. {\"sequence\":\"seq_…\",\"track\":\"trk_…\",\"media\":\"med_…\",\"at\":\"0s\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence."
+          },
+          "track": {
+            "type": "string",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "The target track: video for pictures, audio for sound."
+          },
+          "media": {
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "description": "The media to place."
+          },
+          "at": {
+            "description": "Timeline position of the clip's first frame, `>= 0`.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          "source_in": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Position in the media to start from (default 0)."
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clip length, `> 0` (default: the rest of the media)."
+          },
+          "overlap": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "description": "Alias of `mode`."
+          },
+          "link": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Also place a video's sound, linked (default `true`)."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "description": "Default: `insert` on the main track, else `reject`."
+          },
+          "audio_track": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "Track for the linked sound."
+          },
+          "ripple_all_tracks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`insert` ripples every track."
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "media",
+          "at"
+        ],
+        "$defs": {
+          "time": {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "track_add",
+      "description": "Add an empty track to a sequence; returns its id. E.g. {\"sequence\":\"seq_…\",\"kind\":\"video\"}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence."
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "video",
+                "description": "Picture layers."
+              },
+              {
+                "type": "string",
+                "const": "audio",
+                "description": "Sound."
+              },
+              {
+                "type": "string",
+                "const": "text",
+                "description": "Titles (later versions)."
+              },
+              {
+                "type": "string",
+                "const": "caption",
+                "description": "Captions (later versions)."
+              },
+              {
+                "type": "string",
+                "const": "adjustment",
+                "description": "Adjustment layers (later versions)."
+              }
+            ],
+            "description": "`video` or `audio`."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name; defaults to `V<n>` / `A<n>`."
+          },
+          "index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Display position, 0 = top (clamped to the end).",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sequence",
+          "kind"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "view_get",
+      "description": "Read what the user sees in the app: playhead, selection, zoom, active sequence, source in/out marks. E.g. {}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "view_set",
+      "description": "Show the user something in the app: move the playhead, select items, zoom or switch sequence. Changes only the view; not undoable. E.g. {\"patch\":{\"playhead\":\"12s\",\"selection\":[{\"kind\":\"item\",\"id\":\"itm_…\"}]}}",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "patch": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "playhead": {
+                "anyOf": [
+                  {
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "New playhead (flicks, seconds text; `>= 0`)."
+              },
+              "zoom": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "New zoom in pixels per second."
+              },
+              "scroll": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Horizontal offset, `>= 0`."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Vertical offset, `>= 0`."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "description": "New scroll offset."
+              },
+              "selection": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "description": "One selected entity, by ID (never by index).",
+                  "oneOf": [
+                    {
+                      "description": "A timeline item.",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "item"
+                        },
+                        "id": {
+                          "description": "The item.",
+                          "type": "string",
+                          "pattern": "^itm_[0-9a-f]{32}$"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ]
+                    },
+                    {
+                      "description": "A track.",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "track"
+                        },
+                        "id": {
+                          "description": "The track.",
+                          "type": "string",
+                          "pattern": "^trk_[0-9a-f]{32}$"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ]
+                    },
+                    {
+                      "description": "A media asset.",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "media"
+                        },
+                        "id": {
+                          "description": "The asset.",
+                          "type": "string",
+                          "pattern": "^med_[0-9a-f]{32}$"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ]
+                    },
+                    {
+                      "description": "A sequence.",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "sequence"
+                        },
+                        "id": {
+                          "description": "The sequence.",
+                          "type": "string",
+                          "pattern": "^seq_[0-9a-f]{32}$"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ]
+                    }
+                  ]
+                },
+                "description": "New selection (replaces the whole selection; every ID must exist)."
+              },
+              "panel_layout": {
+                "description": "New panel layout (opaque JSON, replaces the whole value)."
+              },
+              "preview_quality": {
+                "anyOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "const": "full",
+                        "description": "Full resolution."
+                      },
+                      {
+                        "type": "string",
+                        "const": "half",
+                        "description": "Half resolution."
+                      },
+                      {
+                        "type": "string",
+                        "const": "quarter",
+                        "description": "Quarter resolution."
+                      }
+                    ],
+                    "description": "Preview resolution (arch §8 quality ladder)."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "New preview resolution."
+              },
+              "master_gain": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "New master gain (linear, `0..=4`)."
+              },
+              "active_sequence": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^seq_[0-9a-f]{32}$",
+                "description": "The sequence to show; must exist."
+              },
+              "source_marks": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "patternProperties": {
+                  "^med_[0-9a-f]{32}$": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "in": {
+                        "anyOf": [
+                          {
+                            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The in mark (flicks or seconds text; `>= 0`)."
+                      },
+                      "out": {
+                        "anyOf": [
+                          {
+                            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The out mark (exclusive; after `in` and `> 0`)."
+                      }
+                    },
+                    "description": "The marks of one asset in a `view.set` patch: they replace the asset's marks, and an entry\nwith neither clears them."
+                  }
+                },
+                "description": "Source marks per media asset (must exist): each entry replaces that asset's marks, and\nan entry with neither `in` nor `out` clears them. Other assets keep theirs."
+              }
+            },
+            "description": "The fields to change."
+          }
+        },
+        "required": [
+          "patch"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "cutweave_search_commands",
+      "description": "Find commands and queries by keyword, including ones not listed as tools",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words matched against names and summaries; \"\" lists all"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Default 20"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
+      }
+    },
+    {
+      "name": "cutweave_describe_command",
+      "description": "Get one command's docs, annotations and full input/output JSON Schemas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "e.g. clip.split"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
+      }
+    },
+    {
+      "name": "cutweave_execute",
+      "description": "Run commands as one all-or-nothing transaction and one undo step",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "properties": {
+                "cmd": {
+                  "type": "string",
+                  "description": "e.g. clip.split"
+                },
+                "args": {
+                  "type": "object",
+                  "description": "Params; {\"$ref\":\"steps[0].output.left\"} inserts an earlier step's output"
+                }
+              },
+              "required": [
+                "cmd"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The commands to run, in order, as one transaction"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Validate and list the predicted ops; change nothing"
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail unless the document is at this revision"
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "description": "Save a checkpoint first; edit.restore brings it back"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
+      }
+    },
+    {
+      "name": "cutweave_query",
+      "description": "Run a read-only query by name, e.g. item.get or edit.history",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "A query's name, e.g. item.get; cutweave_search_commands finds them"
+          },
+          "args": {
+            "type": "object",
+            "description": "The query's params; cutweave_describe_command documents them"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    }
+  ]
+}

@@ -115,6 +115,8 @@ pub struct Namespace {
 pub struct CoreTable {
     /// The budget of the standard profile's list.
     pub budget: TableBudget,
+    /// The budget of the described profile's list (`/mcp/described`; ADR-0040, WP-2I.07).
+    pub described_budget: TableBudget,
     /// The listed core tools.
     #[serde(rename = "tool", default)]
     pub tools: Vec<CoreTool>,
@@ -146,11 +148,13 @@ impl CoreTable {
         static TABLE: LazyLock<CoreTable> = LazyLock::new(|| {
             CoreTable::parse(SOURCE).unwrap_or_else(|error| {
                 tracing::error!(%error, "mcp_core.toml does not parse; using registry summaries");
+                let none = TableBudget {
+                    max_tools: 0,
+                    max_tokens: 0,
+                };
                 CoreTable {
-                    budget: TableBudget {
-                        max_tools: 0,
-                        max_tokens: 0,
-                    },
+                    budget: none,
+                    described_budget: none,
                     tools: Vec::new(),
                     pending: Vec::new(),
                     generic: Vec::new(),
@@ -300,7 +304,8 @@ mod tests {
 
     #[test]
     fn a_table_with_an_unknown_key_is_refused() {
-        let text = "[budget]\nmax_tools = 1\nmax_tokens = 1\n[[tool]]\nname = \"a_b\"\n\
+        let text = "[budget]\nmax_tools = 1\nmax_tokens = 1\n[described_budget]\n\
+                    max_tools = 1\nmax_tokens = 1\n[[tool]]\nname = \"a_b\"\n\
                     command = \"a.b\"\ndescription = \"X.\"\nexample = '{}'\nextra = 1\n";
         assert!(CoreTable::parse(text).unwrap_err().contains("extra"));
     }

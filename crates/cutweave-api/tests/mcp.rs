@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 
 use cutweave_api::mcp::core::CoreTable;
 use cutweave_api::mcp::{
-    Catalog, ListSize, Profile, STANDARD_BUDGET, catalog, instructions, search,
+    Catalog, DESCRIBED_BUDGET, ListSize, Profile, STANDARD_BUDGET, catalog, instructions, search,
 };
 use cutweave_commands::Registry;
 use cutweave_engine::Call;
@@ -425,7 +425,7 @@ fn listed_input_schemas_validate_like_the_registry_schemas() {
 #[test]
 fn tools_list_snapshot() {
     let registry = registry();
-    for profile in [Profile::Standard, Profile::Minimal] {
+    for profile in [Profile::Standard, Profile::Minimal, Profile::Described] {
         let catalog = Catalog::new(Arc::clone(&registry), profile);
         let size = catalog.size();
         assert!(profile.budget().fits(size));
@@ -465,11 +465,13 @@ fn the_always_load_hint_is_on_five_tools_and_nowhere_else() {
                 }
             }
             if let Some(entry) = registry.get_by_tool_name(name) {
-                assert_eq!(
-                    tool["inputSchema"],
-                    catalog::lean_schema(&entry.meta.input_schema),
-                    "{name}"
-                );
+                let schema = &entry.meta.input_schema;
+                let expected = if profile.describes_parameters() {
+                    catalog::described_schema(schema)
+                } else {
+                    catalog::lean_schema(schema)
+                };
+                assert_eq!(tool["inputSchema"], expected, "{name}");
             }
         }
         marked.sort_unstable();
@@ -621,6 +623,183 @@ fn search_understands_the_words_a_user_would_say() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+// ----- the described profile (WP-2I.07 part 2, ADR-0040) ------------------------------------
+
+fn schema_of(tool: &Tool) -> Value {
+    Value::Object(tool.input_schema.as_ref().clone())
+}
+
+/// Values to try a tool's two listed schemas with: the example (when there is one), nothing,
+/// an unknown parameter, and each parameter of the example in turn missing or of a wrong type.
+fn samples(example: Option<Value>) -> Vec<Value> {
+    let mut out = vec![json!({}), json!({ "no_such_parameter": 1 })];
+    let Some(example) = example else {
+        return out;
+    };
+    let fields = example.as_object().unwrap().clone();
+    for key in fields.keys() {
+        let mut without = fields.clone();
+        without.remove(key);
+        out.push(Value::Object(without));
+        for wrong in [
+            json!([[true]]),
+            json!(-7.25),
+            json!("no such value"),
+            json!(null),
+        ] {
+            let mut changed = fields.clone();
+            changed.insert(key.clone(), wrong);
+            out.push(Value::Object(changed));
+        }
+    }
+    let mut extra = fields;
+    extra.insert("no_such_parameter".to_owned(), json!(1));
+    out.push(Value::Object(extra));
+    out.push(example);
+    out
+}
+
+/// Whether the parameter schema `param` says what the parameter is: a description of its own.
+fn documented(param: &Value) -> bool {
+    param
+        .get("description")
+        .and_then(Value::as_str)
+        .is_some_and(|d| !d.trim().is_empty())
+}
+
+/// Acceptance (part 2): `/mcp/described` lists the same names in the same order as `/mcp`,
+/// with the same descriptions, annotations and hints; every listed parameter has a
+/// description; both lists accept and refuse the same values; and the list fits its own budget
+/// of 16,000 tokens, which `mcp_core.toml` states.
+#[test]
+fn the_described_profile_is_the_standard_list_with_parameter_docs() {
+    let registry = registry();
+    let table = CoreTable::get();
+    assert_eq!(
+        (
+            table.described_budget.max_tools,
+            table.described_budget.max_tokens
+        ),
+        (DESCRIBED_BUDGET.max_tools, DESCRIBED_BUDGET.max_tokens)
+    );
+    assert_eq!(Profile::Described.budget(), DESCRIBED_BUDGET);
+    assert_eq!(Profile::parse("described"), Some(Profile::Described));
+    assert_eq!(Profile::Described.route(), "/described");
+
+    let standard = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    let described = Catalog::new(Arc::clone(&registry), Profile::Described);
+    assert_eq!(names(described.tools()), names(standard.tools()));
+    assert_eq!(described.instructions(), standard.instructions());
+    let size = described.size();
+    println!(
+        "/mcp/described: {} tools, {} bytes, ~{} tokens (gate {} / {}); /mcp: ~{} tokens",
+        size.tools,
+        size.bytes,
+        size.tokens(),
+        DESCRIBED_BUDGET.max_tools,
+        DESCRIBED_BUDGET.max_tokens,
+        standard.size().tokens()
+    );
+    assert!(
+        DESCRIBED_BUDGET.fits(size),
+        "{size:?} exceeds the described budget"
+    );
+    assert!(
+        size.bytes > standard.size().bytes,
+        "the parameter docs are there"
+    );
+
+    let mut undocumented = Vec::new();
+    let mut tried = 0;
+    for (with_docs, lean) in described.tools().iter().zip(standard.tools()) {
+        let name = lean.name.as_ref();
+        // Everything but the input schema is the same listing.
+        let mut a = serde_json::to_value(with_docs).unwrap();
+        let mut b = serde_json::to_value(lean).unwrap();
+        a.as_object_mut().unwrap().remove("inputSchema");
+        b.as_object_mut().unwrap().remove("inputSchema");
+        assert_eq!(a, b, "{name}");
+
+        let (full, listed) = (schema_of(with_docs), schema_of(lean));
+        let entry = registry.get_by_tool_name(name);
+        if let Some(entry) = entry {
+            // A core tool: both are forms of the registry's schema, one with the parameter
+            // docs, one without, and both accept what the registry's accepts.
+            assert_eq!(
+                full,
+                catalog::described_schema(&entry.meta.input_schema),
+                "{name}"
+            );
+            assert_eq!(
+                listed,
+                catalog::lean_schema(&entry.meta.input_schema),
+                "{name}"
+            );
+        } else {
+            assert!(catalog::GENERIC_TOOLS.contains(&name), "{name}");
+        }
+        let registry_schema = entry.map(|e| e.meta.input_schema.clone());
+        let full = inline_defs(&full);
+        for (param, schema) in full["properties"].as_object().into_iter().flatten() {
+            if !documented(schema) {
+                undocumented.push(format!("{name}.{param}"));
+            }
+        }
+        // The same values pass and fail under both.
+        let example = table
+            .tools
+            .iter()
+            .find(|t| t.name == name)
+            .map(example_args);
+        let listed = inline_defs(&listed);
+        for value in samples(example.clone()) {
+            let (by_full, by_listed) = (
+                schema_error(&full, &value, "").is_none(),
+                schema_error(&listed, &value, "").is_none(),
+            );
+            assert_eq!(by_full, by_listed, "{name}: the lists disagree on {value}");
+            if let Some(schema) = &registry_schema {
+                let by_registry = schema_error(schema, &value, "").is_none();
+                assert_eq!(by_full, by_registry, "{name}: not the command's on {value}");
+            }
+            if Some(&value) == example.as_ref() {
+                assert!(by_full, "{name}: the example is valid");
+            }
+            tried += 1;
+        }
+    }
+    assert!(tried > 300, "{tried} samples");
+    assert!(
+        undocumented.is_empty(),
+        "parameters without a description on /mcp/described: {undocumented:?}"
+    );
+}
+
+/// `/mcp/described` is served on both revisions, as built, and its tools run the same commands.
+#[tokio::test]
+async fn the_described_endpoint_serves_its_list_and_runs_the_same_tools() {
+    let h = Harness::start(None);
+    let catalog = Catalog::new(registry(), Profile::Described);
+    assert!(h.url(Profile::Described).ends_with("/mcp/described"));
+    for revision in Revision::ALL {
+        let client = h.client(Profile::Described, revision).await;
+        let listed = client.service.list_tools(None).await.unwrap();
+        assert_eq!(
+            json!({ "tools": listed.tools }),
+            catalog.tools_json(),
+            "{revision:?}"
+        );
+        let info = client.ok("project_info", json!({})).await;
+        assert!(info["sequences"].is_array(), "{info}");
+        let found = client
+            .ok("cutweave_search_commands", json!({ "query": "cut here" }))
+            .await;
+        assert_eq!(found["matches"][0]["name"], "clip.split");
+        assert_eq!(found["matches"][0]["call"], "tool clip_split");
+        client.close().await;
+    }
 }
 
 // ----- the core tool table (WP-2I.01) -------------------------------------------------------

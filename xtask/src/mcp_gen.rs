@@ -70,7 +70,7 @@ fn overview(out: &mut String, registry: &Arc<Registry>, table: &CoreTable) {
         table.budget.max_tools,
         table.budget.max_tokens
     );
-    for profile in [Profile::Minimal, Profile::Full] {
+    for profile in [Profile::Minimal, Profile::Full, Profile::Described] {
         let size = Catalog::new(Arc::clone(registry), profile).size();
         let budget = profile.budget();
         let _ = writeln!(
@@ -113,9 +113,12 @@ fn overview(out: &mut String, registry: &Arc<Registry>, table: &CoreTable) {
         out,
         "- **Descriptions:** the text below followed by `E.g.` and the example, at most {MAX_DESCRIPTION_CHARS} \
          characters. In an example `…` stands for the 32 hex digits of an id.\n\
-         - **Parameters:** a listed input schema validates exactly like the command's, but \
-         carries no parameter descriptions (they do not fit the budget). \
-         `cutweave_describe_command` returns them, with the output schema.\n\
+         - **Parameters:** a listed input schema validates exactly like the command's. On \
+         `/mcp` it carries no parameter descriptions (they do not fit the budget); \
+         `cutweave_describe_command` returns them, with the output schema. \
+         `/mcp/described` lists the same tools in the same order with every parameter \
+         description, for clients that defer tool definitions and load one when the model \
+         asks for it (ADR-0040); the two lists accept the same values.\n\
          - **Results:** the command's output as `structuredContent`; the document revision \
          after the call is in the result's `_meta` (`io.cutweave/rev`) and in its first text \
          line. An error is a result with `isError`, a `code`, a `message`, the `path` of the \

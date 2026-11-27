@@ -2,7 +2,9 @@
 //! The MCP server (WP-1J.01; arch §6, §14, ADR-0009): rmcp `=3.11.0` over Streamable HTTP,
 //! mounted at `/mcp` behind the server's Host/Origin check and bearer-token authentication.
 //!
-//! - [`router`] builds the mount: `/mcp` (standard profile), `/mcp/minimal` and `/mcp/full`,
+//! - [`router`] builds the mount: `/mcp` (standard profile), `/mcp/minimal`, `/mcp/full` and
+//!   `/mcp/described` (the standard tools with parameter docs, for clients that defer tool
+//!   definitions; ADR-0040),
 //!   all over one engine (one endpoint = one engine = one open project).
 //! - [`catalog`]: the tools, generated from the command registry (core tools plus
 //!   `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` and
@@ -65,7 +67,9 @@ use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 
-pub use catalog::{Budget, Catalog, ListSize, MINIMAL_BUDGET, Profile, STANDARD_BUDGET};
+pub use catalog::{
+    Budget, Catalog, DESCRIBED_BUDGET, ListSize, MINIMAL_BUDGET, Profile, STANDARD_BUDGET,
+};
 pub use dispatch::{Dispatch, DispatchCall, DispatchConn, DispatchReply};
 pub use handler::CutweaveMcp;
 pub use notify::Notifier;

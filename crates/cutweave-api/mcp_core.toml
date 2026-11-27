@@ -37,6 +37,13 @@
 max_tools = 36
 max_tokens = 8000
 
+[described_budget]
+# ADR-0040, question 2 (WP-2I.07): `/mcp/described` lists the same tools in the same order with
+# full parameter descriptions, for clients that defer tool definitions (Claude Code, Copilot
+# CLI) and so do not pay for the list at the start. Its own budget, enforced like the one above.
+max_tools = 36
+max_tokens = 16000
+
 [[tool]]
 name = "audio_set"
 command = "audio.set"
