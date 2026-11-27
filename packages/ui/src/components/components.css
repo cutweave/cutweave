@@ -787,6 +787,11 @@
 .cw-menu__item--danger svg {
   color: var(--danger);
 }
+/* On the highlight (`surface-3`) the hover shade keeps danger text at 4.5:1 in both themes. */
+.cw-menu__item--danger[data-highlighted],
+.cw-menu__item--danger[data-highlighted] svg {
+  color: var(--danger-hover);
+}
 .cw-menu__item[data-disabled],
 .cw-menu__item[data-disabled] svg,
 .cw-menu__item[data-disabled] .cw-menu__kbd {

@@ -107,15 +107,15 @@ test.describe("F39 overlays, linked and attached clips", () => {
       )?.name;
       if (overlay === undefined) throw new Error("no overlay track");
 
-      // The coffee B-roll on the overlay at 22 s (its sound goes to A1, after the others).
-      await movePlayhead(page, 22);
-      await dropCard(page, "broll-coffee.mp4", overlay, 22);
-      await expect.poll(() => on(page, overlay)).toEqual([[22, 10]]);
+      // The coffee B-roll on the overlay at 32 s (its sound goes to A1, after the others).
+      await movePlayhead(page, 32);
+      await dropCard(page, "broll-coffee.mp4", overlay, 32);
+      await expect.poll(() => on(page, overlay)).toEqual([[32, 10]]);
       await editorCaughtUp(page);
 
       // Its clip menu: Unlink clips. Then the picture dragged 2 s right moves alone.
       g = await timelineGeometry(page);
-      const coffee = clipAt(g, overlay, 22).id;
+      const coffee = clipAt(g, overlay, 32).id;
       let box = clipBox(g, coffee);
       await page.mouse.click(box.x + 20, box.y, { button: "right" });
       await page
@@ -132,11 +132,11 @@ test.describe("F39 overlays, linked and attached clips", () => {
       await editorCaughtUp(page);
       await page.mouse.click(box.x + 20, box.y);
       await drag(page, { x: box.x + 20, y: box.y }, { x: box.x + 20 + 2 * g.pxPerSec, y: box.y });
-      await expect.poll(() => on(page, overlay)).toEqual([[24, 10]]);
+      await expect.poll(() => on(page, overlay)).toEqual([[34, 10]]);
       expect(await on(page, "A1")).toEqual([
         [0, 10],
         [10, 10],
-        [22, 10],
+        [32, 10],
       ]);
       await editorCaughtUp(page);
 
