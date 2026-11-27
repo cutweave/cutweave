@@ -22,10 +22,12 @@ const find = (query: string) =>
   searchSettings(settingsPages(), query, t).flatMap((m) => m.rows.map((r) => r.row.id));
 
 describe("Settings > Playback", () => {
-  it("is the page after Editing and before Media and import", () => {
+  it("is the page after Timeline and before Media and import", () => {
+    // The catalog's order (docs/reference/settings.md): Editing, Timeline, Playback, Audio
+    // (not shipped yet), Media and import.
     const ids = settingsPages().map((p) => p.id);
     const at = ids.indexOf("playback");
-    expect(ids.slice(at - 1, at + 2)).toEqual(["editing", "playback", "media"]);
+    expect(ids.slice(at - 2, at + 2)).toEqual(["editing", "timeline", "playback", "media"]);
     const page = settingsPages()[at];
     expect(t(page?.title as TKey)).toBe("Playback");
     expect(page?.group).toBe("preferences");

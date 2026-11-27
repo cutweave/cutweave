@@ -82,6 +82,8 @@ export function insertArgsFor(id: string | undefined, at: Placement) {
     media: id,
     at: when,
     ...(duration === undefined ? {} : { duration }),
+    // Settings > Editing > Keep video and audio linked (WP-2A.13).
+    ...(prefsStore.getState().values["editing.link_av"] ? {} : { link: false }),
     overlap: "new_track",
   };
 }

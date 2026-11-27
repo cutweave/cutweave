@@ -134,14 +134,34 @@ export interface Rect {
 export type SnapGuide = number | { readonly kind: SnapKindName; readonly t: number };
 
 /** How the ruler and the playhead flag show time (the Timeline preference "Show time as"). */
-export type TimeFormat = "timecode" | "frames";
+export type TimeFormat = "timecode" | "frames" | "seconds";
 
-/** Display options the host's preferences set (WP-2A.13 adds more). */
+/** What a video clip's body shows: tiles all along, one tile at its start, or nothing. */
+export type ThumbnailMode = "filmstrip" | "first" | "off";
+
+/** What the plain mouse wheel does; Ctrl/Cmd+wheel does the other. */
+export type WheelMode = "scroll" | "zoom";
+
+/** How the view keeps the playhead in sight while playing (`followScrollX`). */
+export type FollowMode = "page" | "smooth" | "off";
+
+/** Display options the host's preferences set (Settings > Timeline, WP-2A.13). */
 export interface TimelineDisplay {
   readonly timeFormat: TimeFormat;
+  /** Drop-frame timecode at 29.97 and 59.94 fps; absent: the model's `dropFrame`. */
+  readonly dropFrame?: boolean | undefined;
+  readonly thumbnails: ThumbnailMode;
+  /** Audio clips draw their waveform. */
+  readonly waveforms: boolean;
+  readonly wheel: WheelMode;
 }
 
-export const DEFAULT_DISPLAY: TimelineDisplay = { timeFormat: "timecode" };
+export const DEFAULT_DISPLAY: TimelineDisplay = {
+  timeFormat: "timecode",
+  thumbnails: "filmstrip",
+  waveforms: true,
+  wheel: "scroll",
+};
 
 /** View state owned by the host (`viewStore` / `playbackStore`); the renderer only reads it. */
 export interface ViewState {

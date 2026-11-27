@@ -941,3 +941,37 @@ export async function positionOf(
   }>(page, "item.get", { item: id });
   return got.visual.transform.position;
 }
+
+/**
+ * Brings timeline time `seconds` into view the way a person does when the timeline has moved on
+ * (it follows the playhead while playing: Settings > Timeline, WP-2A.13): a sideways scroll of
+ * the wheel over the lanes. Does nothing when the time already shows. Returns the geometry to
+ * click by. `drawnIn` is the window the Timeline is shown in when it is detached.
+ */
+export async function revealTime(
+  page: Page,
+  seconds: number,
+  drawnIn: Page = page,
+): Promise<TimelineGeometry> {
+  await viewSettled(page);
+  let g = await timelineGeometry(page, drawnIn);
+  const shows = (geometry: TimelineGeometry): boolean => {
+    const x = xAt(geometry, sec(seconds));
+    const left = geometry.box.x + geometry.headerWidth;
+    return x >= left && x <= geometry.box.x + geometry.box.width - 8;
+  };
+  // Half a second of timeline before it, so it is clear of the track headers.
+  const target = Math.max(0, sec(seconds - 0.5));
+  // A person scrolls, looks, and scrolls again if it is not there yet.
+  for (let attempt = 0; attempt < 6 && !shows(g); attempt += 1) {
+    await drawnIn.mouse.move(
+      g.box.x + g.headerWidth + (g.box.width - g.headerWidth) / 2,
+      g.box.y + g.box.height / 2,
+    );
+    await drawnIn.mouse.wheel(((target - g.scrollX) * g.pxPerSec) / FLICKS, 0);
+    await viewSettled(page);
+    g = await timelineGeometry(page, drawnIn);
+  }
+  if (!shows(g)) throw new Error(`the timeline never showed ${seconds} s`);
+  return g;
+}

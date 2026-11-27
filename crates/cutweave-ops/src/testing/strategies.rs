@@ -618,6 +618,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "edit.undo" => (3, history_scope()),
         "edit.redo" => (2, history_scope()),
         "edit.history" => (1, history_page()),
+        "edit.set_history_limit" => (1, history_limit()),
         "edit.checkpoint" => (2, checkpoint()),
         "edit.restore" => (2, restore()),
         "edit.delete_checkpoint" => (1, delete_checkpoint()),
@@ -3744,6 +3745,21 @@ fn history_page() -> BoxedStrategy<Value> {
         )
         .boxed();
     mix(valid, Just(json!({"limit": 600})).boxed())
+}
+
+/// `edit.set_history_limit`: limits deeper than any sequence the harness runs, so the undo
+/// properties see every step (the trimming itself is unit-tested in `cutweave-commands`).
+fn history_limit() -> BoxedStrategy<Value> {
+    let valid = (500..=10_000_u32)
+        .prop_map(|steps| json!({"steps": steps}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"steps": 0})),
+        Just(json!({"steps": 10_001})),
+        Just(json!({})),
+    ]
+    .boxed();
+    mix(valid, invalid)
 }
 
 fn checkpoint() -> BoxedStrategy<Value> {

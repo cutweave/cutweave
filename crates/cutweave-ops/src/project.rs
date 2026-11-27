@@ -251,6 +251,9 @@ pub struct ProjectInfoOutput {
     /// save into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)
     /// and the project folders. Filled by the engine; empty outside one.
     pub allowed_roots: Vec<String>,
+    /// Undo steps kept per person or agent (`edit.undo` reaches no further back). The person
+    /// sets it in Settings > Editing; 1000 until then. Filled by the engine.
+    pub history_limit: u32,
 }
 
 fn count(n: usize) -> u32 {
@@ -294,6 +297,7 @@ impl Query for ProjectInfo {
             media_count: count(doc.media.len()),
             sequences,
             allowed_roots: Vec::new(),
+            history_limit: u32::try_from(cutweave_commands::DEFAULT_UNDO_DEPTH).unwrap_or(u32::MAX),
         })
     }
 }

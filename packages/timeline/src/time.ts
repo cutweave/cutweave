@@ -59,6 +59,33 @@ export function isDropFrameRate(fps: FrameRate): boolean {
   return fps.den === 1001 && (fps.num === 30000 || fps.num === 60000);
 }
 
+/**
+ * Seconds for display: `"12s"`, `"12.5s"`, at most two decimals (the form a time field reads
+ * back). Negative times clamp to zero.
+ */
+export function formatSeconds(t: number): string {
+  const hundredths = Math.round((Math.max(0, t) / FLICKS_PER_SECOND) * 100);
+  const whole = Math.floor(hundredths / 100);
+  const rest = hundredths % 100;
+  if (rest === 0) return `${whole}s`;
+  return rest % 10 === 0 ? `${whole}.${rest / 10}s` : `${whole}.${pad2(rest)}s`;
+}
+
+/**
+ * Time `t` the way Settings > Timeline > "Show time as" says: a timecode, the frame number or
+ * seconds.
+ */
+export function formatTime(
+  t: number,
+  fps: FrameRate,
+  format: "timecode" | "frames" | "seconds",
+  dropFrame = false,
+): string {
+  if (format === "frames") return String(Math.max(0, flicksToFrame(t, fps)));
+  if (format === "seconds") return formatSeconds(t);
+  return formatTimecode(t, fps, dropFrame);
+}
+
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n));
 
 /**

@@ -28,7 +28,7 @@ use super::{
     },
     history::{
         EntryCause, History, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
-        MAX_HISTORY_PAGE, NewRecord, Record, Restored, RevertedChanges,
+        MAX_HISTORY_PAGE, MAX_UNDO_DEPTH, NewRecord, Record, Restored, RevertedChanges,
     },
     identity::{Actor, ActorCtx, ConnId},
     locks::{ItemLocks, LockList, TxLocks},
@@ -2396,6 +2396,26 @@ impl DocState {
                 ),
             )),
         }
+    }
+
+    /// The undo steps kept per actor (`edit.set_history_limit`, `project.info`).
+    #[must_use]
+    pub fn history_limit(&self) -> u32 {
+        u32::try_from(self.history.undo_depth()).unwrap_or(u32::MAX)
+    }
+
+    /// Sets the undo steps kept per actor (clamped to 1..=[`MAX_UNDO_DEPTH`]) and drops each
+    /// actor's oldest steps beyond it, announcing `edit.history_changed` (`trimmed`) for every
+    /// actor that lost some. The document, its revision and the journal are not touched.
+    /// Returns the limit now in force.
+    pub fn set_history_limit(&mut self, steps: u32) -> u32 {
+        let depth = usize::try_from(steps)
+            .unwrap_or(MAX_UNDO_DEPTH)
+            .clamp(1, MAX_UNDO_DEPTH);
+        let events = self.history.set_undo_depth(depth, self.committed_rev);
+        self.outbox
+            .extend(events.into_iter().map(DocEvent::History));
+        self.history_limit()
     }
 
     /// A page of the history, newest first: at most `limit` entries (capped at

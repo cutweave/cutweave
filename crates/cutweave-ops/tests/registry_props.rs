@@ -96,9 +96,10 @@ const REGRESSIONS: &str = concat!(
 /// stream; at 48 the export queue and lock commands dropped coverage to 93%, and at 128 the
 /// three import commands of ADR-0035 dropped it to 94.3%. Commands whose
 /// preconditions are rare (keyframes to move, a proxy to delete) want strategies that set
-/// them up rather than more cases (issue #184). Raised from 160 with the two commands of
-/// issue #222 (`timeline.update_marker`, `item.set_label_color`).
-const COVERAGE_CASES: u32 = 176;
+/// them up rather than more cases (issue #184). Raised from 160 to 176 with the two commands
+/// of issue #222 (`timeline.update_marker`, `item.set_label_color`), and to 192 with them and
+/// `edit.set_history_limit` together.
+const COVERAGE_CASES: u32 = 192;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 
@@ -887,10 +888,18 @@ impl<'s> Harness<'s> {
         let patched = self.absorb(&what, &after);
         match &result {
             Err(e) => {
-                if !matches!(
-                    e.code(),
-                    "invalid" | "not_found" | "locked" | "conflict" | "unsupported"
-                ) {
+                // A UI-only entry (`edit.set_history_limit`) refuses every other credential.
+                let ui_only = e.code() == "forbidden"
+                    && self
+                        .registry
+                        .get(name)
+                        .is_some_and(|entry| !ctx.access().allows(entry.meta.scope));
+                if !ui_only
+                    && !matches!(
+                        e.code(),
+                        "invalid" | "not_found" | "locked" | "conflict" | "unsupported"
+                    )
+                {
                     self.fail(format!("{what}: unexpected error `{}`: {e}", e.code()));
                 }
                 // (3) A failure changes nothing.

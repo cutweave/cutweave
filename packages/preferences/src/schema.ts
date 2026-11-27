@@ -133,6 +133,35 @@ export type ImageSequenceFps = (typeof IMAGE_SEQUENCE_FPS_CHOICES)[number];
 export const HISTORY_ORDERS = ["oldest", "newest"] as const;
 export type HistoryOrder = (typeof HISTORY_ORDERS)[number];
 
+// Editing and Timeline (WP-2A.13)
+/** Media dropped onto a clip outside the main track replaces what it covers, or pushes it later. */
+export const DROP_MODES = ["overwrite", "insert"] as const;
+export type DropMode = (typeof DROP_MODES)[number];
+/** The most frames one nudge moves, and the undo steps kept per person or agent. */
+export const NUDGE_MAX = 100;
+export const UNDO_STEPS_MAX = 10_000;
+/** What a dragged clip can snap to (Settings > Timeline > Snap to). */
+export const SNAP_TARGETS = ["playhead", "edges", "markers", "beats"] as const;
+export type SnapTarget = (typeof SNAP_TARGETS)[number];
+/** The snap distance, in pixels. */
+export const SNAP_DISTANCE_MIN = 2;
+export const SNAP_DISTANCE_MAX = 32;
+/** How the timeline follows the playhead while playing. */
+export const FOLLOW_MODES = ["page", "smooth", "off"] as const;
+export type FollowModeChoice = (typeof FOLLOW_MODES)[number];
+/** What video clips show on the timeline. */
+export const THUMBNAIL_MODES = ["filmstrip", "first", "off"] as const;
+export type ThumbnailModeChoice = (typeof THUMBNAIL_MODES)[number];
+/** The height a new track gets. */
+export const TRACK_HEIGHTS = ["small", "medium", "large"] as const;
+export type TrackHeightChoice = (typeof TRACK_HEIGHTS)[number];
+/** What the mouse wheel does over the timeline; Ctrl/Cmd+wheel does the other. */
+export const WHEEL_MODES = ["scroll", "zoom"] as const;
+export type WheelModeChoice = (typeof WHEEL_MODES)[number];
+/** How the ruler, the transport and the Inspector show time. */
+export const TIME_DISPLAYS = ["timecode", "frames", "seconds"] as const;
+export type TimeDisplayChoice = (typeof TIME_DISPLAYS)[number];
+
 /** "Keyboard shortcuts" presets (WP-2H.05): the NLE-style keys, or CapCut's. */
 export const SHORTCUT_PRESETS = ["nle", "capcut"] as const;
 export type ShortcutPreset = (typeof SHORTCUT_PRESETS)[number];
@@ -230,6 +259,29 @@ export interface PreferenceValues {
   "media.proxy_policy": ProxyPolicyChoice;
   /** The longest side of the proxies this computer makes, in pixels. */
   "media.proxy_size": (typeof PROXY_SIZES)[number];
+  // Editing (WP-2A.13)
+  /** A video placed on the timeline brings its sound, linked to it. */
+  "editing.link_av": boolean;
+  /** Media dropped onto a clip outside the main track. */
+  "editing.drop_mode": DropMode;
+  /** Frames `,` and `.` move the selected clips (Shift: ten times as far). */
+  "editing.nudge": number;
+  /** Undo steps the engine keeps per person or agent (`edit.set_history_limit`). */
+  "editing.undo_steps": number;
+  // Timeline (WP-2A.13)
+  /** Snapping is on when a project opens (the toolbar's toggle is for the session). */
+  "timeline.snap": boolean;
+  "timeline.snap_targets": readonly SnapTarget[];
+  /** Snap distance in pixels. */
+  "timeline.snap_distance": number;
+  "timeline.follow": FollowModeChoice;
+  "timeline.thumbnails": ThumbnailModeChoice;
+  "timeline.waveforms": boolean;
+  "timeline.track_height": TrackHeightChoice;
+  "timeline.wheel": WheelModeChoice;
+  "timeline.time_display": TimeDisplayChoice;
+  /** Drop-frame timecode at 29.97 and 59.94 fps. */
+  "timeline.drop_frame": boolean;
   /**
    * The preview uses proxies when they are ready and large enough (WP-2F.02): the transport
    * bar's toggle. The editor sends it to the engine (`view.set_preview_quality`).
@@ -268,6 +320,13 @@ export type PreferenceDef =
    * is given, matching it. The default is always accepted.
    */
   | { type: "text"; scope: PreferenceScope; default: string; max: number; pattern?: RegExp }
+  /** Some of `options`, each at most once, kept in the order of `options`. */
+  | {
+      type: "set";
+      scope: PreferenceScope;
+      options: readonly string[];
+      default: readonly string[];
+    }
   /** Binding ids to the keys they have (see {@link ShortcutOverrides}). */
   | { type: "bindings"; scope: PreferenceScope; default: ShortcutOverrides }
   /**
@@ -454,6 +513,49 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   // this computer's.
   "media.proxy_policy": { type: "enum", scope: "app", options: PROXY_POLICIES, default: "auto" },
   "media.proxy_size": { type: "enum", scope: "machine", options: PROXY_SIZES, default: 960 },
+  // Editing (WP-2A.13)
+  "editing.link_av": { type: "boolean", scope: "app", default: true },
+  "editing.drop_mode": { type: "enum", scope: "app", options: DROP_MODES, default: "overwrite" },
+  "editing.nudge": { type: "int", scope: "app", min: 1, max: NUDGE_MAX, default: 1 },
+  "editing.undo_steps": { type: "int", scope: "app", min: 1, max: UNDO_STEPS_MAX, default: 1000 },
+  // Timeline (WP-2A.13)
+  "timeline.snap": { type: "boolean", scope: "app", default: true },
+  "timeline.snap_targets": {
+    type: "set",
+    scope: "app",
+    options: SNAP_TARGETS,
+    default: SNAP_TARGETS,
+  },
+  "timeline.snap_distance": {
+    type: "int",
+    scope: "app",
+    min: SNAP_DISTANCE_MIN,
+    max: SNAP_DISTANCE_MAX,
+    default: 8,
+  },
+  "timeline.follow": { type: "enum", scope: "app", options: FOLLOW_MODES, default: "page" },
+  "timeline.thumbnails": {
+    type: "enum",
+    scope: "app",
+    options: THUMBNAIL_MODES,
+    default: "filmstrip",
+  },
+  "timeline.waveforms": { type: "boolean", scope: "app", default: true },
+  "timeline.track_height": {
+    type: "enum",
+    scope: "app",
+    options: TRACK_HEIGHTS,
+    default: "medium",
+  },
+  "timeline.wheel": { type: "enum", scope: "app", options: WHEEL_MODES, default: "scroll" },
+  "timeline.time_display": {
+    type: "enum",
+    scope: "app",
+    options: TIME_DISPLAYS,
+    default: "timecode",
+  },
+  "timeline.drop_frame": { type: "boolean", scope: "app", default: true },
+  // Playback (WP-2F.02): the transport bar's proxy toggle.
   // Playback (WP-2F.02): the transport bar's proxy toggle, and its row in Settings > Playback.
   "playback.proxies": { type: "boolean", scope: "app", default: true },
   // Keyboard shortcuts (WP-2H.05)
@@ -534,6 +636,16 @@ function validateAgainst(def: PreferenceDef, value: unknown): Validation {
       }
       return { ok: true, value: clean };
     }
+    case "set": {
+      if (!Array.isArray(value)) return { ok: false, reason: "expected a list of choices" };
+      if (value.some((item) => !def.options.includes(item as string))) {
+        return { ok: false, reason: `expected some of ${def.options.join(", ")}` };
+      }
+      if (new Set(value).size !== value.length) {
+        return { ok: false, reason: "a choice is listed twice" };
+      }
+      return { ok: true, value: def.options.filter((option) => value.includes(option)) };
+    }
     case "record": {
       if (!isPlainObject(value)) return { ok: false, reason: "expected a list of choices" };
       const entries = Object.entries(value);
@@ -601,7 +713,7 @@ export function defaultPreferences(overrides: PreferenceChanges = {}): Preferenc
     out[key] =
       def.type === "record" || def.type === "bindings"
         ? structuredClone(def.default)
-        : def.type === "paths"
+        : def.type === "paths" || def.type === "set"
           ? [...def.default]
           : def.default;
   }

@@ -141,6 +141,17 @@ fn fill_allowed_roots(core: &Core, reply: &mut Reply) -> Result<(), CmdError> {
     Ok(())
 }
 
+/// `edit.set_history_limit` (WP-2A.13): it runs on the document actor, and the engine keeps
+/// the limit for the documents it opens later and for `project.info`.
+const SET_HISTORY_LIMIT: &str = "edit.set_history_limit";
+
+/// Puts the undo steps kept per actor into a `project.info` reply.
+fn fill_history_limit(core: &Core, reply: &mut Reply) {
+    if let (Some(limit), Value::Object(map)) = (core.history_limit(), &mut reply.output) {
+        map.insert("history_limit".into(), Value::from(limit));
+    }
+}
+
 /// A client connection: the credential-derived caller ([`ActorCtx`]) on a connection id of
 /// its own. Cheap to clone (requests may run concurrently); closed when the last clone drops.
 #[derive(Clone)]
@@ -177,9 +188,16 @@ impl Connection {
     /// [`call_async`](Self::call_async) there).
     pub fn call(&self, call: Call) -> Result<Reply, CmdError> {
         let project_info = call.name == PROJECT_INFO;
+        let history_limit = call.name == SET_HISTORY_LIMIT;
         let mut reply = self.dispatch(call)?;
         if project_info {
             fill_allowed_roots(&self.inner.core, &mut reply)?;
+            fill_history_limit(&self.inner.core, &mut reply);
+        }
+        if history_limit && let Some(steps) = reply.output.get("steps").and_then(Value::as_u64) {
+            self.inner
+                .core
+                .remember_history_limit(u32::try_from(steps).unwrap_or(u32::MAX));
         }
         Ok(reply)
     }
