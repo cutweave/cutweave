@@ -275,6 +275,8 @@ describe("every key handler in the editor is accounted for", () => {
   const KNOWN: Readonly<Record<string, string>> = {
     "history/HistoryPanel.tsx":
       "the history list's keys: Up, Down, Home and End move between rows, Enter goes to one",
+    "inspector/MediaOrganize.tsx":
+      "note field: Ctrl+Enter commits (Enter is a new line), Escape puts the stored note back (dialogs group)",
     "inspector/MediaPreview.tsx":
       "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
     "keymap/dispatch.ts": "the global dispatcher: every `global` binding of the keymap",
