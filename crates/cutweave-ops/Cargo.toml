@@ -26,9 +26,6 @@ serde.workspace = true
 serde_json.workspace = true
 # Only for the `number` TS override of the 32-bit view revision counter.
 specta-typescript.workspace = true
-# Accent-insensitive media search (WP-1M.12): NFD decomposition and the combining-mark test, the
-# same fold as the editor's `String.normalize`. Already in the lockfile through the MCP stack.
-unicode-normalization = "0.1"
 # The `.zip` of `project.archive` (WP-2F.04b): Zip64 and stored (uncompressed) entries only, so
 # every compression, encryption and date feature is off. MIT.
 zip = { version = "9.5", default-features = false }

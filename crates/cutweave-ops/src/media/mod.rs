@@ -5,7 +5,8 @@
 //! `media.analysis_failed` events of background analysis (which never mutates the document);
 //! the proxy commands of WP-2F.01 ([`proxy`]); the folders of the bin (WP-2F.07, ADR-0020:
 //! [`folders`]); relinking missing media (WP-2F.03: [`relink`]); slideshows and frames saved
-//! to the bin (WP-2F.05d, ADR-0035: [`slideshow`], [`frame`]).
+//! to the bin (WP-2F.05d, ADR-0035: [`slideshow`], [`frame`]); tags, ratings, notes and
+//! collections (WP-2F.06a, ADR-0036: [`tags`], [`collections`]).
 //!
 //! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
 //! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
@@ -19,6 +20,7 @@
 //! registered there.
 
 mod analysis;
+pub mod collections;
 mod find;
 pub mod folders;
 mod frame;
@@ -28,6 +30,7 @@ pub mod proxy;
 pub mod relink;
 mod sequence;
 mod slideshow;
+pub mod tags;
 mod tree;
 mod walk;
 
@@ -47,9 +50,16 @@ pub use analysis::{
     AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, EVENTS,
     MediaAnalysisFailed, MediaEvent, MediaImportProgress, MediaIndexed, StageError,
 };
+pub use collections::{
+    CollectionDeleted, CollectionFilterSet, CollectionNamed, CollectionSummary, CollectionType,
+    MediaAddToCollection, MediaAddedToCollection, MediaCreateCollection, MediaDeleteCollection,
+    MediaListCollections, MediaListCollectionsOutput, MediaRemoveFromCollection,
+    MediaRemovedFromCollection, MediaRenameCollection, MediaSetCollectionFilter,
+};
 pub use find::{
-    Keyed, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder, asset_name, compare, fold,
-    folder_scope, is_problem, used_media,
+    Keyed, MAX_FILTER_TEXT_CHARS, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder,
+    asset_name, collection_members, compare, find_collection, fold, folder_scope, is_problem,
+    needs_used, used_media,
 };
 pub use folders::{
     FolderContents, FolderRenamed, FolderSummary, MediaCreateFolder, MediaDeleteFolder,
@@ -77,6 +87,11 @@ pub use sequence::{MediaImportSequence, MediaImportSequenceOutput};
 pub use slideshow::{
     MediaImportImagesAsSlideshow, MediaSlideshowOutput, SlideshowBatch, SlideshowOrder,
     SlideshowPlaced, SlideshowSteps, place_slideshow,
+};
+pub use tags::{
+    MAX_TAG_MEDIA, MAX_TAGS_PER_CALL, MediaAddTags, MediaListTags, MediaListTagsOutput,
+    MediaNoteSet, MediaRemoveTags, MediaRenameTag, MediaSetNote, MediaSetRating, MediaTagged,
+    TagCount,
 };
 pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
 pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
@@ -107,6 +122,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<MediaImportImagesAsSlideshow>()?
         .register::<MediaImportFrame>()?;
     folders::register(registry)?;
+    tags::register(registry)?;
+    collections::register(registry)?;
     relink::register(registry)?;
     proxy::register(registry)
 }
@@ -988,6 +1005,22 @@ pub struct MediaSummary {
     pub has_video: bool,
     /// Whether it has sound.
     pub has_audio: bool,
+    /// Its tags, sorted ignoring case and accents.
+    pub tags: Vec<String>,
+    /// Stars, 1 to 5; absent: unrated.
+    pub rating: Option<u8>,
+    /// Its note; only with `include: ["note"]`, and left out otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// What `media.list` adds to each asset on request.
+#[wire]
+#[derive(Copy, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaInclude {
+    /// The asset's note.
+    Note,
 }
 
 /// Result of `media.list`.
@@ -1003,8 +1036,9 @@ pub struct MediaListOutput {
     pub matched: u32,
 }
 
-/// Lists the media of the project, filtered (also by bin folder) and ordered, one page at a
-/// time. Each asset carries the name the bin shows and its folder.
+/// Lists the media of the project, filtered (also by bin folder, tags, rating and collection)
+/// and ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags
+/// and rating.
 #[query(
     name = "media.list",
     summary = "List the project's media (filter, sort, paged; default by id)",
@@ -1021,9 +1055,12 @@ pub struct MediaList {
     /// Order.
     #[serde(default)]
     pub sort: Option<MediaSort>,
+    /// Extra fields per asset: `note`.
+    #[serde(default)]
+    pub include: Option<Vec<MediaInclude>>,
 }
 
-fn summary(m: &MediaAsset) -> MediaSummary {
+fn summary(m: &MediaAsset, note: bool) -> MediaSummary {
     MediaSummary {
         id: m.id,
         kind: m.kind,
@@ -1033,6 +1070,9 @@ fn summary(m: &MediaAsset) -> MediaSummary {
         duration: m.probe.duration,
         has_video: m.has_video(),
         has_audio: m.has_audio(),
+        tags: m.tags.clone(),
+        rating: m.rating,
+        note: if note { m.note.clone() } else { None },
     }
 }
 
@@ -1052,8 +1092,12 @@ impl Query for MediaList {
         let filter = self.filter.clone().unwrap_or_default();
         let sort = self.sort.unwrap_or_default();
         let desc = sort.order == MediaSortOrder::Desc;
-        let used = filter.used.is_some().then(|| used_media(doc));
-        let matcher = Matcher::new(&filter, used.as_ref())?.in_folders(folder_scope(doc, &filter)?);
+        let used = needs_used(doc, &filter).then(|| used_media(doc));
+        let matcher = Matcher::for_doc(doc, &filter, used.as_ref())?;
+        let note = self
+            .include
+            .as_deref()
+            .is_some_and(|i| i.contains(&MediaInclude::Note));
 
         // The matching assets, in the requested order. `doc.media` iterates by ID already.
         let mut found: Vec<Keyed<'_>> = doc
@@ -1103,7 +1147,7 @@ impl Query for MediaList {
             None
         };
         Ok(MediaListOutput {
-            media: page.iter().map(|k| summary(k.media)).collect(),
+            media: page.iter().map(|k| summary(k.media, note)).collect(),
             next_cursor,
             total: u32::try_from(doc.media.len()).unwrap_or(u32::MAX),
             matched: u32::try_from(found.len()).unwrap_or(u32::MAX),
@@ -1121,8 +1165,9 @@ pub struct MediaRemoveOutput {
     pub media_id: MediaId,
 }
 
-/// Removes a media asset from the project (the file on disk is untouched). Fails with
-/// `Invalid` while any clip uses it; delete those clips first.
+/// Removes a media asset from the project (the file on disk is untouched) and takes it off
+/// every manual collection. Fails with `Invalid` while any clip uses it; delete those clips
+/// first.
 #[command(
     name = "media.remove",
     summary = "Remove an unused media asset from the project",
@@ -1164,6 +1209,7 @@ impl Command for MediaRemove {
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<MediaRemoveOutput, CmdError> {
         self.validate(&tx.query_ctx())?;
+        collections::drop_members(tx, &[self.id])?;
         tx.remove_media(self.id)?;
         Ok(MediaRemoveOutput { media_id: self.id })
     }

@@ -9,8 +9,8 @@ use imbl::OrdMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CURRENT_SCHEMA_VERSION, Custom, Extra, FolderId, Item, ItemId, MediaAsset, MediaFolder,
-    MediaId, Sequence, SequenceFormat, SequenceId, Track,
+    CURRENT_SCHEMA_VERSION, Collection, CollectionId, Custom, Extra, FolderId, Item, ItemId,
+    MediaAsset, MediaFolder, MediaId, Sequence, SequenceFormat, SequenceId, Track,
 };
 
 /// Document metadata.
@@ -138,6 +138,12 @@ pub struct Project {
     #[schemars(with = "BTreeMap<FolderId, MediaFolder>")]
     #[specta(type = BTreeMap<FolderId, MediaFolder>)]
     pub folders: OrdMap<FolderId, MediaFolder>,
+    /// Collections of media, keyed by ID (ADR-0036). Left out of the file while empty, so
+    /// documents written before the field read the same.
+    #[serde(default, skip_serializing_if = "OrdMap::is_empty")]
+    #[schemars(with = "BTreeMap<CollectionId, Collection>")]
+    #[specta(type = BTreeMap<CollectionId, Collection>)]
+    pub collections: OrdMap<CollectionId, Collection>,
     /// Sequences, keyed by ID.
     #[schemars(with = "BTreeMap<SequenceId, Sequence>")]
     #[specta(type = BTreeMap<SequenceId, Sequence>)]
@@ -176,6 +182,7 @@ impl Project {
             settings: ProjectSettings::default(),
             media: OrdMap::new(),
             folders: OrdMap::new(),
+            collections: OrdMap::new(),
             sequences: OrdMap::new(),
             custom: Custom::new(),
             extra: Extra::new(),

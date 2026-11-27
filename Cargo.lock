@@ -1031,6 +1031,7 @@ dependencies = [
  "specta-serde",
  "specta-typescript",
  "thiserror 2.0.21",
+ "unicode-normalization",
  "uuid",
 ]
 
@@ -1048,7 +1049,6 @@ dependencies = [
  "serde_json",
  "specta-typescript",
  "thiserror 2.0.21",
- "unicode-normalization",
  "zip",
 ]
 

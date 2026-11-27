@@ -7,10 +7,10 @@
 //!   [`TimeInput`]): integer flicks (1/705,600,000 s) with checked arithmetic and the only
 //!   allowed frame/sample conversions (ADR-0004); JSON integers on the wire (ADR-0015).
 //! - **IDs** ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`], [`GroupId`], [`MarkerId`],
-//!   [`FolderId`], [`IdGen`]): prefixed UUIDv7 strings, with a seeded generator for
+//!   [`FolderId`], [`CollectionId`], [`IdGen`]): prefixed UUIDv7 strings, with a seeded generator for
 //!   deterministic tests.
-//! - **Entities** ([`Project`], [`MediaAsset`], [`MediaFolder`], [`Sequence`], [`Track`],
-//!   [`Item`], [`Clip`]): the schema v2 document, held in persistent `imbl` collections so
+//! - **Entities** ([`Project`], [`MediaAsset`], [`MediaFolder`], [`Collection`], [`Sequence`],
+//!   [`Track`], [`Item`], [`Clip`]): the schema v2 document, held in persistent `imbl` collections so
 //!   snapshots are O(1) (ADR-0005), with [`Project::validate`] checking the [`Invariant`]s of
 //!   arch §4.3. Plugin data lives only in namespaced [`Custom`] maps; unknown fields survive in
 //!   [`Extra`].
@@ -22,6 +22,7 @@
 //!   fixtures; documents from newer versions open read-only (arch §4.3, ADR-0006).
 
 mod animate;
+mod collection;
 mod custom;
 mod folder;
 mod id;
@@ -49,6 +50,12 @@ pub use animate::{
     PropValue, SPRING_DAMPING, SPRING_MASS, SPRING_STIFFNESS, ShortestAngle, UnknownEasing,
     UnknownProp, ValueRange, ValueType, is_preset_name, sample_times,
 };
+pub use collection::{
+    Collection, CollectionKind, MAX_COLLECTION_MEMBERS, MAX_COLLECTION_NAME_CHARS, MAX_COLLECTIONS,
+    MAX_FILTER_TAGS, MAX_FILTER_TEXT_CHARS, MAX_NOTE_CHARS, MAX_TAG_CHARS, MAX_TAGS_PER_ASSET,
+    MediaFilter, RATINGS, collection_name_key, collection_name_problem, fold, note_problem,
+    tag_key, tag_problem, tags_problem,
+};
 pub use custom::{
     Custom, Extra, NAMESPACE_PATTERN, NamespaceError, canonical_json_pretty, is_valid_namespace,
 };
@@ -59,8 +66,8 @@ pub use folder::{
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use id::Uuid7Gen;
 pub use id::{
-    EntityId, EntityKind, FolderId, GroupId, IdError, IdGen, ItemId, MarkerId, MediaId, SeededGen,
-    SequenceId, TrackId,
+    CollectionId, EntityId, EntityKind, FolderId, GroupId, IdError, IdGen, ItemId, MarkerId,
+    MediaId, SeededGen, SequenceId, TrackId,
 };
 pub use item::{
     AudioProps, BlendMode, Clip, Crop, Fade, FadeCurve, Flip, Item, PropMut, PropRef, Transform,

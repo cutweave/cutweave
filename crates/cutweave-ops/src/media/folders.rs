@@ -595,8 +595,8 @@ pub struct MediaFolderDeleted {
 /// Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one
 /// level (a subfolder whose name the parent already has gets the next free name);
 /// `contents: remove` also removes its subfolders and every asset inside that no timeline
-/// uses, and moves the used assets to the deleted folder's parent. Timelines and files on disk
-/// never change; one undo restores everything.
+/// uses (taking them off every manual collection), and moves the used assets to the deleted
+/// folder's parent. Timelines and files on disk never change; one undo restores everything.
 #[command(
     name = "media.delete_folder",
     summary = "Delete a media bin folder: lift its contents one level, or remove unused media in it",
@@ -690,6 +690,8 @@ impl Command for MediaDeleteFolder {
         for media in &plan.kept {
             tx.set(&DocPath::media(*media).join("folder"), plan.parent)?;
         }
+        // ADR-0036: a removed asset leaves every manual collection in the same step.
+        super::collections::drop_members(tx, &plan.removed)?;
         for media in &plan.removed {
             tx.remove_media(*media)?;
         }

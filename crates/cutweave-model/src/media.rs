@@ -126,6 +126,20 @@ pub struct MediaAsset {
     /// `auto` is left out of the file, so documents written before the field read the same.
     #[serde(default, skip_serializing_if = "ProxyMode::is_auto")]
     pub proxy_mode: ProxyMode,
+    /// Tags (ADR-0036): each 1 to 64 characters without commas or control characters, at most
+    /// 64, sorted ignoring case and accents, without repeats. Left out of the file while
+    /// empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Rating in whole stars, 1 to 5 (ADR-0036); absent: unrated. Left out of the file while
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 1, max = 5))]
+    pub rating: Option<u8>,
+    /// A note in plain text, at most 2,000 characters (ADR-0036). Left out of the file while
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     /// Probe results.
     pub probe: ProbeInfo,
     /// Plugin data (arch §4.3).
@@ -430,6 +444,9 @@ impl MediaAsset {
             sequence: None,
             image_sequence: None,
             proxy_mode: ProxyMode::Auto,
+            tags: Vec::new(),
+            rating: None,
+            note: None,
             probe,
             custom: Custom::new(),
             extra: Extra::new(),
@@ -450,6 +467,9 @@ impl MediaAsset {
             sequence: Some(sequence),
             image_sequence: None,
             proxy_mode: ProxyMode::Auto,
+            tags: Vec::new(),
+            rating: None,
+            note: None,
             probe: ProbeInfo::default(),
             custom: Custom::new(),
             extra: Extra::new(),

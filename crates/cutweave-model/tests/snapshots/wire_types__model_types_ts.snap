@@ -102,6 +102,45 @@ export type Clip = {
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
 
+/**
+ *  A collection of media (ADR-0036): a named list an asset can be on without leaving its
+ *  folder.
+ */
+export type Collection = {
+	/**  The collection ID (also its key in `Project::collections`). */
+	id: CollectionId,
+	/**
+	 *  The name shown in the bin: 1 to 255 characters without control characters, unique
+	 *  among collections ignoring case.
+	 */
+	name: string,
+	/**  Manual (stored members) or smart (a stored filter). */
+	kind: CollectionKind,
+	/**  Plugin data (arch §4.3). */
+	custom: { [key in string]: JsonValue },
+} & { [key in string]: unknown };
+
+/**
+ *  The ID of a collection of media (ADR-0036): `col_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type CollectionId = string;
+
+/**  What a collection holds (ADR-0036). */
+export type CollectionKind = 
+/**  A list of assets, kept in the order they were added. */
+{ type: "manual"; 
+/**
+ *  The members, without repeats. One that names no asset is skipped by queries and
+ *  dropped by the next edit of the collection.
+ */
+media?: MediaId[] } | 
+/**  A saved search: the assets that pass the filter, computed when asked. */
+{ type: "smart"; 
+/**  The filter. It may not name a collection. */
+filter: MediaFilter };
+
 /**  An sRGB color with straight alpha, written `#rrggbb` (opaque) or `#rrggbbaa`. */
 export type Color = string;
 
@@ -178,7 +217,9 @@ export type EntityKind =
 /**  A timeline or item marker (`mrk_`). */
 "marker" | 
 /**  A folder of the media bin (`fld_`, ADR-0020). */
-"folder";
+"folder" | 
+/**  A collection of media (`col_`, ADR-0036). */
+"collection";
 
 /**
  *  A fade at one end of a clip. A zero duration is no fade. Fades are measured on the clip as
@@ -508,6 +549,24 @@ first: FolderId;
 second: FolderId; 
 /**  The name of `second`. */
 name: string } | 
+/**
+ *  A collection that breaks ADR-0036: a bad name, too many members or a repeated one, a
+ *  smart filter that cannot be used or that names a collection, or more collections than
+ *  allowed. (A member that names no asset is allowed.)
+ */
+{ invariant: "invalid_collection"; 
+/**  The collection. */
+collection: CollectionId; 
+/**  What is wrong. */
+reason: string } | 
+/**  Two collections whose names are equal ignoring case (ADR-0036). */
+{ invariant: "duplicate_collection_name"; 
+/**  The collection with the lower ID. */
+first: CollectionId; 
+/**  Another collection with the same name. */
+second: CollectionId; 
+/**  The name of `second`. */
+name: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
 { invariant: "custom_namespace"; 
 /**  The custom map. */
@@ -624,11 +683,56 @@ export type MediaAsset = {
 	 *  `auto` is left out of the file, so documents written before the field read the same.
 	 */
 	proxy_mode?: ProxyMode,
+	/**
+	 *  Tags (ADR-0036): each 1 to 64 characters without commas or control characters, at most
+	 *  64, sorted ignoring case and accents, without repeats. Left out of the file while
+	 *  empty.
+	 */
+	tags?: string[],
+	/**
+	 *  Rating in whole stars, 1 to 5 (ADR-0036); absent: unrated. Left out of the file while
+	 *  absent.
+	 */
+	rating?: number | null,
+	/**
+	 *  A note in plain text, at most 2,000 characters (ADR-0036). Left out of the file while
+	 *  absent.
+	 */
+	note?: string | null,
 	/**  Probe results. */
 	probe: ProbeInfo,
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
+
+/**
+ *  Which media to list; every part that is absent or empty lets everything through. The filter
+ *  of `media.list`, and what a smart collection stores (ADR-0036).
+ */
+export type MediaFilter = {
+	/**  Terms that must all occur in the name, tags or note, ignoring case and accents. */
+	text?: string | null,
+	/**  Only these kinds. */
+	kinds?: MediaKind[] | null,
+	/**  Shortest length (flicks), inclusive; stills never match a bound. */
+	min_duration?: Duration | null,
+	/**  Longest length (flicks), inclusive. */
+	max_duration?: Duration | null,
+	/**  Placed on a timeline of any sequence (`true`) or not (`false`). */
+	used?: boolean | null,
+	/**  `true`: only files nothing can be read from (no streams). */
+	problems?: boolean | null,
+	/**  Only this bin folder. */
+	folder?: FolderId | null,
+	/**  With subfolders (default: true without folder). */
+	recursive?: boolean | null,
+	/**  Has all these tags. */
+	tags?: string[] | null,
+	/**  Rated at least this (1-5). */
+	min_rating?: number | null,
+	/**  On this collection. */
+	collection?: CollectionId | null,
+};
 
 /**  A folder of the media bin (ADR-0020). */
 export type MediaFolder = {
@@ -705,6 +809,11 @@ export type Project = {
 	media: { [key in MediaId]: MediaAsset },
 	/**  The folder tree of the media bin, keyed by ID (ADR-0020). */
 	folders: { [key in FolderId]: MediaFolder },
+	/**
+	 *  Collections of media, keyed by ID (ADR-0036). Left out of the file while empty, so
+	 *  documents written before the field read the same.
+	 */
+	collections?: { [key in CollectionId]: Collection },
 	/**  Sequences, keyed by ID. */
 	sequences: { [key in SequenceId]: Sequence },
 	/**  Plugin data (arch §4.3). */

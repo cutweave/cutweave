@@ -258,6 +258,85 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       ],
       "type": "object"
     },
+    "Collection": {
+      "description": "A collection of media (ADR-0036): a named list an asset can be on without leaving its\nfolder.",
+      "properties": {
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data (arch §4.3).",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "id": {
+          "description": "The collection ID (also its key in `Project::collections`).",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/CollectionKind",
+          "description": "Manual (stored members) or smart (a stored filter)."
+        },
+        "name": {
+          "description": "The name shown in the bin: 1 to 255 characters without control characters, unique\namong collections ignoring case.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "CollectionKind": {
+      "description": "What a collection holds (ADR-0036).",
+      "oneOf": [
+        {
+          "description": "A list of assets, kept in the order they were added.",
+          "properties": {
+            "media": {
+              "default": [],
+              "description": "The members, without repeats. One that names no asset is skipped by queries and\ndropped by the next edit of the collection.",
+              "items": {
+                "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                "pattern": "^med_[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "const": "manual",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A saved search: the assets that pass the filter, computed when asked.",
+          "properties": {
+            "filter": {
+              "$ref": "#/$defs/MediaFilter",
+              "description": "The filter. It may not name a collection."
+            },
+            "type": {
+              "const": "smart",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "filter"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "ColorRange": {
       "description": "Sample range of a video stream.",
       "oneOf": [
@@ -1004,6 +1083,13 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
             "null"
           ]
         },
+        "note": {
+          "description": "A note in plain text, at most 2,000 characters (ADR-0036). Left out of the file while\nabsent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "path_abs": {
           "description": "Absolute path of the file when it was last found (file kinds only).",
           "type": [
@@ -1026,6 +1112,16 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "$ref": "#/$defs/ProxyMode",
           "description": "Whether it gets a proxy (ADR-0027): as the project's policy decides, always or never.\n`auto` is left out of the file, so documents written before the field read the same."
         },
+        "rating": {
+          "description": "Rating in whole stars, 1 to 5 (ADR-0036); absent: unrated. Left out of the file while\nabsent.",
+          "format": "uint8",
+          "maximum": 5,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "sequence": {
           "description": "The referenced sequence (`sequence_ref` only).",
           "pattern": "^seq_[0-9a-f]{32}$",
@@ -1033,6 +1129,13 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
             "string",
             "null"
           ]
+        },
+        "tags": {
+          "description": "Tags (ADR-0036): each 1 to 64 characters without commas or control characters, at most\n64, sorted ignoring case and accents, without repeats. Left out of the file while\nempty.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -1041,6 +1144,131 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "probe",
         "custom"
       ],
+      "type": "object"
+    },
+    "MediaFilter": {
+      "additionalProperties": false,
+      "description": "Which media to list; every part that is absent or empty lets everything through. The filter\nof `media.list`, and what a smart collection stores (ADR-0036).",
+      "properties": {
+        "collection": {
+          "description": "On this collection.",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "folder": {
+          "description": "Only this bin folder.",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kinds": {
+          "description": "Only these kinds.",
+          "items": {
+            "$ref": "#/$defs/MediaKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_duration": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                  "type": "string"
+                }
+              ],
+              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Longest length (flicks), inclusive."
+        },
+        "min_duration": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                  "type": "string"
+                }
+              ],
+              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Shortest length (flicks), inclusive; stills never match a bound."
+        },
+        "min_rating": {
+          "description": "Rated at least this (1-5).",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "problems": {
+          "description": "`true`: only files nothing can be read from (no streams).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "recursive": {
+          "description": "With subfolders (default: true without folder).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "tags": {
+          "description": "Has all these tags.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "text": {
+          "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "used": {
+          "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "MediaFolder": {
@@ -1759,6 +1987,16 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The project document: everything saved in `<Name>.cutweave` (arch §17).\n\nEntities are addressed by ID, never by index (arch §4.3). All collections are persistent\n(`imbl`), so `clone()` is O(1) and snapshots share structure (ADR-0005). Mutate only through\ncommands (`cutweave-ops`); readers get immutable snapshots.\n\nThe JSON form has a stable layout (fields in declaration order, maps sorted by key), so\nsaved files diff cleanly.",
   "properties": {
+    "collections": {
+      "additionalProperties": false,
+      "description": "Collections of media, keyed by ID (ADR-0036). Left out of the file while empty, so\ndocuments written before the field read the same.",
+      "patternProperties": {
+        "^col_[0-9a-f]{32}$": {
+          "$ref": "#/$defs/Collection"
+        }
+      },
+      "type": "object"
+    },
     "custom": {
       "additionalProperties": true,
       "description": "Plugin data (arch §4.3).",
