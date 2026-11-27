@@ -411,7 +411,7 @@ mod tests {
     }
 
     fn with_density(set: &str) -> Result<Tokens, String> {
-        let json = r##"{
+        let json = r#"{
           "name": "T", "version": 1,
           "color": {"themes": [{"id": "dark"}], "tokens": []},
           "spacing": {"tokens": [{"name": "space-2", "value": "8px", "usage": "u"}]},
@@ -422,7 +422,7 @@ mod tests {
           "zIndex": {"tokens": [{"name": "z-top", "value": "20", "usage": "u"}]},
           "density": {"sets": [{"id": "comfortable", "tokens": [SET]}]},
           "type": {"families": {"ui": "x"}, "groups": []}
-        }"##;
+        }"#;
         Tokens::parse(&json.replace("SET", set))
     }
 

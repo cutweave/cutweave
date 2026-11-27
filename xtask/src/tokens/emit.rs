@@ -133,6 +133,26 @@ fn hex_of(c: Rgba) -> String {
     }
 }
 
+/// The `density` object and `DensityId` of `tokens.ts`; nothing when there are no density sets.
+fn density_ts(t: &Tokens, o: &mut String) {
+    if t.densities.is_empty() {
+        return;
+    }
+    o.push_str("/** The tokens each density makes larger (`data-density` on the root). */\n");
+    o.push_str("export const density = {\n");
+    for d in &t.densities {
+        let _ = writeln!(o, "  {}: {{", ts_str(&d.id));
+        for tok in &d.tokens {
+            let _ = writeln!(o, "    {}: {},", ts_str(&tok.name), ts_str(&tok.value));
+        }
+        o.push_str("  },\n");
+    }
+    o.push_str("} as const;\n");
+    let ids: Vec<&str> = t.densities.iter().map(|d| d.id.as_str()).collect();
+    o.push_str(&ts_union("DensityId", &ids));
+    o.push('\n');
+}
+
 /// `tokens.ts`: constants and string-literal unions for `@cutweave/tokens`.
 pub fn tokens_ts(t: &Tokens) -> Result<String, String> {
     let mut o = format!(
@@ -193,21 +213,7 @@ pub fn tokens_ts(t: &Tokens) -> Result<String, String> {
         o.push('\n');
     }
 
-    if !t.densities.is_empty() {
-        o.push_str("/** The tokens each density makes larger (`data-density` on the root). */\n");
-        o.push_str("export const density = {\n");
-        for d in &t.densities {
-            let _ = writeln!(o, "  {}: {{", ts_str(&d.id));
-            for tok in &d.tokens {
-                let _ = writeln!(o, "    {}: {},", ts_str(&tok.name), ts_str(&tok.value));
-            }
-            o.push_str("  },\n");
-        }
-        o.push_str("} as const;\n");
-        let ids: Vec<&str> = t.densities.iter().map(|d| d.id.as_str()).collect();
-        o.push_str(&ts_union("DensityId", &ids));
-        o.push('\n');
-    }
+    density_ts(t, &mut o);
 
     o.push_str("/** Font stacks by key (CSS `--font-<key>`). */\nexport const fontFamilies = {\n");
     for (k, v) in &t.font_families {
