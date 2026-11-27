@@ -112,6 +112,35 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "description": "How long a still image is when it is placed without a length (up to one hour); absent:\nfive seconds. The editor passes the person's \"Still image duration\" setting.",
           "default": null
+        },
+        "proxy_policy": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "off",
+                  "description": "Never automatically (`media.generate_proxy` still makes one)."
+                },
+                {
+                  "type": "string",
+                  "const": "auto",
+                  "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default."
+                },
+                {
+                  "type": "string",
+                  "const": "all",
+                  "description": "For every video file."
+                }
+              ],
+              "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting.",
+          "default": null
         }
       },
       "required": [
@@ -242,6 +271,35 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           }
         ],
         "description": "How long a still image is when it is placed without a length (up to one hour); absent:\nfive seconds. The editor passes the person's \"Still image duration\" setting.",
+        "default": null
+      },
+      "proxy_policy": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one)."
+              },
+              {
+                "type": "string",
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default."
+              },
+              {
+                "type": "string",
+                "const": "all",
+                "description": "For every video file."
+              }
+            ],
+            "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting.",
         "default": null
       }
     },

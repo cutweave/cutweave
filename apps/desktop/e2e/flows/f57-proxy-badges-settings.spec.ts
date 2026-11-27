@@ -109,9 +109,9 @@ test.describe("F57 proxies in the bin and in Settings", () => {
       await cardMenu(page, "Delete proxies");
       await expect(badge(page)).toHaveAttribute("data-proxy", "evicted");
       await expect(badge(page)).toHaveText("Proxy removed");
-      expect(
-        (await editorCall<Proxies>(page, "media.proxy_status", {})).proxies[0]?.status,
-      ).toBe("evicted");
+      expect((await editorCall<Proxies>(page, "media.proxy_status", {})).proxies[0]?.status).toBe(
+        "evicted",
+      );
       // With nothing left to delete the row is there but not available.
       await mediaCard(page, CLIP).click({ button: "right" });
       await expect(page.getByRole("menuitem", { name: "Delete proxies" })).toBeDisabled();

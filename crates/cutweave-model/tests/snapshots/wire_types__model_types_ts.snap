@@ -619,6 +619,11 @@ export type MediaAsset = {
 	 *  `path_abs` and `path_rel` name the first file of the run.
 	 */
 	image_sequence?: ImageSequence | null,
+	/**
+	 *  Whether it gets a proxy (ADR-0027): as the project's policy decides, always or never.
+	 *  `auto` is left out of the file, so documents written before the field read the same.
+	 */
+	proxy_mode?: ProxyMode,
 	/**  Probe results. */
 	probe: ProbeInfo,
 	/**  Plugin data (arch §4.3). */
@@ -735,7 +740,36 @@ export type ProjectSettings = {
 	 *  already exist.
 	 */
 	still_duration?: Duration | null,
+	/**
+	 *  Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so
+	 *  documents written before the field read the same.
+	 */
+	proxy_policy?: ProxyPolicy,
 } & { [key in string]: unknown };
+
+/**  Whether one asset gets a proxy (ADR-0027), next to the project's policy. */
+export type ProxyMode = 
+/**  As the project's policy decides. The default. */
+"auto" | 
+/**  One is made whatever the policy. */
+"force" | 
+/**  None is made, and the preview does not use one that exists. */
+"off";
+
+/**
+ *  When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache
+ *  state of each computer; the policy is the editor's intent and travels with the project.
+ */
+export type ProxyPolicy = 
+/**  Never automatically (`media.generate_proxy` still makes one). */
+"off" | 
+/**
+ *  For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster
+ *  than 60 fps, or 10-bit HEVC. The default.
+ */
+"auto" | 
+/**  For every video file. */
+"all";
 
 /**  How a time that falls between two frame (or sample) boundaries is mapped to a unit index. */
 export type Rounding = 

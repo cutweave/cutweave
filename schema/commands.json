@@ -18971,7 +18971,7 @@
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -19249,7 +19249,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Makes proxies of video assets now, whatever the policy: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
+        "description": "Makes proxies of video assets now, whatever the policy and their mode: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
         "properties": {
           "media": {
             "description": "The video assets (1..=256, no repeats).",
@@ -19287,7 +19287,7 @@
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -20137,7 +20137,7 @@
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -22512,6 +22512,207 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets whether video assets get a proxy, whatever the project's policy says: `force` makes\none, `off` makes none and the preview does not use one that exists (it stays in the cache),\n`auto` follows the policy again. The mode is saved in the project, one undo step for all\nthe assets named.",
+        "properties": {
+          "media": {
+            "description": "The video assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "description": "`auto` (follow the project's policy), `force` or `off`.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "As the project's policy decides. The default.",
+                "type": "string"
+              },
+              {
+                "const": "force",
+                "description": "One is made whatever the policy.",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "None is made, and the preview does not use one that exists.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "mode"
+        ],
+        "title": "MediaSetProxyMode",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_mode",
+      "name": "media.set_proxy_mode",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_proxy_mode`.",
+        "properties": {
+          "media": {
+            "description": "The assets, in request order.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "description": "Their mode now.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "As the project's policy decides. The default.",
+                "type": "string"
+              },
+              {
+                "const": "force",
+                "description": "One is made whatever the policy.",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "None is made, and the preview does not use one that exists.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "mode"
+        ],
+        "title": "ProxyModeSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set whether video assets get a proxy whatever the policy: auto, force or off",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Chooses which of the project's video gets proxies automatically: `off` (none), `auto`\n(video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than\n60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then\nqueues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).\nAn asset's own mode (`media.set_proxy_mode`) wins over the policy.",
+        "properties": {
+          "policy": {
+            "description": "`off`, `auto` or `all`.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "title": "MediaSetProxyPolicy",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_policy",
+      "name": "media.set_proxy_policy",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_proxy_policy`.",
+        "properties": {
+          "policy": {
+            "description": "The project's policy now.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          },
+          "previous": {
+            "description": "What it was before.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "policy",
+          "previous"
+        ],
+        "title": "ProxyPolicySet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Choose which of the project's video gets proxies automatically: off, auto or all",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -23337,6 +23538,35 @@
           "name": {
             "description": "Project name (1..=200 characters).",
             "type": "string"
+          },
+          "proxy_policy": {
+            "anyOf": [
+              {
+                "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project.",
+                "oneOf": [
+                  {
+                    "const": "off",
+                    "description": "Never automatically (`media.generate_proxy` still makes one).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "auto",
+                    "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "all",
+                    "description": "For every video file.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting."
           },
           "still_duration": {
             "anyOf": [

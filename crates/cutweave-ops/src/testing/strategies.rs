@@ -304,6 +304,22 @@ impl Pools {
     fn media_ids(&self) -> Vec<MediaId> {
         self.media.iter().map(|m| m.id).collect()
     }
+
+    /// The media that can have proxies (video and image sequences), else every asset: the
+    /// proxy commands mostly name these, and sometimes one they refuse.
+    fn proxy_ids(&self) -> Vec<MediaId> {
+        let video: Vec<MediaId> = self
+            .media
+            .iter()
+            .filter(|m| matches!(m.kind, MediaKind::Video | MediaKind::ImageSequence))
+            .map(|m| m.id)
+            .collect();
+        if video.is_empty() {
+            self.media_ids()
+        } else {
+            video
+        }
+    }
 }
 
 /// The keys of a clip's animated properties.
@@ -967,9 +983,11 @@ fn media_remove(p: &Pools) -> BoxedStrategy<Value> {
 /// `{media: [ids]}` for the proxy commands (WP-2F.01): known or unknown assets, an empty or
 /// repeated list; `media.proxy_status` may leave the list out.
 fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
-    let valid = vec(one_of(p.media_ids()), 1..=3)
-        .prop_map(|ids| json!({ "media": ids }))
-        .boxed();
+    let valid = prop_oneof![
+        4 => one_of(p.proxy_ids()).prop_map(|id| json!({ "media": [id] })),
+        1 => vec(one_of(p.media_ids()), 1..=3).prop_map(|ids| json!({ "media": ids })),
+    ]
+    .boxed();
     let invalid = prop_oneof![
         Just(json!({ "media": [] })),
         one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id] })),
@@ -995,9 +1013,13 @@ fn proxy_policy() -> BoxedStrategy<Value> {
 /// list.
 fn proxy_mode(p: &Pools) -> BoxedStrategy<Value> {
     let mode = || select(vec!["auto", "force", "off"]);
-    let valid = (vec(one_of(p.media_ids()), 1..=3), mode())
-        .prop_map(|(ids, mode)| json!({ "media": ids, "mode": mode }))
-        .boxed();
+    let valid = prop_oneof![
+        4 => (one_of(p.proxy_ids()), mode())
+            .prop_map(|(id, mode)| json!({ "media": [id], "mode": mode })),
+        1 => (vec(one_of(p.media_ids()), 1..=3), mode())
+            .prop_map(|(ids, mode)| json!({ "media": ids, "mode": mode })),
+    ]
+    .boxed();
     let invalid = prop_oneof![
         mode().prop_map(|mode| json!({ "media": [], "mode": mode })),
         one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id], "mode": "off" })),
