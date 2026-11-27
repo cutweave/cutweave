@@ -52,6 +52,7 @@ pub enum Answer {
 
 impl Answer {
     /// The output of a command that ran.
+    #[must_use]
     pub fn output(&self) -> Option<&Value> {
         match self {
             Answer::Done { output, .. } => Some(output),
@@ -206,6 +207,7 @@ impl Agent {
     }
 
     /// Starts a tool call (`item_set_props` for `item.set_props`) with an idempotency key.
+    #[must_use]
     pub fn start(&self, command: &str, args: &Value, request_id: &str) -> Pending {
         let mut params = CallToolRequestParams::new(command.replace('.', "_"));
         if let Value::Object(map) = args {

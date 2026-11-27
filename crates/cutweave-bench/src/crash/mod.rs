@@ -358,7 +358,7 @@ pub fn run(options: &CrashOptions) -> Result<CrashReport, BenchError> {
         }
     }
     let closing = if rows.iter().all(|r| r.result.is_ok()) {
-        session.closing_check()?
+        session.closing_check()
     } else {
         Ok(())
     };
@@ -538,7 +538,7 @@ mod tests {
         assert_eq!(twenty, plan(20, 7, None, false));
         assert!((8..40).any(|seed| plan(20, seed, None, false) != twenty));
         assert_eq!(plan(3, 1, Some(&[Point::Save]), false), [Point::Save; 3]);
-        assert!(plan(4, 1, Some(&[]), false).is_empty());
+        assert_eq!(plan(4, 1, Some(&[]), false), Vec::<Point>::new());
         // With real media: the export and proxy points, and no import.
         let real = plan(11, 7, None, true);
         assert!(Point::REAL.iter().all(|p| real.contains(p)), "{real:?}");

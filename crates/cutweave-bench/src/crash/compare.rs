@@ -77,20 +77,17 @@ pub fn normalize(text: &str) -> String {
     let mut i = 0;
     while i < text.len() {
         let starts_word = i == 0 || !text.as_bytes()[i - 1].is_ascii_alphanumeric();
-        match text.get(i..).and_then(id_len).filter(|_| starts_word) {
-            Some(len) => {
-                let id = &text[i..i + len];
-                let kind = id.split('_').next().unwrap_or_default();
-                out.push_str(kind);
-                out.push('_');
-                out.push_str(&numbers.get(id).copied().unwrap_or(0).to_string());
-                i += len;
-            }
-            None => {
-                let ch = text[i..].chars().next().unwrap_or_default();
-                out.push(ch);
-                i += ch.len_utf8().max(1);
-            }
+        if let Some(len) = text.get(i..).and_then(id_len).filter(|_| starts_word) {
+            let id = &text[i..i + len];
+            let kind = id.split('_').next().unwrap_or_default();
+            out.push_str(kind);
+            out.push('_');
+            out.push_str(&numbers.get(id).copied().unwrap_or(0).to_string());
+            i += len;
+        } else {
+            let ch = text[i..].chars().next().unwrap_or_default();
+            out.push(ch);
+            i += ch.len_utf8().max(1);
         }
     }
     out

@@ -377,8 +377,7 @@ impl ChildEngine {
         let tokens = RunFile::discover(&run_dir)
             .into_iter()
             .find(|f| f.pid == pid)
-            .map(|f| f.agent_tokens)
-            .unwrap_or_default();
+            .map_or_else(Vec::new, |f| f.agent_tokens);
         let token = |label: &str| {
             tokens
                 .iter()

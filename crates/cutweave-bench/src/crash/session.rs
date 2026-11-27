@@ -62,7 +62,7 @@ enum What {
 #[derive(Default)]
 struct Flight {
     /// Commands sent (or about to be) and not answered, in order.
-    in_flight: Vec<Op>,
+    unanswered: Vec<Op>,
     /// A drag whose commit was not answered.
     drag: Option<Drag>,
     /// The engine is gone.
@@ -80,6 +80,17 @@ enum DragEnd {
     KillOpen(Op),
     /// The engine is killed this many microseconds after the commit was sent.
     KillAtCommit(i64),
+}
+
+/// What the proxy point works on.
+#[derive(Default)]
+struct ProxyWork {
+    /// The source a proxy is made of: its id and file.
+    source: Option<(String, PathBuf)>,
+    /// The source has a content hash (a proxy is filed under it; the fixture's have none).
+    keyed: bool,
+    /// A proxy was being made when the engine was killed.
+    cut: bool,
 }
 
 pub(super) struct Session {
@@ -106,12 +117,11 @@ pub(super) struct Session {
     export_dir: PathBuf,
     /// Exports acknowledged as queued and not checked yet: `(job, file)`.
     exports: Vec<(String, PathBuf)>,
-    /// The source the proxy point makes a proxy of.
-    proxy_source: Option<String>,
-    /// A proxy was being made when the engine was killed.
-    proxy_cut: bool,
+    proxy: ProxyWork,
     acknowledged: usize,
     refused: usize,
+    /// Why the engine refused the last command it refused.
+    last_refusal: String,
     life_acknowledged: usize,
 }
 
@@ -143,7 +153,7 @@ impl Session {
             ));
         }
         let proxy_source = fixture.manifest.media.iter().find(|m| m.video);
-        let proxy_source = proxy_source.map(|m| m.id.clone());
+        let proxy_source = proxy_source.map(|m| (m.id.clone(), folder.join("media").join(&m.file)));
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -179,10 +189,13 @@ impl Session {
             media: options.media,
             export_dir: options.scratch.join("exports"),
             exports: Vec::new(),
-            proxy_source,
-            proxy_cut: false,
+            proxy: ProxyWork {
+                source: proxy_source,
+                ..ProxyWork::default()
+            },
             acknowledged: 0,
             refused: 0,
+            last_refusal: String::new(),
             life_acknowledged: 0,
         })
     }
@@ -222,7 +235,10 @@ impl Session {
                 self.acknowledged += 1;
                 self.life_acknowledged += 1;
             }
-            Answer::Refused(_) => self.refused += 1,
+            Answer::Refused(why) => {
+                self.refused += 1;
+                self.last_refusal = why;
+            }
         }
     }
 
@@ -273,21 +289,20 @@ impl Session {
                 Some(ticket) if !dead => live.editor.answer(ticket, wait).ok(),
                 _ => None,
             };
-            match answer {
-                Some(answer) => self.record(What::Plain(op), answer),
-                None => {
-                    dead = true;
-                    flight.in_flight.push(op);
-                }
+            if let Some(answer) = answer {
+                self.record(What::Plain(op), answer);
+            } else {
+                dead = true;
+                flight.unanswered.push(op);
             }
         }
         if let Some((op, pending)) = call {
-            match agent_answer(&mut live, pending, dead || kill_after.is_some()) {
-                Some(answer) => self.record(What::Plain(op), answer),
-                None => {
-                    dead = true;
-                    flight.in_flight.push(op);
-                }
+            let gone = dead || kill_after.is_some();
+            if let Some(answer) = agent_answer(&mut live, pending, gone) {
+                self.record(What::Plain(op), answer);
+            } else {
+                dead = true;
+                flight.unanswered.push(op);
             }
         }
         if dead && kill_after.is_none() && !live.engine.wait_exit(EXIT_WAIT) {
@@ -394,15 +409,14 @@ impl Session {
             Ok(Some(_)) => match end {
                 DragEnd::Commit => {
                     let op = &drag.commit;
-                    match live
-                        .editor
-                        .call(op.command, &op.params, Some(&op.request_id), None)
-                    {
-                        Ok(answer) => self.record(What::Drag(drag), answer),
-                        Err(_) => {
-                            flight.died = true;
-                            flight.drag = Some(drag);
-                        }
+                    let answer =
+                        live.editor
+                            .call(op.command, &op.params, Some(&op.request_id), None);
+                    if let Ok(answer) = answer {
+                        self.record(What::Drag(drag), answer);
+                    } else {
+                        flight.died = true;
+                        flight.drag = Some(drag);
                     }
                     true
                 }
@@ -413,7 +427,7 @@ impl Session {
                     live.engine.kill();
                     match agent_answer(&mut live, pending, true) {
                         Some(answer) => self.record(What::Plain(agent), answer),
-                        None => flight.in_flight.push(agent),
+                        None => flight.unanswered.push(agent),
                     }
                     flight.died = true;
                     true
@@ -520,6 +534,7 @@ impl Session {
                     // Five seconds of the sequence, small, in software.
                     let path = self.export_dir.join(self.script.export_name());
                     let params = json!({
+                        "sequence": self.script.sequence(),
                         "path": path, "hw": "off",
                         "preset": {"custom": {"width": 320, "height": 180}},
                         "range": {"in": 0, "out": 150 * self.script.frame()},
@@ -532,10 +547,28 @@ impl Session {
                 self.strike_job(flight)
             }
             Point::Proxy => {
-                if let Some(source) = self.proxy_source.clone() {
-                    self.acknowledged_call("media.generate_proxy", &json!({"media": [source]}))?;
-                    self.proxy_cut = true;
+                let Some((source, file)) = self.proxy.source.clone() else {
+                    return self.strike_job(flight);
+                };
+                if !self.proxy.keyed {
+                    // An edit like any other: the reference gets it too.
+                    let hash = format!("sha256:{:064x}", self.seed);
+                    let params = json!({"media": source, "path": file, "content_hash": hash});
+                    let op = self.script.editor_op("media.set_location", params);
+                    let refused = self.refused;
+                    self.exchange(vec![op], None, None, None, flight)?;
+                    if flight.died {
+                        flight.unexpected = true;
+                        return Ok(());
+                    }
+                    if self.refused > refused {
+                        let why = &self.last_refusal;
+                        return Err(BenchError::command("media.set_location", why));
+                    }
+                    self.proxy.keyed = true;
                 }
+                self.acknowledged_call("media.generate_proxy", &json!({"media": [source]}))?;
+                self.proxy.cut = true;
                 self.strike_job(flight)
             }
         }
@@ -621,7 +654,7 @@ impl Session {
             ..
         }) = self.pending.pop()
         {
-            flight.in_flight.push(op);
+            flight.unanswered.push(op);
             self.max_committed = before;
         }
         Ok(())
@@ -644,7 +677,7 @@ impl Session {
             n,
             point,
             acknowledged: self.life_acknowledged,
-            in_flight: flight.in_flight.len() + usize::from(flight.drag.is_some()),
+            in_flight: flight.unanswered.len() + usize::from(flight.drag.is_some()),
             journaled: 0,
             replayed: 0,
             recovered_rev: 0,
@@ -835,9 +868,9 @@ impl Session {
     /// The proxy that was being made at the kill: its state is one a restart can leave, a
     /// proxy called ready has its file, and asking for it again gets it made.
     fn check_proxy(&mut self) -> Result<(), String> {
-        let (true, Some(source)) = (
-            std::mem::take(&mut self.proxy_cut),
-            self.proxy_source.clone(),
+        let (true, Some((source, _))) = (
+            std::mem::take(&mut self.proxy.cut),
+            self.proxy.source.clone(),
         ) else {
             return Ok(());
         };
@@ -895,7 +928,7 @@ impl Session {
     /// either had one (its original result comes back) or it runs now.
     fn settle(&mut self, flight: Flight, row: &mut Row) -> Result<(), String> {
         let recovered = row.recovered_rev;
-        for op in flight.in_flight {
+        for op in flight.unanswered {
             let live = self.subject()?;
             let answer = match op.who {
                 Who::Editor => live
@@ -1078,20 +1111,17 @@ impl Session {
 
     /// The end of a run: save, kill, start again. The project must open with nothing to
     /// recover and be the acknowledged document.
-    pub(super) fn closing_check(&mut self) -> Result<Result<(), String>, BenchError> {
-        let checked = (|| {
-            self.save()?;
-            self.subject()?.engine.kill();
-            let project = self.restart(&[])?;
-            if !project["recovery"].is_null() {
-                return Err(format!(
-                    "a project saved before the kill offers a recovery: {project}"
-                ));
-            }
-            self.compare()?;
-            disk::check(&self.folder, true)
-        })();
-        Ok(checked)
+    pub(super) fn closing_check(&mut self) -> Result<(), String> {
+        self.save()?;
+        self.subject()?.engine.kill();
+        let project = self.restart(&[])?;
+        if !project["recovery"].is_null() {
+            return Err(format!(
+                "a project saved before the kill offers a recovery: {project}"
+            ));
+        }
+        self.compare()?;
+        disk::check(&self.folder, true)
     }
 }
 

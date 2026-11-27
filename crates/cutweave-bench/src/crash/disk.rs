@@ -77,6 +77,13 @@ pub fn tear_tail(folder: &Path, bytes: u64) -> Result<Option<(PathBuf, u64)>, Be
     Ok(Some((segment, len - bytes)))
 }
 
+/// Whether the file name ends in `.<extension>` (in any case).
+fn has_extension(name: &str, extension: &str) -> bool {
+    Path::new(name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(extension))
+}
+
 /// Files in `dir` (not below it) whose name satisfies `is`.
 fn files_named(dir: &Path, is: impl Fn(&str) -> bool) -> Vec<String> {
     let mut found: Vec<String> = fs::read_dir(dir)
@@ -110,7 +117,7 @@ pub fn check(folder: &Path, saved: bool) -> Result<(), String> {
         return Err("the project has no export queue file".into());
     }
     if saved {
-        let debris = files_named(folder, |name| name.ends_with(".tmp"));
+        let debris = files_named(folder, |name| has_extension(name, "tmp"));
         if !debris.is_empty() {
             return Err(format!(
                 "a save left temporary files behind: {}",
@@ -124,7 +131,7 @@ pub fn check(folder: &Path, saved: bool) -> Result<(), String> {
 /// Partial export files (`.<name>.<pid>-<n>.partial`) in `dir`.
 #[must_use]
 pub fn partials(dir: &Path) -> Vec<String> {
-    files_named(dir, |name| name.ends_with(".partial"))
+    files_named(dir, |name| has_extension(name, "partial"))
 }
 
 #[cfg(test)]

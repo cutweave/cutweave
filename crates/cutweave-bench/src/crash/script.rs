@@ -149,6 +149,12 @@ impl Script {
         self.frame
     }
 
+    /// The fixture's sequence.
+    #[must_use]
+    pub fn sequence(&self) -> &str {
+        &self.sequence
+    }
+
     /// The next request id: UUIDv7-shaped, unique in the run, the same for the same seed.
     pub fn request_id(&mut self) -> String {
         self.ids += 1;
@@ -191,6 +197,11 @@ impl Script {
         let t = self.rng.below(3000) * self.frame;
         let params = json!({"sequence": self.sequence, "t": t});
         self.op(Who::Editor, "timeline.add_marker", params)
+    }
+
+    /// Any other command of the editor.
+    pub fn editor_op(&mut self, command: &'static str, params: Value) -> Op {
+        self.op(Who::Editor, command, params)
     }
 
     /// `media.import` of `path`.
