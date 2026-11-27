@@ -752,6 +752,10 @@ flowchart LR
     - `cutweave_query(name, args)`.
 
     Every registered command, including plugin commands, is reachable this way.
+  - **Ready for clients that defer tool definitions (WP-2I.07):** some clients (Claude Code's tool search) show a model only the server instructions and tool names at the start and load a definition when the model searches for it. Three things serve them, and change no schema and no list:
+    - Five tools carry `_meta` `"anthropic/alwaysLoad": true` (`always_load` in `mcp_core.toml`): `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command` and `cutweave_execute`, what an agent needs before it can search. Clients that do not know the key ignore it.
+    - The server `instructions` are a map of the catalog in at most 4,096 characters (where Claude Code cuts them): each command namespace and what it is for (the list from the registry, one line each from `mcp_core.toml`), describe a command before its first use, batch through `cutweave_execute`, how to read a result's revision, undo and checkpoints. They are built once per endpoint and are the same for every connection.
+    - `cutweave_search_commands` also matches the `[keywords]` of `mcp_core.toml`: the words a user would say ("cut" for `clip.split`, "faster" for `clip.set_speed`). No command is renamed for search; a test holds 30 phrases to their commands.
   - **Tool profiles are chosen per endpoint** (`/mcp`, `/mcp/minimal`, `/mcp/full`) or by the `--profile` flag, **never per connection**, because the stateless spec requires list results that don't vary by connection.
   - **Tool-list budget** (single source, CI-enforced): minimal ≤ 12 tools / ≤ 3k tokens; standard ≤ 36 tools / ≤ 8k tokens; full = standard plus the search-based long tail, with no extra listed tools.
   - **View tools:** `view_get` / `view_set` (playhead, selection, in/out, zoom) are in the catalog, so agents can show the user what they mean. They are non-undoable. Since WP-2I.01 both are listed tools of the standard profile; the other `view.*` commands are reached through `cutweave_execute`.
