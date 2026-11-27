@@ -84,7 +84,7 @@ function fakePrefs() {
   const calls: unknown[][] = [];
   const bridge: PrefsBridge = {
     get: async () => ({ values: { ...values }, defaults: defaultPreferences() }),
-    set: async (key, value) => {
+    set: async (key: string, value: unknown) => {
       calls.push([key, value]);
     },
     reset: async () => undefined,
@@ -96,9 +96,7 @@ function fakePrefs() {
 }
 
 function mount() {
-  return render(
-    h(I18nextProvider, { i18n }, h(TooltipProvider, null, h(ProjectSettingsDialog))),
-  );
+  return render(h(I18nextProvider, { i18n }, h(TooltipProvider, null, h(ProjectSettingsDialog))));
 }
 
 let original: readonly CatalogCommand[];
