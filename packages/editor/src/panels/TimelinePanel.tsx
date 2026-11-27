@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { DEFAULT_VIEW_STATE, TimelineCanvas, type ViewState } from "@cutweave/timeline";
+import {
+  DEFAULT_VIEW_STATE,
+  followScrollX,
+  TimelineCanvas,
+  type ViewState,
+} from "@cutweave/timeline";
 import { Icon, useOwnerWindow } from "@cutweave/ui";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import { useMediaLoaders } from "../media/mediaWiring.ts";
 import { loadersForWindow } from "../media/timelineLoaders.ts";
+import { usePrefs } from "../prefs/prefsStore.ts";
 import { useDocStore } from "../state/docStore.ts";
+import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { InUseMarks } from "../timeline/InUseMarks.tsx";
+import { timelineDisplay } from "../timeline/prefs.ts";
 import { DropGhost, TrackHeaderControls } from "../timeline/TimelineOverlays.tsx";
 import { TimelineToolbar } from "../timeline/TimelineToolbar.tsx";
 import { TrackRenameInput } from "../timeline/TrackRenameInput.tsx";
@@ -61,6 +69,20 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
     }),
     [zoom, scroll, playhead, selection, snapGuides, marquee, range],
   );
+  // Settings > Timeline: how time, thumbnails and waveforms show and what the wheel does.
+  const values = usePrefs((s) => s.values);
+  const display = useMemo(() => timelineDisplay(values), [values]);
+  // "Follow the playhead while playing": the view turns a page, glides, or stays put.
+  const follow = values["timeline.follow"];
+  const playing = usePlaybackStore((s) => s.playing && s.source === null);
+  const host = intents.host;
+  useEffect(() => {
+    if (!playing || follow === "off") return;
+    const range = host.visibleRange();
+    if (range === null) return;
+    const next = followScrollX(follow, range.t0, range.t1, playhead);
+    if (next !== range.t0) viewStore.getState().setScroll(next, viewStore.getState().scroll.y);
+  }, [playing, follow, playhead, host]);
   // Zoom and scroll the user caused (wheel, drag) are view state: `viewSync` mirrors them.
   const onViewChange = useCallback((v: ViewState) => {
     const store = viewStore.getState();
@@ -77,6 +99,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
           model={model}
           viewState={viewState}
           loaders={loaders}
+          display={display}
           pan="host"
           onPointer={intents.onPointer}
           onView={intents.onView}

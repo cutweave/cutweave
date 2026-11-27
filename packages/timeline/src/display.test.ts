@@ -5,20 +5,9 @@
 // waveforms and the height of a track. The mouse wheel scrolls or zooms; every follow mode keeps
 // the playhead in sight while playing, except Off.
 import { describe, expect, it, vi } from "vitest";
-import type {
-  FollowMode,
-  TimelineItem,
-  TimelineModel,
-  TimelineTrack,
-  TrackSize,
-} from "./model.ts";
+import type { FollowMode, TimelineItem, TimelineModel, TimelineTrack, TrackSize } from "./model.ts";
 import { fakeCanvas, manualFrames, recordingContext, testTheme } from "./test-support.ts";
-import {
-  FLICKS_PER_SECOND as F,
-  formatSeconds,
-  formatTime,
-  frameDurationFlicks,
-} from "./time.ts";
+import { FLICKS_PER_SECOND as F, formatSeconds, formatTime, frameDurationFlicks } from "./time.ts";
 import { TimelineView, type TimelineViewOptions } from "./timeline-view.ts";
 import { followScrollX } from "./viewport.ts";
 
@@ -33,7 +22,13 @@ const track = (id: string, extra: Partial<TimelineTrack> = {}): TimelineTrack =>
   size: "md",
   ...extra,
 });
-const clip = (id: string, trackId: string, start: number, dur: number, extra = {}): TimelineItem => ({
+const clip = (
+  id: string,
+  trackId: string,
+  start: number,
+  dur: number,
+  extra = {},
+): TimelineItem => ({
   id,
   trackId,
   kind: "media",
@@ -191,9 +186,7 @@ describe("Audio waveforms on clips", () => {
   const model: TimelineModel = {
     fps: { num: 24, den: 1 },
     tracks: [track("A", { kind: "audio", size: "lg" })],
-    items: [
-      clip("a", "A", 0, 10, { kind: "audio", waveform: { mediaId: "m1", sourceIn: 0 } }),
-    ],
+    items: [clip("a", "A", 0, 10, { kind: "audio", waveform: { mediaId: "m1", sourceIn: 0 } })],
   };
   const peaks = () => ({
     peaksPerSecond: 200,

@@ -13,6 +13,7 @@ import { dragStore } from "../media/dragStore.ts";
 import { requestForCanvasEvent } from "../menus/canvas.ts";
 import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
 import { registerTimelineCanvas } from "../menus/timelineSurface.ts";
+import { prefsStore } from "../prefs/prefsStore.ts";
 import { isHTMLElement } from "../shell/realm.ts";
 import { forEveryWindow, framesOf } from "../shell/windows.ts";
 import { docStore } from "../state/docStore.ts";
@@ -36,6 +37,7 @@ import { describeRefusal, FAILED_TITLE, type TimelineEdit, translator } from "./
 import { toRpcError } from "./gestureTx.ts";
 import { type LaneBox, TimelineHost, type TimelineUi, withCode } from "./host.ts";
 import { locksStore } from "./locks.ts";
+import { machinePrefs, newTrackHeight } from "./prefs.ts";
 
 export interface TimelineBinding {
   readonly host: TimelineHost;
@@ -112,6 +114,11 @@ export function useTimelineHost(): TimelineBinding {
         seek: (at) => void transportController().seek(at),
         // A detached Timeline's drags pace on its own window's frames (WP-2H.15).
         frames: framesOf(() => surface.current),
+        // Settings > Editing and Settings > Timeline (WP-2A.13).
+        prefs: () => machinePrefs(prefsStore.getState().values),
+        linkAv: () => prefsStore.getState().values["editing.link_av"],
+        newTrackHeight: () =>
+          newTrackHeight(prefsStore.getState().values["timeline.track_height"], surface.current),
       }),
     [],
   );
@@ -125,12 +132,17 @@ export function useTimelineHost(): TimelineBinding {
   useEffect(() => {
     host.start();
     const blur = (): void => host.cancel();
+    // A change in Settings reaches the machine at once.
+    const offPrefs = prefsStore.subscribe((state, previous) => {
+      if (state.values !== previous.values) host.syncPrefs();
+    });
     const off = forEveryWindow((win) => {
       win.addEventListener("blur", blur);
       return () => win.removeEventListener("blur", blur);
     });
     return () => {
       off();
+      offPrefs();
       host.stop();
     };
   }, [host]);

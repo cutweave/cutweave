@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { PreviewQuality } from "@cutweave/protocol";
-import { formatTimecode } from "@cutweave/timeline";
 import { Icon, IconButton, Slider, Toolbar, ToolbarSeparator, Tooltip } from "@cutweave/ui";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { useContextMenu } from "../menus/host.tsx";
+import { usePref } from "../prefs/prefsStore.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
 import { useViewStore } from "../state/viewStore.ts";
+import { displayTime } from "../timeline/prefs.ts";
 import { keymap } from "../transport/keymap.ts";
 import { transportController } from "../transport/useTransport.ts";
 
@@ -58,6 +59,11 @@ export function TransportBar() {
   const live = connected && (hasContent || source !== null) && support !== "unsupported";
   const off = !live;
   const volume = Math.round(gain * 100);
+  // Settings > Timeline: timecode (drop-frame at 29.97 and 59.94 unless turned off), frames or
+  // seconds.
+  const timeDisplay = usePref("timeline.time_display");
+  const dropFrame = usePref("timeline.drop_frame");
+  const shown = { "timeline.time_display": timeDisplay, "timeline.drop_frame": dropFrame };
   const playLabel = playing ? t("transport.pause") : t("transport.play");
   // Right-click or the Menu key: Copy timecode, the volume's Mute and Reset, the quality choices.
   const timeRef = useContextMenu<HTMLOutputElement>("transport.time", () => ({}));
@@ -73,8 +79,8 @@ export function TransportBar() {
         data-source={source !== null}
       >
         {source === null
-          ? formatTimecode(playhead, fps ?? ZERO_RATE, true)
-          : formatTimecode(sourcePlayhead, source.fps, true)}
+          ? displayTime(playhead, fps ?? ZERO_RATE, shown)
+          : displayTime(sourcePlayhead, source.fps, shown)}
       </output>
       <Toolbar aria-label={t("transport.label")} className="cw-transport__bar">
         <Tooltip label={t("transport.toStart")}>

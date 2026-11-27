@@ -7,11 +7,12 @@
 // TODO(WP-2A.14): the Source view's
 // Insert, Overwrite and marks.
 import type { PreviewQuality } from "@cutweave/protocol";
-import { formatTimecode } from "@cutweave/timeline";
+import { prefsStore } from "../../prefs/prefsStore.ts";
 import { flipArgs, placeArgs } from "../../preview/overlays/placement.ts";
 import { docStore } from "../../state/docStore.ts";
 import { playbackStore } from "../../state/playbackStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
+import { displayTime } from "../../timeline/prefs.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.ts";
 import { clipFact } from "./facts.ts";
 import { sequenceRate } from "./shared.ts";
@@ -55,9 +56,10 @@ const qualityRows = (group?: string): MenuRow[] =>
 /** The timecode the transport shows now: the source's own while one plays, else the timeline's. */
 export function shownTimecode(): string {
   const pb = playbackStore.getState();
-  if (pb.source !== null) return formatTimecode(pb.sourcePlayhead, pb.source.fps, true);
+  const values = prefsStore.getState().values;
+  if (pb.source !== null) return displayTime(pb.sourcePlayhead, pb.source.fps, values);
   const rate = sequenceRate() ?? { num: 30, den: 1 };
-  return formatTimecode(viewStore.getState().playhead, rate, true);
+  return displayTime(viewStore.getState().playhead, rate, values);
 }
 
 /** "Add frame to media bin" (WP-2F.05d): the frame on screen becomes a picture in the bin. */

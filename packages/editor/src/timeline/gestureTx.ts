@@ -63,6 +63,11 @@ export interface GestureTxDeps {
   answer(event: MachineEvent): void;
   /** The gesture ended without its edit: tell the person (a toast). */
   refused(edit: GestureEdit, error: RpcError): void;
+  /**
+   * The gesture is about to commit: more commands for its transaction (the height of a track it
+   * created, WP-2A.13). `output` is what its last applied update returned. Never fails the edit.
+   */
+  beforeCommit?(edit: GestureEdit, output: unknown, tx: TxId): Promise<void>;
   /** The gesture committed; `output` is what its last applied update returned. */
   committed(edit: GestureEdit, output: unknown): void;
   readonly probe?: RttProbe;
@@ -276,6 +281,7 @@ export class GestureTransactions {
         return;
       }
       try {
+        await this.#deps.beforeCommit?.(open.edit, open.lastOutput, tx).catch(() => undefined);
         await rpc.call("edit.commit_tx", { tx });
       } catch (error) {
         await rpc.call("edit.cancel_tx", { tx }).catch(() => undefined);

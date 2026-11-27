@@ -231,6 +231,7 @@ export function startEngineRuntime(
     // How this editor wants its engine to save (File > Settings… > Saving), for every project.
     if (!mismatch) {
       await sendAutosave();
+      await sendHistoryLimit();
       await sendMachineSettings();
     }
     // The preview frame ring of this engine launch (WP-1M.04); `null` when it publishes none.
@@ -277,6 +278,28 @@ export function startEngineRuntime(
   }
 
   /**
+   * Tells the engine how many undo steps to keep per person or agent (`edit.set_history_limit`,
+   * Settings > Editing, WP-2A.13). The engine keeps it for every project it opens.
+   */
+  async function sendHistoryLimit(): Promise<void> {
+    const values = stores.prefs?.getState().values;
+    if (values === undefined) return;
+    try {
+      await rpc.call("edit.set_history_limit", { steps: values["editing.undo_steps"] });
+      // The Undo button and the History panel follow the shorter stacks.
+      await sessionSync?.refreshStacks();
+    } catch (error) {
+      onError(error);
+    }
+  }
+
+  /** Settings > Timeline > "Snapping on when a project opens": the toolbar's toggle starts there. */
+  function applySnapDefault(): void {
+    const values = stores.prefs?.getState().values;
+    if (values !== undefined) stores.view.getState().setSnapping(values["timeline.snap"]);
+  }
+
+  /**
    * Tells the engine this computer's cache and hardware preferences (`media.set_decode_policy`,
    * `media.set_cache_config`; UI-only commands, WP-1D.08) and how it makes proxies
    * (`media.set_proxy_config`, WP-2F.03b; first, so no proxy starts at another size). The cache
@@ -312,8 +335,10 @@ export function startEngineRuntime(
   async function syncDocument(): Promise<void> {
     if (!started) {
       started = true;
+      applySnapDefault();
       sessionSync?.start();
       offs.push(
+        rpc.on("project.opened", applySnapDefault),
         rpc.on("job.progress", (info: JobInfo) => stores.jobs.getState().applyProgress(info)),
         rpc.on("media.analysis_failed", (e) => stores.media?.getState().applyAnalysisFailed(e)),
         rpc.on("media.indexed", (e) => stores.media?.getState().applyIndexed(e)),
@@ -385,6 +410,12 @@ export function startEngineRuntime(
           state.values["saving.interval"] !== previous.values["saving.interval"] ||
           state.values["saving.backups"] !== previous.values["saving.backups"];
         if (changed && connection.state === "ready") void sendAutosave();
+        if (
+          state.values["editing.undo_steps"] !== previous.values["editing.undo_steps"] &&
+          connection.state === "ready"
+        ) {
+          void sendHistoryLimit();
+        }
         const machineChanged =
           state.values["performance.hw_decode"] !== previous.values["performance.hw_decode"] ||
           state.values["performance.frame_memory"] !==

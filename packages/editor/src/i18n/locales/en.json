@@ -79,6 +79,7 @@
       "general": "General",
       "appearance": "Appearance",
       "editing": "Editing",
+      "timeline": "Timeline",
       "media": "Media and import",
       "export": "Export",
       "shortcuts": "Keyboard shortcuts",
@@ -217,6 +218,104 @@
         "description": "How long a photo or other still is when you place it on the timeline. New projects take this value; clips already on a timeline keep their length.",
         "keywords": "image, photo, picture, still, length, default, seconds, new project",
         "unit": "seconds"
+      },
+      "linkAv": {
+        "label": "Keep video and audio linked",
+        "description": "A video you place on the timeline brings its sound as a linked clip, so the two move and trim together. Off: only the picture is placed.",
+        "keywords": "link, linked, sound, audio, video, insert, sync, unlink"
+      },
+      "dropMode": {
+        "label": "Dropping media onto a clip",
+        "description": "What happens when you drop media onto a clip outside the main track: it replaces what it covers, or it pushes the clip and everything after it later.",
+        "keywords": "drop, drag, overwrite, insert, replace, ripple, clip, media",
+        "overwrite": "Overwrite",
+        "insert": "Insert"
+      },
+      "nudge": {
+        "label": "Nudge step",
+        "description": "How far comma and period move the selected clips. With Shift they move ten times as far.",
+        "keywords": "nudge, move, comma, period, arrow, frame, step, shift",
+        "unit": "frames"
+      },
+      "undoSteps": {
+        "label": "Undo steps",
+        "description": "How many steps you can undo. Each agent keeps as many of its own. A lower number forgets the oldest steps at once.",
+        "keywords": "undo, redo, history, steps, limit, levels, memory",
+        "unit": "steps"
+      },
+      "snap": {
+        "label": "Snapping on when a project opens",
+        "description": "Whether snapping starts on. The magnet button on the timeline turns it on and off while you work.",
+        "keywords": "snap, snapping, magnet, default, open, project"
+      },
+      "snapTargets": {
+        "label": "Snap to",
+        "description": "What a clip you drag or trim snaps to.",
+        "keywords": "snap, playhead, clip edges, markers, beats, in, out, magnet",
+        "playhead": "Playhead",
+        "edges": "Clip edges",
+        "markers": "Markers",
+        "beats": "Beats"
+      },
+      "snapDistance": {
+        "label": "Snap distance",
+        "description": "How close, on screen, a clip has to be before it snaps.",
+        "keywords": "snap, distance, threshold, pixels, sensitivity, magnet",
+        "unit": "px"
+      },
+      "follow": {
+        "label": "Follow the playhead while playing",
+        "description": "Page turns the view when the playhead reaches its edge. Smooth keeps the playhead in the middle. Off leaves the view where it is.",
+        "keywords": "follow, playhead, scroll, play, page, smooth, auto scroll",
+        "page": "Page",
+        "smooth": "Smooth",
+        "off": "Off"
+      },
+      "magneticMain": {
+        "label": "Magnetic main track in new sequences",
+        "description": "The main video track of a new sequence keeps its clips together with no gaps.",
+        "keywords": "magnetic, main track, gap, ripple, sequence, new"
+      },
+      "thumbnails": {
+        "label": "Video clip thumbnails",
+        "description": "Filmstrip shows frames all along a clip, First frame shows one at its start, Off shows none.",
+        "keywords": "thumbnail, filmstrip, frames, picture, clip, preview, first frame",
+        "filmstrip": "Filmstrip",
+        "first": "First frame",
+        "off": "Off"
+      },
+      "waveforms": {
+        "label": "Audio waveforms on clips",
+        "description": "Draw the sound of audio clips on the timeline.",
+        "keywords": "waveform, audio, sound, clip, peaks"
+      },
+      "trackHeight": {
+        "label": "Height of new tracks",
+        "description": "How tall a track is when it is added. Tracks you already have keep their height.",
+        "keywords": "track, height, size, small, medium, large, row, lane",
+        "small": "Small",
+        "medium": "Medium",
+        "large": "Large"
+      },
+      "wheel": {
+        "label": "Mouse wheel",
+        "description": "What the wheel does over the timeline. Hold Ctrl (Cmd on a Mac) for the other one.",
+        "keywords": "mouse, wheel, scroll, zoom, trackpad, ctrl, cmd",
+        "scroll": "Scrolls",
+        "zoom": "Zooms"
+      },
+      "timeDisplay": {
+        "label": "Show time as",
+        "description": "How the timeline ruler, the time under the preview and the Inspector show time.",
+        "keywords": "time, timecode, frames, seconds, ruler, display, format",
+        "timecode": "Timecode",
+        "frames": "Frames",
+        "seconds": "Seconds"
+      },
+      "dropFrame": {
+        "label": "Drop-frame timecode",
+        "description": "At 29.97 and 59.94 fps, show drop-frame timecode (with a semicolon), which keeps pace with the clock.",
+        "keywords": "drop frame, timecode, 29.97, 59.94, ntsc, semicolon, non-drop"
       },
       "hoverScrub": {
         "label": "Preview video on hover",

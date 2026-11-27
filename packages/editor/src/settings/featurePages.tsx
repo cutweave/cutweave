@@ -14,6 +14,7 @@ import {
 import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
 import { type ChoiceOption, registerSettingsPage, type SettingsPageDef } from "./registry.ts";
 import { registerShortcutsPage } from "./shortcuts.tsx";
+import "./timelinePages.tsx";
 
 // ---- Export -----------------------------------------------------------------------------------
 

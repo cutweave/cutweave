@@ -225,6 +225,61 @@ describe("startEngineRuntime", () => {
     await runtime.stop();
   });
 
+  it("tells the engine the undo steps to keep after every handshake and when they change (WP-2A.13)", async () => {
+    const { engine, timers, stores, runtime, errors } = setup();
+    const set = (steps: number) =>
+      stores.prefs.setState({
+        values: { ...stores.prefs.getState().values, "editing.undo_steps": steps },
+      });
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    const sent = (index: number) =>
+      (engine.sockets[index]?.sent ?? [])
+        .filter((m) => m.method === "edit.set_history_limit")
+        .map((m) => m.params);
+    expect(sent(0)).toMatchObject([{ steps: 1000 }]);
+    set(2);
+    await flushPromises(50);
+    expect(sent(0)).toMatchObject([{ steps: 1000 }, { steps: 2 }]);
+    // Another setting changing sends nothing.
+    stores.prefs.setState({
+      values: { ...stores.prefs.getState().values, "timeline.follow": "off" },
+    });
+    await flushPromises(50);
+    expect(sent(0)).toHaveLength(2);
+    // A new engine launch (reconnect) gets it again.
+    engine.last.serverClose(1006);
+    timers.advance(250);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(sent(1)).toMatchObject([{ steps: 2 }]);
+    expect(errors).toEqual([]);
+    await runtime.stop();
+  });
+
+  it("starts snapping where Settings > Timeline says, again when a project opens (WP-2A.13)", async () => {
+    const { engine, timers, stores, runtime, errors } = setup();
+    stores.prefs.setState({
+      values: { ...stores.prefs.getState().values, "timeline.snap": false },
+    });
+    expect(stores.view.getState().snapping).toBe(true);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(stores.view.getState().snapping).toBe(false);
+    // The toolbar's toggle is the session's: it stays until a project opens.
+    stores.view.getState().setSnapping(true);
+    engine.last.serverClose(1006);
+    timers.advance(250);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(stores.view.getState().snapping).toBe(true);
+    engine.last.emit("project.opened", {});
+    await flushPromises(50);
+    expect(stores.view.getState().snapping).toBe(false);
+    expect(errors).toEqual([]);
+    await runtime.stop();
+  });
+
   it("tells the engine this computer's cache and hardware preferences after every handshake and when they change (WP-1D.08)", async () => {
     const { engine, timers, stores, runtime, errors } = setup();
     const set = (change: Record<string, unknown>) =>
