@@ -90,9 +90,9 @@ wasm *args:
 e2e:
     @echo "e2e: not implemented yet (arrives in Phase 1)"
 
-# The user-flow suite (ADR-0018, docs/user-flows.md): builds the engine (with FFmpeg when the bundle is set up, so the real-media flows F13, F14 and F17 run; without it they skip), the CLI, the preview addon and the app, then drives it like a person (`just e2e-flows -g F8` runs one flow)
+# The user-flow suite (ADR-0018, docs/user-flows.md): builds the engine (with FFmpeg when the bundle is set up, so the real-media flows F13, F14 and F17 run; without it they skip), the CLI, the preview addon and the app, then drives it like a person (`just e2e-flows -g F8` runs one flow). On Windows the app runs on a separate desktop, so its windows never take your keyboard or mouse (scripts/hidden-desktop.py); CUTWEAVE_E2E_VISIBLE=1 shows them
 e2e-flows *args: e2e-build
-    { . scripts/ffmpeg/env.sh 2>/dev/null || true; } && pnpm --filter @cutweave/desktop e2e:flows {{args}}
+    { . scripts/ffmpeg/env.sh 2>/dev/null || true; } && python scripts/hidden-desktop.py -- pnpm --filter @cutweave/desktop e2e:flows {{args}}
 
 # Everything the user flows run against: the engine (with FFmpeg when the bundle is there), the CLI, the preview addon and the app
 e2e-build:
