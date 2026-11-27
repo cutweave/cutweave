@@ -240,7 +240,9 @@ describe("the Preview's Source view", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Set in point" }));
     });
-    expect(viewStore.getState().sourceMarks.med_a).toEqual({ in: 1 * FLICKS, out: 5 * FLICKS });
+    expect(viewStore.getState().sourceMarks).toEqual({
+      med_a: { in: 1 * FLICKS, out: 5 * FLICKS },
+    });
     await act(async () => {
       fireEvent.keyDown(stage, { key: "x", altKey: true });
     });

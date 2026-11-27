@@ -9,8 +9,8 @@
 import { PLAYING_QUALITIES, type PlayingQualityChoice } from "@cutweave/preferences";
 import type { TKey } from "../../i18n/index.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
-import { sourceHasMarks } from "../../source/actions.ts";
 import { flipArgs, placeArgs } from "../../preview/overlays/placement.ts";
+import { sourceHasMarks } from "../../source/actions.ts";
 import { docStore } from "../../state/docStore.ts";
 import { playbackStore } from "../../state/playbackStore.ts";
 import { viewStore } from "../../state/viewStore.ts";

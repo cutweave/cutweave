@@ -157,6 +157,12 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
   },
   { name: "timeline.delete_gap", label: "contextMenu.command.timelineDeleteGap", undoable: true },
   {
+    name: "timeline.overwrite",
+    label: "contextMenu.command.timelineOverwrite",
+    destructive: true,
+    undoable: true,
+  },
+  {
     name: "timeline.lift",
     label: "contextMenu.command.timelineLift",
     destructive: true,

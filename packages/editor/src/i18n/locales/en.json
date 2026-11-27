@@ -2391,7 +2391,8 @@
       "trackSetHeight": "Track height",
       "trackReorder": "Move track",
       "timelineUpdateMarker": "Edit marker",
-      "itemSetLabelColor": "Color label"
+      "itemSetLabelColor": "Color label",
+      "timelineOverwrite": "Overwrite at playhead"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
