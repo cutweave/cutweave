@@ -12,7 +12,9 @@ before starting its command, so a gate run through it (every step) inherits it.
 * Entries untouched for two days are deleted when a run starts.
 * The shared sccache server is started first, under the system temp dir: it outlives the run and
   keeps the temp dir it started with, so started under a worktree's `.tmp` it would fail every
-  uncached compile once that worktree is deleted.
+  uncached compile once that worktree is deleted. It is started with no idle timeout: with
+  sccache's default (10 idle minutes) it quit during a long user-flow step, and the next cargo
+  step of the run started a new one under the run's `.tmp`.
 """
 
 import os
@@ -51,7 +53,9 @@ def start_build_cache() -> None:
     """Starts the shared sccache server, unless one runs, while TMP is still the system's.
 
     `sccache --show-stats` connects to the running server or starts one; a failure is left to
-    the build, which reports it.
+    the build, which reports it. A server it starts never quits for being idle
+    (`SCCACHE_IDLE_TIMEOUT=0`), so no later step of the run starts one under the run's `.tmp`.
+    Only this call gets the setting: a server some other build starts keeps sccache's default.
     """
     exe = shutil.which("sccache")
     if not exe:
@@ -63,6 +67,7 @@ def start_build_cache() -> None:
             stderr=subprocess.DEVNULL,
             timeout=60,
             check=False,
+            env={**os.environ, "SCCACHE_IDLE_TIMEOUT": "0"},
         )
     except (OSError, subprocess.SubprocessError):
         pass
