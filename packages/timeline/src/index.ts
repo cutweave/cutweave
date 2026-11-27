@@ -34,6 +34,7 @@ export { IntervalIndex } from "./interval-index.ts";
 export type { TrackMetrics } from "./layout.ts";
 export { TimelineLayout } from "./layout.ts";
 export type {
+  FollowMode,
   ItemKind,
   ItemState,
   MarkerKind,
@@ -41,6 +42,7 @@ export type {
   Rect,
   SnapGuide,
   SourceRange,
+  ThumbnailMode,
   TimeFormat,
   TimelineDisplay,
   TimelineItem,
@@ -50,6 +52,7 @@ export type {
   TrackKind,
   TrackSize,
   ViewState,
+  WheelMode,
 } from "./model.ts";
 export { DEFAULT_DISPLAY, DEFAULT_VIEW_STATE, EMPTY_MODEL } from "./model.ts";
 export type { TimelineCanvasProps } from "./react.tsx";
@@ -77,6 +80,8 @@ export {
   FLICKS_PER_SECOND,
   flicksToFrame,
   formatFrameTimecode,
+  formatSeconds,
+  formatTime,
   formatTimecode,
   frameDurationFlicks,
   frameToFlicks,
@@ -91,6 +96,7 @@ export {
   durationToPx,
   fitRange,
   flicksPerPx,
+  followScrollX,
   MAX_PX_PER_SEC,
   MIN_PX_PER_SEC,
   timeToX,

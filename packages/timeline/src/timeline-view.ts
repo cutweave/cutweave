@@ -271,7 +271,16 @@ export class TimelineView {
   /** Apply display preferences (how time shows); redraws when one changed. */
   setDisplay(patch: Partial<TimelineDisplay>): void {
     const next: TimelineDisplay = { ...this.display, ...patch };
-    if (next.timeFormat === this.display.timeFormat) return;
+    const d = this.display;
+    if (
+      next.timeFormat === d.timeFormat &&
+      next.dropFrame === d.dropFrame &&
+      next.thumbnails === d.thumbnails &&
+      next.waveforms === d.waveforms &&
+      next.wheel === d.wheel
+    ) {
+      return;
+    }
     this.display = next;
     this.invalidate();
   }
@@ -592,7 +601,7 @@ export class TimelineView {
     f.vp = this.vp;
     f.theme = this.theme;
     f.fps = this.model.fps;
-    f.dropFrame = this.model.dropFrame ?? false;
+    f.dropFrame = this.display.dropFrame ?? this.model.dropFrame ?? false;
     f.view = this.state;
     f.caches = this.caches;
     f.dpr = this.dpr;
@@ -794,12 +803,17 @@ export class TimelineView {
         const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.vp.height : 1;
         const dx = e.deltaX * unit;
         const dy = e.deltaY * unit;
-        if (e.ctrlKey || e.metaKey) {
+        // The Timeline preference "Mouse wheel": it scrolls and Ctrl/Cmd+wheel zooms, or the
+        // other way round. A sideways swipe or Shift+wheel always scrolls along the time.
+        const modified = e.ctrlKey || e.metaKey;
+        const sideways = e.shiftKey || Math.abs(dx) > Math.abs(dy);
+        const zooms = this.display.wheel === "zoom" ? !modified && !sideways : modified;
+        if (zooms) {
           // Zoom anchored at the pointer: a wheel notch eases there, a pinch follows the fingers.
           const factor = Math.exp(-dy * WHEEL_ZOOM_PER_PX);
           if (Math.abs(dy) >= WHEEL_NOTCH_PX) this.zoomSmooth(factor, x);
           else this.zoomBy(factor, x);
-        } else if (e.shiftKey || Math.abs(dx) > Math.abs(dy)) {
+        } else if (sideways) {
           this.scrollBy(dx || dy);
         } else if (this.layout.totalHeight > this.vp.height - this.vp.rulerHeight) {
           this.scrollBy(0, dy);

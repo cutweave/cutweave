@@ -1397,7 +1397,8 @@ function nudge(
     return it !== undefined && !isMain(model, it.trackId);
   });
   if (items.length === 0) return;
-  const frames = action.endsWith("_10") ? NUDGE_FAR_FRAMES : 1;
+  const step = Math.max(1, Math.round(env.nudgeFrames));
+  const frames = action.endsWith("_10") ? NUDGE_FAR_FRAMES * step : step;
   const delta =
     (action.startsWith("nudge_left") ? -frames : frames) * frameDurationFlicks(model.fps);
   const earliest = Math.min(...items.map((id) => itemOf(model, id)?.start ?? 0));

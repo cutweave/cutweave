@@ -112,6 +112,8 @@ export interface MachineEnv {
   readonly linkedSelection: boolean;
   /** Editing preference: media dropped onto a clip outside the main track (WP-2A.13). */
   readonly dropOnClip: "overwrite" | "insert";
+  /** Editing preference: frames `,` and `.` move the selection (Shift: ten times it). */
+  readonly nudgeFrames: number;
   /** Sequence in and out (snap candidates). */
   readonly inOut: { readonly in: number; readonly out: number } | null;
   /** Items another actor's gesture or proposal holds, to the actor (`locksStore.byItem`). */

@@ -40,6 +40,36 @@ export function flicksPerPx(vp: Pick<Viewport, "pxPerSec">): number {
   return FLICKS_PER_SECOND / vp.pxPerSec;
 }
 
+/**
+ * Where the lane's left edge (`scrollX`, flicks) goes so the playhead stays in sight while
+ * playing (the Timeline preference "Follow the playhead while playing"). `t0` and `t1` are the
+ * visible range now.
+ *
+ * - `page`: when the playhead leaves the range, the view turns a page: the playhead sits a
+ *   twentieth of the lane in from the left edge.
+ * - `smooth`: once the playhead passes the middle of the lane it stays there and the timeline
+ *   moves under it; a playhead outside the range is brought to the middle.
+ * - `off`: the view stays where it is.
+ *
+ * Returns `t0` when nothing needs to move. Never negative.
+ */
+export function followScrollX(
+  mode: "page" | "smooth" | "off",
+  t0: number,
+  t1: number,
+  playhead: number,
+): number {
+  const span = t1 - t0;
+  if (mode === "off" || span <= 0) return t0;
+  if (mode === "smooth") {
+    const middle = t0 + span / 2;
+    if (playhead >= t0 && playhead <= middle) return t0;
+    return Math.max(0, Math.round(playhead - span / 2));
+  }
+  if (playhead >= t0 && playhead < t1) return t0;
+  return Math.max(0, Math.round(playhead - span / 20));
+}
+
 /** Canvas x (CSS px) of timeline time `t`. */
 export function timeToX(vp: Viewport, t: number): number {
   return vp.headerWidth + (t - vp.scrollX) * (vp.pxPerSec / FLICKS_PER_SECOND);

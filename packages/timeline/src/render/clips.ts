@@ -201,8 +201,11 @@ function drawBucket(
   const areaY = cy + th.clipStrip + band;
   const areaH = cy + ch - bw - areaY;
   if (areaH >= th.space4) {
-    if (f.caches.hasFilmstripLoader) drawTiles(s, bucket, areaY, areaH);
-    if (kind === "audio" && f.caches.hasWaveformLoader) {
+    const thumbnails = f.display?.thumbnails ?? "filmstrip";
+    if (thumbnails !== "off" && f.caches.hasFilmstripLoader) {
+      drawTiles(s, bucket, areaY, areaH, thumbnails === "first");
+    }
+    if (kind === "audio" && f.display?.waveforms !== false && f.caches.hasWaveformLoader) {
       drawWaveforms(s, bucket, col.strong, areaY, areaH);
     }
   }

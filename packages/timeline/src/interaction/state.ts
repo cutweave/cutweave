@@ -292,6 +292,7 @@ export const DEFAULT_MACHINE_ENV: MachineEnv = {
   snapKinds: ["playhead", "edge", "marker", "beat", "in_out"],
   linkedSelection: true,
   dropOnClip: "overwrite",
+  nudgeFrames: 1,
   inOut: null,
   heldBy: new Map(),
 };
