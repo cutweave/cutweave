@@ -81,8 +81,14 @@ function tokenPx(el: Element, name: string): number {
 /** The lane area of the canvas: right of the headers, under the ruler. */
 function laneBox(view: TimelineView, canvas: HTMLElement): () => LaneBox {
   let ruler = 0;
+  // The ruler is taller in the Comfortable density (WP-2H.09): read again when it changes.
+  let density: string | null = null;
   return () => {
-    if (ruler === 0) ruler = tokenPx(canvas, "--control-md");
+    const now = canvas.ownerDocument.documentElement.getAttribute("data-density");
+    if (ruler === 0 || now !== density) {
+      ruler = tokenPx(canvas, "--control-md");
+      density = now;
+    }
     return {
       left: view.timeToX(view.getViewState().scrollX),
       right: canvas.clientWidth,
