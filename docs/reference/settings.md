@@ -117,7 +117,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 |---|---|---|---|---|---|---|
 | `playback.quality_playing` | Preview quality while playing: auto, full, half, quarter | Auto | App | Engine (quality ladder) | — | WP-2H.10 |
 | `playback.quality_paused` | Preview quality when paused: full or auto | Full | App | Engine | — | WP-2H.10 |
-| `playback.proxies` | Use proxies in the preview when they are ready | On | App | Engine | Read | WP-2H.10 (uses WP-2F.02) |
+| `playback.proxies` | Use proxies in the preview when they are ready | On | App | Engine (`view.set_preview_quality{use_proxies}`, sent after each handshake and on change) | Read (`playback.state.use_proxies`) | The key and the transport bar's toggle: WP-2F.02; this row: WP-2H.10 |
 | `playback.scrub_audio` | Play audio while scrubbing | On | App | Engine | — | WP-2H.10 |
 | `playback.loop` | Loop playback | Off | App | Engine | — | WP-2H.10 |
 | `playback.return_to_start` | When playback stops, go back to where it started | Off | App | Renderer | — | WP-2H.10 |

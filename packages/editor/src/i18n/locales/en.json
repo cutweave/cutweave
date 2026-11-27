@@ -1179,6 +1179,13 @@
       "half": "Half",
       "quarter": "Quarter"
     },
+    "useProxies": "Use proxies in the preview",
+    "sourceValue": "Preview source: {{source}}",
+    "sourceHint": "What the frame in the preview was decoded from. Exports always use the original files.",
+    "source": {
+      "proxy": "Proxy",
+      "original": "Original"
+    },
     "unsupportedTitle": "Playback not available",
     "unsupported": "This engine can't play the timeline yet. You can still edit and move the playhead."
   },

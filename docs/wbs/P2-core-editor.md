@@ -861,6 +861,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Hot-swap when a proxy finishes while a file is open (next seek uses it; no visible glitch).
   - Setting `preview.use_proxies` (default on) toggle in the transport bar. The preview status chip shows "Proxy" or "Original".
   - Missing/evicted proxy gracefully falls back to the original.
+  - (2026-11-27, as built: the resolution rule compares the longest side a layer is drawn at with the proxy's; the toggle is the app preference `playback.proxies`, sent to the engine as the UI-only `view.set_preview_quality{use_proxies}`; `playback.state` gained `use_proxies` and `proxy` for the chip; media whose original is offline never shows its proxy. Arch §7 "Selection". User flow F63.)
 - **Interfaces:** `MediaResolver`; `view.set_preview_quality{use_proxies}`.
 - **Acceptance criteria:**
   - Test asserts export never opens a proxy file (file-open spy in the integration test): 0 proxy opens across a 3-clip export.

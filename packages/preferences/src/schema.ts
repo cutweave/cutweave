@@ -177,6 +177,11 @@ export interface PreferenceValues {
   "media.proxy_policy": ProxyPolicyChoice;
   /** The longest side of the proxies this computer makes, in pixels. */
   "media.proxy_size": (typeof PROXY_SIZES)[number];
+  /**
+   * The preview uses proxies when they are ready and large enough (WP-2F.02): the transport
+   * bar's toggle. The editor sends it to the engine (`view.set_preview_quality`).
+   */
+  "playback.proxies": boolean;
   /** The History panel's sort order (#171), the person's, not the project's. */
   "history.order": HistoryOrder;
   // Keyboard shortcuts (WP-2H.05)
@@ -349,6 +354,8 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   // this computer's.
   "media.proxy_policy": { type: "enum", scope: "app", options: PROXY_POLICIES, default: "auto" },
   "media.proxy_size": { type: "enum", scope: "machine", options: PROXY_SIZES, default: 960 },
+  // Playback (WP-2F.02): the transport bar's proxy toggle.
+  "playback.proxies": { type: "boolean", scope: "app", default: true },
   // Keyboard shortcuts (WP-2H.05)
   "history.order": { type: "enum", scope: "app", options: HISTORY_ORDERS, default: "oldest" },
   "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },

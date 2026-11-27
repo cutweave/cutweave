@@ -84,15 +84,23 @@ impl OpenLog {
 }
 
 /// A backend that notes every file `inner` is asked to read (see [`OpenLog`]).
-#[derive(Debug)]
-pub struct SpyBackend<B> {
-    inner: B,
+pub struct SpyBackend {
+    inner: Arc<dyn MediaBackend>,
     log: OpenLog,
 }
 
-impl<B> SpyBackend<B> {
+impl std::fmt::Debug for SpyBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SpyBackend")
+            .field("opens", &self.log.opens().len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl SpyBackend {
     /// A spy on `inner`.
-    pub fn new(inner: B) -> SpyBackend<B> {
+    #[must_use]
+    pub fn new(inner: Arc<dyn MediaBackend>) -> SpyBackend {
         SpyBackend {
             inner,
             log: OpenLog::default(),
@@ -104,14 +112,9 @@ impl<B> SpyBackend<B> {
     pub fn log(&self) -> OpenLog {
         self.log.clone()
     }
-
-    /// The backend spied on.
-    pub fn inner(&self) -> &B {
-        &self.inner
-    }
 }
 
-impl<B: MediaBackend> MediaBackend for SpyBackend<B> {
+impl MediaBackend for SpyBackend {
     fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError> {
         self.log.note(OpenKind::Probe, path);
         self.inner.probe(path)
@@ -166,9 +169,8 @@ mod tests {
     fn every_read_is_noted_with_its_file() {
         let clip = Path::new("/media/a.mp4");
         let d = Duration::from_secs(1).unwrap();
-        let spy = SpyBackend::new(
-            FakeBackend::new().with_media(clip, FakeMedia::clip(d, FrameRate::FPS_30)),
-        );
+        let fake = FakeBackend::new().with_media(clip, FakeMedia::clip(d, FrameRate::FPS_30));
+        let spy = SpyBackend::new(Arc::new(fake.clone()));
         let log = spy.log();
         spy.probe(clip).unwrap();
         spy.index_media(clip).unwrap();
@@ -189,7 +191,7 @@ mod tests {
         assert_eq!(log.decoder_opens().len(), 2);
         assert_eq!(log.under(Path::new("/cache/proxies")).len(), 1);
         assert_eq!(log.under(Path::new("/media")).len(), 4);
-        assert_eq!(spy.inner().decoders_opened(), 1);
+        assert_eq!(fake.decoders_opened(), 1);
         log.clear();
         assert!(log.opens().is_empty());
     }

@@ -279,6 +279,39 @@ describe("startEngineRuntime", () => {
     await runtime.stop();
   });
 
+  it("tells the engine whether the preview uses proxies after every handshake and when the toggle changes (WP-2F.02)", async () => {
+    const { engine, timers, stores, runtime, errors } = setup();
+    const set = (on: boolean) =>
+      stores.prefs.setState({
+        values: { ...stores.prefs.getState().values, "playback.proxies": on },
+      });
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    const sent = (index: number) =>
+      (engine.sockets[index]?.sent ?? [])
+        .filter((m) => m.method === "view.set_preview_quality")
+        .map((m) => m.params);
+    // On by default.
+    expect(sent(0)).toEqual([{ use_proxies: true }]);
+    set(false);
+    await flushPromises(50);
+    expect(sent(0).at(-1)).toEqual({ use_proxies: false });
+    // Another preference changes nothing here.
+    stores.prefs.setState({
+      values: { ...stores.prefs.getState().values, "media.hover_scrub": false },
+    });
+    await flushPromises(50);
+    expect(sent(0)).toHaveLength(2);
+    // A new engine launch gets the choice again.
+    engine.last.serverClose(1006);
+    timers.advance(250);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(sent(1)).toEqual([{ use_proxies: false }]);
+    expect(errors).toEqual([]);
+    await runtime.stop();
+  });
+
   it("bridgeFromWindow finds window.cutweave.engine or reports none", () => {
     const engine: EngineBridge = { getConnection: () => Promise.resolve(null) };
     expect(bridgeFromWindow({ cutweave: { engine } })).toBe(engine);
