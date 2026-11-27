@@ -291,11 +291,11 @@ describe("startEngineRuntime", () => {
       (engine.sockets[index]?.sent ?? [])
         .filter((m) => m.method === "view.set_preview_quality")
         .map((m) => m.params);
-    // On by default.
-    expect(sent(0)).toEqual([{ use_proxies: true }]);
+    // On by default, with the default qualities (WP-2H.10).
+    expect(sent(0)).toEqual([{ use_proxies: true, playing: "auto", paused: "full" }]);
     set(false);
     await flushPromises(50);
-    expect(sent(0).at(-1)).toEqual({ use_proxies: false });
+    expect(sent(0).at(-1)).toEqual({ use_proxies: false, playing: "auto", paused: "full" });
     // Another preference changes nothing here.
     stores.prefs.setState({
       values: { ...stores.prefs.getState().values, "media.hover_scrub": false },
@@ -307,7 +307,55 @@ describe("startEngineRuntime", () => {
     timers.advance(250);
     await runtime.connection.whenReady();
     await flushPromises(50);
-    expect(sent(1)).toEqual([{ use_proxies: false }]);
+    expect(sent(1)).toEqual([{ use_proxies: false, playing: "auto", paused: "full" }]);
+    expect(errors).toEqual([]);
+    await runtime.stop();
+  });
+
+  it("tells the engine the preview quality and loop playback after every handshake and on change (WP-2H.10)", async () => {
+    const { engine, timers, stores, runtime, errors } = setup();
+    const set = (changes: Record<string, unknown>) =>
+      stores.prefs.setState({
+        values: { ...stores.prefs.getState().values, ...changes },
+      });
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    const sent = (index: number, method: string) =>
+      (engine.sockets[index]?.sent ?? []).filter((m) => m.method === method).map((m) => m.params);
+    // The defaults: the quality ladder, a full paused frame, no loop.
+    expect(sent(0, "view.set_preview_quality")).toEqual([
+      { use_proxies: true, playing: "auto", paused: "full" },
+    ]);
+    expect(sent(0, "view.set_loop")).toEqual([{ on: false }]);
+    set({ "playback.quality_playing": "half" });
+    await flushPromises(50);
+    expect(sent(0, "view.set_preview_quality").at(-1)).toEqual({
+      use_proxies: true,
+      playing: "half",
+      paused: "full",
+    });
+    set({ "playback.quality_paused": "auto" });
+    await flushPromises(50);
+    expect(sent(0, "view.set_preview_quality").at(-1)).toMatchObject({ paused: "auto" });
+    expect(sent(0, "view.set_loop")).toHaveLength(1);
+    set({ "playback.loop": true });
+    await flushPromises(50);
+    expect(sent(0, "view.set_loop")).toEqual([{ on: false }, { on: true }]);
+    expect(sent(0, "view.set_preview_quality")).toHaveLength(3);
+    // Going back to the start is the editor's own: nothing is sent for it.
+    set({ "playback.return_to_start": true });
+    await flushPromises(50);
+    expect(sent(0, "view.set_loop")).toHaveLength(2);
+    expect(sent(0, "view.set_preview_quality")).toHaveLength(3);
+    // A new engine launch gets the choices again.
+    engine.last.serverClose(1006);
+    timers.advance(250);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(sent(1, "view.set_preview_quality")).toEqual([
+      { use_proxies: true, playing: "half", paused: "auto" },
+    ]);
+    expect(sent(1, "view.set_loop")).toEqual([{ on: true }]);
     expect(errors).toEqual([]);
     await runtime.stop();
   });

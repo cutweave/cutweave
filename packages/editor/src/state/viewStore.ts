@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { PreviewQuality, SelectionRef, UiState } from "@cutweave/protocol";
+import type { SelectionRef, UiState } from "@cutweave/protocol";
 import type { SerializedDockview } from "dockview-react";
 import { useStore } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
@@ -78,8 +78,10 @@ export type ToolMode = (typeof TOOL_MODES)[number];
 
 /**
  * The part of the view the engine keeps per project (`view.get` / `view.set`, WP-1C.04):
- * playhead, zoom, scroll, selection and preview quality; the panel layout rides along as
- * `panel_layout` (see `viewSync.ts`). It is kept out of localStorage: the engine is the source.
+ * playhead, zoom, scroll and selection; the panel layout rides along as `panel_layout` (see
+ * `viewSync.ts`). It is kept out of localStorage: the engine is the source. The project's
+ * `preview_quality` is not restored: the preview's quality is the person's preference
+ * (`playback.quality_playing`, WP-2H.10).
  */
 export interface EngineViewState {
   /** Playhead position, flicks. */
@@ -90,7 +92,6 @@ export interface EngineViewState {
   scroll: { x: number; y: number };
   /** Selected entities, in selection order. */
   selection: SelectionRef[];
-  previewQuality: PreviewQuality;
 }
 
 export const initialEngineView: EngineViewState = {
@@ -98,7 +99,6 @@ export const initialEngineView: EngineViewState = {
   zoom: null,
   scroll: { x: 0, y: 0 },
   selection: [],
-  previewQuality: "full",
 };
 
 export interface ViewState extends EngineViewState {
@@ -137,7 +137,6 @@ export interface ViewActions {
   setZoom: (pxPerSec: number | null) => void;
   setScroll: (x: number, y: number) => void;
   setSelection: (selection: SelectionRef[]) => void;
-  setPreviewQuality: (quality: PreviewQuality) => void;
   setMasterGain: (gain: number) => void;
   setMuted: (muted: boolean) => void;
   setSafeAreas: (on: boolean) => void;
@@ -276,7 +275,6 @@ export function createViewStore(storage?: StateStorage) {
         setZoom: (zoom) => set(() => ({ zoom })),
         setScroll: (x, y) => set(() => ({ scroll: { x: Math.max(0, x), y: Math.max(0, y) } })),
         setSelection: (selection) => set(() => ({ selection })),
-        setPreviewQuality: (previewQuality) => set(() => ({ previewQuality })),
         setMasterGain: (gain) =>
           set(() => (Number.isFinite(gain) ? { masterGain: Math.min(4, Math.max(0, gain)) } : {})),
         setMuted: (muted) => set(() => ({ muted })),
@@ -290,7 +288,6 @@ export function createViewStore(storage?: StateStorage) {
               next.scroll = { x: ui.scroll.x ?? s.scroll.x, y: ui.scroll.y ?? s.scroll.y };
             }
             if (ui.selection !== undefined) next.selection = ui.selection;
-            if (ui.preview_quality !== undefined) next.previewQuality = ui.preview_quality;
             if (typeof ui.master_gain === "number") next.masterGain = ui.master_gain;
             const layout = panelLayoutFrom(ui.panel_layout);
             if (layout !== null) {

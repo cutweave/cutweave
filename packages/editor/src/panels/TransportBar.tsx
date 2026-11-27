@@ -34,8 +34,10 @@ const QUALITY_LABEL: Readonly<Record<PreviewQuality, TKey>> = {
 
 /**
  * `<TransportBar>` (WP-1M.04) under the preview: timecode (drop-frame at 29.97 and 59.94), go to
- * start, step back, play/pause, step forward, go to end, loop (off in v1), the quality of the
- * frame on screen, mute and volume. Every button is a `view.*` engine command through the
+ * start, step back, play/pause, step forward, go to end, loop (the preference `playback.loop`,
+ * WP-2H.10, which the runtime sends to the engine as `view.set_loop`), the quality of the frame
+ * on screen (its menu chooses the quality while playing, `playback.quality_playing`), mute and
+ * volume. Every button is a `view.*` engine command through the
  * transport; Space, J/K/L and the arrows reach the same actions through the keymap. Playback
  * controls are off without an engine, with an empty timeline, and for an engine that has no
  * transport.
@@ -54,6 +56,7 @@ export function TransportBar() {
   const quality = usePlaybackStore((s) => s.quality);
   const showsProxy = usePlaybackStore((s) => s.proxy);
   const useProxies = usePref("playback.proxies");
+  const loop = usePref("playback.loop");
   const source = usePlaybackStore((s) => s.source);
   const sourcePlayhead = usePlaybackStore((s) => s.sourcePlayhead);
   const playhead = useViewStore((s) => s.playhead);
@@ -136,7 +139,12 @@ export function TransportBar() {
         </Tooltip>
         <ToolbarSeparator />
         <Tooltip label={t("transport.loop")}>
-          <IconButton icon="repeat" label={t("transport.loop")} pressed={false} disabled />
+          <IconButton
+            icon="repeat"
+            label={t("transport.loop")}
+            pressed={loop}
+            onClick={() => void preferences.set("playback.loop", !loop)}
+          />
         </Tooltip>
       </Toolbar>
       <div ref={volumeRef} className="cw-transport__side">

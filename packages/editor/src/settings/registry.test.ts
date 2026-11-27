@@ -38,11 +38,7 @@ describe("the registry and the catalog", () => {
   });
 
   it("registers a row for every key the preferences schema defines", () => {
-    // Keys that exist before their row: `playback.proxies` is the transport bar's proxy toggle
-    // (WP-2F.02); its row is on the Playback page (WP-2H.10), which takes it off this list.
-    const rowsToCome: readonly string[] = ["playback.proxies"];
-    const expected = PREFERENCE_KEYS.filter((key) => !rowsToCome.includes(key));
-    expect([...registeredKeys()].sort()).toEqual([...expected].sort());
+    expect([...registeredKeys()].sort()).toEqual([...PREFERENCE_KEYS].sort());
   });
 
   it("gives every row a label, a description and keywords in the English catalog", () => {

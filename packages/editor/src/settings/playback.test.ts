@@ -31,6 +31,32 @@ describe("Settings > Playback", () => {
     expect(page?.group).toBe("preferences");
   });
 
+  it("lists its rows in the catalog's order, each on its preference", () => {
+    const rows = settingsPages().find((p) => p.id === "playback")?.rows ?? [];
+    expect(rows.map((r) => [r.key, r.control.kind, r.applies ?? "now"])).toEqual([
+      ["playback.quality_playing", "segmented", "engine"],
+      ["playback.quality_paused", "segmented", "engine"],
+      ["playback.proxies", "switch", "engine"],
+      ["playback.loop", "switch", "engine"],
+      ["playback.return_to_start", "switch", "now"],
+    ]);
+    expect(defaultPreferences()).toMatchObject({
+      "playback.quality_playing": "auto",
+      "playback.quality_paused": "full",
+      "playback.proxies": true,
+      "playback.loop": false,
+    });
+  });
+
+  it("finds each row by what people type", () => {
+    expect(find("stutter")).toEqual(["playback.quality_playing"]);
+    expect(find("quality while playing")).toEqual(["playback.quality_playing"]);
+    expect(find("sharpens")).toEqual(["playback.quality_paused"]);
+    expect(find("optimized media")).toEqual(["playback.proxies"]);
+    expect(find("repeat")).toContain("playback.loop");
+    expect(find("loop playback")).toEqual(["playback.loop"]);
+  });
+
   it("has a switch for going back to where playback started, off by default", () => {
     const row = settingsPages()
       .find((p) => p.id === "playback")

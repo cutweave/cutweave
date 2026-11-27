@@ -226,6 +226,27 @@
         "button": "Use Cutweave's format",
         "none": "Cutweave's format: 1920 × 1080 at 30 fps"
       },
+      "qualityPlaying": {
+        "label": "Preview quality while playing",
+        "description": "Auto shows full size and steps down only when your computer cannot keep up. Full, Half and Quarter always use that size; Full may skip frames on a heavy timeline.",
+        "keywords": "resolution, performance, lag, stutter, smooth, dropped frames, half, quarter, full, auto, playback, preview, slow computer"
+      },
+      "qualityPaused": {
+        "label": "Preview quality when paused",
+        "description": "Full sharpens the picture to full size when playback stops. Same as playing leaves it at the size playback uses, which is quicker on a heavy timeline.",
+        "keywords": "resolution, pause, stopped, still, sharp, refine, full, auto, preview, scrub",
+        "auto": "Same as playing"
+      },
+      "previewProxies": {
+        "label": "Use proxies in the preview",
+        "description": "Clips play and scrub from their proxies when those are ready and large enough for the preview. Off always reads the original files. Exports use the originals either way.",
+        "keywords": "proxy, proxies, original, optimized media, smooth, performance, 4k, playback, scrub, preview"
+      },
+      "loopPlayback": {
+        "label": "Loop playback",
+        "description": "When playback reaches the end, it starts again from the beginning and keeps going until you pause.",
+        "keywords": "loop, repeat, cycle, again, continuous, end, restart, transport, play"
+      },
       "returnToStart": {
         "label": "Go back to where playback started",
         "description": "When you pause, or playback reaches the end, the playhead returns to where you pressed play. Off leaves it where playback stopped.",
@@ -1190,6 +1211,7 @@
     "volumeValue": "{{value}} %",
     "qualityValue": "Preview quality: {{quality}}",
     "quality": {
+      "auto": "Auto",
       "full": "Full",
       "half": "Half",
       "quarter": "Quarter"

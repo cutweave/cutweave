@@ -28,6 +28,7 @@ import { proxyStore } from "../../media/proxies.ts";
 import { currentOpenCollection, openCollection, sidebarUiStore } from "../../media/sidebar.ts";
 import { commandCatalog } from "../../palette/catalog.ts";
 import { buildEntries } from "../../palette/entries.ts";
+import { preferences } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { initialViewState, viewStore } from "../../state/viewStore.ts";
@@ -918,6 +919,27 @@ describe("the bin menus", () => {
     expect(m.item("Name, A to Z").checked).toBe(false);
     expect(m.item("Grid").checked).toBe(true);
     expect(m.item("Show hover scrub")).toBeDefined();
+  });
+
+  it("the quality menus choose the preview quality while playing: the preference of Settings > Playback (WP-2H.10)", async () => {
+    const labels = ["Auto", "Full", "Half", "Quarter"];
+    const checked = (surface: string) =>
+      labels.map((label) => menuFor(surface).item(label).checked);
+    expect(preferences.get("playback.quality_playing")).toBe("auto");
+    expect(checked("transport.quality")).toEqual([true, false, false, false]);
+    await menuFor("transport.quality").choose("Half");
+    expect(preferences.get("playback.quality_playing")).toBe("half");
+    expect(checked("transport.quality")).toEqual([false, false, true, false]);
+    // The Preview's own Quality submenu is the same value.
+    expect(checked("preview.canvas")).toEqual([false, false, true, false]);
+    await menuFor("preview.canvas").choose("Auto");
+    expect(preferences.get("playback.quality_playing")).toBe("auto");
+    // Changed in Settings: the menu follows.
+    await preferences.set("playback.quality_playing", "quarter");
+    expect(checked("transport.quality")).toEqual([false, false, false, true]);
+    await preferences.reset(["playback.quality_playing"]);
+    // Nothing went to the engine from here: the runtime sends the preference.
+    expect(call).not.toHaveBeenCalled();
   });
 
   it("sets the sort and the layout through the bin's own state", async () => {

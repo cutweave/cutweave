@@ -255,6 +255,78 @@ describe("Settings > Saving and backups (WP-1M.10's rows, on the store)", () => 
   });
 });
 
+describe("Settings > Playback (WP-2H.10)", () => {
+  async function openPlayback() {
+    const user = userEvent.setup();
+    render_();
+    const settings = await dialog();
+    await user.click(within(settings).getByRole("tab", { name: "Playback" }));
+    return { user, settings };
+  }
+  const toggle = (settings: HTMLElement, name: string) =>
+    within(settings).getByRole("switch", { name });
+
+  it("shows the defaults: Auto while playing, Full when paused, proxies on, no loop, no return", async () => {
+    const { settings } = await openPlayback();
+    expect(
+      radios(within(settings).getByRole("radiogroup", { name: "Preview quality while playing" })),
+    ).toEqual(["Auto:true", "Full:false", "Half:false", "Quarter:false"]);
+    expect(
+      radios(within(settings).getByRole("radiogroup", { name: "Preview quality when paused" })),
+    ).toEqual(["Full:true", "Same as playing:false"]);
+    expect(toggle(settings, "Use proxies in the preview").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(toggle(settings, "Loop playback").getAttribute("aria-checked")).toBe("false");
+    expect(toggle(settings, "Go back to where playback started").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+  });
+
+  it("changes each preference at once", async () => {
+    const { user, settings } = await openPlayback();
+    await user.click(within(settings).getByRole("radio", { name: "Half" }));
+    await user.click(within(settings).getByRole("radio", { name: "Same as playing" }));
+    await user.click(toggle(settings, "Use proxies in the preview"));
+    await user.click(toggle(settings, "Loop playback"));
+    await user.click(toggle(settings, "Go back to where playback started"));
+    expect(prefsStore.getState().values).toMatchObject({
+      "playback.quality_playing": "half",
+      "playback.quality_paused": "auto",
+      "playback.proxies": false,
+      "playback.loop": true,
+      "playback.return_to_start": true,
+    });
+  });
+
+  it("shows what the transport bar changed: its proxy and loop buttons and its quality menu are these values", async () => {
+    const { settings } = await openPlayback();
+    // What the transport bar's buttons and the quality menu do: set the preference.
+    await act(async () => {
+      await preferences.set("playback.loop", true);
+      await preferences.set("playback.proxies", false);
+      await preferences.set("playback.quality_playing", "quarter");
+    });
+    expect(toggle(settings, "Loop playback").getAttribute("aria-checked")).toBe("true");
+    expect(toggle(settings, "Use proxies in the preview").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+    expect(
+      radios(within(settings).getByRole("radiogroup", { name: "Preview quality while playing" })),
+    ).toEqual(["Auto:false", "Full:false", "Half:false", "Quarter:true"]);
+  });
+
+  it("needs the engine for the rows the engine applies, not for going back to the start", async () => {
+    engineStore.setState({ ...initialEngineState, connection: "reconnecting" });
+    const { settings } = await openPlayback();
+    expect(toggle(settings, "Loop playback").hasAttribute("disabled")).toBe(true);
+    expect(toggle(settings, "Go back to where playback started").hasAttribute("disabled")).toBe(
+      false,
+    );
+    expect(within(settings).getAllByText("Needs the engine")).toHaveLength(4);
+  });
+});
+
 describe("Settings: search", () => {
   it("finds rows across pages, grouped by page, with the match marked", async () => {
     const user = userEvent.setup();
