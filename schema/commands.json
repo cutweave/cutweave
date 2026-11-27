@@ -24390,7 +24390,7 @@
             ]
           },
           "missing_media": {
-            "description": "Media whose file was found at neither its absolute nor its project-relative path.",
+            "description": "Media whose file was found at neither its absolute nor its project-relative path, and\nimage sequences with pictures of their run gone (`media.find_missing` tells which).",
             "items": {
               "description": "A Media id: `^med_[0-9a-f]{32}$`.",
               "pattern": "^med_[0-9a-f]{32}$",

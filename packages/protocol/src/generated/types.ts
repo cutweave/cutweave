@@ -5133,7 +5133,10 @@ export type ProjectOpenFailed = {
 export type ProjectOpenOutput = {
 	/**  The session now. */
 	project: ProjectStatus,
-	/**  Media whose file was found at neither its absolute nor its project-relative path. */
+	/**
+	 *  Media whose file was found at neither its absolute nor its project-relative path, and
+	 *  image sequences with pictures of their run gone (`media.find_missing` tells which).
+	 */
 	missing_media: MediaId[],
 	/**  The schema version the document was migrated from, if it was. */
 	migrated_from: number | null,
