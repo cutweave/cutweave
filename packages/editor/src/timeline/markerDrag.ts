@@ -51,6 +51,13 @@ interface Press {
 
 const NO_GUIDES: readonly SnapGuide[] = [];
 
+/**
+ * Whether the pointer is in the ruler: on it, or on the playhead that crosses it (a marker just
+ * added with M sits under the playhead, and its pin is still the marker's).
+ */
+export const onRuler = (e: TimelinePointerEvent): boolean =>
+  e.hit.zone === "ruler" || e.hit.zone === "playhead";
+
 export class MarkerDrag {
   readonly #deps: MarkerDragDeps;
   #press: Press | null = null;
@@ -80,7 +87,7 @@ export class MarkerDrag {
   handle(e: TimelinePointerEvent): boolean {
     const press = this.#press;
     if (press === null) {
-      if (e.type !== "down" || e.button !== 0 || e.hit.zone !== "ruler") return false;
+      if (e.type !== "down" || e.button !== 0 || !onRuler(e)) return false;
       if (e.shiftKey || e.altKey || this.#deps.busy()) return false;
       const marker = this.#deps.markerAt(e.x, e.y);
       if (marker === null) return false;
@@ -142,7 +149,11 @@ export class MarkerDrag {
         },
       });
     }
-    const raw = Math.max(0, press.marker.t + (e.x - press.x0) * this.#deps.flicksPerPx());
+    // Whole flicks: the snap index takes integers.
+    const raw = Math.max(
+      0,
+      Math.round(press.marker.t + (e.x - press.x0) * this.#deps.flicksPerPx()),
+    );
     const snapped = this.#deps.snap(press.others, raw, e.ctrlKey || e.metaKey);
     const t = Math.max(0, snapped.t);
     this.#deps.guides(snapped.target === null ? NO_GUIDES : [snapped.target]);

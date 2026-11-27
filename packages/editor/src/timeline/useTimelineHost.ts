@@ -42,7 +42,7 @@ import { describeRefusal, FAILED_TITLE, type TimelineEdit, translator } from "./
 import { toRpcError } from "./gestureTx.ts";
 import { type LaneBox, TimelineHost, type TimelineUi, withCode } from "./host.ts";
 import { locksStore } from "./locks.ts";
-import { MarkerDrag } from "./markerDrag.ts";
+import { MarkerDrag, onRuler } from "./markerDrag.ts";
 
 export interface TimelineBinding {
   readonly host: TimelineHost;
@@ -207,7 +207,7 @@ export function useTimelineHost(): TimelineBinding {
       // Keys go where the pointer acted: focus the canvas on a press.
       if (e.type === "down") (e.original.target as HTMLElement | null)?.focus?.();
       // A double-click on a marker opens its Edit… dialog (issue #222).
-      if (e.type === "dblclick" && e.hit.zone === "ruler") {
+      if (e.type === "dblclick" && onRuler(e)) {
         const marker = view.current?.markerAt(e.x, e.y) ?? null;
         if (marker !== null) {
           markerDrag.cancel();

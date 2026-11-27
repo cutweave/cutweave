@@ -97,6 +97,8 @@ function setup(handlers: Record<string, (params: unknown) => unknown> = {}) {
     // 100 px per second.
     flicksPerPx: () => F / 100,
     snap: (model, raw, suspended) => {
+      // The shared snap index takes whole flicks only.
+      if (!Number.isInteger(raw)) throw new RangeError(`${raw} is not an integer`);
       snapped.push({ model, raw, suspended });
       // Within 10 px of the other marker lands on it; else the frame grid.
       if (!suspended && Math.abs(raw - OTHER.t) <= F / 10) {
@@ -128,11 +130,18 @@ describe("MarkerDrag", () => {
     const { drag, setBusy } = setup();
     expect(drag.handle(pointer("down", 500))).toBe(false);
     expect(drag.handle(pointer("down", 200, { hit: hit("lane") }))).toBe(false);
+    expect(drag.handle(pointer("down", 200, { hit: hit("header") }))).toBe(false);
     expect(drag.handle(pointer("down", 200, { button: 2 }))).toBe(false);
     expect(drag.handle(pointer("move", 200))).toBe(false);
     setBusy(true);
     expect(drag.handle(pointer("down", 200))).toBe(false);
     expect(drag.active).toBe(false);
+  });
+
+  it("takes a press on a pin under the playhead too (a marker just added with M)", () => {
+    const { drag } = setup();
+    expect(drag.handle(pointer("down", 200, { hit: hit("playhead") }))).toBe(true);
+    expect(drag.active).toBe(true);
   });
 
   it("goes to the marker on a click, without an edit", async () => {
@@ -165,7 +174,7 @@ describe("MarkerDrag", () => {
     expect(transport.requests[0]?.params).toEqual({ kind: "gesture", label: "Move marker" });
     expect(sent("timeline.move_marker").map((r) => r.params)).toEqual([
       { marker: MARKER.id, t: 2.5 * F },
-      { marker: MARKER.id, t: Math.round((3.014 * F) / FRAME) * FRAME },
+      { marker: MARKER.id, t: Math.round(Math.round(3.014 * F) / FRAME) * FRAME },
     ]);
     expect(sent("timeline.move_marker").every((r) => r.meta?.tx === "tx_1")).toBe(true);
     expect(seek).not.toHaveBeenCalled();
