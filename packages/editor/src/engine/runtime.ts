@@ -285,9 +285,8 @@ export function startEngineRuntime(
     const values = stores.prefs?.getState().values;
     if (values === undefined) return;
     try {
+      // The Undo button and the History panel follow the engine's `edit.history_changed`.
       await rpc.call("edit.set_history_limit", { steps: values["editing.undo_steps"] });
-      // The Undo button and the History panel follow the shorter stacks.
-      await sessionSync?.refreshStacks();
     } catch (error) {
       onError(error);
     }

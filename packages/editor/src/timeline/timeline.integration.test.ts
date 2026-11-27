@@ -931,9 +931,9 @@ describe("timeline interactions against the real engine", () => {
       host.addTrack("video");
       await host.settled();
       await until(() => model().tracks.length === tracks + 1 && settledDoc());
-      expect(model().tracks.every((t) => fresh.some((f) => f.id === t.id) || t.height == null)).toBe(
-        true,
-      );
+      expect(
+        model().tracks.every((t) => fresh.some((f) => f.id === t.id) || t.height == null),
+      ).toBe(true);
       expect(toasts.getState().notices).toEqual([]);
     },
   );
@@ -959,32 +959,35 @@ describe("timeline interactions against the real engine", () => {
     expect(onTrack(s.audio)).toHaveLength(1);
   });
 
-  live("Dropping media onto a clip: overwrite replaces what it covers, insert pushes it later", async () => {
-    const card = (media: string) => ({ id: media, kind: "video" as const, duration: sec(10) });
-    for (const mode of ["overwrite", "insert"] as const) {
-      const [a] = await clips([1, 4]);
-      const p = project as NonNullable<typeof project>;
-      settings.linkAv = false;
-      settings.machine = { ...settings.machine, dropOnClip: mode };
-      host.syncPrefs();
-      const x = xOf(sec(2));
-      expect(host.mediaOver(x, laneOf(p.video), card(p.media))).toBe(true);
-      expect(host.ui.getState().preview?.mode).toBe(mode);
-      host.mediaDrop(x, laneOf(p.video), card(p.media));
-      await host.settled();
-      await until(() => model().items.length >= 2 && settledDoc());
-      const first = itemById(a as string);
-      if (mode === "overwrite") {
-        // The dropped clip took the place of the rest of the old one.
-        expect(first).toMatchObject({ start: sec(1), duration: sec(1) });
-        expect(onTrack(p.video).some((i) => i.start > sec(11))).toBe(false);
-      } else {
-        // The old clip was split and its second part moved after the dropped one.
-        expect(onTrack(p.video).some((i) => i.start >= sec(12))).toBe(true);
+  live(
+    "Dropping media onto a clip: overwrite replaces what it covers, insert pushes it later",
+    async () => {
+      const card = (media: string) => ({ id: media, kind: "video" as const, duration: sec(10) });
+      for (const mode of ["overwrite", "insert"] as const) {
+        const [a] = await clips([1, 4]);
+        const p = project as NonNullable<typeof project>;
+        settings.linkAv = false;
+        settings.machine = { ...settings.machine, dropOnClip: mode };
+        host.syncPrefs();
+        const x = xOf(sec(2));
+        expect(host.mediaOver(x, laneOf(p.video), card(p.media))).toBe(true);
+        expect(host.ui.getState().preview?.mode).toBe(mode);
+        host.mediaDrop(x, laneOf(p.video), card(p.media));
+        await host.settled();
+        await until(() => model().items.length >= 2 && settledDoc());
+        const first = itemById(a as string);
+        if (mode === "overwrite") {
+          // The dropped clip took the place of the rest of the old one.
+          expect(first).toMatchObject({ start: sec(1), duration: sec(1) });
+          expect(onTrack(p.video).some((i) => i.start > sec(11))).toBe(false);
+        } else {
+          // The old clip was split and its second part moved after the dropped one.
+          expect(onTrack(p.video).some((i) => i.start >= sec(12))).toBe(true);
+        }
+        expect(model().tracks).toHaveLength(2);
       }
-      expect(model().tracks).toHaveLength(2);
-    }
-  });
+    },
+  );
 
   live("Nudge step: comma and period move the selection that many frames", async () => {
     const [a] = await clips([2, 2]);
@@ -1000,33 +1003,39 @@ describe("timeline interactions against the real engine", () => {
     await until(() => itemById(a as string)?.start === sec(2) - 45 * frame && settledDoc());
   });
 
-  live("Snap to and Snap distance: a drag snaps only to what is switched on, within the distance", async () => {
-    const [a, b] = await clips([1, 2], [6, 2]);
-    const p = project as NonNullable<typeof project>;
-    const y = laneOf(p.video);
-    // 0.06 s (6 px) short of touching the second clip: inside the default 8 px.
-    await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
-    await until(() => itemById(a as string)?.start === sec(4) && settledDoc());
+  live(
+    "Snap to and Snap distance: a drag snaps only to what is switched on, within the distance",
+    async () => {
+      const [a, b] = await clips([1, 2], [6, 2]);
+      const p = project as NonNullable<typeof project>;
+      const y = laneOf(p.video);
+      // 0.06 s (6 px) short of touching the second clip: inside the default 8 px.
+      await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
+      await until(() => itemById(a as string)?.start === sec(4) && settledDoc());
 
-    // Clip edges off: the same drag lands where the pointer is (on a frame), not on the edge.
-    await rpc.call("item.move", { items: [a as never], start: sec(1) });
-    await until(() => itemById(a as string)?.start === sec(1) && settledDoc());
-    settings.machine = { ...settings.machine, snapKinds: ["playhead", "marker", "in_out", "beat"] };
-    host.syncPrefs();
-    await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
-    await until(() => (itemById(a as string)?.start ?? 0) > sec(1) && settledDoc());
-    expect(itemById(a as string)?.start).not.toBe(sec(4));
+      // Clip edges off: the same drag lands where the pointer is (on a frame), not on the edge.
+      await rpc.call("item.move", { items: [a as never], start: sec(1) });
+      await until(() => itemById(a as string)?.start === sec(1) && settledDoc());
+      settings.machine = {
+        ...settings.machine,
+        snapKinds: ["playhead", "marker", "in_out", "beat"],
+      };
+      host.syncPrefs();
+      await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
+      await until(() => (itemById(a as string)?.start ?? 0) > sec(1) && settledDoc());
+      expect(itemById(a as string)?.start).not.toBe(sec(4));
 
-    // Edges on again, at a 2 px distance: 6 px away is too far to snap.
-    await rpc.call("item.move", { items: [a as never], start: sec(1) });
-    await until(() => itemById(a as string)?.start === sec(1) && settledDoc());
-    settings.machine = { ...machinePrefs(defaultPreferences()), snapThresholdPx: 2 };
-    host.syncPrefs();
-    await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
-    await until(() => (itemById(a as string)?.start ?? 0) > sec(1) && settledDoc());
-    expect(itemById(a as string)?.start).not.toBe(sec(4));
-    expect(itemById(b as string)?.start).toBe(sec(6));
-  });
+      // Edges on again, at a 2 px distance: 6 px away is too far to snap.
+      await rpc.call("item.move", { items: [a as never], start: sec(1) });
+      await until(() => itemById(a as string)?.start === sec(1) && settledDoc());
+      settings.machine = { ...machinePrefs(defaultPreferences()), snapThresholdPx: 2 };
+      host.syncPrefs();
+      await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
+      await until(() => (itemById(a as string)?.start ?? 0) > sec(1) && settledDoc());
+      expect(itemById(a as string)?.start).not.toBe(sec(4));
+      expect(itemById(b as string)?.start).toBe(sec(6));
+    },
+  );
 
   live("nothing failed in the background", async () => {
     expect(errors).toEqual([]);

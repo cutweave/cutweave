@@ -69,7 +69,9 @@ async function chooseTimeline(
   choice: string,
 ): Promise<void> {
   const settings = await settingsPage(page, app, "Timeline");
-  const radio = settings.getByRole("radiogroup", { name: row }).getByRole("radio", { name: choice });
+  const radio = settings
+    .getByRole("radiogroup", { name: row })
+    .getByRole("radio", { name: choice });
   await radio.click();
   await expect(radio).toHaveAttribute("aria-checked", "true");
   await closeSettings(settings);
@@ -178,13 +180,17 @@ test.describe("F25 editing and timeline preferences", () => {
         expect((await trackHeights(page)).every((t) => t.height === null)).toBe(true);
         await chooseTimeline(page, app, "Height of new tracks", "Large");
         const large = await page.evaluate(() =>
-          Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--track-lg")),
+          Number.parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue("--track-lg"),
+          ),
         );
         expect(large).toBeGreaterThan(0);
         const tracksBefore = (await trackHeights(page)).length;
         // 4 s of room between the clips, 10 s of clip: it lands on a new track.
         await dropCard(page, "interview.mp4", "V1", 9);
-        await expect.poll(async () => (await trackHeights(page)).length).toBeGreaterThan(tracksBefore);
+        await expect
+          .poll(async () => (await trackHeights(page)).length)
+          .toBeGreaterThan(tracksBefore);
         await editorCaughtUp(page);
         await expect
           .poll(async () =>
@@ -214,7 +220,10 @@ test.describe("F25 editing and timeline preferences", () => {
         await expect(steps).toHaveValue("2");
         await closeSettings(editing);
         await expect
-          .poll(async () => (await editorCall<{ history_limit: number }>(page, "project.info")).history_limit)
+          .poll(
+            async () =>
+              (await editorCall<{ history_limit: number }>(page, "project.info")).history_limit,
+          )
           .toBe(2);
         const start = await clipCount(page);
         const counts: number[] = [];
