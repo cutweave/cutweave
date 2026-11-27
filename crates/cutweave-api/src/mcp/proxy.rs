@@ -82,7 +82,8 @@ impl std::fmt::Debug for Upstream {
 }
 
 impl Upstream {
-    /// `http://127.0.0.1:<port>/mcp` for the standard profile, `/mcp/minimal`, `/mcp/full`.
+    /// `http://127.0.0.1:<port>/mcp` for the standard profile, `/mcp/minimal`, `/mcp/full`,
+    /// `/mcp/described`.
     #[must_use]
     pub fn endpoint(port: u16, profile: Profile) -> String {
         match profile.route() {

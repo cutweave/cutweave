@@ -264,6 +264,9 @@ expression: catalog.tools_json()
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
       }
     },
     {
@@ -362,6 +365,9 @@ expression: catalog.tools_json()
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
       }
     },
     {
@@ -391,6 +397,9 @@ expression: catalog.tools_json()
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
       }
     },
     {
@@ -414,6 +423,9 @@ expression: catalog.tools_json()
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
       }
     },
     {
@@ -468,6 +480,9 @@ expression: catalog.tools_json()
         "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false
+      },
+      "_meta": {
+        "anthropic/alwaysLoad": true
       }
     },
     {
