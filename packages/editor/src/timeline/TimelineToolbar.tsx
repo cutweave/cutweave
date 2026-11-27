@@ -4,7 +4,7 @@
 // the live keymap; every button goes through the timeline host, as its key does.
 import type { Tool } from "@cutweave/timeline";
 import { IconButton, type IconName, Toolbar, ToolbarSeparator, Tooltip } from "@cutweave/ui";
-import type { ReactElement } from "react";
+import { memo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
 import { comboText, strokesOf } from "../keymap/store.ts";
@@ -12,6 +12,7 @@ import { TIMELINE_COMMANDS } from "../keymap/timeline.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import type { TimelineHost, TimelineUi } from "./host.ts";
+import type { LanesToggle } from "./keyframes.ts";
 
 interface ToolDef {
   readonly tool: Tool;
@@ -64,11 +65,11 @@ function Button({
 
 /**
  * The keyframe lanes toggle (WP-2C.05): pressed while the lanes of the selected clips are open,
- * disabled while no selected clip has a keyframe. Its own component, reading one small value
- * from the stores, so a document patch (every step of a drag) re-renders nothing here unless
- * that value changed.
+ * disabled while no selected clip has a keyframe. Its own memoized component, reading one small
+ * value from the stores: neither a document patch nor a render of the toolbar around it (every
+ * step of a drag causes both) renders it again unless that value changed.
  */
-function KeyframeLanesButton({
+const KeyframeLanesButton = memo(function KeyframeLanesButton({
   host,
   live,
 }: {
@@ -76,12 +77,11 @@ function KeyframeLanesButton({
   readonly live: boolean;
 }): ReactElement {
   const { t } = useTranslation();
-  const read = (): "none" | "closed" | "open" =>
-    !live || !host.hasAnimatedSelection() ? "none" : host.lanesOpen() ? "open" : "closed";
-  // Either store can change the answer: the selection and the open lanes, or the document.
+  // Either store can change the answer (the selection and the open lanes, or the document);
+  // the host answers from memory unless one of them did, and during a drag always.
+  const read = (): LanesToggle => (live ? host.lanesToggleState() : "none");
   useViewStore(read);
-  useDocStore(read);
-  const state = read();
+  const state = useDocStore(read);
   return (
     <Button
       icon="keyframe-diamond"
@@ -92,7 +92,7 @@ function KeyframeLanesButton({
       onClick={() => host.toggleKeyframeLanes()}
     />
   );
-}
+});
 
 export function TimelineToolbar({
   host,

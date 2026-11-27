@@ -124,6 +124,47 @@ export function findClip(project: Project | null, id: string): Clip | null {
   return null;
 }
 
+// ---- the lanes toggle ---------------------------------------------------------------------
+
+/** The toolbar's Keyframe lanes button: nothing to open, lanes closed, or lanes open. */
+export type LanesToggle = "none" | "closed" | "open";
+
+/**
+ * Reads the toggle's state for a document, the selected clips and the open lanes, remembering
+ * the last answer: asked again about the same three objects (a playhead move, a scroll, another
+ * component's render) it looks at no clip.
+ */
+export function createLanesToggle(): (
+  project: Project | null,
+  selected: readonly string[],
+  open: readonly string[],
+) => LanesToggle {
+  let last: { project: Project | null; selected: readonly string[]; open: readonly string[] } = {
+    project: null,
+    selected: NO_IDS,
+    open: NO_IDS,
+  };
+  let state: LanesToggle = "none";
+  return (project, selected, open) => {
+    if (project === last.project && selected === last.selected && open === last.open) return state;
+    last = { project, selected, open };
+    let animated = 0;
+    let closed = 0;
+    for (const id of selected) {
+      const clip = findClip(project, id);
+      if (clip === null || !ANIMATABLE_PROPS.some((prop) => storedKeys(clip, prop) !== null)) {
+        continue;
+      }
+      animated += 1;
+      if (!open.includes(id)) closed += 1;
+    }
+    state = animated === 0 ? "none" : closed === 0 ? "open" : "closed";
+    return state;
+  };
+}
+
+const NO_IDS: readonly string[] = [];
+
 // ---- the lanes the renderer draws -----------------------------------------------------------
 
 const glyphOf = (interp: Interp): number => Math.max(0, KEY_GLYPHS.indexOf(interp.kind));
@@ -181,8 +222,10 @@ export function laneGroups(
   selection: KeySelection,
   label: (prop: string) => string,
 ): readonly ItemLanes[] {
+  // Nothing open (the usual case, and every update of a clip drag): the document is not read.
+  if (open.length === 0) return NO_GROUPS;
   const tracks = sequence === null ? undefined : project?.sequences[sequence]?.tracks;
-  if (tracks === undefined || open.length === 0) return NO_GROUPS;
+  if (tracks === undefined) return NO_GROUPS;
   const out: ItemLanes[] = [];
   for (const id of open) {
     let clip: Clip | undefined;
@@ -215,7 +258,8 @@ export function laneGroups(
   return out.length === 0 ? NO_GROUPS : out;
 }
 
-const NO_GROUPS: readonly ItemLanes[] = [];
+/** No lane is open: always this one array, so nothing downstream sees a change. */
+export const NO_GROUPS: readonly ItemLanes[] = [];
 
 // ---- edits ----------------------------------------------------------------------------------
 

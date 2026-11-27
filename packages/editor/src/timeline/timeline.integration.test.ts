@@ -1249,6 +1249,35 @@ describe("keyframe lanes against the real engine (WP-2C.05)", () => {
     expect(host.runHostKey("timeline.keyframe_previous")).toBe(false);
   });
 
+  live(
+    "a clip drag's updates do no key work: the lanes toggle answers from before it",
+    async () => {
+      const s = await withKeys();
+      host.toggleKeyframeLanes(); // closed again
+      syncLanes();
+      expect(host.lanesToggleState()).toBe("closed");
+      expect(view.getKeyframeLanes()).toHaveLength(0);
+      const y = laneOf(s.video);
+      pointer("down", xOf(sec(3)), y);
+      for (let i = 1; i <= 10; i++) {
+        pointer("move", xOf(sec(3)) + 5 * i, y);
+        await sleep(8);
+      }
+      expect(host.state.mode.name).toBe("moving");
+      // Mid-drag the open lanes change behind its back: with the transaction open the toggle is
+      // not read again (no clip is looked at), so it still says what it said before the drag.
+      stores.view.setState({ keyframeLanes: [s.clip] });
+      expect(host.lanesToggleState()).toBe("closed");
+      stores.view.setState({ keyframeLanes: [] });
+      pointer("up", xOf(sec(3)) + 50, y);
+      await host.settled();
+      await until(() => itemById(s.clip)?.start === sec(1.5) && settledDoc());
+      expect(host.lanesToggleState()).toBe("closed");
+      stores.view.getState().setKeyframeLanes([s.clip]);
+      expect(host.lanesToggleState()).toBe("open");
+    },
+  );
+
   live("a locked track refuses the drag and says so", async () => {
     const s = await withKeys();
     await rpc.call("track.set", { track: s.video, locked: true });

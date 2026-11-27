@@ -56,11 +56,13 @@ import {
   addKey,
   animatedProps,
   clearKeys,
+  createLanesToggle,
   deleteKeys,
   findClip,
   type KeyAddress,
   keySelectionStore,
   keysAt,
+  type LanesToggle,
   moveArgs,
   movedKeys,
   nudgeKeys,
@@ -713,9 +715,24 @@ export class TimelineHost {
     });
   }
 
-  /** Whether a selected clip has an animated property (the lanes toggle is enabled). */
-  hasAnimatedSelection(): boolean {
-    return this.#animatedSelection().length > 0;
+  readonly #lanesToggle = createLanesToggle();
+  #lanesToggleState: LanesToggle = "none";
+
+  /**
+   * What the toolbar's Keyframe lanes button shows. While a gesture's transaction is open (a
+   * clip is dragged, trimmed, placed) the answer is the one from before it: a drag changes
+   * neither which clips are selected nor whether they have keyframes, so its updates do no key
+   * work at all. Otherwise it is read once per document, selection and set of open lanes.
+   */
+  lanesToggleState(): LanesToggle {
+    if ("tx" in this.#machine.state.mode) return this.#lanesToggleState;
+    const view = this.#deps.view.getState();
+    this.#lanesToggleState = this.#lanesToggle(
+      this.#deps.doc.getState().project,
+      this.#itemSelection(view.selection),
+      view.keyframeLanes,
+    );
+    return this.#lanesToggleState;
   }
 
   /** Whether the lanes of every selected animated clip are open (the toolbar's pressed state). */

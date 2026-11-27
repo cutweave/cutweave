@@ -8,6 +8,7 @@ import {
   addKey,
   animatedProps,
   clearKeys,
+  createLanesToggle,
   deleteKeys,
   EMPTY_KEY_SELECTION,
   keySelectionStore,
@@ -15,6 +16,7 @@ import {
   laneGroups,
   moveArgs,
   movedKeys,
+  NO_GROUPS,
   nudgeKeys,
   orderedKeys,
   parseKeyPayload,
@@ -240,5 +242,50 @@ describe("edits are one command each", () => {
     expect(parseKeyPayload('{"version":1,"keys":[]}')).toBeNull();
     expect(parseKeyPayload('{"version":1,"items":[1],"tracks":[]}')).toBeNull();
     expect(parseKeyPayload("plain text")).toBeNull();
+  });
+});
+
+describe("no key work while every lane is closed (a clip drag's updates)", () => {
+  /** A document that counts how often anything in it is read. */
+  function counted(): { project: Project; reads: () => number } {
+    let reads = 0;
+    const wrap = <T extends object>(target: T): T =>
+      new Proxy(target, {
+        get(t, prop, receiver) {
+          reads += 1;
+          const value = Reflect.get(t, prop, receiver);
+          return typeof value === "object" && value !== null ? wrap(value as object) : value;
+        },
+        ownKeys(t) {
+          reads += 1;
+          return Reflect.ownKeys(t);
+        },
+      }) as T;
+    return { project: wrap(PROJECT), reads: () => reads };
+  }
+
+  it("the lanes projection does not read the document when no lane is open", () => {
+    const doc = counted();
+    const selection = { item: "itm_a", keys: [{ prop: "opacity", t: 10 }], offset: 0 };
+    for (let update = 0; update < 100; update += 1) {
+      expect(laneGroups(doc.project, SEQ, [], selection, label)).toBe(NO_GROUPS);
+    }
+    expect(doc.reads()).toBe(0);
+  });
+
+  it("the toggle reads the clips once per document, selection and open lanes", () => {
+    const toggle = createLanesToggle();
+    const doc = counted();
+    const selected = ["itm_a", "itm_b"];
+    const open: string[] = [];
+    expect(toggle(doc.project, selected, open)).toBe("closed");
+    const first = doc.reads();
+    expect(first).toBeGreaterThan(0);
+    // The playhead moves, the view scrolls, something else renders: the same three objects.
+    for (let n = 0; n < 100; n += 1) expect(toggle(doc.project, selected, open)).toBe("closed");
+    expect(doc.reads()).toBe(first);
+    expect(toggle(doc.project, selected, ["itm_a"])).toBe("open");
+    expect(toggle(doc.project, ["itm_b"], ["itm_a"])).toBe("none");
+    expect(toggle(null, selected, open)).toBe("none");
   });
 });
