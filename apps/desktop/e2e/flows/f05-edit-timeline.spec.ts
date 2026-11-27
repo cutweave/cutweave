@@ -311,9 +311,9 @@ test.describe("F5 edit on the timeline", () => {
         .toBeGreaterThan(3);
       await snapshot(page, info, "marker and in-out");
 
-      // The P1 toolbar shows the later tools disabled.
+      // The tools and the zoom buttons are live (WP-2A.10; F38 and F61 use them).
       for (const tool of ["Razor", "Ripple", "Zoom in", "Zoom out"]) {
-        await expect(timelineTools(page).getByRole("button", { name: tool })).toBeDisabled();
+        await expect(timelineTools(page).getByRole("button", { name: tool })).toBeEnabled();
       }
     } finally {
       await close();
