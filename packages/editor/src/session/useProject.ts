@@ -92,8 +92,9 @@ export function useProjectWiring(): void {
 /** Whether leaving now would lose work: the dot next to Save and in the window title. */
 export function useUnsavedWork(): boolean {
   const session = useSessionStore((s) => s);
-  const project = useDocStore((s) => s.project);
-  return hasUnsavedWork(session, project);
+  // The answer, not the document: the shell asks this, and a drag changes the document every
+  // frame (issue #241).
+  return useDocStore((s) => hasUnsavedWork(session, s.project));
 }
 
 /** The window title: the project name, a bullet while there are unsaved changes. */

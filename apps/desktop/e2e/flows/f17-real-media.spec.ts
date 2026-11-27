@@ -18,14 +18,17 @@ import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   clipBox,
   createProject,
+  describePacedDrag,
   dropCard,
   editorCaughtUp,
+  handPacedDrag,
   hasRealEngine,
   launchFlowApp,
   layout,
   mediaCard,
   mediaCards,
   pickFiles,
+  quantile,
   rulerY,
   sec,
   snapshot,
@@ -266,6 +269,28 @@ test.describe("F17 real media", () => {
         })
         .toBeLessThan(0.97);
       await snapshot(page, info, "filmstrip and waveform");
+
+      // Drag the phone clip to the right and back, twice, paced like a hand (a move every 16 ms
+      // whether or not the app has caught up), and let go where it began: the timeline keeps
+      // drawing (frame intervals p95 under 50 ms) and each update comes back fast (round trips
+      // p95 under 50 ms), with real pictures on the clips and the preview following (issue #241:
+      // every update re-rendered the whole window, about one update a second in the dev build).
+      const phone = placed.tracks
+        .find((t) => t.name === "V1")
+        ?.items.find((i) => Math.abs(i.start - sec(first)) < sec(0.05));
+      if (phone === undefined) throw new Error("the phone clip is not on V1");
+      const grab = clipBox(placed, phone.id);
+      const paced = await handPacedDrag(
+        page,
+        { x: Math.min(grab.x + 40, placed.box.x + placed.box.width - 8), y: grab.y },
+        2 * placed.pxPerSec,
+      );
+      console.info(describePacedDrag(paced));
+      expect(paced.rtt.length).toBeGreaterThan(5);
+      expect(quantile(paced.frames, 0.95)).toBeLessThan(50);
+      expect(quantile(paced.rtt, 0.95)).toBeLessThan(50);
+      await expect.poll(async () => (await layout(page))[0]?.clips[1]?.[0]).toBeCloseTo(first, 1);
+      await editorCaughtUp(page);
 
       // The preview streams the real frames.
       const surface = page.locator(".cw-preview__surface");

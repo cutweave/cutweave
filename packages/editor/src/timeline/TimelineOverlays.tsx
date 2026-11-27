@@ -4,9 +4,10 @@
 // "Add track" button in the corner above the headers, and the drop ghost of a bin card (where it
 // lands and how: insert, overwrite or a new track; marigold, the "here" colour) or the clip an
 // Alt-drop replaces.
-import type { DropPreview, Rect, TimelineTrack } from "@cutweave/timeline";
+import type { DropPreview } from "@cutweave/timeline";
 import { IconButton, Menu, type MenuEntry, Tooltip } from "@cutweave/ui";
 import {
+  memo,
   type ReactElement,
   type RefObject,
   useEffect,
@@ -79,63 +80,63 @@ function useCanvasFollow(): void {
   useDocStore((s) => s.project);
 }
 
-function HeaderToggles({
+/**
+ * One track's toggles. Its props are plain values, so a document change that leaves the track and
+ * its lane as they were (a clip dragged along it, issue #241) does not render it again.
+ */
+const HeaderToggles = memo(function HeaderToggles({
   host,
-  track,
-  rect,
-  m,
+  trackId,
+  name,
+  locked,
+  muted,
+  hidden,
+  left,
+  top,
 }: {
   readonly host: TimelineHost;
-  readonly track: TimelineTrack;
-  readonly rect: Rect;
-  readonly m: Metrics;
+  readonly trackId: string;
+  readonly name: string;
+  readonly locked: boolean;
+  readonly muted: boolean;
+  readonly hidden: boolean;
+  readonly left: number;
+  readonly top: number;
 }): ReactElement {
   const { t } = useTranslation();
-  // The canvas puts its toggles right of the name, centred in the lane (`geometry.toggleRect`).
-  const left = rect.x + rect.w + m.space2;
-  const top = rect.y + (rect.h - m.controlSm) / 2 - m.ruler;
+  const flags: Readonly<Record<(typeof TOGGLES)[number]["field"], boolean>> = {
+    locked,
+    muted,
+    hidden,
+  };
   return (
-    <div className="cw-timeline__toggles" data-track={track.id} style={{ left, top }}>
+    <div className="cw-timeline__toggles" data-track={trackId} style={{ left, top }}>
       {TOGGLES.map((toggle) => {
-        const on = track[toggle.field] === true;
+        const on = flags[toggle.field];
         const label = t(`contextMenu.item.${on ? toggle.off : toggle.on}` as TKey);
         return (
           <Tooltip key={toggle.flag} label={label}>
             <IconButton
               size="sm"
               icon={toggle.icon}
-              label={t("timeline.header.toggle", { action: label, name: track.name })}
+              label={t("timeline.header.toggle", { action: label, name })}
               pressed={on}
-              onClick={() => host.toggleTrack(track.id, toggle.flag)}
+              onClick={() => host.toggleTrack(trackId, toggle.flag)}
             />
           </Tooltip>
         );
       })}
     </div>
   );
-}
+});
 
-/** The lock, mute and hide buttons of every track whose header shows. */
-export function TrackHeaderControls({ host }: { readonly host: TimelineHost }): ReactElement {
+/** The "Add track" button in the corner above the headers. */
+const AddTrackCorner = memo(function AddTrackCorner({
+  host,
+}: {
+  readonly host: TimelineHost;
+}): ReactElement {
   const { t } = useTranslation();
-  useCanvasFollow();
-  const project = useDocStore((s) => s.project);
-  const model = selectTimelineModel(project);
-  const box = useRef<HTMLDivElement>(null);
-  const [m, setMetrics] = useState<Metrics>(ZERO);
-  const density = useDensity(box);
-  // The tokens are read again in another density.
-  useLayoutEffect(() => {
-    if (box.current !== null) setMetrics(readMetrics(box.current));
-  }, [density]);
-  const rows: ReactElement[] = [];
-  if (m.controlSm > 0) {
-    for (const track of model.tracks) {
-      const rect = host.trackNameRect(track.id);
-      if (rect === null || rect.y + rect.h <= m.ruler) continue;
-      rows.push(<HeaderToggles key={track.id} host={host} track={track} rect={rect} m={m} />);
-    }
-  }
   const addItems: MenuEntry[] = [
     {
       id: "video",
@@ -151,20 +152,62 @@ export function TrackHeaderControls({ host }: { readonly host: TimelineHost }): 
     },
   ];
   return (
+    <div className="cw-timeline__corner">
+      <Menu mode="dropdown" items={addItems} aria-label={t("timeline.header.addTrack")}>
+        <Tooltip label={t("timeline.header.addTrack")}>
+          <IconButton size="sm" icon="plus" label={t("timeline.header.addTrack")} />
+        </Tooltip>
+      </Menu>
+    </div>
+  );
+});
+
+/** The lock, mute and hide buttons of every track whose header shows. */
+export const TrackHeaderControls = memo(function TrackHeaderControls({
+  host,
+}: {
+  readonly host: TimelineHost;
+}): ReactElement {
+  useCanvasFollow();
+  const project = useDocStore((s) => s.project);
+  const model = selectTimelineModel(project);
+  const box = useRef<HTMLDivElement>(null);
+  const [m, setMetrics] = useState<Metrics>(ZERO);
+  const density = useDensity(box);
+  // The tokens are read again in another density.
+  useLayoutEffect(() => {
+    if (box.current !== null) setMetrics(readMetrics(box.current));
+  }, [density]);
+  const rows: ReactElement[] = [];
+  if (m.controlSm > 0) {
+    for (const track of model.tracks) {
+      const rect = host.trackNameRect(track.id);
+      if (rect === null || rect.y + rect.h <= m.ruler) continue;
+      // The canvas puts its toggles right of the name, centred in the lane (`geometry.toggleRect`).
+      rows.push(
+        <HeaderToggles
+          key={track.id}
+          host={host}
+          trackId={track.id}
+          name={track.name}
+          locked={track.locked === true}
+          muted={track.muted === true}
+          hidden={track.hidden === true}
+          left={rect.x + rect.w + m.space2}
+          top={rect.y + (rect.h - m.controlSm) / 2 - m.ruler}
+        />,
+      );
+    }
+  }
+  return (
     <>
-      <div className="cw-timeline__corner">
-        <Menu mode="dropdown" items={addItems} aria-label={t("timeline.header.addTrack")}>
-          <Tooltip label={t("timeline.header.addTrack")}>
-            <IconButton size="sm" icon="plus" label={t("timeline.header.addTrack")} />
-          </Tooltip>
-        </Menu>
-      </div>
+      <AddTrackCorner host={host} />
       <div ref={box} className="cw-timeline__headers">
         {rows}
       </div>
     </>
   );
-}
+});
 
 const MODE_LABEL: Readonly<Record<DropPreview["mode"], TKey | null>> = {
   insert: "timeline.drop.insert",
@@ -174,11 +217,30 @@ const MODE_LABEL: Readonly<Record<DropPreview["mode"], TKey | null>> = {
 };
 
 /** Where a bin card lands (or the clip an Alt-drop replaces), over the lanes. */
-export function DropGhost({ host }: { readonly host: TimelineHost }): ReactElement | null {
-  const { t } = useTranslation();
-  useCanvasFollow();
+export const DropGhost = memo(function DropGhost({
+  host,
+}: {
+  readonly host: TimelineHost;
+}): ReactElement | null {
   const preview = useStore(host.ui, (s) => s.preview);
   const replace = useStore(host.ui, (s) => s.replaceTarget);
+  // Nothing to show, nothing to follow (a drag on the canvas changes the document every frame).
+  if (replace === null && preview === null) return null;
+  return <Ghost host={host} preview={preview} replace={replace} />;
+});
+
+/** The ghost itself, following the canvas while it shows. */
+function Ghost({
+  host,
+  preview,
+  replace,
+}: {
+  readonly host: TimelineHost;
+  readonly preview: DropPreview | null;
+  readonly replace: string | null;
+}): ReactElement | null {
+  const { t } = useTranslation();
+  useCanvasFollow();
   if (replace !== null) {
     const rect = host.itemRect(replace);
     if (rect === null) return null;

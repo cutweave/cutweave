@@ -5,7 +5,9 @@
 // the picture moves alone), copy and paste onto another track, M, I and O, the lock button in a
 // track header (a drag on the locked track is refused with a toast), Esc in the middle of a drag,
 // and Ctrl+Z after the edits. A 100-step drag reads the app's own round-trip probe (User Timing
-// `cutweave.timeline.rtt`, UI to engine to patch to UI): p95 under 16 ms. Every timeline menu
+// `cutweave.timeline.rtt`, UI to engine to patch to UI): p95 under 16 ms. A drag paced like a hand
+// (moves that do not wait for the app) keeps the app's frames and round trips under 50 ms at the
+// 95th percentile (issue #241: every update re-rendered the whole UI). Every timeline menu
 // (clip, edge, lane, track, ruler, playhead, marker) is opened with a right-click and passes
 // axe. Real clicks, drags and keys; only the OS file picker is stubbed.
 import { readFileSync } from "node:fs";
@@ -18,9 +20,11 @@ import {
   clipAt,
   clipBox,
   createProject,
+  describePacedDrag,
   drag,
   dropCard,
   editorCaughtUp,
+  handPacedDrag,
   hasRealEngine,
   importWithButton,
   laneY,
@@ -355,6 +359,22 @@ test.describe("F61 timeline tools, selection and track headers", () => {
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await v1Clips(page))[0]).toEqual([2, 10]);
       await editorCaughtUp(page);
+
+      // A drag paced like a hand (issue #241): the pointer moves every 16 ms whether or not the
+      // app has caught up with the last move, back and forth around where the clip is, and lets
+      // go where it started. The app keeps drawing (its frame intervals, p95 under 50 ms) and its
+      // round trips stay short (p95 under 50 ms); the clip ends where it was, nothing to undo.
+      const undoBefore = await undo.getAttribute("aria-label");
+      g = await timelineGeometry(page);
+      box = clipBox(g, interview);
+      const paced = await handPacedDrag(page, { x: box.x + 30, y: box.y }, 1.8 * g.pxPerSec);
+      console.info(describePacedDrag(paced));
+      expect(paced.rtt.length).toBeGreaterThan(5);
+      expect(p95(paced.frames)).toBeLessThan(50);
+      expect(p95(paced.rtt)).toBeLessThan(50);
+      await expect.poll(async () => (await v1Clips(page))[0]).toEqual([2, 10]);
+      await editorCaughtUp(page);
+      await expect(undo).toHaveAttribute("aria-label", undoBefore ?? "");
 
       // Every timeline menu, opened as a person does, passes axe.
       g = await timelineGeometry(page);
