@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! `item.set_label_color` (issue #222; arch §4.2 `Item.color_label`; the clip menu's Color
-//! label): marks items with a display colour, or clears it. The label changes nothing in the
+//! label): marks items with a display color, or clears it. The label changes nothing in the
 //! picture or the sound.
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
@@ -15,11 +15,11 @@ pub struct ItemSetLabelColorOutput {
     pub items: Vec<ItemId>,
 }
 
-/// Sets the colour label of items, or clears it when `color` is left out. Only the listed
-/// items change (name linked partners to colour them too). `Locked` on a locked track.
+/// Sets the color label of items, or clears it when `color` is left out. Only the listed
+/// items change (name linked partners to label them too). `Locked` on a locked track.
 #[command(
     name = "item.set_label_color",
-    summary = "Set or clear the colour label of items",
+    summary = "Set or clear the color label of items",
     undoable,
     mcp = "catalog",
     annotations(destructive = false, idempotent = true)
@@ -32,7 +32,7 @@ pub struct ItemSetLabelColor {
 }
 
 impl ItemSetLabelColor {
-    /// The listed items once each, in the order given, that do not have the colour yet.
+    /// The listed items once each, in the order given, that do not have the color yet.
     fn plan(&self, doc: &Project) -> Result<Vec<ItemId>, CmdError> {
         if self.items.is_empty() {
             return Err(CmdError::invalid("/items", "give at least one item"));

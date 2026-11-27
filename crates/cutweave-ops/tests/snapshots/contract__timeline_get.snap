@@ -310,6 +310,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "enabled": {
                       "description": "Whether the item is rendered and heard.",
                       "type": "boolean"
+                    },
+                    "color_label": {
+                      "description": "The color label, `#rrggbb`, when it has one (`item.set_label_color`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
                     }
                   },
                   "additionalProperties": false,
@@ -645,6 +653,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "enabled": {
                     "description": "Whether the item is rendered and heard.",
                     "type": "boolean"
+                  },
+                  "color_label": {
+                    "description": "The color label, `#rrggbb`, when it has one (`item.set_label_color`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
                   }
                 },
                 "additionalProperties": false,

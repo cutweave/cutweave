@@ -62,7 +62,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | item | `item.link` | Link aligned items into one group (they edit together) | command, undoable | catalog |
 | item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
 | item | `item.reset_props` | Reset an item's properties (a group, some properties, or all) to their defaults | command, undoable, idempotent | catalog |
-| item | `item.set_label_color` | Set or clear the colour label of items | command, undoable, idempotent | catalog |
+| item | `item.set_label_color` | Set or clear the color label of items | command, undoable, idempotent | catalog |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial) | command, undoable, idempotent | core |
 | item | `item.unlink` | Take items out of their linked groups | command, undoable, idempotent | catalog |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |

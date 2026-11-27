@@ -519,7 +519,7 @@ export type Clip = {
 	/**  Markers in item-relative time; they move with the item. */
 	markers: { [key in MarkerId]: Marker },
 	/**
-	 *  The colour label (arch §4.2 `color_label`, issue #222): a display colour that marks the
+	 *  The color label (arch §4.2 `color_label`, issue #222): a display color that marks the
 	 *  item on the timeline, set with `item.set_label_color`. It changes nothing in the picture
 	 *  or the sound. Absent: no label; left out of the file while absent, so documents written
 	 *  before the field read the same.
@@ -3095,8 +3095,8 @@ export type ItemResetPropsOutput = {
 };
 
 /**
- *  Sets the colour label of items, or clears it when `color` is left out. Only the listed
- *  items change (name linked partners to colour them too). `Locked` on a locked track.
+ *  Sets the color label of items, or clears it when `color` is left out. Only the listed
+ *  items change (name linked partners to label them too). `Locked` on a locked track.
  */
 export type ItemSetLabelColor = {
 	/**  The items. */
@@ -3177,6 +3177,8 @@ export type ItemSummary = {
 	linked_group: GroupId | null,
 	/**  Whether the item is rendered and heard. */
 	enabled: boolean,
+	/**  The color label, `#rrggbb`, when it has one (`item.set_label_color`). */
+	color_label?: Color | null,
 };
 
 /**

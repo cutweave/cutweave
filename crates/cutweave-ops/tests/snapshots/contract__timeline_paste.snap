@@ -305,7 +305,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                             }
                           },
                           "color_label": {
-                            "description": "The colour label (arch §4.2 `color_label`, issue #222): a display colour that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
+                            "description": "The color label (arch §4.2 `color_label`, issue #222): a display color that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
                             "type": [
                               "string",
                               "null"
@@ -3693,7 +3693,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                           }
                         },
                         "color_label": {
-                          "description": "The colour label (arch §4.2 `color_label`, issue #222): a display colour that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
+                          "description": "The color label (arch §4.2 `color_label`, issue #222): a display color that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
                           "type": [
                             "string",
                             "null"

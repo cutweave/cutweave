@@ -334,7 +334,7 @@ pub struct Clip {
     #[schemars(with = "std::collections::BTreeMap<crate::MarkerId, crate::Marker>")]
     #[specta(type = std::collections::BTreeMap<crate::MarkerId, crate::Marker>)]
     pub markers: Markers,
-    /// The colour label (arch §4.2 `color_label`, issue #222): a display colour that marks the
+    /// The color label (arch §4.2 `color_label`, issue #222): a display color that marks the
     /// item on the timeline, set with `item.set_label_color`. It changes nothing in the picture
     /// or the sound. Absent: no label; left out of the file while absent, so documents written
     /// before the field read the same.
@@ -542,7 +542,7 @@ impl Item {
         }
     }
 
-    /// The colour label, if the item has one.
+    /// The color label, if the item has one.
     #[must_use]
     pub fn color_label(&self) -> Option<crate::Color> {
         match self {
@@ -602,7 +602,7 @@ impl Item {
         }
     }
 
-    /// Sets or clears the colour label.
+    /// Sets or clears the color label.
     pub fn set_color_label(&mut self, color: Option<crate::Color>) {
         match self {
             Item::Clip(c) => c.color_label = color,

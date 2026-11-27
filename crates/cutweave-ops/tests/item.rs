@@ -506,6 +506,9 @@ fn set_label_color_sets_and_clears_the_colour_of_each_item() {
     );
     assert_eq!(clip_of(&h, v).color_label.unwrap().to_string(), "#336699");
     assert_eq!(clip_of(&h, a).color_label.unwrap().to_string(), "#336699");
+    // `item.get` and `timeline.get` say it; an item without a label has no such field.
+    let got = h.query("item.get", json!({"item": v})).unwrap();
+    assert_eq!(got["item"]["color_label"], "#336699");
     // Only the listed item changes; a linked partner keeps its own.
     h.ok(
         "item.set_label_color",
@@ -517,6 +520,8 @@ fn set_label_color_sets_and_clears_the_colour_of_each_item() {
     let out = h.ok("item.set_label_color", json!({"items": [v, a]}));
     assert_eq!(out["items"], json!([v, a]));
     assert_eq!(clip_of(&h, v).color_label, None);
+    let got = h.query("item.get", json!({"item": v})).unwrap();
+    assert!(got["item"].get("color_label").is_none());
     let again = h.ok("item.set_label_color", json!({"items": [v], "color": null}));
     assert_eq!(again["items"], json!([]), "nothing to change");
     let value = serde_json::to_value(clip_of(&h, v)).unwrap();

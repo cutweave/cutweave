@@ -11,7 +11,8 @@
 
 use cutweave_commands::{CmdError, Query, QueryCtx, Registry, RegistryError, query, wire};
 use cutweave_model::{
-    Duration, GroupId, Item, ItemId, MediaId, SequenceFormat, SequenceId, Time, TrackId, TrackKind,
+    Color, Duration, GroupId, Item, ItemId, MediaId, SequenceFormat, SequenceId, Time, TrackId,
+    TrackKind,
 };
 
 /// Length of a still image when `duration` is omitted and the project stores no still
@@ -98,6 +99,9 @@ pub struct ItemSummary {
     pub linked_group: Option<GroupId>,
     /// Whether the item is rendered and heard.
     pub enabled: bool,
+    /// The color label, `#rrggbb`, when it has one (`item.set_label_color`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_label: Option<Color>,
 }
 
 /// One track (depth 1 and 2).
@@ -194,6 +198,7 @@ pub(crate) fn item_summary(item: &Item) -> ItemSummary {
         media: item.media(),
         linked_group: item.linked_group(),
         enabled: item.enabled(),
+        color_label: item.color_label(),
     }
 }
 

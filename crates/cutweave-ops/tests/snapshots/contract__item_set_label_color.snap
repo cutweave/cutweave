@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "item.set_label_color",
-    "summary": "Set or clear the colour label of items",
+    "summary": "Set or clear the color label of items",
     "kind": "command",
     "undoable": true,
     "view": false,
@@ -44,7 +44,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "required": [
         "items"
       ],
-      "description": "Sets the colour label of items, or clears it when `color` is left out. Only the listed\nitems change (name linked partners to colour them too). `Locked` on a locked track.",
+      "description": "Sets the color label of items, or clears it when `color` is left out. Only the listed\nitems change (name linked partners to label them too). `Locked` on a locked track.",
       "title": "ItemSetLabelColor"
     },
     "output_schema": {
@@ -94,7 +94,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "required": [
       "items"
     ],
-    "description": "Sets the colour label of items, or clears it when `color` is left out. Only the listed\nitems change (name linked partners to colour them too). `Locked` on a locked track.",
+    "description": "Sets the color label of items, or clears it when `color` is left out. Only the listed\nitems change (name linked partners to label them too). `Locked` on a locked track.",
     "title": "ItemSetLabelColor"
   },
   "output": {
