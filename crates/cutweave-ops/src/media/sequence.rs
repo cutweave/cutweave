@@ -25,7 +25,7 @@ use super::{
     AnalysisInput, ImportCtx, ImportProxy, MediaProbe, MediaRegister, OUTSIDE_ROOTS_HINT,
     ProbeError, SAVE_FIRST, policy,
 };
-use crate::project::collect::on_import::{CopyOutcome, copy_run_into_project};
+use crate::project::collect::on_import::{CopyOutcome, ProjectFolder, copy_run_into_project};
 use crate::util::check_abs_path;
 
 /// The extensions a directory is searched for (a file you name yourself may have any).
@@ -318,6 +318,39 @@ fn probe_failure(error: &ProbeError) -> CmdError {
     CmdError::invalid("/path", format!("the run cannot be imported: {error}"))
 }
 
+/// A refusal of the media sink, which points at `/paths/0/...` (a batch of one), as this
+/// command's own.
+fn sink_failure(error: CmdError) -> CmdError {
+    match error {
+        CmdError::Invalid { path, msg } => CmdError::Invalid {
+            path: match path.strip_prefix("/paths/0") {
+                Some("/folder") => "/folder".to_owned(),
+                _ => "/path".to_owned(),
+            },
+            msg,
+        },
+        other => other,
+    }
+}
+
+/// Copies the run into the project folder and says where its first picture is now: the copy,
+/// or `first` when the run stays where it is.
+fn copied(
+    project: &ProjectFolder,
+    first: &str,
+    run: &ImageSequence,
+    content_hash: &str,
+) -> Result<String, CmdError> {
+    match copy_run_into_project(project, first, run, content_hash)? {
+        CopyOutcome::Stays => Ok(first.to_owned()),
+        CopyOutcome::At(path) => Ok(path),
+        CopyOutcome::Failed(error) => Err(CmdError::invalid(
+            "/path",
+            format!("the run could not be copied into the project: {error}"),
+        )),
+    }
+}
+
 impl EngineCommand for MediaImportSequence {
     type Context = ImportCtx;
     type Output = MediaImportSequenceOutput;
@@ -366,19 +399,10 @@ impl EngineCommand for MediaImportSequence {
         .map_err(|e| probe_failure(&e))?;
         // `copy_to_project`: the pictures go into the project folder and the asset points
         // at the copy; the hash stays the one of the run that was read.
-        let mut first_file = found.first_file.clone();
-        if copy && let Some(project) = &ctx.project {
-            match copy_run_into_project(project, &first_file, &run, &probed.content_hash)? {
-                CopyOutcome::Stays => {}
-                CopyOutcome::At(path) => first_file = path,
-                CopyOutcome::Failed(error) => {
-                    return Err(CmdError::invalid(
-                        "/path",
-                        format!("the run could not be copied into the project: {error}"),
-                    ));
-                }
-            }
-        }
+        let first_file = match ctx.project.as_ref().filter(|_| copy) {
+            Some(project) => copied(project, &found.first_file, &run, &probed.content_hash)?,
+            None => found.first_file.clone(),
+        };
         let locator = run.locator(&first_file);
         let register = MediaRegister {
             media_id: None,
@@ -392,17 +416,7 @@ impl EngineCommand for MediaImportSequence {
         let registered = ctx
             .sink
             .register(vec![register.clone()])
-            .map_err(|e| match e {
-                // The sink points at `/paths/0/...` (a batch of one).
-                CmdError::Invalid { path, msg } => CmdError::Invalid {
-                    path: match path.strip_prefix("/paths/0") {
-                        Some("/folder") => "/folder".to_owned(),
-                        _ => "/path".to_owned(),
-                    },
-                    msg,
-                },
-                other => other,
-            })?
+            .map_err(sink_failure)?
             .pop()
             .ok_or_else(|| CmdError::internal("the media sink returned no result"))?;
         let mut job_ids = Vec::new();

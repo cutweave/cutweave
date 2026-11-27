@@ -914,8 +914,7 @@ fn run_is_whole(asset: &MediaAsset, first: &Path) -> bool {
         return true;
     };
     let listed: HashSet<OsString> = fs::read_dir(dir)
-        .map(|entries| entries.flatten().map(|e| e.file_name()).collect())
-        .unwrap_or_default();
+        .map_or_default(|entries| entries.flatten().map(|e| e.file_name()).collect());
     run.segments()
         .into_iter()
         .flat_map(|(start, len)| start..start.saturating_add(len))

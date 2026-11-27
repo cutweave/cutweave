@@ -286,7 +286,7 @@ fn project_with_run(t: &TempDir, dir: &Path) -> PathBuf {
         count: 4,
         fps: cutweave_model::FrameRate::FPS_30,
         missing: vec![3],
-        extra: Default::default(),
+        extra: cutweave_model::Extra::default(),
     };
     let mut p = Project::new("S");
     let id: MediaId = SeededGen::new(1).mint();
