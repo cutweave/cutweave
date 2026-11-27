@@ -4,8 +4,9 @@
 // clip; a key dragged along the lane moves (one undo step); its menu sets Ease in-out; two
 // undos restore the document; Bezier… opens the curve editor, where the arrow keys nudge a
 // handle and a preset is picked; the nudge keys, Delete, a double-click on the lane, and Copy
-// and Paste work on keys; Alt+K closes the lanes. The menu and the dialog pass axe. Real
-// clicks, drags and keys; only the OS file picker is stubbed.
+// and Paste work on keys; Alt+Right steps to a key, Shift+F10 opens its menu and Alt+K closes
+// the lanes. The menu and the dialog pass axe. Real clicks, drags and keys; only the OS file
+// picker is stubbed.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -276,6 +277,13 @@ test.describe("F68 keyframe lanes and the curve editor", () => {
       await expect
         .poll(async () => (await editorCall<{ playhead: number }>(page, "view.get")).playhead)
         .toBe(sec(5));
+      // Shift+F10 opens the selected key's menu, as a right-click on it does.
+      await page.keyboard.press("Shift+F10");
+      await expect(menu).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Delete keyframe" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+      await canvas.focus();
       await page.keyboard.press("Alt+k");
       await expect(lanes).toHaveAttribute("aria-pressed", "false");
       await page.keyboard.press("Alt+k");
