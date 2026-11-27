@@ -781,7 +781,10 @@
     "card": {
       "fps": "{{fps}} fps",
       "play": "Play {{name}}",
-      "pause": "Pause {{name}}"
+      "pause": "Pause {{name}}",
+      "used": "Used",
+      "usedTipOne": "On a timeline: 1 clip uses it",
+      "usedTipMany": "On a timeline: {{count}} clips use it"
     },
     "layout": {
       "label": "Media layout",
@@ -1030,6 +1033,69 @@
       "count": "{{count}} of 2,000",
       "tooLong": "A note holds 2,000 characters at most.",
       "failed": "Could not save the note"
+    },
+    "sidebar": {
+      "label": "Folders and collections",
+      "show": "Show folders and collections",
+      "hide": "Hide folders and collections",
+      "folders": "Folders",
+      "collections": "Collections",
+      "allMedia": "All media"
+    },
+    "collections": {
+      "defaultName": "New collection",
+      "newButton": "New collection",
+      "nameLabel": "Collection name",
+      "kindManual": "collection",
+      "kindSmart": "smart collection",
+      "rowLabelEmpty": "{{name}}, {{kind}}, empty",
+      "rowLabelOne": "{{name}}, {{kind}}, 1 item",
+      "rowLabelMany": "{{name}}, {{kind}}, {{count}} items",
+      "none": "No collections yet. Save a search as a smart collection, or add clips to a new one.",
+      "named": "{{name}}",
+      "createFailed": "Could not create the collection",
+      "renameFailed": "Could not rename {{name}}",
+      "deleteFailed": "Could not delete {{name}}",
+      "addFailed": "Could not add to the collection",
+      "removeFailed": "Could not remove from the collection",
+      "updateFailed": "Could not update the collection",
+      "addedNone": "Already in {{name}}",
+      "addedOne": "Added 1 item to {{name}}",
+      "addedMany": "Added {{count}} items to {{name}}",
+      "updated": "Updated {{name}} from the current filters",
+      "saved": "Saved {{name}}. It is in the sidebar of the media bin.",
+      "reasonInCollection": "Open All media or a folder first",
+      "reasonNoFilter": "Search or set a filter first",
+      "reasonAlreadyIn": "Already in this collection",
+      "sortFixed": "A collection keeps the order its clips were added in",
+      "saveSmart": "Save as smart collection…",
+      "emptyTitle": "This collection is empty",
+      "emptyManual": "Drag clips onto it in the sidebar, or use Add to collection in a clip's menu.",
+      "emptySmart": "No media matches its filter right now.",
+      "newTitle": "New collection",
+      "newBody": "A collection is a list of clips from any folder. Each clip stays in its folder.",
+      "newBodyOne": "The selected item goes into it and stays in its folder.",
+      "newBodyMany": "The {{count}} selected items go into it and stay in their folders.",
+      "smartTitle": "Save as smart collection",
+      "smartBody": "It lists what matches the current search and filters, and stays up to date.",
+      "create": "Create",
+      "save": "Save",
+      "cancel": "Cancel",
+      "taken": "A collection has this name already.",
+      "tooLong": "Use 255 characters or fewer.",
+      "control": "A name is one line, without tabs.",
+      "addTitleOne": "Add 1 item to a collection",
+      "addTitleMany": "Add {{count}} items to a collection",
+      "addBody": "The items stay in their folders.",
+      "addListLabel": "Collections",
+      "addConfirm": "Add",
+      "addNew": "New collection…",
+      "addNone": "There is no collection yet.",
+      "deleteTitle": "Delete the collection {{name}}?",
+      "deleteBodyOne": "It lists 1 item.",
+      "deleteBodyMany": "It lists {{count}} items.",
+      "deleteNote": "The media stay in the project and in their folders. Undo brings the collection back.",
+      "deleteConfirm": "Delete collection"
     }
   },
   "preview": {
@@ -1395,7 +1461,13 @@
     "tagRemove": "Remove tag",
     "tagRename": "Rename tag",
     "rating": "Set rating",
-    "note": "Edit note"
+    "note": "Edit note",
+    "collectionCreate": "New collection",
+    "collectionRename": "Rename collection",
+    "collectionDelete": "Delete collection",
+    "collectionAdd": "Add to collection",
+    "collectionRemove": "Remove from collection",
+    "collectionFilter": "Update smart collection"
   },
   "mathStartup": {
     "versionTitle": "Cutweave can't start: its math module is out of date",
@@ -1999,7 +2071,10 @@
       "mediaImportImagesAsSlideshow": "Import as slideshow…",
       "mediaSetProxyMode": "Set proxy mode",
       "mediaAddTags": "Add tag…",
-      "mediaSetRating": "Set rating"
+      "mediaSetRating": "Set rating",
+      "mediaCreateCollection": "New collection…",
+      "mediaAddToCollection": "Add to collection…",
+      "mediaRemoveFromCollection": "Remove from collection"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -2033,7 +2108,8 @@
       "workspace": "Workspace actions",
       "history": "Undo and redo actions",
       "toast": "Notice actions",
-      "engine": "Engine actions"
+      "engine": "Engine actions",
+      "binCollection": "Collection actions for {{name}}"
     },
     "item": {
       "cut": "Cut",
@@ -2144,7 +2220,14 @@
       "proxyNever": "Never",
       "addTag": "Add tag…",
       "setRating": "Set rating",
-      "ratingNone": "None"
+      "ratingNone": "None",
+      "addToCollection": "Add to collection",
+      "newCollection": "New collection…",
+      "saveSmartCollection": "Save as smart collection…",
+      "openCollection": "Open",
+      "renameCollection": "Rename",
+      "updateCollection": "Update from current filters",
+      "deleteCollection": "Delete collection…"
     },
     "dialog": {
       "cancel": "Cancel",

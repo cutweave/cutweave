@@ -4,7 +4,13 @@
 // menu is a catalog command (`clip.split`, `track.set`...) named by the row itself, so the CLI and
 // MCP have the same call. A row that touches the OS is `host: true` and listed in
 // `host-actions-exempt.json`.
-import type { FolderId, MediaId, PreviewQuality, SelectionRef } from "@cutweave/protocol";
+import type {
+  CollectionId,
+  FolderId,
+  MediaId,
+  PreviewQuality,
+  SelectionRef,
+} from "@cutweave/protocol";
 import { engineStore } from "../../engine/engineStore.ts";
 import { exportController } from "../../export/useExport.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -14,6 +20,13 @@ import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
 import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";
 import { selectMediaCards } from "../../media/cards.ts";
+import {
+  addMediaToCollection,
+  openNewCollectionDialog,
+  openSaveSmartCollection,
+  requestCollectionDelete,
+  updateCollectionFromFilters,
+} from "../../media/collectionCommands.ts";
 import {
   currentOpenFolder,
   folderUiStore,
@@ -27,6 +40,7 @@ import { openRelinkDialog } from "../../media/RelinkDialog.tsx";
 import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
 import { importPicked } from "../../media/sequence.ts";
+import { openCollection, sidebarUiStore } from "../../media/sidebar.ts";
 import { addShownFrameToBin, pickSlideshow } from "../../media/slideshowCommands.ts";
 import { openTagEditor } from "../../media/TagEditor.tsx";
 import { preferences } from "../../prefs/prefsStore.ts";
@@ -267,6 +281,58 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     label: "contextMenu.item.addTag",
     when: "engine.live",
     run: (args) => openTagEditor(arg<{ media?: string[] }>(args).media),
+  },
+  // Collections (WP-2F.06c). Each change is one catalog command: `media.create_collection`,
+  // `media.add_to_collection`, `media.set_collection_filter`, `media.delete_collection`.
+  {
+    id: "bin.new_collection",
+    label: "contextMenu.item.newCollection",
+    icon: "plus",
+    when: "engine.live",
+    run: (args) => openNewCollectionDialog(arg<{ media?: string[] }>(args).media ?? []),
+  },
+  {
+    id: "bin.add_to_collection",
+    label: "contextMenu.item.addToCollection",
+    when: "engine.live",
+    run: async (args) => {
+      const { collection, media } = arg<{ collection: CollectionId; media: string[] }>(args);
+      await addMediaToCollection(collection, media);
+    },
+  },
+  {
+    id: "bin.save_smart_collection",
+    label: "contextMenu.item.saveSmartCollection",
+    icon: "search",
+    when: "engine.live",
+    run: () => openSaveSmartCollection(),
+  },
+  {
+    id: "bin.open_collection",
+    label: "contextMenu.item.openCollection",
+    run: (args) => openCollection(arg<{ collection: CollectionId }>(args).collection),
+  },
+  {
+    id: "bin.rename_collection",
+    label: "contextMenu.item.renameCollection",
+    run: (args) =>
+      sidebarUiStore.getState().startRename(arg<{ collection: CollectionId }>(args).collection),
+  },
+  {
+    id: "bin.update_collection_filter",
+    label: "contextMenu.item.updateCollection",
+    icon: "refresh-cw",
+    when: "engine.live",
+    run: async (args) =>
+      updateCollectionFromFilters(arg<{ collection: CollectionId }>(args).collection),
+  },
+  {
+    id: "bin.delete_collection",
+    label: "contextMenu.item.deleteCollection",
+    icon: "trash-2",
+    danger: true,
+    run: async (args) =>
+      requestCollectionDelete(arg<{ collection: CollectionId }>(args).collection),
   },
   {
     id: "bin.new_folder",

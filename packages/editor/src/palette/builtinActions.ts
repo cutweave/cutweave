@@ -7,6 +7,7 @@ import { exportController } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
 import { openArchiveDialog } from "../media/ArchiveDialog.tsx";
 import { openCollectDialog } from "../media/CollectDialog.tsx";
+import { openAddToCollectionDialog, openNewCollectionDialog } from "../media/collectionCommands.ts";
 import { selectedTiles } from "../media/folderUi.ts";
 import { openRatingDialog } from "../media/RatingDialog.tsx";
 import { addShownFrameToBin, pickSlideshow } from "../media/slideshowCommands.ts";
@@ -57,5 +58,15 @@ export function registerBuiltinPaletteActions(): void {
   registerPaletteAction("media.set_rating", () => {
     needMedia();
     openRatingDialog();
+  });
+  // New collection… asks for a name (the selected cards become its members); Add to collection…
+  // lists the manual collections for the selected cards (WP-2F.06c). Save as smart collection is
+  // the editor's `bin.save_smart_collection`, listed with the UI commands.
+  registerPaletteAction("media.create_collection", () =>
+    openNewCollectionDialog(selectedTiles().media),
+  );
+  registerPaletteAction("media.add_to_collection", () => {
+    needMedia();
+    openAddToCollectionDialog(selectedTiles().media);
   });
 }

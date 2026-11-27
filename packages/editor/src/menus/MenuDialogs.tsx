@@ -10,6 +10,11 @@ import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { deleteFolder, moveTiles } from "../media/binActions.ts";
+import {
+  AddToCollectionDialog,
+  DeleteCollectionDialog,
+  NewCollectionDialog,
+} from "../media/CollectionDialogs.tsx";
 import { selectMediaCards, selectMediaUsage } from "../media/cards.ts";
 import { canDrop, planFolderDelete, selectFolders } from "../media/folders.ts";
 import { folderDeleteText } from "../media/folderText.ts";
@@ -564,6 +569,18 @@ export function MenuDialogs() {
       return <TagsDialog key={dialog.media.join()} media={dialog.media} />;
     case "rating":
       return <RatingDialog key={dialog.media.join()} media={dialog.media} />;
+    case "new-collection":
+      return (
+        <NewCollectionDialog
+          key={`${dialog.filter === null ? "manual" : "smart"}:${dialog.media.join()}`}
+          media={dialog.media}
+          filter={dialog.filter}
+        />
+      );
+    case "add-to-collection":
+      return <AddToCollectionDialog key={dialog.media.join()} media={dialog.media} />;
+    case "delete-collection":
+      return <DeleteCollectionDialog key={dialog.collection} collection={dialog.collection} />;
     case "replace-clip":
       return <ReplaceClip key={dialog.item} item={dialog.item} />;
     case "paste-attributes":

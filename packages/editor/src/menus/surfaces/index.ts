@@ -7,7 +7,7 @@ import type { CommandInfo } from "../commands.ts";
 import { registerKeyHint } from "../keys.ts";
 import type { MenuServices } from "../services.ts";
 import type { MenuSurfaceDef } from "../types.ts";
-import { BIN_BACKGROUND, BIN_CARD, BIN_CHIP, BIN_FOLDER } from "./bin.ts";
+import { BIN_BACKGROUND, BIN_CARD, BIN_CHIP, BIN_COLLECTION, BIN_FOLDER } from "./bin.ts";
 import {
   CHROME_ENGINE,
   CHROME_EXPORT,
@@ -87,6 +87,27 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
     undoable: true,
     when: "engine.live",
   },
+  // Collections (WP-2F.06c). The palette asks for a name, and lists the manual collections for
+  // the selected cards (`palette/builtinActions.ts`); a card's menu has Remove from collection
+  // while a manual collection is open.
+  {
+    name: "media.create_collection",
+    label: "contextMenu.command.mediaCreateCollection",
+    icon: "plus",
+    undoable: true,
+    when: "engine.live",
+  },
+  {
+    name: "media.add_to_collection",
+    label: "contextMenu.command.mediaAddToCollection",
+    undoable: true,
+    when: "engine.live",
+  },
+  {
+    name: "media.remove_from_collection",
+    label: "contextMenu.command.mediaRemoveFromCollection",
+    undoable: true,
+  },
   {
     name: "item.duplicate",
     label: "contextMenu.command.itemDuplicate",
@@ -101,6 +122,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
   DOCK_EMPTY,
   BIN_CARD,
   BIN_FOLDER,
+  BIN_COLLECTION,
   BIN_BACKGROUND,
   BIN_CHIP,
   PREVIEW_CANVAS,
@@ -151,11 +173,20 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
   "timeline.paste_here": "edit.text.paste",
 };
 
+/**
+ * UI commands the palette lists too: they read the editor's own state, not a menu's target. Save
+ * as smart collection… stores the bin's search and filters (WP-2F.06c).
+ */
+const PALETTE_UI_COMMANDS: ReadonlySet<string> = new Set(["bin.save_smart_collection"]);
+
 /** Puts the surface tables, UI commands, command texts and hints into `services`. */
 export function registerSurfaceMenus(services: MenuServices): void {
   for (const info of SURFACE_COMMAND_INFO) services.commands.register(info);
-  // Menu-only: they take their arguments from the menu's target, so the palette does not list them.
-  for (const command of UI_COMMANDS) services.ui.register({ ...command, hidden: true });
+  // Menu-only: they take their arguments from the menu's target, so the palette does not list
+  // them, except the few that need none (`PALETTE_UI_COMMANDS`).
+  for (const command of UI_COMMANDS) {
+    services.ui.register({ ...command, hidden: !PALETTE_UI_COMMANDS.has(command.id) });
+  }
   for (const surface of SURFACES) services.surfaces.register(surface);
   for (const [command, binding] of Object.entries(KEY_HINTS)) registerKeyHint(command, binding);
 }

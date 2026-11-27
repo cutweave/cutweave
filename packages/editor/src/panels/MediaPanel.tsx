@@ -33,6 +33,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore, useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
+import { BinSidebar } from "../media/BinSidebar.tsx";
 import { moveTiles, renameFolder, renameMedia } from "../media/binActions.ts";
 import { newFolder, selectAllInBin } from "../media/binCommands.ts";
 import {
@@ -46,7 +47,9 @@ import {
   useBinStore,
 } from "../media/binStore.ts";
 import { computeBinView } from "../media/binView.ts";
-import { formatDuration, type MediaCard } from "../media/cards.ts";
+import { formatDuration, type MediaCard, selectMediaUsage } from "../media/cards.ts";
+import { openSaveSmartCollection } from "../media/collectionCommands.ts";
+import { resolveOpenCollection } from "../media/collections.ts";
 import { dragStore, MEDIA_DRAG_TYPE, TILE_DRAG_TYPE, tileDragStore } from "../media/dragStore.ts";
 import {
   breadcrumbOf,
@@ -74,6 +77,7 @@ import { layoutStore } from "../media/layoutStore.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
 import { type ProxyBadgeKind, useProxyBadge } from "../media/proxies.ts";
 import { requestDeleteSelection } from "../media/requestDelete.ts";
+import { sidebarMode, sidebarUiStore, useSidebarUi } from "../media/sidebar.ts";
 import { projectTags, RATINGS, tagKey } from "../media/tags.ts";
 import { useThumbnailSource } from "../media/thumbnails.ts";
 import { useCardScrub } from "../media/useCardScrub.ts";
@@ -247,6 +251,8 @@ interface CardViewProps extends TileHandlers {
   /** The folder path under the name: results across folders say where each one is. */
   path: string | null;
   renaming: boolean;
+  /** How many clips on the timelines use it (0: unused). */
+  uses: number;
   onSelect(id: MediaId): void;
   onInsert(card: MediaCard): void;
   onRename(card: MediaCard, name: string): void;
@@ -271,6 +277,7 @@ function CardView({
   failure,
   path,
   renaming,
+  uses,
   onSelect,
   onPress,
   onInsert,
@@ -376,6 +383,20 @@ function CardView({
         {card.duration !== null && card.kind !== "image" ? (
           <span className="cw-media__duration numeric">{formatDuration(card.duration)}</span>
         ) : null}
+        {uses === 0 ? null : (
+          // On a timeline (WP-2F.06c): the bin's "Used" filter, said on the card.
+          <span
+            className="cw-media__used caption"
+            data-testid="used-badge"
+            title={
+              uses === 1
+                ? t("mediaBin.card.usedTipOne")
+                : t("mediaBin.card.usedTipMany", { count: uses })
+            }
+          >
+            {t("mediaBin.card.used")}
+          </span>
+        )}
       </span>
       <span className="cw-media__body">
         <span className="cw-media__head">
@@ -544,13 +565,25 @@ export function MediaPanel() {
   const sort = useBinStore((s) => s.sort);
   const scope = useBinStore((s) => s.scope);
   const openRaw = useBinStore((s) => s.openFolders[projectPath] ?? null);
-  const open = useMemo(() => resolveOpenFolder(project, openRaw), [project, openRaw]);
+  // A collection open in place of a folder (WP-2F.06c): its members, flat, from every folder.
+  const collectionRaw = useBinStore((s) => s.openCollections[projectPath] ?? null);
+  const collection = useMemo(
+    () => resolveOpenCollection(project, collectionRaw),
+    [project, collectionRaw],
+  );
+  const open = useMemo(
+    () => (collection === null ? resolveOpenFolder(project, openRaw) : null),
+    [project, openRaw, collection],
+  );
   // The bin shows what the engine's `media.list` would list for the same filter, sort and folder
   // (the same predicate, run on the mirror: no round trip per keystroke).
   const view = useMemo(
-    () => computeBinView(project, { text, filters, sort, scope }, open),
-    [project, text, filters, sort, scope, open],
+    () => computeBinView(project, { text, filters, sort, scope }, open, collection),
+    [project, text, filters, sort, scope, open, collection],
   );
+  const usage = useMemo(() => selectMediaUsage(project), [project]);
+  const openCollectionEntry = collection === null ? undefined : project?.collections?.[collection];
+  const manualOpen = openCollectionEntry?.kind.type === "manual";
   const allCards = view.all;
   const cards = view.cards;
   const folders = view.folders;
@@ -609,11 +642,11 @@ export function MediaPanel() {
   const activeIndex = Math.min(Math.max(focusIndex, 0), Math.max(order.length - 1, 0));
   const activeTile = order[activeIndex];
 
-  // Another folder: back to the first tile and the top of the list.
+  // Another folder or collection: back to the first tile and the top of the list.
   useEffect(() => {
     setFocusIndex(0);
     if (scroller.current !== null) scroller.current.scrollTop = 0;
-  }, [open]);
+  }, [open, collection]);
 
   // What is gone from the grid (deleted, moved away) is no longer selected.
   useEffect(() => {
@@ -787,6 +820,8 @@ export function MediaPanel() {
   const openFolderTile = useCallback((folder: { id: FolderId }) => openFolder(folder.id), []);
 
   const goUp = () => {
+    // Out of a collection: back to the folders.
+    if (collection !== null) openFolder(null);
     if (open === null) return;
     openFolder(project?.folders?.[open]?.parent ?? null);
   };
@@ -1029,6 +1064,35 @@ export function MediaPanel() {
   const searchRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
+  // ---- the sidebar (WP-2F.06c) -------------------------------------------------------------
+  // Beside the grid when the panel is wide enough; in a narrow panel the toggle opens it over the
+  // grid and it closes once something is opened. Shown or not is the panel's own, kept choice.
+  const sidebarWanted = useBinStore((s) => s.sidebar);
+  const sidebarOverlay = useSidebarUi((s) => s.overlay);
+  const [panelWidth, setPanelWidth] = useState(0);
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (el === null || ownerWindow === null) return undefined;
+    const read = () => setPanelWidth(el.clientWidth);
+    read();
+    return observeSize(el, read);
+  }, [ownerWindow]);
+  const sidebarLayout = sidebarMode(panelWidth);
+  const sidebarShown = sidebarLayout === "inline" ? sidebarWanted : sidebarOverlay;
+  useEffect(() => {
+    if (sidebarLayout === "inline") sidebarUiStore.getState().setOverlay(false);
+  }, [sidebarLayout]);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
+  const toggleSidebar = () => {
+    if (sidebarLayout === "inline") binStore.getState().setSidebar(!sidebarWanted);
+    else sidebarUiStore.getState().setOverlay(!sidebarOverlay);
+  };
+  const closeOverlay = () => {
+    if (sidebarLayout !== "overlay" || !sidebarUiStore.getState().overlay) return;
+    sidebarUiStore.getState().setOverlay(false);
+    sidebarToggle.current?.focus();
+  };
+
   // Anywhere in the panel that is not a tile: Import, New folder, Sort by, View as (WP-2H.13). A
   // right-click on the empty bin clears the selection, as the Explorer does.
   useEffect(() => {
@@ -1258,16 +1322,32 @@ export function MediaPanel() {
     : t("mediaBin.remove.button");
   const nothingSelected = selectedMedia.length === 0 && selectedFolders.length === 0;
   const crumbs = breadcrumbOf(project, open);
-  const segments = crumbs.map((crumb) => ({
+  const segments: { id: string | null; label: string }[] = crumbs.map((crumb) => ({
     id: crumb.id,
     label: crumb.name ?? t("mediaBin.folder.topLevel"),
   }));
+  // An open collection is the place: "Media > Selects". Nothing drops on it here (the sidebar
+  // row takes cards); the first segment leads back to the folders.
+  if (collection !== null && openCollectionEntry !== undefined) {
+    segments.push({ id: collection, label: openCollectionEntry.name });
+  }
   const crumbDropFor = (id: string | null) => dropOn(id as FolderId | null);
-  const showBreadcrumb = hasFolders || open !== null;
-  const nothingAtAll = allCards.length === 0 && !hasFolders;
-  const emptyFolder = !searching && folders.length === 0 && cards.length === 0 && !nothingAtAll;
+  const showBreadcrumb = hasFolders || open !== null || collection !== null;
+  const nothingAtAll = allCards.length === 0 && !hasFolders && collection === null;
+  const emptyCollection = collection !== null && !searching && cards.length === 0;
+  const emptyFolder =
+    collection === null &&
+    !searching &&
+    folders.length === 0 &&
+    cards.length === 0 &&
+    !nothingAtAll;
+  // Results across folders, and a collection's members, say where each one is.
   const pathOf = (folder: FolderId | null): string | null =>
-    searching && folder !== null ? folderPathText(project, folder) : null;
+    (searching || collection !== null) && folder !== null ? folderPathText(project, folder) : null;
+  // "Save as smart collection" (WP-2F.06c): while a search or a filter is on, outside a collection.
+  const canSaveSmart = searching && collection === null && ready;
+  const sidebarLabel = t(sidebarShown ? "mediaBin.sidebar.hide" : "mediaBin.sidebar.show");
+  const sortFixedLabel = t("mediaBin.collections.sortFixed");
 
   return (
     <section
@@ -1316,6 +1396,17 @@ export function MediaPanel() {
       ) : null}
       <div className="cw-media__tools">
         {/* Icons with tooltips: the panel is narrow and its toolbar is for doing, not reading. */}
+        <Tooltip label={sidebarLabel}>
+          <IconButton
+            ref={sidebarToggle}
+            size="sm"
+            icon="panel-left"
+            label={sidebarLabel}
+            pressed={sidebarShown}
+            data-testid="bin-sidebar-toggle"
+            onClick={toggleSidebar}
+          />
+        </Tooltip>
         <Tooltip label={importLabel} keys={[modifierKey(), "I"]}>
           <IconButton
             size="sm"
@@ -1370,11 +1461,18 @@ export function MediaPanel() {
                 />
               </Tooltip>
             </Menu>
-            <Menu mode="dropdown" items={sortItems} aria-label={t("mediaBin.sort.menuLabel")}>
-              <Tooltip label={sortLabel}>
-                <IconButton size="sm" icon="arrow-up-down" label={sortLabel} />
+            {manualOpen ? (
+              // A manual collection keeps the order its clips were added in.
+              <Tooltip label={sortFixedLabel}>
+                <IconButton size="sm" icon="arrow-up-down" label={sortFixedLabel} disabled />
               </Tooltip>
-            </Menu>
+            ) : (
+              <Menu mode="dropdown" items={sortItems} aria-label={t("mediaBin.sort.menuLabel")}>
+                <Tooltip label={sortLabel}>
+                  <IconButton size="sm" icon="arrow-up-down" label={sortLabel} />
+                </Tooltip>
+              </Menu>
+            )}
           </>
         ) : null}
         <SegmentedControl
@@ -1389,156 +1487,193 @@ export function MediaPanel() {
           onChange={(next) => layoutStore.getState().set(next)}
         />
       </div>
-      {showBreadcrumb ? (
-        <div className="cw-media__crumbs">
-          <MediaBreadcrumb
-            label={t("mediaBin.folder.navLabel")}
-            segments={segments}
-            dropTarget={dropOver}
-            onNavigate={(id) => openFolder(id as FolderId | null)}
-            onSegmentDragOver={(segment, e) => crumbDropFor(segment.id).onDragOver(e)}
-            onSegmentDragLeave={(segment, e) => crumbDropFor(segment.id).onDragLeave(e)}
-            onSegmentDrop={(segment, e) => crumbDropFor(segment.id).onDrop(e)}
+      <div className="cw-media__row">
+        {sidebarShown ? (
+          <BinSidebar
+            mode={sidebarLayout}
+            open={open}
+            collection={collection}
+            dropOver={dropOver}
+            dropOn={dropOn}
+            onDone={closeOverlay}
           />
-        </div>
-      ) : null}
-      {chips.length > 0 ? (
-        <fieldset className="cw-media__chips" aria-label={t("mediaBin.filters.chipsLabel")}>
-          {chips.map((chip) => (
-            <ContextSurface
-              key={chip.id}
-              surface="bin.chip"
-              className="cw-context-surface"
-              target={() => ({ ids: [chip.id], name: chip.label })}
-            >
-              <FilterChip
-                label={chip.label}
-                removeLabel={t("mediaBin.filters.removeChip", { filter: chip.label })}
-                onRemove={chip.remove}
+        ) : null}
+        <div className="cw-media__main">
+          {showBreadcrumb ? (
+            <div className="cw-media__crumbs">
+              <MediaBreadcrumb
+                label={t("mediaBin.folder.navLabel")}
+                segments={segments}
+                dropTarget={dropOver}
+                onNavigate={(id) => {
+                  // The collection's own segment is where the bin is already.
+                  if (id !== collection || id === null) openFolder(id as FolderId | null);
+                }}
+                onSegmentDragOver={(segment, e) => crumbDropFor(segment.id).onDragOver(e)}
+                onSegmentDragLeave={(segment, e) => crumbDropFor(segment.id).onDragLeave(e)}
+                onSegmentDrop={(segment, e) => crumbDropFor(segment.id).onDrop(e)}
               />
-            </ContextSurface>
-          ))}
-          <Button variant="ghost" size="sm" onClick={() => bin.clearFilters()}>
-            {t("mediaBin.filters.clearAll")}
-          </Button>
-        </fieldset>
-      ) : null}
-      {nothingAtAll ? (
-        <div className="cw-media__scroll">
-          <EmptyState
-            icon="film"
-            title={t("assets.empty.media.title")}
-            body={t("assets.empty.media.body")}
-          />
-        </div>
-      ) : emptyFolder ? (
-        <div className="cw-media__scroll">
-          <EmptyState
-            icon="folder"
-            title={t("mediaBin.folder.emptyTitle")}
-            body={t("mediaBin.folder.emptyBody")}
-          />
-        </div>
-      ) : order.length === 0 ? (
-        <div className="cw-media__scroll">
-          <EmptyState
-            icon="search"
-            title={
-              text.trim() === ""
-                ? t("mediaBin.noMatch.titleFilters")
-                : t("mediaBin.noMatch.titleText", { text: text.trim() })
-            }
-            body={t("mediaBin.noMatch.body")}
-          >
-            <div className="cw-media__empty-actions">
-              {text.trim() === "" ? null : (
-                <Button variant="secondary" size="sm" onClick={() => bin.setText("")}>
-                  {t("mediaBin.noMatch.clearSearch")}
-                </Button>
-              )}
-              {filterCount === 0 ? null : (
-                <Button variant="secondary" size="sm" onClick={() => bin.clearFilters()}>
-                  {t("mediaBin.noMatch.clearFilters")}
-                </Button>
-              )}
             </div>
-          </EmptyState>
-        </div>
-      ) : (
-        <div ref={scroller} className="cw-media__scroll" onScroll={measure}>
-          <div
-            role="listbox"
-            aria-label={t("mediaBin.listLabel")}
-            aria-multiselectable="true"
-            data-layout={layout}
-            className="cw-media__list"
-            onKeyDown={onKeyDown}
-            // A double-click is not a slow click: it opens or inserts instead of renaming.
-            onDoubleClickCapture={() => {
-              if (slowRename.current !== null) clearTimeout(slowRename.current);
-              slowRename.current = null;
-            }}
-            onFocus={(e) => {
-              const el = e.target as HTMLElement;
-              const media = el.closest("[data-media-id]")?.getAttribute("data-media-id");
-              const folder = el.closest("[data-folder-id]")?.getAttribute("data-folder-id");
-              const index = order.findIndex((tile) =>
-                media != null
-                  ? tile.kind === "media" && tile.id === media
-                  : tile.kind === "folder" && tile.id === folder,
-              );
-              if (index >= 0) setFocusIndex(index);
-            }}
-          >
-            {folders.length > 0 ? (
-              <div className="cw-media__grid cw-media__grid--folders" data-layout={layout}>
-                {folders.map((folder, i) => (
-                  <FolderView
-                    key={folder.id}
-                    folder={folder}
-                    selected={selectedFolders.includes(folder.id)}
-                    active={i === activeIndex}
-                    renaming={renaming?.kind === "folder" && renaming.id === folder.id}
-                    dropTarget={dropOver === folder.id}
-                    path={pathOf(folder.parent)}
-                    drop={dropOn(folder.id)}
-                    onOpen={openFolderTile}
-                    onRename={renameFolderTile}
-                    {...handlers}
+          ) : null}
+          {chips.length > 0 || canSaveSmart ? (
+            <fieldset className="cw-media__chips" aria-label={t("mediaBin.filters.chipsLabel")}>
+              {chips.map((chip) => (
+                <ContextSurface
+                  key={chip.id}
+                  surface="bin.chip"
+                  className="cw-context-surface"
+                  target={() => ({ ids: [chip.id], name: chip.label })}
+                >
+                  <FilterChip
+                    label={chip.label}
+                    removeLabel={t("mediaBin.filters.removeChip", { filter: chip.label })}
+                    onRemove={chip.remove}
                   />
-                ))}
-              </div>
-            ) : null}
-            {cards.length > 0 ? (
-              <div
-                ref={grid}
-                data-layout={layout}
-                className="cw-media__grid"
-                style={{ paddingTop: win.padTop, paddingBottom: win.padBottom }}
+                </ContextSurface>
+              ))}
+              {chips.length > 0 ? (
+                <Button variant="ghost" size="sm" onClick={() => bin.clearFilters()}>
+                  {t("mediaBin.filters.clearAll")}
+                </Button>
+              ) : null}
+              {canSaveSmart ? (
+                <Button variant="ghost" size="sm" onClick={() => openSaveSmartCollection()}>
+                  {t("mediaBin.collections.saveSmart")}
+                </Button>
+              ) : null}
+            </fieldset>
+          ) : null}
+          {nothingAtAll ? (
+            <div className="cw-media__scroll">
+              <EmptyState
+                icon="film"
+                title={t("assets.empty.media.title")}
+                body={t("assets.empty.media.body")}
+              />
+            </div>
+          ) : emptyCollection ? (
+            <div className="cw-media__scroll">
+              <EmptyState
+                icon={manualOpen ? "layers" : "search"}
+                title={t("mediaBin.collections.emptyTitle")}
+                body={t(
+                  manualOpen
+                    ? "mediaBin.collections.emptyManual"
+                    : "mediaBin.collections.emptySmart",
+                )}
+              />
+            </div>
+          ) : emptyFolder ? (
+            <div className="cw-media__scroll">
+              <EmptyState
+                icon="folder"
+                title={t("mediaBin.folder.emptyTitle")}
+                body={t("mediaBin.folder.emptyBody")}
+              />
+            </div>
+          ) : order.length === 0 ? (
+            <div className="cw-media__scroll">
+              <EmptyState
+                icon="search"
+                title={
+                  text.trim() === ""
+                    ? t("mediaBin.noMatch.titleFilters")
+                    : t("mediaBin.noMatch.titleText", { text: text.trim() })
+                }
+                body={t("mediaBin.noMatch.body")}
               >
-                {cards.slice(win.start, win.end).map((card, i) => (
-                  <CardView
-                    key={card.id}
-                    card={card}
-                    selected={selectedMedia.includes(card.id)}
-                    active={nFolders + win.start + i === activeIndex}
-                    analyzing={analyzing.has(card.id)}
-                    failure={
-                      failures[card.id]?.map((f) => `${f.stage}: ${f.error}`).join("\n") ?? null
-                    }
-                    path={pathOf(card.folder)}
-                    renaming={renaming?.kind === "media" && renaming.id === card.id}
-                    onSelect={select}
-                    onInsert={insert}
-                    onRename={renameCard}
-                    {...handlers}
-                  />
-                ))}
+                <div className="cw-media__empty-actions">
+                  {text.trim() === "" ? null : (
+                    <Button variant="secondary" size="sm" onClick={() => bin.setText("")}>
+                      {t("mediaBin.noMatch.clearSearch")}
+                    </Button>
+                  )}
+                  {filterCount === 0 ? null : (
+                    <Button variant="secondary" size="sm" onClick={() => bin.clearFilters()}>
+                      {t("mediaBin.noMatch.clearFilters")}
+                    </Button>
+                  )}
+                </div>
+              </EmptyState>
+            </div>
+          ) : (
+            <div ref={scroller} className="cw-media__scroll" onScroll={measure}>
+              <div
+                role="listbox"
+                aria-label={t("mediaBin.listLabel")}
+                aria-multiselectable="true"
+                data-layout={layout}
+                className="cw-media__list"
+                onKeyDown={onKeyDown}
+                // A double-click is not a slow click: it opens or inserts instead of renaming.
+                onDoubleClickCapture={() => {
+                  if (slowRename.current !== null) clearTimeout(slowRename.current);
+                  slowRename.current = null;
+                }}
+                onFocus={(e) => {
+                  const el = e.target as HTMLElement;
+                  const media = el.closest("[data-media-id]")?.getAttribute("data-media-id");
+                  const folder = el.closest("[data-folder-id]")?.getAttribute("data-folder-id");
+                  const index = order.findIndex((tile) =>
+                    media != null
+                      ? tile.kind === "media" && tile.id === media
+                      : tile.kind === "folder" && tile.id === folder,
+                  );
+                  if (index >= 0) setFocusIndex(index);
+                }}
+              >
+                {folders.length > 0 ? (
+                  <div className="cw-media__grid cw-media__grid--folders" data-layout={layout}>
+                    {folders.map((folder, i) => (
+                      <FolderView
+                        key={folder.id}
+                        folder={folder}
+                        selected={selectedFolders.includes(folder.id)}
+                        active={i === activeIndex}
+                        renaming={renaming?.kind === "folder" && renaming.id === folder.id}
+                        dropTarget={dropOver === folder.id}
+                        path={pathOf(folder.parent)}
+                        drop={dropOn(folder.id)}
+                        onOpen={openFolderTile}
+                        onRename={renameFolderTile}
+                        {...handlers}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {cards.length > 0 ? (
+                  <div
+                    ref={grid}
+                    data-layout={layout}
+                    className="cw-media__grid"
+                    style={{ paddingTop: win.padTop, paddingBottom: win.padBottom }}
+                  >
+                    {cards.slice(win.start, win.end).map((card, i) => (
+                      <CardView
+                        key={card.id}
+                        card={card}
+                        selected={selectedMedia.includes(card.id)}
+                        active={nFolders + win.start + i === activeIndex}
+                        analyzing={analyzing.has(card.id)}
+                        failure={
+                          failures[card.id]?.map((f) => `${f.stage}: ${f.error}`).join("\n") ?? null
+                        }
+                        path={pathOf(card.folder)}
+                        renaming={renaming?.kind === "media" && renaming.id === card.id}
+                        uses={usage.get(card.id) ?? 0}
+                        onSelect={select}
+                        onInsert={insert}
+                        onRename={renameCard}
+                        {...handlers}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
       {fileOver ? (
         <div className="cw-media__drop" aria-hidden="true">
           <Icon name="upload" size="lg" />

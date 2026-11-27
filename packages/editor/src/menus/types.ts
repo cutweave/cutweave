@@ -65,6 +65,11 @@ export interface MenuRow {
   readonly when?: string;
   /** The row is left out while this does not hold (it makes no sense for the target's kind). */
   readonly visible?: string;
+  /**
+   * For first-party tables only: the row is left out while this is false, for a fact the key
+   * list cannot say (the bin has a manual collection open).
+   */
+  readonly visibleIf?: (ctx: MenuContext) => boolean;
   /** For first-party tables only: a check the key list cannot say. */
   readonly enabledIf?: (ctx: MenuContext) => boolean;
   /** Shown when the row is disabled: one line, "Track is locked". */
@@ -79,8 +84,15 @@ export interface MenuRow {
   /** With `checked`: one of a group of choices (Sort by, Quality), shown as a radio. */
   readonly radio?: boolean;
   readonly variant?: "danger" | "agent";
-  /** A nested list of command rows (one level). */
-  readonly submenu?: { readonly label: LabelSpec; readonly rows: readonly MenuRow[] };
+  /**
+   * A nested list of command rows (one level). `more` adds rows that depend on the document when
+   * the menu opens (one per collection); first-party tables only.
+   */
+  readonly submenu?: {
+    readonly label: LabelSpec;
+    readonly rows: readonly MenuRow[];
+    readonly more?: (ctx: MenuContext) => readonly MenuRow[];
+  };
 }
 
 /** How a surface reads and sets the selection, so the host can apply the target rules. */

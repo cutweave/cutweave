@@ -396,6 +396,137 @@ body {
   padding: var(--space-1) var(--space-3);
   border-bottom: var(--border-thin) solid var(--border-subtle);
 }
+/* The bin's sidebar (WP-2F.06c): the folder tree and the collections beside the grid, or over it
+   in a narrow panel. The open row is the one marigold mark; a row a drag may drop on is dashed,
+   as a folder tile and a breadcrumb segment are. */
+.cw-media__row {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.cw-media__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.cw-binside {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: calc(var(--layer-width-sm) * 2 / 3);
+  overflow: auto;
+  padding: var(--space-2);
+  border-inline-end: var(--border-thin) solid var(--border-subtle);
+  background: var(--surface-1);
+}
+.cw-binside[data-mode="overlay"] {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: var(--z-overlay);
+  max-width: 80%;
+  box-shadow: var(--shadow-popover);
+}
+.cw-binside__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+.cw-binside__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-sm);
+  padding-inline-start: var(--space-1);
+  color: var(--text-secondary);
+}
+.cw-binside__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--hit-min);
+  padding: 0 var(--space-1);
+  border: var(--border-thin) solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+.cw-binside__row:hover {
+  background: var(--surface-3);
+}
+.cw-binside__row[aria-selected="true"] {
+  background: var(--marigold-subtle);
+  color: var(--marigold-text);
+}
+.cw-binside__row[data-drop-target="true"] {
+  border-color: var(--marigold);
+  border-style: dashed;
+  background: var(--marigold-subtle);
+}
+.cw-binside__row:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: calc(var(--border-thick) * -1);
+}
+.cw-binside__twist {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-sm);
+  color: var(--text-muted);
+}
+.cw-binside__icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+.cw-binside__row[aria-selected="true"] .cw-binside__icon {
+  color: var(--marigold-text);
+}
+.cw-binside__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-binside__row > .cw-inline-rename {
+  flex: 1;
+  min-width: 0;
+}
+.cw-binside__count {
+  flex: none;
+  color: var(--text-muted);
+}
+.cw-binside__row[aria-selected="true"] .cw-binside__count {
+  color: var(--marigold-text);
+}
+.cw-binside__hint {
+  margin: 0;
+  padding: var(--space-1);
+  color: var(--text-muted);
+}
+.cw-movelist__row--flat {
+  padding-inline-start: var(--space-2);
+}
+/* "Used" on a card that is on a timeline (WP-2F.06c): over a corner of the picture, so a card
+   keeps its height. */
+.cw-media__used {
+  position: absolute;
+  inset-inline-start: var(--space-1);
+  inset-block-end: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--scrim);
+  color: var(--text-primary);
+}
+.cw-media__thumb[data-scrubbing="true"] .cw-media__used {
+  display: none;
+}
 .cw-media__path {
   overflow: hidden;
   color: var(--text-muted);

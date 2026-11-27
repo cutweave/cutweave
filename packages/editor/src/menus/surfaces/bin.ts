@@ -3,8 +3,11 @@
 // bin, and a filter chip. Rows name commands that exist today; what later work packages add is
 // listed in the TODO below, not stubbed.
 // TODO(WP-2A.14): Overwrite at playhead. TODO(WP-2B.01): New timeline from selection.
-// TODO(WP-2F.06c): Add to collection. Each work package adds its row
-// to these tables. Add tag… and Set rating ▸ (WP-2F.06b) are on a card, for one or several. Relink… (WP-2F.03) shows on a card whose file is missing. Regenerate proxies
+// Each work package adds its row to these tables. Add tag… and Set rating ▸ (WP-2F.06b) are on
+// a card, for one or several. Collections (WP-2F.06c): Add to collection ▸ (the manual
+// collections and New collection…) and, while a manual collection is open, Remove from
+// collection on a card; New collection… and Save as smart collection… on the background; a
+// collection row of the sidebar has its own surface, `bin.collection`. Relink… (WP-2F.03) shows on a card whose file is missing. Regenerate proxies
 // and Delete proxies (WP-2F.03b) show on video. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
 // #215: Duration… on an image card (the length its next insert uses) and Proxy ▸ Auto / Always /
 // Never on video (`media.set_proxy_mode`, ADR-0027).
@@ -15,11 +18,19 @@ import { LAYOUT_NAMES } from "../../layout/names.ts";
 import { LAYOUTS } from "../../layout/table.ts";
 import { binStore, SORT_CHOICES } from "../../media/binStore.ts";
 import { selectMediaCards, selectMediaUsage } from "../../media/cards.ts";
+import { currentSmartFilter } from "../../media/collectionCommands.ts";
+import {
+  isManualCollection,
+  MAX_COLLECTION_MEMBERS,
+  notYetOn,
+  selectCollections,
+} from "../../media/collections.ts";
 import { healthStore } from "../../media/health.ts";
 import { insertDurationFor } from "../../media/insertDuration.ts";
 import { isMovingPicture } from "../../media/kinds.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { canHaveProxy, hasProxy, proxyStore } from "../../media/proxies.ts";
+import { currentOpenCollection } from "../../media/sidebar.ts";
 import { MAX_TAG_MEDIA, RATINGS } from "../../media/tags.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
@@ -210,6 +221,41 @@ const ratingRows: readonly MenuRow[] = RATING_CHOICES.map(
     args: (ctx) => ({ media: ctx.ids, rating }),
   }),
 );
+
+/**
+ * Add to collection ▸ (WP-2F.06c): one row per manual collection, in name order, each one
+ * `media.add_to_collection` for the cards of the target (through `bin.add_to_collection`, which
+ * says how many were new). A collection that holds them all already is shown disabled.
+ */
+function collectionRows(): readonly MenuRow[] {
+  const project = docStore.getState().project;
+  return selectCollections(project, selectMediaCards(project), selectMediaUsage(project))
+    .filter((entry) => entry.kind === "manual")
+    .map(
+      (entry, index): MenuRow => ({
+        id: `collection-${entry.id}`,
+        command: "bin.add_to_collection",
+        group: "organize",
+        order: 1 + index,
+        label: { key: "mediaBin.collections.named", vars: { name: entry.name } },
+        when: "engine.live",
+        enabledIf: (ctx) =>
+          ctx.ids.length <= MAX_COLLECTION_MEMBERS &&
+          notYetOn(docStore.getState().project, entry.id, ctx.ids).length > 0,
+        reason: (ctx) =>
+          ctx.keys["engine.live"] === false
+            ? "contextMenu.reason.noEngine"
+            : "mediaBin.collections.reasonAlreadyIn",
+        args: (ctx) => ({ collection: entry.id, media: ctx.ids }),
+      }),
+    );
+}
+
+/** The manual collection the bin has open, when it has one: what "Remove from collection" acts on. */
+const openManualCollection = (): string | null => {
+  const open = currentOpenCollection();
+  return isManualCollection(docStore.getState().project, open) ? open : null;
+};
 
 /** What a card menu knows about its target. */
 export function binCardKeys(target: { ids: readonly string[] }): ContextValues {
@@ -408,6 +454,36 @@ export const BIN_CARD: MenuSurfaceDef = {
       submenu: { label: { key: "contextMenu.item.setRating" }, rows: ratingRows },
     },
     {
+      id: "add-to-collection",
+      group: "organize",
+      order: 4,
+      submenu: {
+        label: { key: "contextMenu.item.addToCollection" },
+        rows: [
+          {
+            id: "new-collection",
+            command: "bin.new_collection",
+            group: "organize",
+            order: 0,
+            when: "engine.live",
+            reason: "contextMenu.reason.noEngine",
+            args: (ctx) => ({ media: ctx.ids }),
+          },
+        ],
+        more: collectionRows,
+      },
+    },
+    {
+      // Only while a manual collection is open: the cards leave the list, not the project.
+      command: "media.remove_from_collection",
+      group: "organize",
+      order: 5,
+      visibleIf: () => openManualCollection() !== null,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: (ctx) => ({ collection: openManualCollection(), media: ctx.ids }),
+    },
+    {
       command: "bin.remove_media",
       group: "remove",
       order: 0,
@@ -486,6 +562,64 @@ export const BIN_FOLDER: MenuSurfaceDef = {
   ],
 };
 
+/** Why "Save as smart collection…" and "Update from current filters" cannot run now, if so. */
+const smartReason = (ctx: MenuContext) =>
+  ctx.keys["engine.live"] === false
+    ? ("contextMenu.reason.noEngine" as const)
+    : (currentSmartFilter().reason ?? ("contextMenu.reason.noEngine" as const));
+
+const isSmart = (ctx: MenuContext): boolean => {
+  const id = ctx.ids[0];
+  const kind =
+    id === undefined ? undefined : docStore.getState().project?.collections?.[id as never]?.kind;
+  return kind?.type === "smart";
+};
+
+/**
+ * A collection row of the bin's sidebar (WP-2F.06c): open, rename, update a smart collection from
+ * the bin's search and filters, delete. Collections are not selected, so the menu acts on the
+ * row it was opened on.
+ */
+export const BIN_COLLECTION: MenuSurfaceDef = {
+  id: "bin.collection",
+  name: (target) => ({ key: "contextMenu.name.binCollection", vars: { name: target.name ?? "" } }),
+  groups: ["open", "organize", "remove"],
+  rows: [
+    {
+      command: "bin.open_collection",
+      group: "open",
+      order: 0,
+      args: (ctx) => ({ collection: ctx.ids[0] }),
+    },
+    {
+      command: "bin.rename_collection",
+      group: "organize",
+      order: 0,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: (ctx) => ({ collection: ctx.ids[0] }),
+    },
+    {
+      command: "bin.update_collection_filter",
+      group: "organize",
+      order: 1,
+      visibleIf: isSmart,
+      when: "engine.live",
+      enabledIf: () => currentSmartFilter().filter !== null,
+      reason: smartReason,
+      args: (ctx) => ({ collection: ctx.ids[0] }),
+    },
+    {
+      command: "bin.delete_collection",
+      group: "remove",
+      order: 0,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: (ctx) => ({ collection: ctx.ids[0] }),
+    },
+  ],
+};
+
 const SORT_LABEL: Readonly<Record<string, LabelSpec>> = {
   "imported-desc": { key: "mediaBin.sort.importedDesc" },
   "imported-asc": { key: "mediaBin.sort.importedAsc" },
@@ -526,7 +660,7 @@ const layoutRow = (layout: "grid" | "list", order: number): MenuRow => ({
 export const BIN_BACKGROUND: MenuSurfaceDef = {
   id: "bin.background",
   name: () => ({ key: "contextMenu.name.binBackground" }),
-  groups: ["add", "select", "view"],
+  groups: ["add", "collections", "select", "view"],
   selection: mediaSelection,
   rows: [
     {
@@ -555,6 +689,23 @@ export const BIN_BACKGROUND: MenuSurfaceDef = {
       command: "bin.import_slideshow",
       group: "add",
       order: 3,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+    },
+    {
+      command: "bin.new_collection",
+      group: "collections",
+      order: 0,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: () => ({}),
+    },
+    {
+      // While a search or a filter is on: it becomes a collection that stays up to date.
+      command: "bin.save_smart_collection",
+      group: "collections",
+      order: 1,
+      visibleIf: () => currentSmartFilter().filter !== null,
       when: "engine.live",
       reason: "contextMenu.reason.noEngine",
     },
