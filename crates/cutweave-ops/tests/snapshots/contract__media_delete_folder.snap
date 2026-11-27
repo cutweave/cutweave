@@ -47,7 +47,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "folder",
         "contents"
       ],
-      "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses, and moves the used assets to the deleted folder's parent. Timelines and files on disk\nnever change; one undo restores everything.",
+      "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses (taking them off every manual collection), and moves the used assets to the deleted\nfolder's parent. Timelines and files on disk never change; one undo restores everything.",
       "title": "MediaDeleteFolder"
     },
     "output_schema": {
@@ -175,7 +175,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "folder",
       "contents"
     ],
-    "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses, and moves the used assets to the deleted folder's parent. Timelines and files on disk\nnever change; one undo restores everything.",
+    "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses (taking them off every manual collection), and moves the used assets to the deleted\nfolder's parent. Timelines and files on disk never change; one undo restores everything.",
     "title": "MediaDeleteFolder"
   },
   "output": {

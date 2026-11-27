@@ -1,0 +1,140 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.add_to_collection",
+    "summary": "Add media assets to a manual collection (idempotent)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection (manual)."
+        },
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets to add (at least one, no repeats)."
+        }
+      },
+      "required": [
+        "collection",
+        "media"
+      ],
+      "description": "Adds assets to the end of a manual collection, in the order given. An asset already on it\nstays where it is, so the call can be repeated. A collection holds at most 10,000 members.\nFails with `Invalid` for a smart collection, whose members come from its filter.",
+      "title": "MediaAddToCollection"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection."
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets that joined it, in order (those already on it are left out)."
+        },
+        "members": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many members it has now."
+        }
+      },
+      "required": [
+        "collection_id",
+        "added",
+        "members"
+      ],
+      "description": "Result of `media.add_to_collection`.",
+      "title": "MediaAddedToCollection"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection (manual)."
+      },
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets to add (at least one, no repeats)."
+      }
+    },
+    "required": [
+      "collection",
+      "media"
+    ],
+    "description": "Adds assets to the end of a manual collection, in the order given. An asset already on it\nstays where it is, so the call can be repeated. A collection holds at most 10,000 members.\nFails with `Invalid` for a smart collection, whose members come from its filter.",
+    "title": "MediaAddToCollection"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection_id": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection."
+      },
+      "added": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets that joined it, in order (those already on it are left out)."
+      },
+      "members": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "How many members it has now."
+      }
+    },
+    "required": [
+      "collection_id",
+      "added",
+      "members"
+    ],
+    "description": "Result of `media.add_to_collection`.",
+    "title": "MediaAddedToCollection"
+  }
+}

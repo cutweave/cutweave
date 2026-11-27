@@ -190,6 +190,7 @@ pub struct MediaFilter {
     pub tags: Option<Vec<String>>,
     /// Rated at least this (1-5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 1, max = 5))]
     pub min_rating: Option<u8>,
     /// On this collection.
     #[serde(default, skip_serializing_if = "Option::is_none")]

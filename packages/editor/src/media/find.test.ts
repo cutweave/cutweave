@@ -25,12 +25,16 @@ interface FixtureAsset {
   streams: number;
   name: string | null;
   folder: string | null;
+  tags: string[];
+  rating: number | null;
+  note: string | null;
 }
 
 interface FixtureDocument {
   name: string;
   media: FixtureAsset[];
   folders: { id: string; name: string; parent: string | null }[];
+  collections: { id: string; name: string; kind: unknown }[];
   sequences: string[][];
 }
 
@@ -65,6 +69,10 @@ function projectOf(doc: FixtureDocument): Project {
         path_rel: a.path_rel,
         name: a.name,
         folder: a.folder,
+        // The file leaves these out while empty; the reader must cope with both.
+        ...(a.tags.length > 0 ? { tags: a.tags } : {}),
+        ...(a.rating !== null ? { rating: a.rating } : {}),
+        ...(a.note !== null ? { note: a.note } : {}),
         probe: {
           streams: Array.from({ length: a.streams }, (_, index) => ({
             index,
@@ -90,14 +98,24 @@ function projectOf(doc: FixtureDocument): Project {
     ]),
   );
   const folders = Object.fromEntries(doc.folders.map((f) => [f.id, f]));
-  return { media, folders, sequences } as unknown as Project;
+  const collections = Object.fromEntries(doc.collections.map((c) => [c.id, c]));
+  return {
+    media,
+    folders,
+    sequences,
+    ...(doc.collections.length > 0 ? { collections } : {}),
+  } as unknown as Project;
 }
 
 const projects = new Map(fixture.documents.map((d) => [d.name, projectOf(d)]));
 
 describe("the media predicate against the Rust fixture", () => {
-  it("has at least 40 cases, with paging under every sort", () => {
-    expect(fixture.cases.length).toBeGreaterThanOrEqual(40);
+  it("has at least 80 cases, with paging under every sort and every part of the filter", () => {
+    expect(fixture.cases.length).toBeGreaterThanOrEqual(80);
+    for (const part of ["tags", "min_rating", "collection"] as const) {
+      const used = fixture.cases.filter((c) => (c.filter?.[part] ?? null) !== null);
+      expect(used.length).toBeGreaterThanOrEqual(5);
+    }
     const paged = fixture.cases.filter((c) => c.pages !== undefined);
     for (const by of ["imported", "name", "duration", "kind"]) {
       expect(paged.some((c) => c.sort?.by === by)).toBe(true);
@@ -112,7 +130,7 @@ describe("the media predicate against the Rust fixture", () => {
     const project = projects.get(c.document) as Project;
     const cards = selectMediaCards(project);
     const usage = selectMediaUsage(project);
-    const found = findMedia(cards, usage, c.filter, c.sort, project.folders);
+    const found = findMedia(cards, usage, c.filter, c.sort, project.folders, project.collections);
     expect(found.cards.map((card) => card.id)).toEqual(c.ids);
     expect(found.cards.length).toBe(c.matched);
     expect(found.total).toBe(cards.length);
@@ -213,5 +231,57 @@ describe("the media predicate", () => {
     expect(foldText("ÉCLAIR Ñandú")).toBe("eclair nandu");
     expect(termsOf("  a\tB\nc  ")).toEqual(["a", "b", "c"]);
     expect(findIds(cards, usage, { text: "zzz" })).toEqual([]);
+  });
+});
+
+describe("tags, ratings, notes and collections (ADR-0036)", () => {
+  const project = projects.get("tagged") as Project;
+  const cards = selectMediaCards(project);
+  const usage = selectMediaUsage(project);
+  const names = (filter: MediaFilter | null) =>
+    findMedia(cards, usage, filter, null, project.folders, project.collections).cards.map(
+      (c) => c.name,
+    );
+  const collection = (name: string) =>
+    Object.values(project.collections ?? {}).find((c) => c?.name === name)?.id ?? null;
+
+  it("reads tags, rating and note onto the card, with defaults for assets without them", () => {
+    expect(cards[0]).toMatchObject({ tags: ["Café", "interview"], rating: 5 });
+    expect(cards[0]?.note).toContain("Naïve");
+    expect(cards[7]).toMatchObject({ tags: [], rating: null, note: null });
+  });
+
+  it("wants every tag, whole, ignoring case and accents", () => {
+    expect(names({ tags: ["CAFE"] })).toEqual(["A001.mp4"]);
+    expect(names({ tags: ["interview", "Wide"] })).toEqual(["A003.mp4"]);
+    expect(names({ tags: ["inter"] })).toEqual([]);
+  });
+
+  it("finds a term in the name, a tag or the note", () => {
+    expect(names({ text: "eclair" })).toEqual(["A004.mp4"]);
+    expect(names({ text: "cafe" })).toEqual(["A001.mp4", "B001 cafe.mp4"]);
+  });
+
+  it("lists a manual collection without the member that is gone, and a smart one live", () => {
+    expect(names({ collection: collection("Selects") })).toEqual([
+      "A001.mp4",
+      "B001 cafe.mp4",
+      "A005.mp4",
+    ]);
+    expect(names({ collection: collection("Unused long interviews") })).toEqual([
+      "A001.mp4",
+      "A004.mp4",
+      "A005.mp4",
+    ]);
+    expect(names({ collection: collection("Gone folder") })).toEqual([]);
+    // A collection the project does not have: nothing (the engine answers not_found).
+    expect(names({ collection: "col_00000000000000000000000000000000" as never })).toEqual([]);
+  });
+
+  it("counts tags and a rating as filters, and a collection as a place", () => {
+    expect(filterCount({ tags: ["a", "b"], min_rating: 3 })).toBe(2);
+    expect(filterCount({ tags: [] })).toBe(0);
+    expect(isEmptyFilter({ collection: collection("Selects") })).toBe(false);
+    expect(isEmptyFilter({ tags: [] })).toBe(true);
   });
 });

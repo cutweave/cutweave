@@ -28,7 +28,9 @@ pub const META_REQUEST_ID: &str = "io.cutweave/request_id";
 pub const META_EXPECTED_REV: &str = "io.cutweave/expected_rev";
 
 /// Output fields carrying text from outside the user and the agent, by registry name and JSON
-/// Pointer (`*` matches any array index): media probing and analysis messages. Transcripts and
+/// Pointer (`*` matches any array index): media probing and analysis messages, and the text
+/// people attach to media (tags, notes, collection names and the words of a saved filter,
+/// ADR-0036), which may have been typed by someone other than the agent's user. Transcripts and
 /// media metadata join this table with the commands that return them.
 pub const UNTRUSTED_FIELDS: &[(&str, &str)] = &[
     ("media.import", "/failed/*/error"),
@@ -40,6 +42,14 @@ pub const UNTRUSTED_FIELDS: &[(&str, &str)] = &[
     ("job.cancel", "/progress/message"),
     ("job.list", "/jobs/*/error"),
     ("job.list", "/jobs/*/progress/message"),
+    ("media.list", "/media/*/tags/*"),
+    ("media.list", "/media/*/note"),
+    ("media.list_tags", "/tags/*/tag"),
+    ("media.list_collections", "/collections/*/name"),
+    ("media.list_collections", "/collections/*/filter/text"),
+    ("media.list_collections", "/collections/*/filter/tags/*"),
+    ("media.create_collection", "/name"),
+    ("media.rename_collection", "/name"),
 ];
 
 /// Output fields the MCP layer moves out of `structuredContent` into a content block, by

@@ -1,0 +1,112 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.set_note",
+    "summary": "Set or clear the note of a media asset",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The asset."
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The note; absent, null or blank: no note.",
+          "default": null
+        }
+      },
+      "required": [
+        "media"
+      ],
+      "description": "Sets the note of a media asset: plain text of at most 2,000 characters (line breaks and\ntabs allowed, other control characters not; space around it is trimmed). Without `note`, or\nwith a blank one, the note is removed.",
+      "title": "MediaSetNote"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The asset."
+        },
+        "has_note": {
+          "type": "boolean",
+          "description": "Whether it has a note now."
+        }
+      },
+      "required": [
+        "media_id",
+        "has_note"
+      ],
+      "description": "Result of `media.set_note`.",
+      "title": "MediaNoteSet"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media": {
+        "type": "string",
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The asset."
+      },
+      "note": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The note; absent, null or blank: no note.",
+        "default": null
+      }
+    },
+    "required": [
+      "media"
+    ],
+    "description": "Sets the note of a media asset: plain text of at most 2,000 characters (line breaks and\ntabs allowed, other control characters not; space around it is trimmed). Without `note`, or\nwith a blank one, the note is removed.",
+    "title": "MediaSetNote"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media_id": {
+        "type": "string",
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The asset."
+      },
+      "has_note": {
+        "type": "boolean",
+        "description": "Whether it has a note now."
+      }
+    },
+    "required": [
+      "media_id",
+      "has_note"
+    ],
+    "description": "Result of `media.set_note`.",
+    "title": "MediaNoteSet"
+  }
+}

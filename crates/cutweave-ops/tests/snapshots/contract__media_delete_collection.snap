@@ -1,0 +1,86 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.delete_collection",
+    "summary": "Delete a collection of media (the assets stay)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection."
+        }
+      },
+      "required": [
+        "collection"
+      ],
+      "description": "Deletes a collection. Its assets stay in the project, in their folders and on their\ntimelines; only the list goes.",
+      "title": "MediaDeleteCollection"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The deleted collection."
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "description": "Result of `media.delete_collection`.",
+      "title": "CollectionDeleted"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection."
+      }
+    },
+    "required": [
+      "collection"
+    ],
+    "description": "Deletes a collection. Its assets stay in the project, in their folders and on their\ntimelines; only the list goes.",
+    "title": "MediaDeleteCollection"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection_id": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The deleted collection."
+      }
+    },
+    "required": [
+      "collection_id"
+    ],
+    "description": "Result of `media.delete_collection`.",
+    "title": "CollectionDeleted"
+  }
+}

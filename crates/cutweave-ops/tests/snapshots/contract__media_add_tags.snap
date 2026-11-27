@@ -1,0 +1,118 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.add_tags",
+    "summary": "Add tags to media assets (idempotent)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets (1..=256, no repeats)."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The tags to add (1..=16)."
+        }
+      },
+      "required": [
+        "media",
+        "tags"
+      ],
+      "description": "Adds tags to media assets. A tag is 1 to 64 characters without commas or control characters\n(trimmed); two tags are the same when they are equal ignoring case and accents, and an\nasset that already has a tag keeps its spelling. An asset holds at most 64 tags. Adding a\ntag an asset already has changes nothing, so the call can be repeated.",
+      "title": "MediaAddTags"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets that changed (those that already were as asked are left out)."
+        }
+      },
+      "required": [
+        "changed"
+      ],
+      "description": "Result of the tag and rating commands.",
+      "title": "MediaTagged"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets (1..=256, no repeats)."
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The tags to add (1..=16)."
+      }
+    },
+    "required": [
+      "media",
+      "tags"
+    ],
+    "description": "Adds tags to media assets. A tag is 1 to 64 characters without commas or control characters\n(trimmed); two tags are the same when they are equal ignoring case and accents, and an\nasset that already has a tag keeps its spelling. An asset holds at most 64 tags. Adding a\ntag an asset already has changes nothing, so the call can be repeated.",
+    "title": "MediaAddTags"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets that changed (those that already were as asked are left out)."
+      }
+    },
+    "required": [
+      "changed"
+    ],
+    "description": "Result of the tag and rating commands.",
+    "title": "MediaTagged"
+  }
+}

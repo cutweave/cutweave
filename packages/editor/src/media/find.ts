@@ -4,10 +4,12 @@
 // (`crates/cutweave-ops/src/media/find.rs`) is the reference; `find.test.ts` holds this one to the
 // shared fixture `crates/cutweave-ops/tests/fixtures/media-find.json`.
 //
-// Text: the name is the display name (ADR-0020), else the file name (`MediaCard.name`); terms split on space, tab, CR and LF; every term
-// must occur, ignoring case and accents. Durations are flicks, bounds inclusive; stills have none
-// and never match a bound. Sorts are total (ties fall back to the ID) and `desc` is the exact
-// reverse of `asc`.
+// Text: the name is the display name (ADR-0020), else the file name (`MediaCard.name`); terms split
+// on space, tab, CR and LF; every term must occur in the name, a tag or the note, ignoring case and
+// accents. Durations are flicks, bounds inclusive; stills have none and never match a bound. Tags
+// compare whole, ignoring case and accents; `collection` keeps the members of a manual or smart
+// collection (ADR-0036). Sorts are total (ties fall back to the ID) and `desc` is the exact reverse
+// of `asc`.
 import type { MediaFilter, MediaId, MediaSort, MediaSortBy } from "@cutweave/protocol";
 import type { MediaCard } from "./cards.ts";
 import { type FolderParents, folderScope } from "./folderScope.ts";
@@ -62,6 +64,10 @@ const KIND_RANK: Record<MediaCard["kind"], number> = {
 interface Entry {
   readonly card: MediaCard;
   readonly name: string;
+  /** The tags as matching sees them (folded). */
+  readonly tags: readonly string[];
+  /** The folded note, filled in on first use (`null`: no note). */
+  note: string | null | undefined;
 }
 
 interface Index {
@@ -71,17 +77,37 @@ interface Index {
 }
 
 const indexes = new WeakMap<readonly MediaCard[], Index>();
+const NO_TAGS: readonly string[] = [];
 
 function indexOf(cards: readonly MediaCard[]): Index {
   let index = indexes.get(cards);
   if (index === undefined) {
     index = {
-      entries: cards.map((card) => ({ card, name: foldText(card.name) })),
+      entries: cards.map((card) => ({
+        card,
+        name: foldText(card.name),
+        tags: card.tags.length === 0 ? NO_TAGS : card.tags.map(foldText),
+        note: card.note === null ? null : undefined,
+      })),
       orders: new Map(),
     };
     indexes.set(cards, index);
   }
   return index;
+}
+
+/** The folded note of an entry (`null`: none). */
+function noteOf(e: Entry): string | null {
+  if (e.note === undefined) e.note = foldText(e.card.note ?? "");
+  return e.note;
+}
+
+/** Whether `term` occurs in the name, a tag or the note. */
+function hasTerm(e: Entry, term: string): boolean {
+  if (e.name.includes(term)) return true;
+  for (const tag of e.tags) if (tag.includes(term)) return true;
+  const note = noteOf(e);
+  return note?.includes(term) ?? false;
 }
 
 function compareEntries(by: MediaSortBy, a: Entry, b: Entry): number {
@@ -131,13 +157,14 @@ export function isEmptyFilter(filter: MediaFilter | null | undefined): boolean {
     filterCount(filter) === 0 &&
     termsOf(filter?.text).length === 0 &&
     (filter?.folder ?? null) === null &&
+    (filter?.collection ?? null) === null &&
     filter?.recursive !== false
   );
 }
 
 /**
- * Number of active filters: kinds, a duration bound, use and problems (the text is the search
- * field, not a filter; the folder is where the bin is, shown by its breadcrumb).
+ * Number of active filters: kinds, a duration bound, use, problems, tags and a rating (the text is
+ * the search field, not a filter; the folder and the collection are where the bin is).
  */
 export function filterCount(filter: MediaFilter | null | undefined): number {
   if (filter === undefined || filter === null) return 0;
@@ -146,47 +173,90 @@ export function filterCount(filter: MediaFilter | null | undefined): number {
     (filter.min_duration !== undefined && filter.min_duration !== null ? 1 : 0) +
     (filter.max_duration !== undefined && filter.max_duration !== null ? 1 : 0) +
     (filter.used !== undefined && filter.used !== null ? 1 : 0) +
-    (filter.problems === true ? 1 : 0)
+    (filter.problems === true ? 1 : 0) +
+    ((filter.tags?.length ?? 0) > 0 ? 1 : 0) +
+    (filter.min_rating !== undefined && filter.min_rating !== null ? 1 : 0)
   );
 }
 
 /**
- * The assets that pass `filter`, ordered by `sort`. `usage` says which assets sit on a timeline
- * (`selectMediaUsage`). The result is cached per card list for sorting, so repeating a search with
- * a longer text only re-filters.
+ * What the collection rules need of a collection (ADR-0036): its stored members or its filter. A
+ * project's `collections` fits.
  */
-export function findMedia(
-  cards: readonly MediaCard[],
-  usage: ReadonlyMap<string, number>,
-  filter?: MediaFilter | null,
-  sort?: MediaSort | null,
-  folders?: FolderParents | null,
-): MediaFound {
-  const by = sort?.by ?? "imported";
-  const desc = sort?.order === "desc";
-  const index = indexOf(cards);
-  const order = ascending(index, by);
+export type CollectionKinds = Readonly<
+  Record<
+    string,
+    | {
+        readonly kind:
+          | { readonly type: "manual"; readonly media?: readonly string[] }
+          | { readonly type: "smart"; readonly filter: MediaFilter };
+      }
+    | undefined
+  >
+>;
 
+type Pass = (e: Entry) => boolean;
+const NOTHING: Pass = () => false;
+
+/**
+ * The predicate of `filter`, or `null` when it lets everything through. The engine's `Matcher`
+ * (cutweave-ops, find.rs) in TypeScript. A collection that does not exist has no members here (the
+ * engine answers `not_found`); a smart collection's own filter may not name a collection, and one
+ * whose folder is gone has no members.
+ */
+function compile(
+  filter: MediaFilter | null | undefined,
+  usage: ReadonlyMap<string, number>,
+  folders: FolderParents,
+  collections: CollectionKinds,
+  nested: boolean,
+): Pass | null {
   const terms = termsOf(filter?.text);
   const kinds = filter?.kinds ?? [];
   const min = filter?.min_duration ?? null;
   const max = filter?.max_duration ?? null;
   const used = filter?.used ?? null;
   const problems = filter?.problems === true;
+  const tags = (filter?.tags ?? []).map((t) => foldText(t.trim()));
+  const minRating = filter?.min_rating ?? null;
+  const folder = filter?.folder ?? null;
+  // A smart collection scoped to a folder that no longer exists matches nothing.
+  if (nested && folder !== null && folders[folder] === undefined) return NOTHING;
   // `folder` and `recursive`: the folders whose assets pass (`null` inside: the top level).
-  const scope = folderScope(folders ?? {}, filter);
+  const scope = folderScope(folders, filter);
+
+  let members: ReadonlySet<string> | null = null;
+  let smart: Pass | null = null;
+  const collection = filter?.collection ?? null;
+  if (collection !== null) {
+    const kind = nested ? undefined : collections[collection]?.kind;
+    if (kind === undefined) return NOTHING;
+    if (kind.type === "manual") {
+      members = new Set(kind.media ?? []);
+    } else {
+      if ((kind.filter.collection ?? null) !== null) return NOTHING;
+      smart = compile(kind.filter, usage, folders, collections, true);
+    }
+  }
+
   const everything =
     scope === null &&
+    members === null &&
+    smart === null &&
     terms.length === 0 &&
     kinds.length === 0 &&
     min === null &&
     max === null &&
     used === null &&
-    !problems;
+    !problems &&
+    tags.length === 0 &&
+    minRating === null;
+  if (everything) return null;
 
-  const pass = (e: Entry): boolean => {
+  return (e: Entry): boolean => {
     const card = e.card;
     if (scope !== null && !scope.has(card.folder)) return false;
+    if (members !== null && !members.has(card.id)) return false;
     if (kinds.length > 0 && !kinds.includes(card.kind)) return false;
     if (min !== null || max !== null) {
       const d = card.duration;
@@ -194,20 +264,43 @@ export function findMedia(
       if (min !== null && d < min) return false;
       if (max !== null && d > max) return false;
     }
+    if (minRating !== null && (card.rating === null || card.rating < minRating)) return false;
     if (used !== null && usage.has(card.id) !== used) return false;
     if (problems && !card.broken) return false;
-    for (const term of terms) if (!e.name.includes(term)) return false;
-    return true;
+    for (const tag of tags) if (!e.tags.includes(tag)) return false;
+    for (const term of terms) if (!hasTerm(e, term)) return false;
+    return smart === null || smart(e);
   };
+}
+
+/**
+ * The assets that pass `filter`, ordered by `sort`. `usage` says which assets sit on a timeline
+ * (`selectMediaUsage`); `folders` and `collections` are the project's, read when the filter names a
+ * folder or a collection. The result is cached per card list for sorting, so repeating a search
+ * with a longer text only re-filters.
+ */
+export function findMedia(
+  cards: readonly MediaCard[],
+  usage: ReadonlyMap<string, number>,
+  filter?: MediaFilter | null,
+  sort?: MediaSort | null,
+  folders?: FolderParents | null,
+  collections?: CollectionKinds | null,
+): MediaFound {
+  const by = sort?.by ?? "imported";
+  const desc = sort?.order === "desc";
+  const index = indexOf(cards);
+  const order = ascending(index, by);
+  const pass = compile(filter, usage, folders ?? {}, collections ?? {}, false);
 
   const out: MediaCard[] = [];
   if (desc) {
     for (let i = order.length - 1; i >= 0; i--) {
       const e = order[i] as Entry;
-      if (everything || pass(e)) out.push(e.card);
+      if (pass === null || pass(e)) out.push(e.card);
     }
   } else {
-    for (const e of order) if (everything || pass(e)) out.push(e.card);
+    for (const e of order) if (pass === null || pass(e)) out.push(e.card);
   }
   return { cards: out, total: cards.length };
 }
@@ -219,6 +312,7 @@ export function findIds(
   filter?: MediaFilter | null,
   sort?: MediaSort | null,
   folders?: FolderParents | null,
+  collections?: CollectionKinds | null,
 ): MediaId[] {
-  return findMedia(cards, usage, filter, sort, folders).cards.map((c) => c.id);
+  return findMedia(cards, usage, filter, sort, folders, collections).cards.map((c) => c.id);
 }

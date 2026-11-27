@@ -1,0 +1,102 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.rename_tag",
+    "summary": "Rename a tag on every media asset that has it",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "The tag to rename."
+        },
+        "to": {
+          "type": "string",
+          "description": "Its new name: 1 to 64 characters without commas or control characters (trimmed)."
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "description": "Renames a tag on every asset that has it, as one undo step. `from` is matched ignoring case\nand accents; afterwards each of those assets carries `to` exactly as given (an asset that\nhad both keeps one). Renaming to another spelling of the same tag (`interview` to\n`Interview`) respells it. When no asset has `from`, nothing changes.",
+      "title": "MediaRenameTag"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets that changed (those that already were as asked are left out)."
+        }
+      },
+      "required": [
+        "changed"
+      ],
+      "description": "Result of the tag and rating commands.",
+      "title": "MediaTagged"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "from": {
+        "type": "string",
+        "description": "The tag to rename."
+      },
+      "to": {
+        "type": "string",
+        "description": "Its new name: 1 to 64 characters without commas or control characters (trimmed)."
+      }
+    },
+    "required": [
+      "from",
+      "to"
+    ],
+    "description": "Renames a tag on every asset that has it, as one undo step. `from` is matched ignoring case\nand accents; afterwards each of those assets carries `to` exactly as given (an asset that\nhad both keeps one). Renaming to another spelling of the same tag (`interview` to\n`Interview`) respells it. When no asset has `from`, nothing changes.",
+    "title": "MediaRenameTag"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets that changed (those that already were as asked are left out)."
+      }
+    },
+    "required": [
+      "changed"
+    ],
+    "description": "Result of the tag and rating commands.",
+    "title": "MediaTagged"
+  }
+}
