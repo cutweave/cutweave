@@ -125,7 +125,10 @@ fn image_needs_a_still_of_the_project_and_counts_as_a_use() {
         json!({"sequence": p.sequence, "kind": "image", "media": still}),
     );
     assert_eq!(out["format"]["background_fill"]["fit"], "cover");
-    assert_eq!(id::<MediaId>(&out["format"]["background_fill"]["media"]), still);
+    assert_eq!(
+        id::<MediaId>(&out["format"]["background_fill"]["media"]),
+        still
+    );
     assert!(used_media(&h.doc()).contains(&still));
     // The image stays when only the fit is given.
     h.ok(

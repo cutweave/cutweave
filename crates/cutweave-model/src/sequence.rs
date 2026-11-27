@@ -9,8 +9,8 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 use crate::{
-    Custom, Duration, Extra, FrameRate, InOut, Item, ItemId, MarkerId, Markers, MediaKind,
-    MediaId, SampleRate, SequenceId, Time, TrackId,
+    Custom, Duration, Extra, FrameRate, InOut, Item, ItemId, MarkerId, Markers, MediaId, MediaKind,
+    SampleRate, SequenceId, Time, TrackId,
 };
 
 /// The working color space of a sequence. Schema v1 has only Rec.709 SDR.

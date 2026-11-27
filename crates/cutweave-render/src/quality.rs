@@ -107,6 +107,9 @@ impl Quality {
 
     /// Marks every layer of `scene` as accepting a proxy (or not), so the
     /// [`FrameSource`](crate::FrameSource) can serve one.
+    ///
+    /// A blurred background reads its layer's frame, so it follows; a background image always
+    /// uses the original.
     pub fn apply(self, scene: &mut SceneDescription) {
         for layer in &mut scene.layers {
             layer.request.proxy = self.use_proxies;
@@ -616,6 +619,7 @@ mod tests {
             height: 36,
             frame_rate: FPS30,
             background: cutweave_model::Color::BLACK,
+            background_node: None,
             layers: vec![layer.clone(), layer],
             audio: Vec::new(),
         };

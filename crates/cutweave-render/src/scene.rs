@@ -23,8 +23,8 @@
 //!   directly; a `Node`-like enum arrives with text and compositions.
 
 use cutweave_model::{
-    Animatable, Color, ColorTags, Duration, Fade, FrameRate, ItemId, MediaId, SampleRate,
-    SequenceId, Time, TrackId, Vec2,
+    Animatable, BackgroundFit, Color, ColorTags, Duration, Fade, FrameRate, ItemId, MediaId,
+    SampleRate, SequenceId, Time, TrackId, Vec2,
 };
 use serde::Serialize;
 
@@ -43,12 +43,40 @@ pub struct SceneDescription {
     pub frame_rate: FrameRate,
     /// Canvas background (straight alpha, sRGB-encoded 8-bit as stored in the model).
     pub background: Color,
+    /// What fills the canvas over the colour, behind all layers (WP-2B.02); `None`: the colour
+    /// alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_node: Option<BackgroundNode>,
     /// Visible layers in compositing order: **first is the bottom**, last is drawn on top. The
     /// bottom-most video track comes first; the sequence's `track_order` (top to bottom) is
     /// walked in reverse.
     pub layers: Vec<Layer>,
     /// Audio clips sounding at `time`, in track order (top to bottom).
     pub audio: Vec<AudioActivation>,
+}
+
+/// The background fill of a scene (the rules are in [`crate::backdrop`]).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BackgroundNode {
+    /// A blurred copy of one layer's picture, scaled to cover the canvas.
+    Blur {
+        /// Index into [`SceneDescription::layers`] of the layer whose picture is blurred.
+        layer: usize,
+        /// The blur's standard deviation as a fraction of the canvas height.
+        radius: f64,
+        /// The share of the blurred picture's light taken away, `0..=1`.
+        dim: f64,
+    },
+    /// A still image placed over the colour.
+    Image {
+        /// The image to decode (always the original, never a proxy).
+        request: FrameRequest,
+        /// How the image is sized to the canvas.
+        fit: BackgroundFit,
+    },
+    /// A transparent canvas: the colour is not drawn.
+    Transparent,
 }
 
 /// One visible picture to composite.

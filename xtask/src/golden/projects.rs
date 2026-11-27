@@ -41,6 +41,15 @@ pub struct Source {
     pub graph: &'static str,
     /// Counter-clockwise display rotation in degrees (phone footage), stored as metadata.
     pub rotation: Option<i32>,
+    /// A still image (`<name>.png`, the graph's first frame) instead of a video.
+    pub still: bool,
+}
+
+impl Source {
+    /// The source's file name.
+    pub fn file(&self) -> String {
+        format!("{}.{}", self.name, if self.still { "png" } else { "mp4" })
+    }
 }
 
 /// BT.709 limited range, the tags of most sources.
@@ -59,17 +68,20 @@ pub const SOURCES: &[Source] = &[
         name: "bars",
         graph: bt709_tv!("smptehdbars=size=640x360:rate=30:duration=4"),
         rotation: None,
+        still: false,
     },
     Source {
         name: "testsrc",
         graph: bt709_tv!("testsrc2=size=640x360:rate=30:duration=4"),
         rotation: None,
+        still: false,
     },
     Source {
         // Landscape-coded, shown portrait: a display matrix of 90°, like phone footage.
         name: "phone",
         graph: bt709_tv!("testsrc2=size=640x360:rate=30:duration=4"),
         rotation: Some(90),
+        still: false,
     },
     Source {
         // The same bars tagged BT.601 (SMPTE 170M) limited range.
@@ -77,6 +89,7 @@ pub const SOURCES: &[Source] = &[
         graph: "smptebars=size=640x360:rate=30:duration=4,format=yuv420p,\
                 setparams=range=tv:colorspace=smpte170m:color_primaries=smpte170m:color_trc=smpte170m",
         rotation: None,
+        still: false,
     },
     Source {
         // The same samples tagged BT.709 full range.
@@ -84,6 +97,14 @@ pub const SOURCES: &[Source] = &[
         graph: "smptebars=size=640x360:rate=30:duration=4,format=yuv420p,\
                 setparams=range=pc:colorspace=bt709:color_primaries=bt709:color_trc=bt709",
         rotation: None,
+        still: false,
+    },
+    Source {
+        // A still for the image background (WP-2B.02): one RGB frame as a PNG.
+        name: "paper",
+        graph: "rgbtestsrc=size=480x480:rate=1:duration=1,format=rgb24",
+        rotation: None,
+        still: true,
     },
 ];
 
@@ -101,8 +122,9 @@ pub struct Golden {
 }
 
 /// The golden projects: the six of WP-1O.01, two of WP-2C.04 (flip with a display rotation;
-/// a keyframed screen-mode layer) and one of WP-2C.08 (a layout), 27 frames.
-pub const PROJECTS: [Golden; 9] = [
+/// a keyframed screen-mode layer), one of WP-2C.08 (a layout) and the four backgrounds of
+/// WP-2B.02 (a 16:9 clip on a 9:16 sequence), 39 frames.
+pub const PROJECTS: [Golden; 13] = [
     Golden {
         name: "bars_100",
         about: "one SMPTE HD colour-bars clip at 100% (fills the canvas)",
@@ -162,7 +184,35 @@ pub const PROJECTS: [Golden; 9] = [
         frames: [0, 60, 119],
         sources: &["bars"],
     },
+    Golden {
+        name: "background_color",
+        about: "the 16:9 test pattern on a 9:16 sequence over a plain colour background",
+        frames: [0, 45, 110],
+        sources: &["testsrc"],
+    },
+    Golden {
+        name: "background_blur",
+        about: "the same over a blurred, dimmed copy of the picture covering the canvas \
+                (sequence.set_background, kind blur: 5% of the height, a quarter dimmer)",
+        frames: [0, 45, 110],
+        sources: &["testsrc"],
+    },
+    Golden {
+        name: "background_image",
+        about: "the same over a square still image covering the canvas (kind image, fit cover)",
+        frames: [0, 45, 110],
+        sources: &["testsrc", "paper"],
+    },
+    Golden {
+        name: "background_transparent",
+        about: "the same over nothing (kind transparent): alpha 0 above and below the clip",
+        frames: [0, 45, 110],
+        sources: &["testsrc"],
+    },
 ];
+
+/// The canvas of the `background_*` projects: 9:16.
+pub const PORTRAIT: (u32, u32) = (360, 640);
 
 /// The negative test: `scaled_offset` one pixel to the right.
 pub const NEGATIVE: Golden = Golden {
@@ -232,13 +282,38 @@ pub fn generate_sources(dir: &Path) -> Result<(), String> {
     let version = ffmpeg_version();
     for s in SOURCES {
         let started = std::time::Instant::now();
-        let out = dir.join(format!("{}.mp4", s.name));
+        let out = dir.join(s.file());
         let stamp = dir.join(format!("{}.recipe", s.name));
         let recipe = format!("{}\nrotation {:?}\nffmpeg {version}\n", s.graph, s.rotation);
         if out.is_file() && std::fs::read_to_string(&stamp).is_ok_and(|r| r == recipe) {
             continue;
         }
         let _ = std::fs::remove_file(&stamp);
+        if s.still {
+            let out_arg = out.to_string_lossy().into_owned();
+            run_ffmpeg(&[
+                "-f",
+                "lavfi",
+                "-i",
+                s.graph,
+                "-frames:v",
+                "1",
+                "-threads",
+                "1",
+                "-fflags",
+                "+bitexact",
+                "-flags:v",
+                "+bitexact",
+                &out_arg,
+            ])?;
+            std::fs::write(&stamp, recipe).map_err(|e| format!("{}: {e}", stamp.display()))?;
+            println!(
+                "  source   {:<22} ({:.1} s)",
+                s.file(),
+                started.elapsed().as_secs_f64()
+            );
+            continue;
+        }
         let encoded = if s.rotation.is_some() {
             dir.join(format!("{}.unrotated.mp4", s.name))
         } else {
@@ -286,7 +361,7 @@ pub fn generate_sources(dir: &Path) -> Result<(), String> {
         std::fs::write(&stamp, recipe).map_err(|e| format!("{}: {e}", stamp.display()))?;
         println!(
             "  source   {:<22} ({:.1} s)",
-            format!("{}.mp4", s.name),
+            s.file(),
             started.elapsed().as_secs_f64()
         );
     }
@@ -324,7 +399,32 @@ fn timeline_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Value 
             "position": {"x": x / f64::from(WIDTH), "y": y / f64::from(HEIGHT)}
         }})
     };
+    // WP-2B.02: the 16:9 clip on a 9:16 canvas (resized while empty), then the background.
+    let portrait = json!({"cmd": "sequence.set_format", "args": {
+        "sequence": seq, "width": PORTRAIT.0, "height": PORTRAIT.1, "background": "#203060"
+    }});
+    let background = |args: Value| {
+        let mut args = args;
+        args["sequence"] = seq.clone();
+        json!({"cmd": "sequence.set_background", "args": args})
+    };
     match project.name {
+        "background_color" => json!([portrait, insert(v1.clone(), &media[0], at_0)]),
+        "background_blur" => json!([
+            portrait,
+            insert(v1.clone(), &media[0], at_0),
+            background(json!({"kind": "blur"})),
+        ]),
+        "background_image" => json!([
+            portrait,
+            insert(v1.clone(), &media[0], at_0),
+            background(json!({"kind": "image", "media": &media[1], "fit": "cover"})),
+        ]),
+        "background_transparent" => json!([
+            portrait,
+            insert(v1.clone(), &media[0], at_0),
+            background(json!({"kind": "transparent"})),
+        ]),
         "bars_100" | "rotated_phone" => json!([insert(v1.clone(), &media[0], at_0)]),
         "scaled_offset" => json!([
             insert(v1.clone(), &media[0], at_0),
@@ -594,10 +694,11 @@ fn build_one(
         .sources
         .iter()
         .map(|s| {
-            sources
-                .join(format!("{s}.mp4"))
-                .to_string_lossy()
-                .into_owned()
+            let file = SOURCES
+                .iter()
+                .find(|src| src.name == *s)
+                .map_or_else(|| format!("{s}.mp4"), Source::file);
+            sources.join(file).to_string_lossy().into_owned()
         })
         .collect();
     let imported = mcp.one("media.import", &json!({"paths": paths}))?;
@@ -633,14 +734,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nine_projects_and_twenty_seven_frames() {
-        assert_eq!(PROJECTS.len(), 9);
+    fn thirteen_projects_and_thirty_nine_frames() {
+        assert_eq!(PROJECTS.len(), 13);
         let frames: usize = PROJECTS.iter().map(|p| p.frames.len()).sum();
-        assert_eq!(frames, 27);
+        assert_eq!(frames, 39);
         let mut names: Vec<_> = PROJECTS.iter().map(|p| p.name).collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), 9);
+        assert_eq!(names.len(), 13);
     }
 
     #[test]

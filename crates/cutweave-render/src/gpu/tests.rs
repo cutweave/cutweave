@@ -126,6 +126,7 @@ pub(super) fn scene(w: u32, h: u32, background: Color, layers: Vec<Layer>) -> Sc
         height: h,
         frame_rate: FrameRate::FPS_24,
         background,
+        background_node: None,
         layers,
         audio: Vec::new(),
     }
