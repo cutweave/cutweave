@@ -90,25 +90,25 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | `editing.audio_fade` | Length of a fade added with one click | 0.5 s | App | Renderer | — | WP-2E.05 |
 | `editing.caption_lines` | New captions: characters per line and lines per caption | 32, 2 | App | Renderer | — | WP-3E.11 |
 | `editing.caption_style` | Caption style for new captions | Cutweave default style | App | Renderer | — | WP-3E.11 |
-| `editing.link_av` | Keep a clip's video and audio linked when inserted | On | App | Renderer | — | WP-2A.13 |
-| `editing.drop_mode` | Dropping media onto a clip (outside the main track): overwrite or insert | Overwrite | App | Renderer | — | WP-2A.13 |
-| `editing.nudge` | Nudge step for comma and period (Shift: ×10) | 1 frame | App | Renderer | — | WP-2A.13 |
-| `editing.undo_steps` | Undo steps kept per person or agent | 1,000 | App | Engine (UI-only) | Read | WP-2A.13 |
+| `editing.link_av` | Keep a clip's video and audio linked when inserted | On | App | Renderer (`timeline.insert`'s `link`) | — | WP-2A.13 |
+| `editing.drop_mode` | Dropping media onto a clip (outside the main track): overwrite or insert | Overwrite | App | Renderer (`timeline.insert`'s `mode`) | — | WP-2A.13 |
+| `editing.nudge` | Nudge step for comma and period (Shift: ×10), 1 to 100 frames | 1 frame | App | Renderer | — | WP-2A.13 |
+| `editing.undo_steps` | Undo steps kept per person or agent, 1 to 10,000; a lower number drops the oldest steps at once | 1,000 | App | Engine (UI-only: `edit.set_history_limit`) | Read (`project.info`: `history_limit`) | WP-2A.13 |
 
 ### Timeline
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
 | `timeline.snap` | Snapping on when a project opens | On | App | Renderer | — | WP-2A.13 |
-| `timeline.snap_targets` | Snap to playhead, clip edges, markers, beats | All on | App | Renderer (shared snapping) | — | WP-2A.13 |
-| `timeline.snap_distance` | Snap distance | 8 px | App | Renderer | — | WP-2A.13 |
+| `timeline.snap_targets` | Snap to playhead, clip edges, markers (with the sequence's in and out), beats (markers of kind `beat`) | All on | App | Renderer (shared snapping) | — | WP-2A.13 |
+| `timeline.snap_distance` | Snap distance, 2 to 32 px | 8 px | App | Renderer | — | WP-2A.13 |
 | `timeline.follow` | Follow the playhead while playing: page, smooth, off | Page | App | Renderer | — | WP-2A.13 |
-| `timeline.magnetic_main` | Main track is magnetic in new sequences | On | App, copied to the sequence | Renderer (sequence creation) | Read and change the sequence | WP-2A.13 |
+| `timeline.magnetic_main` | Main track is magnetic in new sequences. Stored, not applied yet: creating a sequence takes no such value ([ADR-0037](../adr/0037-magnetic-main-track-in-new-sequences.md), Proposed) | On | App, copied to the sequence | Renderer (sequence creation), once ADR-0037 is decided | Read and change the sequence (`track.set_magnetic`) | WP-2A.13 (the row), ADR-0037 (applying it) |
 | `timeline.thumbnails` | Video clip thumbnails: filmstrip, first frame, off | Filmstrip | App | Renderer | — | WP-2A.13 |
 | `timeline.waveforms` | Audio waveforms on clips | On | App | Renderer | — | WP-2A.13 |
-| `timeline.track_height` | Height of new tracks: small, medium, large | Medium | App | Renderer | — | WP-2A.13 |
+| `timeline.track_height` | Height of new tracks: small, medium, large (tracks made by dropping or moving a clip, by Enter in the bin and by the track header's Add track; not yet the context menu's Add track above and below; medium is the engine's default height) | Medium | App | Renderer (`track.set_height`, in the same undo step) | Read and change the track (`track.set_height`) | WP-2A.13 |
 | `timeline.wheel` | Mouse wheel scrolls (Ctrl/Cmd+wheel zooms) or zooms | Scrolls | App | Renderer | — | WP-2A.13 |
-| `timeline.time_display` | Show time as timecode, frames or seconds | Timecode | App | Renderer | — | WP-2A.13 |
+| `timeline.time_display` | Show time as timecode, frames or seconds (the ruler, the time under the preview and the Inspector's Start and Duration) | Timecode | App | Renderer | — | WP-2A.13 |
 | `timeline.drop_frame` | Drop-frame timecode at 29.97 and 59.94 fps | On | App | Renderer | — | WP-2A.13 |
 
 ### Playback

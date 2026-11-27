@@ -7,6 +7,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaultPreferences } from "@cutweave/preferences";
 import { RpcClient, RpcConnection, type SequenceId, type TrackId } from "@cutweave/protocol";
 import {
   type EngineHandle,
@@ -36,6 +37,7 @@ import { createViewStore } from "../state/viewStore.ts";
 import { translator } from "./errors.ts";
 import { TimelineHost } from "./host.ts";
 import { createLocksStore, LocksFeed } from "./locks.ts";
+import { type MachinePrefs, machinePrefs } from "./prefs.ts";
 import { quantile } from "./rttProbe.ts";
 
 const F = 705_600_000;
@@ -57,6 +59,12 @@ const stores = {
 const toasts = createToastStore();
 let host: TimelineHost;
 let view: TimelineView;
+/** Settings > Editing and Settings > Timeline as the host sees them (WP-2A.13). */
+const settings: { machine: MachinePrefs; linkAv: boolean; trackHeight: number | null } = {
+  machine: machinePrefs(defaultPreferences()),
+  linkAv: true,
+  trackHeight: null,
+};
 /** Longest synchronous handler run (pointer and key handlers, model updates), ms. */
 let longestHandlerMs = 0;
 
@@ -180,6 +188,9 @@ beforeAll(async () => {
     engine: stores.engine,
     toasts,
     t: translator(i18n.t.bind(i18n)),
+    prefs: () => settings.machine,
+    linkAv: () => settings.linkAv,
+    newTrackHeight: () => settings.trackHeight,
   });
   host.attach(view, null, () => ({ left: HEADER, right: WIDTH, top: RULER, bottom: HEIGHT }));
   host.start();
@@ -369,6 +380,10 @@ beforeEach(() => {
   stores.view.getState().setSnapping(true);
   if (host.ui.getState().tool !== "select") host.setTool("select");
   if (!host.ui.getState().linkedSelection) host.toggleLinkedSelection();
+  settings.machine = machinePrefs(defaultPreferences());
+  settings.linkAv = true;
+  settings.trackHeight = null;
+  host.syncPrefs();
 });
 
 describe("timeline interactions against the real engine", () => {
@@ -835,6 +850,182 @@ describe("timeline interactions against the real engine", () => {
     for (const m of model().markers ?? []) {
       await rpc.call("timeline.remove_marker", { marker: m.id as never });
     }
+  });
+
+  // ---- WP-2A.13: the Editing and Timeline preferences ---------------------------------------
+
+  const trackHeightOf = (id: string) => model().tracks.find((t) => t.id === id)?.height ?? null;
+
+  live(
+    "Height of new tracks: a drag that makes a track gives it that height, as one undo step",
+    async () => {
+      const s = await seed();
+      await rpc.call("timeline.insert", {
+        sequence: s.sequence,
+        track: s.video,
+        media: s.media as never,
+        at: "7s",
+        duration: "2s",
+        link: false,
+      });
+      await until(() => model().items.length === 3 && settledDoc());
+      settings.trackHeight = 72;
+      const before = await historyLength();
+      const mid = xOf(sec(3));
+
+      await drag(mid, mid + 300, laneOf(s.video)); // lands on a new track
+      await until(() => itemById(s.clip)?.start === sec(4) && settledDoc());
+      const made = itemById(s.clip)?.trackId as string;
+      expect(made).not.toBe(s.video);
+      await until(() => trackHeightOf(made) === 72);
+      // The tracks that were there keep the default height.
+      expect(trackHeightOf(s.video)).toBeNull();
+      expect(await openTransactions()).toBe(0);
+      expect(await historyLength()).toBe(before + 1);
+      expect(await lastLabel()).toBe("Move clip");
+
+      // One undo takes the clip back and the new track away with its height.
+      await rpc.call("edit.undo", {});
+      await until(() => itemById(s.clip)?.start === sec(1) && settledDoc());
+      expect(model().tracks.some((t) => t.id === made)).toBe(false);
+      expect(toasts.getState().notices).toEqual([]);
+    },
+  );
+
+  live(
+    "Height of new tracks: a dropped card that makes a track, and Add track, get it too",
+    async () => {
+      const s = await seed();
+      settings.trackHeight = 72;
+      const before = await historyLength();
+      // Onto the clip's own time, above the lanes' free space: a new track (drop mode overwrite
+      // is for a drop onto a clip; here the card is dropped where the 10 s do not fit).
+      settings.machine = { ...settings.machine, dropOnClip: "overwrite" };
+      host.syncPrefs();
+      const card = { id: s.media, kind: "video" as const, duration: sec(10) };
+      const x = xOf(sec(0));
+      expect(host.mediaOver(x, laneOf(s.video), card)).toBe(true);
+      host.mediaDrop(x, laneOf(s.video), card);
+      await host.settled();
+      await until(() => model().items.length > 2 && settledDoc());
+      const fresh = model().tracks.filter((t) => t.id !== s.video && t.id !== s.audio);
+      for (const t of fresh) await until(() => trackHeightOf(t.id) === 72);
+      expect(await historyLength()).toBe(before + 1);
+
+      const tracks = model().tracks.length;
+      const steps = await historyLength();
+      host.addTrack("video");
+      await host.settled();
+      await until(() => model().tracks.length === tracks + 1 && settledDoc());
+      const added = model().tracks.find(
+        (t) => t.id !== s.video && t.id !== s.audio && !fresh.some((f) => f.id === t.id),
+      );
+      await until(() => trackHeightOf(added?.id ?? "") === 72);
+      expect(await historyLength()).toBe(steps + 1);
+      expect(await lastLabel()).toBe("track.add");
+      await rpc.call("edit.undo", {});
+      await until(() => model().tracks.length === tracks && settledDoc());
+
+      // Medium (the default) sends nothing: the plain command, the default height.
+      settings.trackHeight = null;
+      host.addTrack("video");
+      await host.settled();
+      await until(() => model().tracks.length === tracks + 1 && settledDoc());
+      expect(model().tracks.every((t) => fresh.some((f) => f.id === t.id) || t.height == null)).toBe(
+        true,
+      );
+      expect(toasts.getState().notices).toEqual([]);
+    },
+  );
+
+  live("Keep video and audio linked off: a dropped video comes without its sound", async () => {
+    const s = await clear();
+    settings.linkAv = false;
+    const card = { id: s.media, kind: "video" as const, duration: sec(10) };
+    expect(host.mediaOver(xOf(sec(1)), laneOf(s.video), card)).toBe(true);
+    host.mediaDrop(xOf(sec(1)), laneOf(s.video), card);
+    await host.settled();
+    await until(() => model().items.length === 1 && settledDoc());
+    expect(onTrack(s.audio)).toEqual([]);
+    expect(onTrack(s.video)[0]?.linkedGroup).toBeUndefined();
+
+    // On again: the sound comes along, linked.
+    settings.linkAv = true;
+    await clear();
+    expect(host.mediaOver(xOf(sec(1)), laneOf(s.video), card)).toBe(true);
+    host.mediaDrop(xOf(sec(1)), laneOf(s.video), card);
+    await host.settled();
+    await until(() => model().items.length === 2 && settledDoc());
+    expect(onTrack(s.audio)).toHaveLength(1);
+  });
+
+  live("Dropping media onto a clip: overwrite replaces what it covers, insert pushes it later", async () => {
+    const card = (media: string) => ({ id: media, kind: "video" as const, duration: sec(10) });
+    for (const mode of ["overwrite", "insert"] as const) {
+      const [a] = await clips([1, 4]);
+      const p = project as NonNullable<typeof project>;
+      settings.linkAv = false;
+      settings.machine = { ...settings.machine, dropOnClip: mode };
+      host.syncPrefs();
+      const x = xOf(sec(2));
+      expect(host.mediaOver(x, laneOf(p.video), card(p.media))).toBe(true);
+      expect(host.ui.getState().preview?.mode).toBe(mode);
+      host.mediaDrop(x, laneOf(p.video), card(p.media));
+      await host.settled();
+      await until(() => model().items.length >= 2 && settledDoc());
+      const first = itemById(a as string);
+      if (mode === "overwrite") {
+        // The dropped clip took the place of the rest of the old one.
+        expect(first).toMatchObject({ start: sec(1), duration: sec(1) });
+        expect(onTrack(p.video).some((i) => i.start > sec(11))).toBe(false);
+      } else {
+        // The old clip was split and its second part moved after the dropped one.
+        expect(onTrack(p.video).some((i) => i.start >= sec(12))).toBe(true);
+      }
+      expect(model().tracks).toHaveLength(2);
+    }
+  });
+
+  live("Nudge step: comma and period move the selection that many frames", async () => {
+    const [a] = await clips([2, 2]);
+    const frame = Math.round((F * model().fps.den) / model().fps.num);
+    stores.view.getState().setSelection([{ kind: "item", id: a as never }]);
+    settings.machine = { ...settings.machine, nudgeFrames: 5 };
+    host.syncPrefs();
+    expect(key(".")).toBe(true);
+    await host.settled();
+    await until(() => itemById(a as string)?.start === sec(2) + 5 * frame && settledDoc());
+    expect(key("<", undefined, true)).toBe(true); // Shift: ten times the step
+    await host.settled();
+    await until(() => itemById(a as string)?.start === sec(2) - 45 * frame && settledDoc());
+  });
+
+  live("Snap to and Snap distance: a drag snaps only to what is switched on, within the distance", async () => {
+    const [a, b] = await clips([1, 2], [6, 2]);
+    const p = project as NonNullable<typeof project>;
+    const y = laneOf(p.video);
+    // 0.06 s (6 px) short of touching the second clip: inside the default 8 px.
+    await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
+    await until(() => itemById(a as string)?.start === sec(4) && settledDoc());
+
+    // Clip edges off: the same drag lands where the pointer is (on a frame), not on the edge.
+    await rpc.call("item.move", { items: [a as never], start: sec(1) });
+    await until(() => itemById(a as string)?.start === sec(1) && settledDoc());
+    settings.machine = { ...settings.machine, snapKinds: ["playhead", "marker", "in_out", "beat"] };
+    host.syncPrefs();
+    await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
+    await until(() => (itemById(a as string)?.start ?? 0) > sec(1) && settledDoc());
+    expect(itemById(a as string)?.start).not.toBe(sec(4));
+
+    // Edges on again, at a 2 px distance: 6 px away is too far to snap.
+    await rpc.call("item.move", { items: [a as never], start: sec(1) });
+    await until(() => itemById(a as string)?.start === sec(1) && settledDoc());
+    settings.machine = { ...machinePrefs(defaultPreferences()), snapThresholdPx: 2 };
+    host.syncPrefs();
+    await drag(xOf(sec(2)), xOf(sec(2)) + 294, y);
+    await until(() => (itemById(a as string)?.start ?? 0) > sec(1) && settledDoc());
+    expect(itemById(a as string)?.start).not.toBe(sec(4));
+    expect(itemById(b as string)?.start).toBe(sec(6));
   });
 
   live("nothing failed in the background", async () => {
