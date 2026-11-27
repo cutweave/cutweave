@@ -115,12 +115,12 @@ fn numbers_of(digits: &[&str], anchor: Option<&str>) -> (Vec<u32>, Option<usize>
     (keep(None), None)
 }
 
-fn parent_and_name(path: &str) -> (&str, &str) {
+pub(super) fn parent_and_name(path: &str) -> (&str, &str) {
     let cut = path.rfind(['/', '\\']).map_or(0, |i| i + 1);
     path.split_at(cut)
 }
 
-fn join(dir: &str, name: &str) -> String {
+pub(super) fn join(dir: &str, name: &str) -> String {
     if dir.is_empty() || dir.ends_with(['/', '\\']) {
         format!("{dir}{name}")
     } else if dir.contains('\\') && !dir.contains('/') {
