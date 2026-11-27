@@ -472,7 +472,7 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
         </div>
       </Section>
       {/* Rating, tags and note (WP-2F.06b): what the person says about the asset. */}
-      <Section id="organize" label={t("inspector.media.organize")} ids={[media.id]}>
+      <Section id="organize" label={t("inspector.media.organize")}>
         <MediaOrganize media={media} />
       </Section>
     </div>

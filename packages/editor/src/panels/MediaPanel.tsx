@@ -378,16 +378,52 @@ function CardView({
         ) : null}
       </span>
       <span className="cw-media__body">
-        {renaming ? (
-          <InlineRename
-            value={card.name}
-            label={t("mediaBin.folder.mediaNameLabel")}
-            onCommit={(name) => onRename(card, name)}
-            onCancel={onCancelRename}
-          />
-        ) : (
-          <span className="cw-media__name body-strong">{card.name}</span>
-        )}
+        <span className="cw-media__head">
+          {renaming ? (
+            <InlineRename
+              value={card.name}
+              label={t("mediaBin.folder.mediaNameLabel")}
+              onCommit={(name) => onRename(card, name)}
+              onCancel={onCancelRename}
+            />
+          ) : (
+            <span className="cw-media__name body-strong">{card.name}</span>
+          )}
+          {card.rating === null && card.tags.length === 0 ? null : (
+            // Tags and the rating (WP-2F.06b), after the name. The list shows the tags that fit
+            // and the rating; the grid shows only a rating, over the picture's corner (CSS). Either
+            // way a card keeps its height.
+            <span className="cw-media__marks" data-testid="card-marks">
+              {card.tags.length === 0 ? null : (
+                <span
+                  className="cw-media__tags"
+                  title={t("mediaBin.tags.onCard", { tags: card.tags.join(", ") })}
+                >
+                  {card.tags.slice(0, CARD_TAGS).map((tag) => (
+                    <span key={tag} className="cw-media__tag caption">
+                      {tag}
+                    </span>
+                  ))}
+                  {card.tags.length > CARD_TAGS ? (
+                    <span className="cw-media__tag-more caption numeric">
+                      {t("mediaBin.tags.more", { count: card.tags.length - CARD_TAGS })}
+                    </span>
+                  ) : null}
+                </span>
+              )}
+              {card.rating === null ? null : (
+                <span
+                  className="cw-media__rating caption numeric"
+                  data-rating={card.rating}
+                  title={t("mediaBin.rating.onCard", { count: card.rating })}
+                >
+                  <Icon name="star" size="sm" />
+                  {card.rating}
+                </span>
+              )}
+            </span>
+          )}
+        </span>
         {path === null || path === "" ? null : (
           <span className="cw-media__path caption">{path}</span>
         )}
@@ -428,39 +464,6 @@ function CardView({
           </span>
         )}
       </span>
-      {card.rating === null && card.tags.length === 0 ? null : (
-        // Tags and the rating (WP-2F.06b). The list has room for both; the grid shows only a
-        // rating, over the picture's corner (CSS), so its cards stay the same height.
-        <span className="cw-media__marks" data-testid="card-marks">
-          {card.tags.length === 0 ? null : (
-            <span
-              className="cw-media__tags"
-              title={t("mediaBin.tags.onCard", { tags: card.tags.join(", ") })}
-            >
-              {card.tags.slice(0, CARD_TAGS).map((tag) => (
-                <span key={tag} className="cw-media__tag caption">
-                  {tag}
-                </span>
-              ))}
-              {card.tags.length > CARD_TAGS ? (
-                <span className="cw-media__tag-more caption numeric">
-                  {t("mediaBin.tags.more", { count: card.tags.length - CARD_TAGS })}
-                </span>
-              ) : null}
-            </span>
-          )}
-          {card.rating === null ? null : (
-            <span
-              className="cw-media__rating caption numeric"
-              data-rating={card.rating}
-              title={t("mediaBin.rating.onCard", { count: card.rating })}
-            >
-              <Icon name="star" size="sm" />
-              {card.rating}
-            </span>
-          )}
-        </span>
-      )}
     </div>
   );
 }

@@ -519,22 +519,44 @@ body {
 .cw-media__status {
   display: flex;
 }
-/* Tags and the rating on a card (WP-2F.06b). The list has room for both at the end of the row;
-   the grid shows only a rating, over a corner of the picture, so every card keeps its height. */
-.cw-media__marks {
+/* Tags and the rating on a card (WP-2F.06b), after the name on its line. The list shows the
+   tags that fit whole (the rest wrap out of sight) and the rating; the grid shows only a rating,
+   over a corner of the picture. Either way a card keeps its height. */
+.cw-media__head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
+.cw-media__head > .cw-media__name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.cw-media__head > .cw-inline-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cw-media__marks {
+  display: flex;
+  /* The name keeps its room; the tags give way first. */
+  flex: 1 1000 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
 .cw-media__tags {
   display: flex;
-  gap: var(--space-1);
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-1);
   min-width: 0;
+  max-height: var(--icon-lg);
   overflow: hidden;
 }
 .cw-media__tag {
   flex: 0 1 auto;
+  box-sizing: border-box;
   min-width: 0;
   max-width: calc(var(--space-12) * 2);
   padding: 0 var(--space-1-5);
@@ -576,11 +598,6 @@ body {
 }
 .cw-media__grid[data-layout="list"] .cw-media__body {
   flex: 1 1 auto;
-}
-.cw-media__grid[data-layout="list"] .cw-media__marks {
-  flex: 0 1 auto;
-  max-width: 50%;
-  overflow: hidden;
 }
 /* The tags and the note of the media info (Inspector), and the dialog of the tag editor. */
 .cw-media-tags,
