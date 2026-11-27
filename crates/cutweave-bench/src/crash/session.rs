@@ -122,6 +122,8 @@ pub(super) struct Session {
     refused: usize,
     /// Why the engine refused the last command it refused.
     last_refusal: String,
+    /// What the checks of the background jobs saw after the last crash (for the report).
+    seen: String,
     life_acknowledged: usize,
 }
 
@@ -196,6 +198,7 @@ impl Session {
             acknowledged: 0,
             refused: 0,
             last_refusal: String::new(),
+            seen: String::new(),
             life_acknowledged: 0,
         })
     }
@@ -552,7 +555,8 @@ impl Session {
                 };
                 if !self.proxy.keyed {
                     // An edit like any other: the reference gets it too.
-                    let hash = format!("sha256:{:064x}", self.seed);
+                    // The shape of a real content hash; proxies are filed under it.
+                    let hash = format!("blake3-fast:{:064x}", self.seed);
                     let params = json!({"media": source, "path": file, "content_hash": hash});
                     let op = self.script.editor_op("media.set_location", params);
                     let refused = self.refused;
@@ -691,6 +695,11 @@ impl Session {
         } else {
             self.recover(point, flight, &env, &mut row)
         };
+        let seen = std::mem::take(&mut self.seen);
+        if !seen.is_empty() {
+            let gap = if row.note.is_empty() { "" } else { "; " };
+            row.note = format!("{}{gap}{seen}", row.note);
+        }
         row.ms = began.elapsed().as_millis();
         Ok(row)
     }
@@ -847,6 +856,10 @@ impl Session {
                 ));
             }
         }
+        self.seen = format!(
+            "{} queued exports finished after the restart",
+            exports.len()
+        );
         let partials = disk::partials(&self.export_dir);
         if !partials.is_empty() {
             return Err(format!(
@@ -886,6 +899,7 @@ impl Session {
                 "after the crash the interrupted proxy is `{state}`: {proxy}"
             ));
         }
+        self.seen = format!("the proxy was `{state}` after the restart");
         if state == "ready" && !has_file(&proxy) {
             return Err(format!("a proxy is called ready without its file: {proxy}"));
         }
