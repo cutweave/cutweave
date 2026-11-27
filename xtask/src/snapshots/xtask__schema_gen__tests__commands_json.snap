@@ -18347,27 +18347,13 @@ expression: text
               "type": "object"
             },
             "type": "array"
-          },
-          "proxy_jobs": {
-            "description": "How many proxy jobs run at once (one while an export runs).",
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "proxy_size": {
-            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
           }
         },
         "required": [
           "folder",
           "kinds",
           "decode_hw",
-          "frame_cache_bytes",
-          "proxy_size",
-          "proxy_jobs"
+          "frame_cache_bytes"
         ],
         "title": "MediaCacheStatusOutput",
         "type": "object"
@@ -18975,7 +18961,7 @@ expression: text
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
                 "type": "string"
               },
               {
@@ -19253,7 +19239,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Makes proxies of video assets now, whatever the policy and their mode: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
+        "description": "Makes proxies of video assets now, whatever the policy: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
         "properties": {
           "media": {
             "description": "The video assets (1..=256, no repeats).",
@@ -19291,7 +19277,7 @@ expression: text
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
                 "type": "string"
               },
               {
@@ -20141,7 +20127,7 @@ expression: text
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
                 "type": "string"
               },
               {
@@ -21885,27 +21871,13 @@ expression: text
               "type": "object"
             },
             "type": "array"
-          },
-          "proxy_jobs": {
-            "description": "How many proxy jobs run at once (one while an export runs).",
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "proxy_size": {
-            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
           }
         },
         "required": [
           "folder",
           "kinds",
           "decode_hw",
-          "frame_cache_bytes",
-          "proxy_size",
-          "proxy_jobs"
+          "frame_cache_bytes"
         ],
         "title": "MediaCacheStatusOutput",
         "type": "object"
@@ -22365,354 +22337,158 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960\npixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size\napplies to proxies made from now on: generations of the old size stop, the open project's\nwanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache\nunused until its limit removes them. Not undoable, not journaled, never marks the project\ndirty; UI credential only (the desktop app applies the person's machine preferences).",
+        "description": "Bundles the project for storage or a handover: the project document, every media file it\nuses (under `media/`), its `generated/` folder, and a file list `archive.json` with the size\nand SHA-256 of every file. `format: \"folder\"` writes a project folder at `dest`;\n`format: \"zip\"` writes one `.zip` file at `dest` (the name must end in `.zip`) that holds\nthat folder, uncompressed, with Zip64 for large files. Proxies and caches are left out. The\nopen project and its files are not changed. Returns a background job; the archive is\ncomplete when the job succeeds: the zip gets its name only after it was read back and\ncompared with the file list, so a cancelled or failed run leaves no `.zip`. A folder\narchive that was cancelled continues when called again with the same folder. Fails with\n`Invalid` at `/dest` when the files do not fit on the drive, the folder already holds a\nproject or the `.zip` already exists, and at `/media` when a media file is missing (relink\nit first). `project.collect_estimate` with the same folder says what would be bundled.\nAgents and headless callers may only archive into folders the user approved.",
         "properties": {
-          "jobs": {
+          "dest": {
+            "description": "Absolute path of the archive: for `folder` a new or empty folder (or the folder of an\ninterrupted archive of this project), for `zip` a `.zip` file that does not exist yet.",
+            "type": "string"
+          },
+          "format": {
+            "description": "`folder` (a project folder with `archive.json`) or `zip` (one `.zip` holding it).",
+            "oneOf": [
+              {
+                "const": "folder",
+                "description": "A folder: the collected project plus `archive.json`.",
+                "type": "string"
+              },
+              {
+                "const": "zip",
+                "description": "One `.zip` file holding that folder (stored entries, Zip64 when needed).",
+                "type": "string"
+              }
+            ]
+          },
+          "include_generated": {
             "default": null,
-            "description": "Proxy jobs at once, 1 to 8. Left out: unchanged.",
-            "format": "uint32",
-            "minimum": 0,
+            "description": "Also bundle the project's `generated/` folder (default true).",
             "type": [
-              "integer",
+              "boolean",
               "null"
             ]
           },
-          "size": {
+          "trim_unused": {
             "default": null,
-            "description": "The longest side of new proxies in pixels: 540, 720 or 960. Left out: unchanged.",
-            "format": "uint32",
-            "minimum": 0,
+            "description": "Leave out the media no timeline uses (default false).",
             "type": [
-              "integer",
+              "boolean",
               "null"
             ]
           }
         },
-        "title": "MediaSetProxyConfig",
+        "required": [
+          "dest",
+          "format"
+        ],
+        "title": "ProjectArchive",
         "type": "object"
       },
       "journaled": false,
       "kind": "engine",
       "mcp": "catalog",
-      "mcp_tool": "media_set_proxy_config",
-      "name": "media.set_proxy_config",
-      "namespace": "media",
+      "mcp_tool": "project_archive",
+      "name": "project.archive",
+      "namespace": "project",
       "output_schema": {
         "additionalProperties": false,
-        "description": "What `media.cache_status` and `media.set_cache_config` report.",
+        "description": "Result of `project.archive`.",
         "properties": {
-          "decode_hw": {
-            "description": "The hardware decoding policy in force.",
-            "oneOf": [
-              {
-                "const": "auto",
-                "description": "A verified hardware decoder when the machine has one for the stream (the default).",
+          "estimate": {
+            "additionalProperties": false,
+            "description": "What it bundles; `dest` is the folder or the `.zip` file.",
+            "properties": {
+              "bytes": {
+                "description": "Their size in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "dest": {
+                "description": "The folder the copy goes into.",
                 "type": "string"
               },
-              {
-                "const": "off",
-                "description": "Software decoding only.",
-                "type": "string"
-              }
-            ]
-          },
-          "folder": {
-            "description": "The folder the caches live in (`--cache-dir`, else the OS cache folder); `null` when\nthe engine has none.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "frame_cache_bytes": {
-            "description": "Bytes of decoded frames the RAM frame cache may hold.",
-            "format": "uint64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "kinds": {
-            "description": "Each disk cache, in a fixed order (thumbnails, waveforms, proxies).",
-            "items": {
-              "additionalProperties": false,
-              "description": "One disk cache's usage and limit.",
-              "properties": {
-                "bytes": {
-                  "description": "Bytes it holds.",
-                  "format": "uint64",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "entries": {
-                  "description": "Entries it holds.",
-                  "format": "uint64",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "description": "Which cache.",
-                  "oneOf": [
-                    {
-                      "const": "thumbnails",
-                      "description": "Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`).",
+              "enough_space": {
+                "description": "Whether the files fit (true when the free space cannot be told).",
+                "type": "boolean"
+              },
+              "files": {
+                "description": "The media files to copy.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "free_bytes": {
+                "description": "Free bytes on the destination drive, when it can be told.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "missing": {
+                "description": "Media whose file is missing: relink them first (`media.relink_folder`).",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A media file a collect cannot read.",
+                  "properties": {
+                    "media_id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
                       "type": "string"
                     },
-                    {
-                      "const": "waveforms",
-                      "description": "Waveform pyramids (one file per audio stream).",
+                    "name": {
+                      "description": "The name the bin shows.",
                       "type": "string"
                     },
-                    {
-                      "const": "proxies",
-                      "description": "Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing\nthem makes the preview use the originals; `media.generate_proxy` makes them again.",
+                    "path": {
+                      "description": "Where the project says its file is.",
                       "type": "string"
                     }
-                  ]
+                  },
+                  "required": [
+                    "media_id",
+                    "name",
+                    "path"
+                  ],
+                  "type": "object"
                 },
-                "limit_bytes": {
-                  "description": "Bytes it may hold before the least recently used entries are deleted.",
-                  "format": "uint64",
-                  "minimum": 0,
-                  "type": "integer"
-                }
+                "type": "array"
               },
-              "required": [
-                "kind",
-                "bytes",
-                "limit_bytes",
-                "entries"
-              ],
-              "type": "object"
+              "trimmed": {
+                "description": "Media left out because no timeline uses them (`trim_unused`).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
             },
-            "type": "array"
+            "required": [
+              "dest",
+              "files",
+              "bytes",
+              "free_bytes",
+              "enough_space",
+              "missing",
+              "trimmed"
+            ],
+            "type": "object"
           },
-          "proxy_jobs": {
-            "description": "How many proxy jobs run at once (one while an export runs).",
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "proxy_size": {
-            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
+          "job_id": {
+            "description": "The archive job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
           }
         },
         "required": [
-          "folder",
-          "kinds",
-          "decode_hw",
-          "frame_cache_bytes",
-          "proxy_size",
-          "proxy_jobs"
+          "job_id",
+          "estimate"
         ],
-        "title": "MediaCacheStatusOutput",
+        "title": "ProjectArchiveOutput",
         "type": "object"
       },
-      "scope": "ui",
+      "scope": "any",
       "secret_fields": [],
-      "summary": "Set the proxy size and how many proxy jobs run at once",
+      "summary": "Bundle the project, its media and a checked file list into a folder or a zip (a job)",
       "undoable": false,
-      "view": false
-    },
-    {
-      "annotations": {
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false
-      },
-      "input_schema": {
-        "additionalProperties": false,
-        "description": "Sets whether video assets get a proxy, whatever the project's policy says: `force` makes\none, `off` makes none and the preview does not use one that exists (it stays in the cache),\n`auto` follows the policy again. The mode is saved in the project, one undo step for all\nthe assets named.",
-        "properties": {
-          "media": {
-            "description": "The video assets (1..=256, no repeats).",
-            "items": {
-              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
-              "pattern": "^med_[0-9a-f]{32}$",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "mode": {
-            "description": "`auto` (follow the project's policy), `force` or `off`.",
-            "oneOf": [
-              {
-                "const": "auto",
-                "description": "As the project's policy decides. The default.",
-                "type": "string"
-              },
-              {
-                "const": "force",
-                "description": "One is made whatever the policy.",
-                "type": "string"
-              },
-              {
-                "const": "off",
-                "description": "None is made, and the preview does not use one that exists.",
-                "type": "string"
-              }
-            ]
-          }
-        },
-        "required": [
-          "media",
-          "mode"
-        ],
-        "title": "MediaSetProxyMode",
-        "type": "object"
-      },
-      "kind": "command",
-      "mcp": "catalog",
-      "mcp_tool": "media_set_proxy_mode",
-      "name": "media.set_proxy_mode",
-      "namespace": "media",
-      "output_schema": {
-        "additionalProperties": false,
-        "description": "Result of `media.set_proxy_mode`.",
-        "properties": {
-          "media": {
-            "description": "The assets, in request order.",
-            "items": {
-              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
-              "pattern": "^med_[0-9a-f]{32}$",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "mode": {
-            "description": "Their mode now.",
-            "oneOf": [
-              {
-                "const": "auto",
-                "description": "As the project's policy decides. The default.",
-                "type": "string"
-              },
-              {
-                "const": "force",
-                "description": "One is made whatever the policy.",
-                "type": "string"
-              },
-              {
-                "const": "off",
-                "description": "None is made, and the preview does not use one that exists.",
-                "type": "string"
-              }
-            ]
-          }
-        },
-        "required": [
-          "media",
-          "mode"
-        ],
-        "title": "ProxyModeSet",
-        "type": "object"
-      },
-      "scope": "any",
-      "secret_fields": [],
-      "summary": "Set whether video assets get a proxy whatever the policy: auto, force or off",
-      "undoable": true,
-      "view": false
-    },
-    {
-      "annotations": {
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false
-      },
-      "input_schema": {
-        "additionalProperties": false,
-        "description": "Chooses which of the project's video gets proxies automatically: `off` (none), `auto`\n(video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than\n60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then\nqueues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).\nAn asset's own mode (`media.set_proxy_mode`) wins over the policy.",
-        "properties": {
-          "policy": {
-            "description": "`off`, `auto` or `all`.",
-            "oneOf": [
-              {
-                "const": "off",
-                "description": "Never automatically (`media.generate_proxy` still makes one).",
-                "type": "string"
-              },
-              {
-                "const": "auto",
-                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
-                "type": "string"
-              },
-              {
-                "const": "all",
-                "description": "For every video file.",
-                "type": "string"
-              }
-            ]
-          }
-        },
-        "required": [
-          "policy"
-        ],
-        "title": "MediaSetProxyPolicy",
-        "type": "object"
-      },
-      "kind": "command",
-      "mcp": "catalog",
-      "mcp_tool": "media_set_proxy_policy",
-      "name": "media.set_proxy_policy",
-      "namespace": "media",
-      "output_schema": {
-        "additionalProperties": false,
-        "description": "Result of `media.set_proxy_policy`.",
-        "properties": {
-          "policy": {
-            "description": "The project's policy now.",
-            "oneOf": [
-              {
-                "const": "off",
-                "description": "Never automatically (`media.generate_proxy` still makes one).",
-                "type": "string"
-              },
-              {
-                "const": "auto",
-                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
-                "type": "string"
-              },
-              {
-                "const": "all",
-                "description": "For every video file.",
-                "type": "string"
-              }
-            ]
-          },
-          "previous": {
-            "description": "What it was before.",
-            "oneOf": [
-              {
-                "const": "off",
-                "description": "Never automatically (`media.generate_proxy` still makes one).",
-                "type": "string"
-              },
-              {
-                "const": "auto",
-                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
-                "type": "string"
-              },
-              {
-                "const": "all",
-                "description": "For every video file.",
-                "type": "string"
-              }
-            ]
-          }
-        },
-        "required": [
-          "policy",
-          "previous"
-        ],
-        "title": "ProxyPolicySet",
-        "type": "object"
-      },
-      "scope": "any",
-      "secret_fields": [],
-      "summary": "Choose which of the project's video gets proxies automatically: off, auto or all",
-      "undoable": true,
       "view": false
     },
     {
@@ -23542,35 +23318,6 @@ expression: text
           "name": {
             "description": "Project name (1..=200 characters).",
             "type": "string"
-          },
-          "proxy_policy": {
-            "anyOf": [
-              {
-                "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project.",
-                "oneOf": [
-                  {
-                    "const": "off",
-                    "description": "Never automatically (`media.generate_proxy` still makes one).",
-                    "type": "string"
-                  },
-                  {
-                    "const": "auto",
-                    "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
-                    "type": "string"
-                  },
-                  {
-                    "const": "all",
-                    "description": "For every video file.",
-                    "type": "string"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting."
           },
           "still_duration": {
             "anyOf": [
