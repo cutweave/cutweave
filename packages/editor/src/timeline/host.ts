@@ -244,6 +244,7 @@ export class TimelineHost {
   /** The press whose "track is locked" toast went out (one per press). */
   #lockedPress: object | null = null;
   #disposed = false;
+  #started = false;
 
   constructor(deps: TimelineHostDeps) {
     this.#deps = deps;
@@ -273,6 +274,17 @@ export class TimelineHost {
     this.#machine.subscribe((intents) => {
       for (const intent of intents) this.#carry(intent);
     });
+  }
+
+  /**
+   * Starts following the stores and the engine (idempotent). The panel starts it when it mounts
+   * and stops it when it unmounts, so a remount (React's development double effects included)
+   * gets the same host back.
+   */
+  start(): void {
+    if (this.#started || this.#disposed) return;
+    this.#started = true;
+    const deps = this.#deps;
     const sync = (): void => this.#syncEnv();
     this.#unsubscribe.push(deps.doc.subscribe(sync), deps.view.subscribe(sync));
     if (deps.locks !== undefined) this.#unsubscribe.push(deps.locks.subscribe(sync));
@@ -283,6 +295,20 @@ export class TimelineHost {
       }),
     );
     this.#listen(deps.engine.getState().rpc);
+    this.#syncEnv();
+  }
+
+  /** Rolls back any gesture in progress (as a lost window does) and stops following. */
+  stop(): void {
+    if (!this.#started) return;
+    this.send({ type: "blur" });
+    this.#started = false;
+    for (const off of this.#unsubscribe) off();
+    this.#unsubscribe.length = 0;
+    this.#offEngine?.();
+    this.#offEngine = null;
+    // The snap index is the wasm module's; the next drag builds it again.
+    if (this.#ownsSnap) this.#snap.dispose?.();
   }
 
   // ---- wiring ---------------------------------------------------------------------------------
@@ -321,16 +347,12 @@ export class TimelineHost {
     this.ui.setState({ state: this.#machine.state.mode.name });
   }
 
-  /** The panel unmounts: roll back any open gesture and stop listening. */
+  /** For good (tests): stops, and the machine with it. */
   dispose(): void {
     if (this.#disposed) return;
+    this.stop();
     this.#machine.dispose();
     this.#disposed = true;
-    for (const off of this.#unsubscribe) off();
-    this.#unsubscribe.length = 0;
-    this.#offEngine?.();
-    this.#offEngine = null;
-    if (this.#ownsSnap) this.#snap.dispose?.();
   }
 
   #offEngine: (() => void) | null = null;

@@ -121,7 +121,9 @@ export function useTimelineHost(): TimelineBinding {
 
   // Losing the window mid-drag cancels the gesture (the pointer-up may never arrive): any editor
   // window, since the Timeline may be in a detached one.
+  // The host follows the stores while the panel is mounted; unmounting rolls back a gesture.
   useEffect(() => {
+    host.start();
     const blur = (): void => host.cancel();
     const off = forEveryWindow((win) => {
       win.addEventListener("blur", blur);
@@ -129,7 +131,7 @@ export function useTimelineHost(): TimelineBinding {
     });
     return () => {
       off();
-      host.dispose();
+      host.stop();
     };
   }, [host]);
 

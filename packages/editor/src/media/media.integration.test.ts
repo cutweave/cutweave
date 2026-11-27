@@ -174,6 +174,7 @@ beforeAll(async () => {
     t,
   });
   controller.attach(view, null, () => ({ left: HEADER, right: 1600, top: RULER, bottom: 400 }));
+  controller.start();
 }, 20 * 60_000);
 
 afterAll(async () => {

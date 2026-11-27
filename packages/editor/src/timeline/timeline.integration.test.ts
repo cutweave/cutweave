@@ -182,6 +182,7 @@ beforeAll(async () => {
     t: translator(i18n.t.bind(i18n)),
   });
   host.attach(view, null, () => ({ left: HEADER, right: WIDTH, top: RULER, bottom: HEIGHT }));
+  host.start();
 }, 20 * 60_000);
 
 afterAll(async () => {
@@ -801,16 +802,18 @@ describe("timeline interactions against the real engine", () => {
 
   live("M adds a marker at the playhead; I and O set the range around it", async () => {
     await seed();
+    const p = project as NonNullable<typeof project>;
+    const inOut = () => stores.doc.getState().project?.sequences[p.sequence]?.in_out ?? null;
     stores.view.getState().setPlayhead(sec(2));
     expect(host.runHostKey("timeline.add_marker")).toBe(true);
     stores.view.getState().setPlayhead(sec(1));
     expect(host.runHostKey("timeline.mark_in")).toBe(true);
     await host.settled();
+    // The in point shows (its patch is in) before the person presses O.
+    await until(() => inOut()?.start === sec(1));
     stores.view.getState().setPlayhead(sec(4));
     expect(host.runHostKey("timeline.mark_out")).toBe(true);
     await host.settled();
-    const p = project as NonNullable<typeof project>;
-    const inOut = () => stores.doc.getState().project?.sequences[p.sequence]?.in_out ?? null;
     await until(() => (model().markers ?? []).some((m) => m.t === sec(2)));
     await until(() => inOut()?.end === sec(4));
     expect(inOut()).toMatchObject({ start: sec(1), end: sec(4) });
