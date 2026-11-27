@@ -84,7 +84,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| `editing.still_duration` | Still image duration for new projects (freeze frames default to 3 s, set per freeze with `clip.freeze_frame`'s `duration`) | 5 s | App, copied to the project | `project.new` (`still_duration`) | Read the project's value (`settings.still_duration`); changing it comes with `project.set_settings` (WP-2H.08) | WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)) |
+| `editing.still_duration` | Still image duration for new projects (freeze frames default to 3 s, set per freeze with `clip.freeze_frame`'s `duration`) | 5 s | App, copied to the project | `project.new` (`still_duration`) | Read the project's value (`project.info`: `settings.still_duration`) and change it (`project.set_settings`) | WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)) |
 | `editing.text_duration` | Duration of new text | 5 s | App | Renderer | — | WP-3A.07 |
 | `editing.transition_duration` | Duration of new transitions | 0.5 s | App | Renderer | — | WP-4A.09 |
 | `editing.audio_fade` | Length of a fade added with one click | 0.5 s | App | Renderer | — | WP-2E.05 |
@@ -283,14 +283,16 @@ Cutweave collects no usage analytics, so there is no setting for it (product bri
 
 ## Project settings (File > Project settings…, WP-2H.08)
 
-Stored in the document, changed with undoable commands (`project.set_settings`, or the feature's own command), visible to agents through `project.info`.
+Stored in the document, changed with undoable commands (`project.set_settings`, or the feature's own command), visible to agents through `project.info` (`settings`).
+
+`project.set_settings{patch}` takes any of the keys below as a merge patch: a key left out keeps its value, `null` puts an optional key back to its default, an object (`default_format`) merges key by key, and a key the settings do not have fails with `invalid` at its path. The feature commands that set one key (`media.set_proxy_policy`) send the same patch through the same checks. `project.new` takes the same object as `settings` (next to `format`, `still_duration` and `proxy_policy`, which name one key each; a key given both ways is refused). The dialog is drawn from the generated schema of the patch, so a key a later work package adds to `ProjectSettings` gets a row there without UI work. "Use as defaults for new projects" copies the values that have an app preference (`editing.still_duration` in whole seconds, `media.proxy_policy`); the format of new sequences has no app preference yet.
 
 | Key | Setting | Default | Agents | Ships in |
 |---|---|---|---|---|
 | `meta.name` | Project name | Chosen at creation | Read and change (`project.rename`) | Exists (P1) |
-| `default_format` | Format of new sequences | 1920 × 1080, 30 fps, 48 kHz | Read and change | WP-2H.08 (field exists since WP-1A.02) |
-| `still_duration` | Still image duration | The app default (5 s) | Read; change with `project.set_settings` (WP-2H.08) | The field and the insert default: WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)); the row in File > Project settings…: WP-2H.08 |
-| `proxy_policy` | Proxies: off, auto, all (each asset can also be forced or turned off: `media.set_proxy_mode`) | The app default (auto) | Read and change (`media.set_proxy_policy`) | The field and the commands: WP-2F.03b ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md)); the row in File > Project settings…: WP-2H.08 |
+| `default_format` | Format of new sequences | 1920 × 1080, 30 fps, 48 kHz | Read and change (`project.set_settings`) | WP-2H.08 (field exists since WP-1A.02) |
+| `still_duration` | Still image duration | The app default (5 s) | Read and change (`project.set_settings`) | The field and the insert default: WP-2F.05b ([ADR-0035](../adr/0035-still-duration-and-image-sequences-in-the-project.md)); the row in File > Project settings…: WP-2H.08 |
+| `proxy_policy` | Proxies: off, auto, all (each asset can also be forced or turned off: `media.set_proxy_mode`) | The app default (auto) | Read and change (`media.set_proxy_policy`, `project.set_settings`) | The field and the commands: WP-2F.03b ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md)); the row in File > Project settings…: WP-2H.08 |
 | `render_cache.enabled` | Render heavy parts in the background | On | Read and change | WP-2J.09 |
 | `autosave` | Autosave for engines without the app (headless, agents) | On, every 30 s | Read and change | WP-1C.03 (dialog row: WP-2H.08) |
 | `ai_budget` | AI spending cap for this project | None | Read only (changing budgets is UI-only, ADR-0016) | WP-5A.07 (dialog row: WP-2H.08) |

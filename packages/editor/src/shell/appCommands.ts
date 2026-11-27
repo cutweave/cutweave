@@ -15,6 +15,7 @@ import { exportController, useTimelineHasItems } from "../export/useExport.ts";
 import { openArchiveDialog } from "../media/ArchiveDialog.tsx";
 import { openCollectDialog } from "../media/CollectDialog.tsx";
 import { usePref } from "../prefs/prefsStore.ts";
+import { openProjectSettings } from "../project/projectSettings.ts";
 import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session/desktop.ts";
 import { redoText, undoText } from "../session/historyLabels.ts";
 import type { ProjectController } from "../session/projectController.ts";
@@ -80,6 +81,9 @@ export function runAppCommand(command: AppCommand, deps: AppCommandDeps): void {
       return;
     case "archive":
       openArchiveDialog();
+      return;
+    case "projectSettings":
+      openProjectSettings();
       return;
     case "quit":
       void desktop?.app?.quit().catch(ignore);

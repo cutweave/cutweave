@@ -31,6 +31,7 @@
     "export": "Export…",
     "collect": "Collect files…",
     "archive": "Archive project…",
+    "projectSettings": "Project settings…",
     "settings": "Settings…",
     "exit": "Exit",
     "quit": "Quit",
@@ -483,6 +484,7 @@
       "saveAs": "File menu. Saves the project under a new name.",
       "collect": "File menu. Copies the project and all its media into one folder.",
       "archive": "File menu. Bundles the project, its media and a checked file list into one folder or zip file.",
+      "projectSettings": "File menu. Opens the settings saved in this project.",
       "export": "File menu. Opens the Export dialog once the timeline has clips.",
       "settings": "File menu. Opens Settings.",
       "quit": "File menu. Closes Cutweave.",
@@ -1363,7 +1365,8 @@
       "hidden": "Hide",
       "locked": "Lock",
       "several": "The selected clips sit on different tracks. Select clips of one track to change it."
-    }
+    },
+    "projectSettings": "Project settings…"
   },
   "history": {
     "stepBy": "{{step}} ({{who}})",
@@ -1474,7 +1477,8 @@
     "collectionDelete": "Delete collection",
     "collectionAdd": "Add to collection",
     "collectionRemove": "Remove from collection",
-    "collectionFilter": "Update smart collection"
+    "collectionFilter": "Update smart collection",
+    "projectSettings": "Change project settings"
   },
   "mathStartup": {
     "versionTitle": "Cutweave can't start: its math module is out of date",
@@ -1638,6 +1642,32 @@
     "revealFile": "Show the file",
     "jobLabel": "Archive progress",
     "jobName": "Archiving {{name}}"
+  },
+  "projectSettings": {
+    "title": "Project settings",
+    "hint": "Saved in this project. Each change is one undo step, and agents can read and change these too.",
+    "formLabel": "Project settings",
+    "close": "Close",
+    "useAsDefaults": "Use as defaults for new projects",
+    "defaultsSaved": "New projects now start with a still image duration of {{seconds}} s and proxies set to {{proxies}}.",
+    "defaultsFailed": "The defaults could not be saved.",
+    "refused": "The change was not made.",
+    "noProject": "Open or create a project to change its settings.",
+    "groups": {
+      "newSequences": "New sequences",
+      "media": "Media"
+    },
+    "fields": {
+      "format": "Format",
+      "sampleRate": "Audio sample rate",
+      "colorSpace": "Color space",
+      "proxies": "Proxies"
+    },
+    "options": {
+      "rec709": "Rec. 709"
+    },
+    "hz": "{{rate}} Hz",
+    "seconds": "s"
   },
   "timeline": {
     "toolbarLabel": "Timeline tools",
