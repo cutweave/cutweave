@@ -16,6 +16,7 @@ import {
   drag,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   launchFlowApp,
@@ -95,6 +96,7 @@ test.describe("F64 edit a marker and give a clip a colour label", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Markers", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

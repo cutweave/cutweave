@@ -13,6 +13,7 @@ import {
   createProject,
   dirtyDot,
   editorCaughtUp,
+  freeMainTrack,
   hasCli,
   hasRealEngine,
   importWithButton,
@@ -107,6 +108,7 @@ test.describe("F15 an agent edits while the UI is open", () => {
     const work = workspace();
     const { app, page, home, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Agent", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await agentEdits(app, page, home);
@@ -151,6 +153,7 @@ test.describe("F15 an agent edits while the UI is open", () => {
     const work = workspace();
     const { app, page, home, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Agent undo", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await agentEdits(app, page, home);

@@ -9,6 +9,7 @@ import {
   createProject,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   launchFlowApp,
@@ -31,6 +32,7 @@ test.describe("F43 command palette", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Palette", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

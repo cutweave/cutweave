@@ -13,6 +13,7 @@ import {
   cliBin,
   createProject,
   editorCaughtUp,
+  freeMainTrack,
   hasCli,
   hasRealEngine,
   importWithButton,
@@ -94,6 +95,7 @@ test.describe("F30 an agent finds the window you are looking at", () => {
     const { app, page, home, close } = await launchFlowApp(work);
     let headless: { child: ChildProcess; pid: number } | null = null;
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Front", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       headless = await startHeadlessEngine(home);

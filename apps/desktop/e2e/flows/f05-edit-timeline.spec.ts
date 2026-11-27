@@ -12,6 +12,7 @@ import {
   drag,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -83,6 +84,7 @@ test.describe("F5 edit on the timeline", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Edits", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);
@@ -326,6 +328,7 @@ test.describe("F5 edit on the timeline", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Rename", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

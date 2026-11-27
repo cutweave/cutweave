@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // F37 Magnetic main track (docs/user-flows.md, WP-2A.03, WP-2A.04, WP-2A.10; timeline spec
-// §4.1-§4.3). V1's header menu makes it the magnetic main track; three clips with sound dropped
-// on it butt from 0; a fourth dropped between the first two goes in at that cut and pushes the
+// §4.1-§4.3). V1 of a new project is the magnetic main track (ADR-0037: its header menu shows
+// "Magnetic main track" checked); three clips with sound dropped on it butt from 0; a fourth dropped between the first two goes in at that cut and pushes the
 // rest right; dragging the last one to the front reorders; Delete on the second and a drag of
 // the first one's end left close the space; the clip menu's Ripple delete takes a clip out with
 // no gap (Ctrl+Z puts it back, Ctrl+Y again); with the magnet off in the header menu a clip
@@ -22,6 +22,7 @@ import {
   laneY,
   launchFlowApp,
   layout,
+  mainTrackIsMagnetic,
   sec,
   shortcut,
   showTimeline,
@@ -79,7 +80,9 @@ test.describe("F37 magnetic main track", () => {
         await page.keyboard.press("Escape");
         await expect(menu).toHaveCount(0);
       };
-      await magnet(true);
+      // A project made in the app starts with V1 as the magnetic main track (ADR-0037): the
+      // menu shows it checked, with nothing done to the track.
+      expect(await mainTrackIsMagnetic(page)).toBe(true);
       // Zoom out (the toolbar) until the four clips will show.
       await showTimeline(page, 42);
 
@@ -230,6 +233,18 @@ test.describe("F37 magnetic main track", () => {
           [0, 6],
           [6, 10],
         ]);
+      await editorCaughtUp(page);
+
+      // The magnet on again from the same menu: the same drag leaves no gap.
+      await magnet(true);
+      g = await timelineGeometry(page);
+      box = clipBox(g, clipAt(g, "V1", 6).id);
+      await drag(page, { x: box.x + 20, y: box.y }, { x: box.x + 20 + 2 * g.pxPerSec, y: box.y });
+      await editorCaughtUp(page);
+      expect(await clips(page)).toEqual([
+        [0, 6],
+        [6, 10],
+      ]);
     } finally {
       await close();
       work.remove();

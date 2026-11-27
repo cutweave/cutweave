@@ -12,6 +12,7 @@ import {
   drag,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -31,6 +32,7 @@ import {
 
 /** A project with the interview on Video 1 at 1 s, dropped from the bin; returns its id. */
 async function oneClip(app: ElectronApplication, page: Page, work: Workspace): Promise<string> {
+  await freeMainTrack(app, page); // clips stay where they are dropped
   await createProject(app, page, "Undo", work.dir);
   await importWithButton(app, page, [work.file("interview.mp4")]);
   await dropCard(page, "interview.mp4", "V1", 1);

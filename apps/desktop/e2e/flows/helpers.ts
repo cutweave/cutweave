@@ -881,6 +881,7 @@ export async function openSettingsPage(
     | "General"
     | "Appearance"
     | "Editing"
+    | "Timeline"
     | "Playback"
     | "Media and import"
     | "Export"
@@ -896,6 +897,42 @@ export async function openSettingsPage(
   await settings.getByRole("tab", { name }).click();
   await expect(settings.getByRole("heading", { name, level: 3 })).toBeVisible();
   return settings;
+}
+
+/** Settings > Timeline's "Main track is magnetic in new sequences" (ADR-0037; on at first). */
+export const MAGNETIC_MAIN = "Main track is magnetic in new sequences";
+
+/**
+ * File > Settings… > Timeline: turns "Main track is magnetic in new sequences" off and closes
+ * with Done, the way a person who wants clips to stay where they are dropped sets it before
+ * making a project. A project made in the app starts with a magnetic main track (ADR-0037); the
+ * flows whose steps are about free placement on V1 (a clip dropped at 1 s stays at 1 s, a move
+ * leaves a gap) call this first. The setting is the profile's: it holds for every project made
+ * afterwards, also after a relaunch with the same profile.
+ */
+export async function freeMainTrack(app: ElectronApplication, page: Page): Promise<void> {
+  const settings = await openSettingsPage(page, app, "Timeline");
+  const magnetic = settings.getByRole("switch", { name: MAGNETIC_MAIN });
+  await expect(magnetic).toHaveAttribute("aria-checked", "true");
+  await magnetic.click();
+  await expect(magnetic).toHaveAttribute("aria-checked", "false");
+  await closeSettings(settings);
+}
+
+/**
+ * Whether V1's header menu shows it as the magnetic main track (right-click on the header,
+ * read the "Magnetic main track" row, Escape).
+ */
+export async function mainTrackIsMagnetic(page: Page): Promise<boolean> {
+  const g = await timelineGeometry(page);
+  await page.mouse.click(g.box.x + 12, laneY(g, "V1"), { button: "right" });
+  const menu = page.getByRole("menu", { name: "Track actions for V1" });
+  const row = menu.getByRole("menuitemcheckbox", { name: /^Magnetic main track/ });
+  await expect(row).toBeVisible();
+  const checked = (await row.getAttribute("aria-checked")) === "true";
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  return checked;
 }
 
 /** Closes Settings with Done. */

@@ -17,6 +17,7 @@ import {
   createProject,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -70,6 +71,7 @@ async function clipWithPlayhead(
   work: ReturnType<typeof workspace>,
   name: string,
 ): Promise<void> {
+  await freeMainTrack(app, page); // clips stay where they are dropped
   await createProject(app, page, name, work.dir);
   await importWithButton(app, page, [work.file("interview.mp4")]);
   await dropCard(page, "interview.mp4", "V1", 1);
