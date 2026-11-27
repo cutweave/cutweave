@@ -20,7 +20,7 @@ import { type ItemLanes, KEY_GLYPHS, type KeyframeLane } from "@cutweave/timelin
 import { createStore } from "zustand/vanilla";
 import { activeSequence, PROP_PATHS } from "../menus/surfaces/facts.ts";
 import { activeDocument } from "../shell/windows.ts";
-import type { Call } from "./clipboard.ts";
+import { type Call, clipboardStore } from "./clipboard.ts";
 
 /** The system clipboard's format for copied keys (the engine's `KeyframeClipboard`). */
 export const KEY_CLIPBOARD_MIME = "application/x-cutweave-keyframes+json";
@@ -344,6 +344,8 @@ export async function copyKeys(
     clipboard: KeyframeClipboard;
   };
   keyClipboardStore.setState({ payload: out.clipboard });
+  // One clipboard: copied keys replace copied clips, as on the system clipboard.
+  clipboardStore.getState().setPayload(null);
   writeSystemClipboard(out.clipboard);
   return out.clipboard;
 }

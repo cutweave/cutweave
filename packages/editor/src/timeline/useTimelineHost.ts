@@ -326,6 +326,7 @@ export function useTimelineHost(): TimelineBinding {
         const ids = selectedClips();
         if (ids.length === 0) return;
         e.preventDefault();
+        keyClipboardStore.setState({ payload: null });
         run("copy", async () => void (await copyClips(engineCall, ids)));
       };
       const onCut = (e: ClipboardEvent): void => {
@@ -344,14 +345,11 @@ export function useTimelineHost(): TimelineBinding {
         const copied =
           parseKeyPayload(text) ?? (clips === "" ? keyClipboardStore.getState().payload : null);
         if (copied !== null) {
-          const state = viewStore.getState();
-          const items = selectedClips(state.selection);
-          const onto = keySelectionStore.getState().item ?? (items.length === 1 ? items[0] : null);
-          if (onto != null) {
+          const onto = host.keyPasteTarget();
+          if (onto !== null) {
             e.preventDefault();
-            runKeys("timeline.failed.keyframePaste", () =>
-              pasteKeys(engineCall, copied, onto, state.playhead),
-            );
+            const at = viewStore.getState().playhead;
+            runKeys("timeline.failed.keyframePaste", () => pasteKeys(engineCall, copied, onto, at));
             return;
           }
         }

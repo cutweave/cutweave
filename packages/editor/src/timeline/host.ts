@@ -798,6 +798,20 @@ export class TimelineHost {
     }
   }
 
+  /**
+   * The clip pasted keys go onto: the one whose keys are selected, else the selected clip whose
+   * lanes are open, else the one selected clip. `null` when that is not exactly one clip.
+   */
+  keyPasteTarget(): string | null {
+    const selected = keySelectionStore.getState().item;
+    if (selected !== null) return selected;
+    const view = this.#deps.view.getState();
+    const items = this.#itemSelection(view.selection);
+    const open = items.filter((id) => view.keyframeLanes.includes(id));
+    if (open.length === 1) return open[0] ?? null;
+    return open.length === 0 && items.length === 1 ? (items[0] ?? null) : null;
+  }
+
   /** Adds a key of `prop` on the clip at sequence time `at` (on its frame). */
   addKeyAt(item: string, prop: string, at: number): void {
     this.#keyEdit("add", (call) => addKey(call, item, prop, Math.max(0, Math.round(at))));
