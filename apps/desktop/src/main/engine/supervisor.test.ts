@@ -256,6 +256,22 @@ describe("slow starts (issue #143)", () => {
     expect(logs.some((m) => /still starting after 10 s/.test(m))).toBe(true);
   });
 
+  it("logs where a start spent its time: the process load, the engine's start, main's connection", async () => {
+    const logs: string[] = [];
+    const h = harness({ log: (m) => logs.push(m) });
+    void h.sup.start();
+    await flush();
+    await vi.advanceTimersByTimeAsync(300);
+    h.last().starting(0);
+    await flush();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await h.ready();
+    expect(h.sup.status.state).toBe("ready");
+    expect(logs).toContain(
+      "engine ready 2300 ms after its spawn (first line at 300 ms, ready line at 2300 ms)",
+    );
+  });
+
   it("kills an engine that stops reporting for 10 s, though it was alive before", async () => {
     const h = harness();
     void h.sup.start();
