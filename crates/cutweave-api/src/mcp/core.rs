@@ -125,7 +125,7 @@ mod tests {
     fn the_committed_table_parses_and_is_well_formed() {
         let table = CoreTable::parse(SOURCE).unwrap();
         assert_eq!(CoreTable::get(), &table);
-        assert!(!table.tools.is_empty());
+        assert!(table.tools.len() >= 20, "the P2 core set");
         let mut names: Vec<&str> = table.tools.iter().map(|t| t.name.as_str()).collect();
         let listed = names.len();
         names.extend(table.pending.iter().map(|p| p.name.as_str()));

@@ -466,6 +466,12 @@ pub fn schema_error(schema: &Value, value: &Value, at: &str) -> Option<String> {
     {
         return fail(format!("does not match {pattern}"));
     }
+    members_error(map, value, at)
+}
+
+/// The array and object part of [`schema_error`]: elements, required members, properties.
+fn members_error(map: &serde_json::Map<String, Value>, value: &Value, at: &str) -> Option<String> {
+    let fail = |what: String| Some(format!("{at}: {what}"));
     if let Some(list) = value.as_array() {
         let count = list.len() as u64;
         if map
