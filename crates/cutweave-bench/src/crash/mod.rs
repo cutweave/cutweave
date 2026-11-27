@@ -341,7 +341,7 @@ pub fn run(options: &CrashOptions) -> Result<CrashReport, BenchError> {
         }
     });
     if let Some(point) = misplaced {
-        return Err(BenchError::Spec(format!(
+        return Err(BenchError::Other(format!(
             "the crash point `{}` cannot be used {} --with-media",
             point.name(),
             if options.media { "with" } else { "without" }
@@ -423,16 +423,16 @@ impl CrashArgs {
         while let Some(flag) = it.next() {
             let mut value = || {
                 it.next()
-                    .ok_or_else(|| BenchError::Spec(format!("{flag} needs a value")))
+                    .ok_or_else(|| BenchError::Other(format!("{flag} needs a value")))
             };
             let number = |v: &String| {
                 v.parse::<u64>()
-                    .map_err(|_| BenchError::Spec(format!("{flag}: `{v}` is not a number")))
+                    .map_err(|_| BenchError::Other(format!("{flag}: `{v}` is not a number")))
             };
             match flag.as_str() {
                 "--count" => {
                     out.count = u32::try_from(number(value()?)?)
-                        .map_err(|_| BenchError::Spec("--count is too large".into()))?;
+                        .map_err(|_| BenchError::Other("--count is too large".into()))?;
                 }
                 "--seed" => out.seed = Some(number(value()?)?),
                 "--scratch" => out.scratch = Some(PathBuf::from(value()?)),
@@ -441,7 +441,7 @@ impl CrashArgs {
                         .split(',')
                         .map(|name| {
                             Point::parse(name.trim()).ok_or_else(|| {
-                                BenchError::Spec(format!("unknown crash point `{name}`"))
+                                BenchError::Other(format!("unknown crash point `{name}`"))
                             })
                         })
                         .collect::<Result<Vec<_>, _>>()?;
@@ -450,7 +450,7 @@ impl CrashArgs {
                 "--self-test" => out.self_test = true,
                 "--with-media" => out.with_media = true,
                 "--quiet" => out.quiet = true,
-                other => return Err(BenchError::Spec(format!("unknown option `{other}`"))),
+                other => return Err(BenchError::Other(format!("unknown option `{other}`"))),
             }
         }
         Ok(out)
