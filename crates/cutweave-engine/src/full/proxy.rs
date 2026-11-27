@@ -56,7 +56,7 @@ use cutweave_cache::proxy::{
 use cutweave_cache::{CacheDb, ContentHash};
 use cutweave_commands::{CmdError, DocHandle};
 use cutweave_jobs::{JobId, JobManager, JobState};
-use cutweave_media::{CancelToken, MediaBackend};
+use cutweave_media::{CancelToken, MediaBackend, ProxyLookup};
 use cutweave_model::{Item, MediaAsset, MediaId, Project, ProxyMode, StreamKind, TrackKind};
 use cutweave_ops::media::proxy::{
     ImportProxy, ProxyInfo, ProxyService, ProxyStatus, proxyable, wanted,
@@ -427,6 +427,13 @@ impl FullProxies {
         Arc::clone(&self.activity)
     }
 
+    /// Whether the original of an asset is on this computer, as far as one look at the disk
+    /// says (`path_abs`; an image sequence: its first picture). A proxy is made from a file
+    /// that was there, so "not a file" means it is gone.
+    pub(crate) fn original_there(path_abs: Option<&str>) -> bool {
+        path_abs.is_some_and(|p| std::path::Path::new(p).is_file())
+    }
+
     /// The store.
     pub(crate) fn store(&self) -> &Arc<ProxyStore> {
         &self.store
@@ -724,6 +731,21 @@ fn fill(info: &mut ProxyInfo, record: &ProxyRecord) {
         info.size = Some([record.size.0, record.size.1]);
     }
     info.error.clone_from(&record.error);
+}
+
+/// The [`MediaResolver`](cutweave_media::MediaResolver)'s lookup (WP-2F.02): the ready proxy
+/// the preview may read for `asset`. None for an asset whose proxies are off (ADR-0027), and
+/// none while its original is not on this computer: offline media shows the "media offline"
+/// slate everywhere, never a proxy picture of a file that is gone.
+impl ProxyLookup<MediaAsset> for FullProxies {
+    type Proxy = Arc<ReadyProxy>;
+
+    fn ready_proxy(&self, asset: &MediaAsset) -> Option<Arc<ReadyProxy>> {
+        if !FullProxies::original_there(asset.path_abs.as_deref()) {
+            return None;
+        }
+        self.ready(asset)
+    }
 }
 
 impl ProxyService for FullProxies {
