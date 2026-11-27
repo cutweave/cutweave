@@ -14,10 +14,19 @@ import { isMovingPicture } from "../../media/kinds.ts";
 import { activeDocument } from "../../shell/windows.ts";
 import { docStore } from "../../state/docStore.ts";
 import { selectInOut } from "../../state/selectors.ts";
+import { activeTimelineHost } from "../../timeline/activeHost.ts";
 import { attributesSource, hasClipboardItems } from "../../timeline/clipboard.ts";
+import { onePerGroup, withPartners } from "../../timeline/groups.ts";
 import { inOutArgs, markerArgs } from "../../timeline/inOut.ts";
 import { itemSelection, trackSelection } from "../adapters.ts";
-import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
+import type {
+  LabelSpec,
+  MenuContext,
+  MenuRow,
+  MenuSurfaceDef,
+  MenuTarget,
+  SelectionAdapter,
+} from "../types.ts";
 import type { ContextValues } from "../when.ts";
 import {
   activeSequence,
@@ -32,6 +41,23 @@ import {
 import { sequenceRate } from "./shared.ts";
 
 const LOCKED = "contextMenu.reason.trackLocked" as const;
+
+/**
+ * The clip menus' selection (WP-2A.10): a click on the timeline selects a clip with its linked
+ * partners (timeline spec INV-341), and the menu acts on the clips, one per linked group (the
+ * engine edits the partners with them, INV-35). A right-click on a clip that is not selected
+ * selects it as a click does: with its partners while linked selection is on.
+ */
+const clipSelection: SelectionAdapter = {
+  empty: "keep",
+  current: () => onePerGroup(docStore.getState().project, itemSelection.current()),
+  set: (ids) =>
+    itemSelection.set(
+      (activeTimelineHost()?.ui.getState().linkedSelection ?? true)
+        ? withPartners(docStore.getState().project, ids)
+        : ids,
+    ),
+};
 
 /** A clip that plays moving pictures: video media on a video track, not a freeze frame. */
 const moving = (f: ClipFact): boolean =>
@@ -91,7 +117,9 @@ const canLink = (ctx: MenuContext): boolean => {
 const linkReason = (ctx: MenuContext) => {
   if (ctx.keys["track.locked"] === true) return LOCKED;
   const facts = clipFacts(ctx.ids);
-  return alignedOnOwnTracks(facts) && sameGroup(facts)
+  // One clip of a linked group stands for the group the menu was opened on (WP-2A.10).
+  const oneLinked = facts.length === 1 && facts[0]?.clip.linked_group !== null;
+  return oneLinked || (alignedOnOwnTracks(facts) && sameGroup(facts))
     ? ("contextMenu.reason.alreadyLinked" as const)
     : ("contextMenu.reason.notAligned" as const);
 };
@@ -340,7 +368,8 @@ const clipRows: readonly MenuRow[] = [
     enabledIf: (ctx) => ctx.keys["item.linked"] === true && ctx.keys["track.locked"] !== true,
     reason: (ctx) =>
       ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.notLinked" as const),
-    args: (ctx) => ({ items: ctx.ids }),
+    // The menu names one clip per group: the partners leave the group with it.
+    args: (ctx) => ({ items: withPartners(docStore.getState().project, ctx.ids) }),
   },
   {
     command: "item.attach",
@@ -463,7 +492,7 @@ export const TIMELINE_CLIP: MenuSurfaceDef = {
   id: "timeline.clip",
   name: clipName,
   groups: ["edit", "clipboard", "speed", "link", "layout", "state", "reveal"],
-  selection: itemSelection,
+  selection: clipSelection,
   keys: clipKeys,
   rows: clipRows,
 };
@@ -633,7 +662,7 @@ export const TIMELINE_EDGE: MenuSurfaceDef = {
     vars: { name: target.name ?? clipLabel(target.ids[0] ?? "") },
   }),
   groups: ["trim", "extend"],
-  selection: itemSelection,
+  selection: clipSelection,
   keys: clipKeys,
   rows: edgeRows,
 };
