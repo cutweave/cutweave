@@ -156,3 +156,99 @@ fn collecting_again_into_a_finished_copy_is_refused_and_agents_stay_in_their_fol
         assert_eq!(err.code(), "invalid", "{err}");
     }
 }
+
+/// #208: an image sequence is one asset made of many files. Collecting copies every picture,
+/// the copy opens complete with the originals gone, and a run that moved is found again whole.
+#[test]
+fn a_collected_image_sequence_opens_complete_and_a_moved_run_is_found_again() {
+    let t = TempDir::new("collect-seq");
+    let engine = start(&t);
+    let conn = engine.handle().connect(&agent()).unwrap();
+    let renders = t.path().join("Renders").join("shotA");
+    std::fs::create_dir_all(&renders).unwrap();
+    // `f_0001.png` … `f_0006.png`; number 4 has no file.
+    let numbers = [1, 2, 3, 5, 6];
+    let name = |n: i32| format!("f_{n:04}.png");
+    for n in numbers {
+        std::fs::write(renders.join(name(n)), format!("picture {n}")).unwrap();
+    }
+    new_document(&conn, "Promo");
+    let original = t.path().join("Promo");
+    must(
+        &conn,
+        "project.save_as",
+        json!({ "path": path_str(&original) }),
+    );
+    let imported = must(
+        &conn,
+        "media.import_sequence",
+        json!({ "path": path_str(&renders) }),
+    );
+    assert_eq!(imported["image_sequence"]["count"], 6, "{imported}");
+    assert_eq!(imported["image_sequence"]["missing"], json!([4]));
+    must(&conn, "project.save", json!({}));
+
+    let dest = t.path().join("Handover");
+    let estimate = must(
+        &conn,
+        "project.collect_estimate",
+        json!({ "dest": path_str(&dest) }),
+    );
+    assert_eq!(estimate["files"], 5, "{estimate}");
+    assert_eq!(estimate["missing"], json!([]));
+    let out = must(&conn, "project.collect", json!({ "dest": path_str(&dest) }));
+    assert_eq!(wait(&conn, &out["job_id"])["state"], "succeeded");
+
+    // "Another machine": the originals are gone, the copy is moved, and it opens complete.
+    must(&conn, "project.close", json!({}));
+    std::fs::remove_dir_all(t.path().join("Renders")).unwrap();
+    std::fs::remove_dir_all(&original).unwrap();
+    let moved = t.path().join("Elsewhere");
+    std::fs::rename(&dest, &moved).unwrap();
+    let opened = must(&conn, "project.open", json!({ "path": path_str(&moved) }));
+    assert_eq!(opened["missing_media"], json!([]), "{opened}");
+    let health = must(&conn, "media.find_missing", json!({ "verify": true }));
+    assert_eq!(health["missing"], json!([]), "{health}");
+    assert_eq!(health["checked"], 1);
+    let copied = moved.join("media").join("shotA");
+    for n in numbers {
+        assert_eq!(
+            std::fs::read(copied.join(name(n))).unwrap(),
+            format!("picture {n}").into_bytes()
+        );
+    }
+    assert!(!copied.join(name(4)).exists());
+
+    // The run moves: the asset is missing, and one search of a folder above finds it by content.
+    let away = t.path().join("Moved").join("deep").join("shotA");
+    std::fs::create_dir_all(away.parent().unwrap()).unwrap();
+    std::fs::rename(&copied, &away).unwrap();
+    let health = must(&conn, "media.find_missing", json!({}));
+    assert_eq!(health["missing"][0]["status"], "missing", "{health}");
+    assert_eq!(health["missing"][0]["missing_frames"], 5);
+    let found = must(
+        &conn,
+        "media.relink_folder",
+        json!({ "folder": path_str(&t.path().join("Moved")) }),
+    );
+    assert_eq!(found["still_missing"], json!([]), "{found}");
+    assert_eq!(found["relinked"][0]["matched_by"], "hash", "{found}");
+    assert_eq!(
+        must(&conn, "media.find_missing", json!({}))["missing"],
+        json!([])
+    );
+
+    // One picture goes: the sequence is incomplete, and a collect refuses it.
+    std::fs::remove_file(away.join(name(5))).unwrap();
+    let health = must(&conn, "media.find_missing", json!({}));
+    assert_eq!(health["missing"][0]["status"], "incomplete", "{health}");
+    assert_eq!(health["missing"][0]["missing_frames"], 1);
+    let err = conn
+        .call(Call::new(
+            "project.collect",
+            json!({ "dest": path_str(&t.path().join("Again")) }),
+        ))
+        .unwrap_err();
+    assert_eq!(err.code(), "invalid", "{err}");
+    assert!(err.to_string().contains("1 picture"), "{err}");
+}
