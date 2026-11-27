@@ -326,7 +326,9 @@ fn an_export_reads_no_proxy_and_equals_the_export_without_proxies() {
     for p in deleted["proxies"].as_array().unwrap() {
         assert_eq!(p["status"], "evicted", "{deleted}");
     }
-    assert!(proxy_files.iter().all(|p| !p.exists()));
+    for id in &media {
+        assert_eq!(r.proxy_status(id)["status"], "evicted");
+    }
     let without = r.dir.path().join("without-proxies.mp4");
     r.export(&without);
 
