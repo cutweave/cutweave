@@ -1031,6 +1031,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 033 | The editor's CSP allows `'wasm-unsafe-eval'` for the bundled math module (§10, §18) | **Accepted** (product owner, 2026-11-26) |
 | 034 | Track pan, a keyframed track gain and the master bus settings (master gain, limiter) in the project as optional fields; `track.set_gain`, `audio.set_master` (§4.2, §9, §17) | Proposed: maintainers' review of WP-2E.02 |
 | 035 | The still duration is a project setting (`ProjectSettings.still_duration`, a still inserted without a duration gets it; existing clips never change); image sequences are a media kind, with a schema version bump; slideshow import and `media.import_frame` are commands (§4.2, §4.3, §5.1, §7, §17) | **Accepted** (product owner, 2026-11-26) |
+| 036 | Tags, ratings and notes on media and collections (manual and smart) in the project as optional fields, no schema bump; `MediaFilter` gains tags, rating and collection (no `imported_within_days`); WP-2F.06 splits into 2F.06a/b/c (§4.2, §5.1) | **Accepted** (product owner, 2026-11-27) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 
