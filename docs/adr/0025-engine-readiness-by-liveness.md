@@ -69,6 +69,10 @@ We will have the supervisor judge a start by liveness: a starting engine that sa
 - The audio output still waits for its first callback before the ready line (up to 10 s on a stalled device, inside the GPU window). Attaching playback when the device arrives would take it off the path too.
 - Measure a release build and a cold disk cache on the reference machines (arch §19).
 
+## Notes
+
+**Issue #224 (2026-11-27): the capabilities probe had come back on the way to the ready line.** WP-2F.01's proxies chose their codec in `start` from the backend's full capabilities, whose first read is the hardware probe. Measured (debug build with FFmpeg, Windows, 16 CPU hogs and two process spawners; the app's flags): the full engine was ready 10.7 to 19.0 s after the spawn (median 14.5 s, five starts), 9.2 to 17.5 s of it that probe; idle 2.3 s, 1.7 s of it the probe. The proxies now choose from the software codecs (`MediaBackend::software_capabilities`, no probe) and the rules above are unchanged. The same load, the two builds started in turn: before 11.6, 12.7, 15.4 and 16.8 s; after 0.8, 1.5, 1.8 and 2.0 s. What is left under heavy load is the OS's: on a machine busy starting other processes, loading the engine binary and the run-file's `whoami` and `icacls` each took up to about 14 s; the run-file's private file is now made as soon as the engine runs. A quit while the probe still runs waits for it, as this ADR's worker always did.
+
 ## Links
 
 - Architecture: `../01-architecture.md` §2, §8, §19
