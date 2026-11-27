@@ -1062,8 +1062,22 @@ mod tests {
         );
         assert_eq!(play(25, false, 480), ORIGINAL);
         assert_eq!(play(26, true, 480), PROXY);
+        // A render cancelled on the way (the toggle itself cancels the frame in flight) does
+        // not end the stream: the next frame still comes from the proxy.
+        let gate = Arc::new(cutweave_playback::transport::EpochGate::new());
+        let stale = gate.token(gate.current());
+        gate.advance();
+        assert!(stale.is_cancelled());
+        let _ = preview
+            .request(&snapshot, &stale, DecodeMode::Sequential)
+            .frame(&request(false, Some(480), frame(27)));
+        assert_eq!(
+            play(28, false, 480),
+            PROXY,
+            "kept across a cancelled render"
+        );
         // A jump (another part of the file) is a seek anyway: the decision applies.
-        assert_eq!(play(58, false, 480), ORIGINAL);
+        assert_eq!(play(59, false, 480), ORIGINAL);
 
         // The asset's proxies turned off (ADR-0027): the original, from the next frame; on
         // again: the proxy again. The store did not change in between.

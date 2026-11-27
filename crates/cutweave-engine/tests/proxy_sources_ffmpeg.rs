@@ -407,15 +407,19 @@ fn probe_toggling_proxies_during_playback() {
     assert_eq!(imported["failed"], json!([]), "{imported}");
     let media = imported["media_ids"][0].clone();
     r.wait_proxy(&media, "ready", 600);
-    call(
-        &r.ui,
-        "timeline.insert",
-        json!({
-            "sequence": project["sequence"], "track": project["video_track"],
-            "media": media, "at": 0, "duration": "10s",
-        }),
-    )
-    .unwrap();
+    // The whole clip, twice (the second pushes the first along): more than the 6.5 s played
+    // here.
+    for _ in 0..2 {
+        call(
+            &r.ui,
+            "timeline.insert",
+            json!({
+                "sequence": project["sequence"], "track": project["video_track"],
+                "media": media, "at": 0, "mode": "insert",
+            }),
+        )
+        .unwrap();
+    }
     let caps = call(&r.agent, "media.capabilities", json!({})).unwrap();
 
     // Playback starts on the original (proxies off), so the first toggle is a real change of

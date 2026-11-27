@@ -1052,7 +1052,6 @@ impl FrameSource for PreviewRequest<'_> {
         let streaming = playback
             && held.streaming_proxy
             && previous.is_some_and(|p| (t.flicks() - p.flicks()).abs() <= REVERSE_STEP_FLICKS);
-        held.streaming_proxy = false;
         if !held.offline
             && let Some(frame) =
                 self.proxy_frame(held, asset, t, self.purpose(request, backward), streaming)
@@ -1061,6 +1060,9 @@ impl FrameSource for PreviewRequest<'_> {
             held.streaming_proxy = playback;
             return Ok(frame);
         }
+        // A render that was cancelled (a newer request: the toggle, an edit) says nothing
+        // about the stream: the frame after it goes on from the proxy.
+        held.streaming_proxy = streaming && self.cancel.is_cancelled();
         if held.index.is_none() {
             held.index = alloc_scope::within(Scope::Media, || held.pool.index());
         }
