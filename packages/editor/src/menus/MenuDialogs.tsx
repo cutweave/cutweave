@@ -28,6 +28,7 @@ import { useDocStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { ATTRIBUTE_GROUPS, type AttributeGroup } from "../timeline/clipboard.ts";
 import { translator } from "../timeline/errors.ts";
+import { MarkerDialog } from "../timeline/MarkerDialog.tsx";
 import { canReplaceWith, pickedMedia, replaceClip } from "../timeline/replacePick.ts";
 import { menuServices } from "./defaults.ts";
 import { menuDialogStore, useMenuDialog } from "./dialogs.ts";
@@ -544,6 +545,8 @@ export function MenuDialogs() {
   switch (dialog.kind) {
     case "rename-clip":
       return <RenameClip key={dialog.item} item={dialog.item} name={dialog.name} />;
+    case "edit-marker":
+      return <MarkerDialog key={dialog.marker} marker={dialog.marker} />;
     case "custom-speed":
       return <CustomSpeed key={dialog.items.join()} items={dialog.items} speed={dialog.speed} />;
     case "delete-track":

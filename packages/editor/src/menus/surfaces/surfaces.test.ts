@@ -749,6 +749,76 @@ describe("the timeline's own edits (WP-2A.10)", () => {
     expect(lastCall()).toEqual({ name: "timeline.remove_marker", args: { marker } });
   });
 
+  it("edits a marker in its dialog, and makes it a chapter and a plain marker again (issue #222)", async () => {
+    const marker = hex("mrk", 1);
+    const target = { ids: [marker], name: "Intro", place: { time: 4 * F } };
+    const withMarker = (kind: string): void => {
+      const p = project() as unknown as { sequences: Record<string, { markers?: object }> };
+      const seq = p.sequences[SEQ];
+      if (seq !== undefined) {
+        seq.markers = { [marker]: { id: marker, t: 4 * F, label: "Intro", kind } };
+      }
+      docStore.setState({ project: p as unknown as Project });
+    };
+    withMarker("user");
+    await menuFor("timeline.marker", target).choose("Edit…");
+    expect(menuDialogStore.getState().dialog).toEqual({ kind: "edit-marker", marker });
+    expect(call).not.toHaveBeenCalled();
+    await menuFor("timeline.marker", target).choose("Convert to chapter");
+    expect(lastCall()).toEqual({
+      name: "timeline.update_marker",
+      args: { id: marker, kind: "chapter" },
+    });
+    call.mockClear();
+    withMarker("chapter");
+    const chapter = menuFor("timeline.marker", target);
+    expect(chapter.items.map((i) => i.label)).not.toContain("Convert to chapter");
+    await chapter.choose("Convert to marker");
+    expect(lastCall()).toEqual({ name: "timeline.update_marker", args: { id: marker, kind: "user" } });
+  });
+
+  it("gives clips a colour label from the label tokens, checks the current one and clears it (issue #222)", async () => {
+    const root = document.documentElement;
+    root.style.setProperty("--label-red", "#e5534b");
+    root.style.setProperty("--label-blue", "#4a8fe0");
+    try {
+      viewStore.getState().setSelection([C1, C2].map((id) => ({ kind: "item", id }) as never));
+      const m = menuFor("timeline.clip", { ids: [C1] });
+      expect(m.item("None").checked).toBe(true);
+      expect(m.item("Red").checked).toBe(false);
+      await m.choose("Red");
+      expect(lastCall()).toEqual({
+        name: "item.set_label_color",
+        args: { items: [C1, C2], color: "#e5534b" },
+      });
+      call.mockClear();
+      // A labelled clip shows its colour checked; None clears it.
+      const labelled = project();
+      const seq = labelled.sequences[SEQ as keyof typeof labelled.sequences] as unknown as {
+        tracks: Record<string, { items: Record<string, Record<string, unknown>> }>;
+      };
+      const c1 = seq.tracks[V1]?.items[C1];
+      if (c1 !== undefined) c1.color_label = "#4a8fe0";
+      docStore.setState({ project: labelled });
+      viewStore.getState().setSelection([{ kind: "item", id: C1 } as never]);
+      const again = menuFor("timeline.clip", { ids: [C1] });
+      expect(again.item("Blue").checked).toBe(true);
+      expect(again.item("None").checked).toBe(false);
+      await again.choose("None");
+      expect(lastCall()).toEqual({
+        name: "item.set_label_color",
+        args: { items: [C1] },
+      });
+      // A locked track's clip: every choice says why not.
+      const locked = menuFor("timeline.clip", { ids: [CL] }).item("Red");
+      expect(locked.disabled).toBe(true);
+      expect(locked.disabledReason).toBe("Track is locked");
+    } finally {
+      root.style.removeProperty("--label-red");
+      root.style.removeProperty("--label-blue");
+    }
+  });
+
   it("splits at the playhead from the playhead's menu", () => {
     expect(
       menuFor("timeline.playhead", { place: { time: 5 * F } }).item("Split at playhead"),

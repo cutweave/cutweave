@@ -18,6 +18,7 @@ import {
   type ItemSetProps,
   type RpcClient,
   RpcError,
+  type TimelineMoveMarker,
   type TxId,
 } from "@cutweave/protocol";
 import { activeDocument, framesOf } from "../shell/windows.ts";
@@ -27,6 +28,14 @@ export type GestureUpdate =
   | { readonly name: "clip.trim"; readonly input: ClipTrim }
   /** An inspector slider or scrubber drag (WP-1M.07). */
   | { readonly name: "item.set_props"; readonly input: ItemSetProps };
+
+/** A marker dragged on the ruler (issue #222, `markerDrag.ts`). */
+export interface MarkerMove {
+  readonly name: "timeline.move_marker";
+  readonly input: TimelineMoveMarker;
+}
+
+type Update = GestureUpdate | MarkerMove;
 
 /** One position of the gesture: a command, or several that move together (a multi-selection). */
 export type GestureStep = GestureUpdate | readonly GestureUpdate[];
@@ -76,11 +85,11 @@ export function toRpcError(error: unknown): RpcError {
   return error instanceof RpcError ? error : new RpcError("internal", String(error));
 }
 
-const keyOf = (updates: readonly GestureUpdate[]): string =>
+const keyOf = (updates: readonly Update[]): string =>
   updates.map((u) => `${u.name}${JSON.stringify(u.input)}`).join("|");
 
-const asList = (step: GestureStep): readonly GestureUpdate[] =>
-  Array.isArray(step) ? (step as readonly GestureUpdate[]) : [step as GestureUpdate];
+const asList = (step: GestureStep | MarkerMove): readonly Update[] =>
+  Array.isArray(step) ? (step as readonly Update[]) : [step as Update];
 
 export class GestureSession {
   /** `item.move` / `clip.trim` requests sent so far. */
@@ -90,7 +99,7 @@ export class GestureSession {
   readonly #frames: FrameScheduler;
   readonly #onAbort: ((error: RpcError) => void) | undefined;
   readonly #tx: Promise<TxId | null>;
-  #pending: readonly GestureUpdate[] | null = null;
+  #pending: readonly Update[] | null = null;
   #lastSent: string | null = null;
   #lastError: RpcError | null = null;
   #inflight: Promise<void> | null = null;
@@ -120,7 +129,7 @@ export class GestureSession {
   }
 
   /** The newest position; sent on the next frame unless a newer one replaces it first. */
-  update(update: GestureStep): void {
+  update(update: GestureStep | MarkerMove): void {
     if (this.#closing) return;
     this.#pending = asList(update);
     this.#schedule();
@@ -161,7 +170,7 @@ export class GestureSession {
     });
   }
 
-  async #send(updates: readonly GestureUpdate[]): Promise<void> {
+  async #send(updates: readonly Update[]): Promise<void> {
     const tx = await this.#tx;
     if (tx === null || this.#aborted !== null) return;
     this.#lastSent = keyOf(updates);
@@ -170,6 +179,8 @@ export class GestureSession {
         this.updates += 1;
         if (update.name === "item.move") await this.#rpc.call(update.name, update.input, { tx });
         else if (update.name === "clip.trim") {
+          await this.#rpc.call(update.name, update.input, { tx });
+        } else if (update.name === "timeline.move_marker") {
           await this.#rpc.call(update.name, update.input, { tx });
         } else await this.#rpc.call(update.name, update.input, { tx });
       }

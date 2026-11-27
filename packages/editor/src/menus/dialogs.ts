@@ -11,6 +11,8 @@ import { createStore } from "zustand/vanilla";
 
 export type MenuDialog =
   | { readonly kind: "rename-clip"; readonly item: string; readonly name: string }
+  // A marker's Edit… and a double-click on it (issue #222): its name, colour and length.
+  | { readonly kind: "edit-marker"; readonly marker: string }
   // Speed ▸ Custom… (WP-2D.01): a speed for the clips, prefilled with their shared one.
   | { readonly kind: "custom-speed"; readonly items: readonly string[]; readonly speed: string }
   | {

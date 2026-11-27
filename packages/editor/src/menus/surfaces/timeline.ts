@@ -3,9 +3,11 @@
 // clip, a clip's edge, an empty lane, a track header, the ruler (with the in/out range's items),
 // the playhead and a marker (docs/research/09-context-menus.md §6.4). Every row names a command
 // that exists; a row for a command nobody has registered is left out, so a feature WP only adds
-// its row. Not here yet, for want of a command: Color label (`item.set_label_color`), the
-// marker's Edit… and Convert to chapter (`timeline.update_marker`), Detach audio
-// (`audio.extract`), Group, Compound clip, Match frame. TODO(WP-2C.05): the keyframe menu.
+// its row. Issue #222 added the clip's Color label (`item.set_label_color`) and the marker's
+// Edit… and Convert to chapter (`timeline.update_marker`). Not here yet, for want of a command:
+// Detach audio (`audio.extract`), Group, Compound clip, Match frame. TODO(WP-2C.05): the
+// keyframe menu.
+import type { MarkerId } from "@cutweave/protocol";
 import { formatTimecode } from "@cutweave/timeline";
 import { canSwap, visualClipIds } from "../../layout/actions.ts";
 import { LAYOUT_NAMES } from "../../layout/names.ts";
@@ -18,6 +20,13 @@ import { activeTimelineHost } from "../../timeline/activeHost.ts";
 import { attributesSource, hasClipboardItems } from "../../timeline/clipboard.ts";
 import { onePerGroup, withPartners } from "../../timeline/groups.ts";
 import { inOutArgs, markerArgs } from "../../timeline/inOut.ts";
+import {
+  LABEL_COLOR_NAME,
+  LABEL_COLORS,
+  type LabelColor,
+  labelColorOf,
+  labelColorValue,
+} from "../../timeline/labelColors.ts";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type {
   LabelSpec,
@@ -291,6 +300,42 @@ const replaceReason = (ctx: MenuContext) =>
       ? ("contextMenu.reason.oneClip" as const)
       : ("contextMenu.reason.cannotReplace" as const);
 
+// ----- colour labels (issue #222) ----------------------------------------------------------------
+
+/** The label colour every clip of the menu has, `null` when none has one, else `undefined`. */
+function sharedLabel(ctx: MenuContext): LabelColor | null | undefined {
+  const colors = new Set(clipFacts(ctx.ids).map((f) => f.clip.color_label ?? null));
+  if (colors.size !== 1) return undefined;
+  const [only] = colors;
+  return only === null || only === undefined ? null : (labelColorOf(only) ?? undefined);
+}
+
+/** One choice of Color label ▸: the clips and their linked partners get `color` (null: none). */
+const labelRow = (id: string, color: LabelColor | null, order: number): MenuRow => ({
+  id,
+  command: "item.set_label_color",
+  group: "label",
+  order,
+  radio: true,
+  label: {
+    key: color === null ? "contextMenu.item.colorLabelNone" : LABEL_COLOR_NAME[color],
+  },
+  enabledIf: (ctx) =>
+    ctx.keys["track.locked"] !== true && (color === null || labelColorValue(color) !== null),
+  reason: LOCKED,
+  checked: (ctx) => sharedLabel(ctx) === color,
+  // Without `color` the command clears the label.
+  args: (ctx) => ({
+    items: withPartners(docStore.getState().project, ctx.ids),
+    ...(color !== null && { color: labelColorValue(color) }),
+  }),
+});
+
+const labelRows: readonly MenuRow[] = [
+  labelRow("label-none", null, 0),
+  ...LABEL_COLORS.map((color, index) => labelRow(`label-${color}`, color, index + 1)),
+];
+
 const clipRows: readonly MenuRow[] = [
   {
     command: "clip.split",
@@ -440,6 +485,12 @@ const clipRows: readonly MenuRow[] = [
     order: 1,
     enabledIf: (ctx) => oneClip(ctx) && ctx.keys["track.locked"] !== true,
     reason: clipReason,
+  },
+  {
+    id: "color-label",
+    group: "state",
+    order: 3,
+    submenu: { label: { key: "contextMenu.item.colorLabel" }, rows: labelRows },
   },
   {
     command: "timeline.reveal_in_bin",
@@ -1096,15 +1147,35 @@ export const TIMELINE_PLAYHEAD: MenuSurfaceDef = {
   ],
 };
 
-/** A sequence marker (its pin in the ruler): go to it, or delete it. */
+/** Whether the marker the menu is on is a chapter. */
+const isChapter = (ctx: MenuContext): boolean =>
+  activeSequence()?.sequence.markers?.[ctx.ids[0] as MarkerId]?.kind === "chapter";
+
+/**
+ * A sequence marker (its pin in the ruler): edit it (issue #222), go to it, make it a chapter
+ * or a plain marker again, or delete it.
+ */
 export const TIMELINE_MARKER: MenuSurfaceDef = {
   id: "timeline.marker",
   name: (target) => ({
     key: "contextMenu.name.marker",
     vars: { name: target.name === undefined || target.name === "" ? "-" : target.name },
   }),
-  groups: ["navigate", "remove"],
+  groups: ["edit", "navigate", "remove"],
   rows: [
+    { command: "timeline.edit_marker", group: "edit", order: 0 },
+    {
+      id: "convert-chapter",
+      command: "timeline.update_marker",
+      group: "edit",
+      order: 1,
+      label: (ctx) => ({
+        key: isChapter(ctx)
+          ? "contextMenu.item.convertToMarker"
+          : "contextMenu.item.convertToChapter",
+      }),
+      args: (ctx) => ({ id: ctx.ids[0], kind: isChapter(ctx) ? "user" : "chapter" }),
+    },
     { command: "timeline.go_to_marker", group: "navigate", order: 0 },
     {
       command: "timeline.remove_marker",
