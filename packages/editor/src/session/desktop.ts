@@ -89,14 +89,25 @@ export interface DesktopBridge {
     /** Native folder picker; `null` when cancelled. */
     openProjectFolder(): Promise<string | null>;
     /**
-     * Native "save as" picker for the exported video (WP-1M.08): starts at `defaultPath`
-     * (a full path or just a file name); resolves to the chosen `.mp4` path, `null` when cancelled.
+     * Native "save as" picker for the exported file (WP-1M.08): starts at `defaultPath` (a full
+     * path or just a file name) and offers the file type of `container` (MP4 when left out,
+     * WP-2G.04b); resolves to the chosen path with that extension, `null` when cancelled.
      */
-    chooseExportFile?(defaultPath: string): Promise<string | null>;
+    chooseExportFile?(defaultPath: string, container?: string): Promise<string | null>;
+  };
+  /** OS notifications main shows (WP-2G.04b). */
+  readonly notify?: {
+    /**
+     * An export finished: main shows the notification when Settings > Notifications asks for
+     * it and Cutweave is in the background; resolves to whether it did.
+     */
+    exportFinished(notice: { readonly title: string; readonly body: string }): Promise<boolean>;
   };
   /** Reveals a file in the OS file manager (WP-1M.08: "Reveal in folder" after an export). */
   readonly shell?: {
     showItemInFolder(path: string): Promise<void>;
+    /** Opens an exported file with the OS's app for it (WP-2G.04b); rejects when it cannot. */
+    openFile?(path: string): Promise<void>;
     /** "Open settings folder" and "Open logs folder" (WP-1M.11). */
     openAppFolder?(which: "settings" | "logs"): Promise<void>;
   };

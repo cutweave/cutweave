@@ -30,7 +30,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import type { Duplex } from "node:stream";
 import { SCHEMA_HASH } from "../../../packages/protocol/src/generated/schema-hash.ts";
-import { FakePreview, framePng } from "./fake-preview.ts";
+import { FakePreview, fakeFormat, framePng } from "./fake-preview.ts";
 
 const args = process.argv.slice(2);
 const argValue = (name: string): string | null => {
@@ -433,7 +433,7 @@ function handle(client: Client, text: string): void {
         committed_rev: 0,
         project: preview?.project ?? {
           meta: { name: "fake" },
-          settings: {},
+          settings: { default_format: fakeFormat() },
           media: {},
           sequences: {},
           custom: {},

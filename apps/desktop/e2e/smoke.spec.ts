@@ -34,6 +34,7 @@ test("the page main world has no Node access, only window.cutweave", async ({ pa
       "engine",
       "files",
       "menu",
+      "notify",
       "prefs",
       "preview",
       "recent",

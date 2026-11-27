@@ -14,6 +14,8 @@ import {
   type EditAction,
   type EngineConnection,
   type EngineStatus,
+  type ExportContainer,
+  type ExportNotice,
   MENU_COMMANDS,
   type MenuCommand,
   type PopoutOnTopRequest,
@@ -43,11 +45,19 @@ export interface InvokeChannels {
    */
   "dialog:pickMediaFolders": { args: []; result: string[] | null };
   /**
-   * Native "save as" for the exported video (WP-1M.08): starts at the default path (or file
-   * name); resolves to an absolute `.mp4` path, or null when cancelled.
+   * Native "save as" for the exported file (WP-1M.08): starts at the default path (or file
+   * name) and offers the container's file type (MP4 when left out, WP-2G.04b); resolves to an
+   * absolute path with that extension, or null when cancelled.
    */
-  "dialog:chooseExportFile": { args: [defaultPath: string]; result: string | null };
+  "dialog:chooseExportFile": {
+    args: [defaultPath: string] | [defaultPath: string, container: ExportContainer];
+    result: string | null;
+  };
   "shell:showItemInFolder": { args: [path: string]; result: undefined };
+  /** "Open file" on a finished export (WP-2G.04b): an absolute path of an export file type. */
+  "shell:openFile": { args: [path: string]; result: undefined };
+  /** An export finished (WP-2G.04b): whether main showed the OS notification. */
+  "notify:exportFinished": { args: [notice: ExportNotice]; result: boolean };
   "shell:openExternal": { args: [url: string]; result: undefined };
   // The title bar and in-app menu bar (WP-1M.09): actions only main can take.
   "app:about": { args: []; result: AboutInfo };

@@ -172,7 +172,10 @@ export function createCutweaveApi(
       openProjectFolder: () => invoke("dialog:openProjectFolder"),
       pickMediaFiles: () => invoke("dialog:pickMediaFiles"),
       pickMediaFolders: () => invoke("dialog:pickMediaFolders"),
-      chooseExportFile: (defaultPath) => invoke("dialog:chooseExportFile", defaultPath),
+      chooseExportFile: (defaultPath, container) =>
+        container === undefined
+          ? invoke("dialog:chooseExportFile", defaultPath)
+          : invoke("dialog:chooseExportFile", defaultPath, container),
     },
     recent: {
       list: () => invoke("recent:list"),
@@ -229,9 +232,13 @@ export function createCutweaveApi(
       connectInfo: () => invoke("agents:connectInfo"),
       copySetup: (client) => invoke("agents:copySetup", client),
     },
+    notify: {
+      exportFinished: (notice) => invoke("notify:exportFinished", notice),
+    },
     shell: {
       openAppFolder: (which) => invoke("shell:openAppFolder", which),
       showItemInFolder: (path) => invoke("shell:showItemInFolder", path),
+      openFile: (path) => invoke("shell:openFile", path),
       openExternal: (url) => invoke("shell:openExternal", url),
     },
   };

@@ -15,6 +15,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  Notification,
   nativeTheme,
   net,
   protocol,
@@ -50,8 +51,9 @@ import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed
 import { devAllowRoots, preferenceEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
 import { pickFreePort } from "./engine/ports.ts";
 import { EngineSupervisor } from "./engine/supervisor.ts";
+import { notifyExportFinished } from "./export-notice.ts";
 import { FocusGroup } from "./focus-group.ts";
-import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
+import { createHandlers, exportFileFilters, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { applyInterfaceScale, cssToScreen, titleBarHeightFor } from "./interface-scale.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
@@ -134,16 +136,17 @@ const hardening: HardeningContext = {
  * The engine's focus record counts the editor window and its detached panels' windows as one
  * (ADR-0021, ADR-0031): the focus moving between them is not reported.
  */
+/** Whether the editor window or one of its detached panels' windows has the focus now. */
+function editorFocused(): boolean {
+  const focused = BrowserWindow.getFocusedWindow();
+  const editor = liveWindow();
+  if (focused === null || editor === null) return false;
+  return focused.id === editor.id || popoutsOf(editor.webContents).some((w) => w.id === focused.id);
+}
+
 const focusGroup = new FocusGroup({
   report: (focused) => supervisor?.setWindowFocused(focused),
-  anyFocused: () => {
-    const focused = BrowserWindow.getFocusedWindow();
-    const editor = liveWindow();
-    if (focused === null || editor === null) return false;
-    return (
-      focused.id === editor.id || popoutsOf(editor.webContents).some((w) => w.id === focused.id)
-    );
-  },
+  anyFocused: editorFocused,
 });
 
 /**
@@ -365,6 +368,10 @@ function superviseEngine(
       // development folders of CUTWEAVE_ENGINE_ALLOW_ROOTS go with the person's folders through
       // `allowRoots` below (WP-1J.05), so they are not repeated here.
       ...preferenceEngineArgs({ cacheFolder: preferences?.get("cache.folder") ?? "" }),
+      // The person's export presets (WP-2G.04b) live beside the preferences, so a saved preset
+      // is still there the next time Cutweave starts; the engine makes the folder when it saves.
+      "--presets-dir",
+      path.join(app.getPath("userData"), "export-presets"),
     ],
     // Folders agents may use (WP-1J.05): `--allow-root` at every start and restart.
     allowRoots,
@@ -543,15 +550,46 @@ if (!app.requestSingleInstanceLock()) {
           });
           return result.canceled ? null : result.filePaths;
         },
-        chooseExportFile: async (defaultPath) => {
+        chooseExportFile: async (defaultPath, container) => {
           const result = await dialog.showSaveDialog({
             defaultPath,
-            filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+            filters: exportFileFilters(container),
             properties: ["createDirectory"],
           });
           return result.canceled ? null : (result.filePath ?? null);
         },
         showItemInFolder: (p) => shell.showItemInFolder(p),
+        openFile: (p) => shell.openPath(p),
+        notifyExportFinished: (notice) =>
+          notifyExportFinished(
+            {
+              enabled: () => prefs.get("notify.export_done"),
+              supported: () => Notification.isSupported(),
+              hidden: () => {
+                const win = liveWindow();
+                return win === null || win.isMinimized() || !win.isVisible();
+              },
+              focused: editorFocused,
+              show: (text, onClick) => {
+                // Silent: the sound of a finished export is the editor's own setting.
+                const shown = new Notification({
+                  title: text.title,
+                  body: text.body,
+                  silent: true,
+                });
+                shown.on("click", onClick);
+                shown.show();
+              },
+              bringBack: () => {
+                const win = liveWindow();
+                if (win === null) return;
+                if (win.isMinimized()) win.restore();
+                win.show();
+                win.focus();
+              },
+            },
+            notice,
+          ),
         openExternal: (url) => openExternal(url),
         about: () => ({
           name: app.getName(),

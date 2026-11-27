@@ -239,6 +239,25 @@ export class ExportQueue {
     return this.#deps.desktop?.shell?.showItemInFolder !== undefined;
   }
 
+  /** Opens the exported file with the OS's app for it; says so when it does not open. */
+  async open(path: string): Promise<void> {
+    const open = this.#deps.desktop?.shell?.openFile;
+    if (open === undefined) return;
+    try {
+      await open(path);
+    } catch {
+      this.#deps.toasts.getState().push({
+        tone: "danger",
+        title: this.#deps.t("exportQueue.openFailed"),
+        message: path,
+      });
+    }
+  }
+
+  canOpen(): boolean {
+    return this.#deps.desktop?.shell?.openFile !== undefined;
+  }
+
   /** Copies a failed export's reason. */
   async copyError(text: string): Promise<void> {
     await this.#deps.clipboard?.writeText(text).catch(() => undefined);
