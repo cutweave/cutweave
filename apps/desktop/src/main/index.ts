@@ -368,6 +368,10 @@ function superviseEngine(
       // development folders of CUTWEAVE_ENGINE_ALLOW_ROOTS go with the person's folders through
       // `allowRoots` below (WP-1J.05), so they are not repeated here.
       ...preferenceEngineArgs({ cacheFolder: preferences?.get("cache.folder") ?? "" }),
+      // The person's export presets (WP-2G.04b) live beside the preferences, so a saved preset
+      // is still there the next time Cutweave starts; the engine makes the folder when it saves.
+      "--presets-dir",
+      path.join(app.getPath("userData"), "export-presets"),
     ],
     // Folders agents may use (WP-1J.05): `--allow-root` at every start and restart.
     allowRoots,

@@ -6,7 +6,8 @@
 // the OS notification says the export is complete; back in the app, the Exports panel opens the
 // file from its row and from the row's menu, and the file has the preset's size; with
 // Settings > Notifications > Finished exports off, the next export is not announced; delete the
-// preset in the dialog and bring it back with Undo.
+// preset in the dialog and bring it back with Undo; save, quit and start the app again: the
+// preset is still under "Your presets".
 // Needs the FFmpeg engine and the corpus (`just corpus`); without them the flow skips and says
 // why. Stubbed, in main, at the edge of the OS only: the save dialog, the shell's "open with the
 // default app" and the notification the OS would draw.
@@ -24,12 +25,16 @@ import {
   launchFlowApp,
   layout,
   mediaCards,
+  openRecent,
   openSettingsPage,
   pickFiles,
+  profileDir,
+  removeDir,
   shortcut,
   snapshot,
   timelineCanvas,
   toast,
+  windowDirty,
   workspace,
 } from "./helpers.ts";
 
@@ -136,7 +141,10 @@ test.describe("F65 your own export preset, Open file and the notification", () =
     test.skip(corpus === null, "the corpus is not fetched (just corpus)");
     const ffprobe = ffprobePath();
     const work = workspace();
-    const { app, page, close } = await launchFlowApp(work, undefined, { realMedia: true });
+    const home = profileDir();
+    const launched = await launchFlowApp(work, home, { realMedia: true });
+    const { app, page } = launched;
+    let close = launched.close;
     try {
       const dialog = page.getByRole("dialog", { name: "Export video" });
       const preset = dialog.getByLabel("Preset", { exact: true });
@@ -280,9 +288,39 @@ test.describe("F65 your own export preset, Open file and the notification", () =
       );
       await expect(preset).toHaveValue("review-copy");
       await expect(deleted).toBeHidden();
+
+      // Save, quit and start again on the same profile: the preset is still the person's.
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await shortcut(app, "Control+S");
+      await expect.poll(() => windowDirty(app), BOUND).toBe(false);
+      const closed = app.waitForEvent("close");
+      await chooseMenu(page, app, "File", "Exit");
+      await closed;
+      await launched.close();
+      const relaunched = await launchFlowApp(work, home, { realMedia: true });
+      close = relaunched.close;
+      await openRecent(relaunched.page, "Own.cutweave");
+      await expect(relaunched.page).toHaveTitle("Own — Cutweave");
+      await expect
+        .poll(async () => ((await layout(relaunched.page))[0]?.clips ?? []).length, BOUND)
+        .toBe(1);
+      await editorCaughtUp(relaunched.page);
+      await shortcut(relaunched.app, "Control+M");
+      const again = relaunched.page.getByRole("dialog", { name: "Export video" });
+      await expect(again).toBeVisible();
+      const kept = again.getByLabel("Preset", { exact: true });
+      await expect(kept.locator('optgroup[label="Your presets"] option')).toHaveText(
+        ["Review copy"],
+        BOUND,
+      );
+      await kept.selectOption("review-copy");
+      await expect(again.getByTestId("export-summary")).toContainText("1280 × 720", BOUND);
+      await snapshot(relaunched.page, info, "preset after relaunch");
     } finally {
       await close();
       work.remove();
+      removeDir(home);
     }
   });
 });
