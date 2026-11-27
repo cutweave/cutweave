@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::too_many_lines)]
 //! Process-level tests of what agents may reach (WP-1J.05): the settings the desktop app applies
-//! to its engine (`project.set_allowed_roots`, `project.set_autosave`) refuse agent tokens on
-//! every surface (RPC, MCP's `cutweave_execute`, the CLI); a folder the person removes stops an
+//! to its engine (`project.set_allowed_roots`, `project.set_autosave`, `edit.set_history_limit`)
+//! refuse agent tokens on every surface (RPC, MCP's `cutweave_execute`, the CLI); a folder the person removes stops an
 //! agent session that is already open at once, with a message naming the setting; agent
 //! connections are listed (`project.connections`) and announced.
 
@@ -315,6 +315,8 @@ async fn app_settings_refuse_agent_tokens_on_every_surface() {
             "project.set_autosave",
             json!({ "enabled": false, "interval_s": 60, "keep_backups": 5 }),
         ),
+        // Settings > Editing > Undo steps (WP-2A.13).
+        ("edit.set_history_limit", json!({ "steps": 2 })),
     ];
 
     let mut rpc_agent = Rpc::connect(engine.port, &engine.agent_token(&run_dir, "cli")).await;
@@ -349,12 +351,14 @@ async fn app_settings_refuse_agent_tokens_on_every_surface() {
     let info = ui.ok("project.info", json!({})).await;
     let roots = info["allowed_roots"].as_array().unwrap().clone();
     assert_eq!(roots.len(), 1, "{info}");
+    assert_eq!(info["history_limit"], 1000, "{info}");
     // The app's own credential is obeyed.
     for (cmd, args) in &steps {
         ui.ok(cmd, args.clone()).await;
     }
     let info = ui.ok("project.info", json!({})).await;
     assert_eq!(info["allowed_roots"].as_array().unwrap().len(), 2, "{info}");
+    assert_eq!(info["history_limit"], 2, "{info}");
 
     mcp.close().await;
     rpc_agent.close().await;
