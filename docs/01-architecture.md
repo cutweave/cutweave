@@ -753,7 +753,7 @@ flowchart LR
 
     Every registered command, including plugin commands, is reachable this way.
   - **Tool profiles are chosen per endpoint** (`/mcp`, `/mcp/minimal`, `/mcp/full`) or by the `--profile` flag, **never per connection**, because the stateless spec requires list results that don't vary by connection.
-  - **Tool-list budget** (single source, CI-enforced): minimal ≤ 12 tools / ≤ 3k tokens; standard ≤ 36 tools / ≤ 8k tokens; full = standard plus the search-based long tail, with no extra listed tools.
+  - **Tool-list budget** (single source, CI-enforced): minimal ≤ 12 tools / ≤ 3k tokens; standard ≤ 36 tools / ≤ 8k tokens; full = standard plus the search-based long tail, with no extra listed tools. The standard budget is for clients that load every definition at the start; `described` (WP-2I.07) lists the same tools in the same order with full parameter descriptions for clients that defer definitions, within ≤ 16k tokens ([ADR-0040](adr/0040-mcp-at-scale.md), accepted). From Phase 3 a feature area adds at most two core tools, shaped by intent; its other commands stay in the catalog.
   - **View tools:** `view_get` / `view_set` (playhead, selection, in/out, zoom) are in the catalog, so agents can show the user what they mean. They are non-undoable. Since WP-2I.01 both are listed tools of the standard profile; the other `view.*` commands are reached through `cutweave_execute`.
 - **Resources:**
   - `cutweave://project`, `cutweave://sequence/{id}/timeline` (paginated, summarized first), `cutweave://transcript/{id}`, `cutweave://catalog/models`.
@@ -1045,6 +1045,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 037 | New sequences made in the app start with a magnetic main track: an optional `main_magnetic` on `project.new` and `sequence.create` (absent: off), fed by the Timeline preference `timeline.magnetic_main` (default on) (§5.1, §16) | **Accepted** (product owner, 2026-11-27) |
 | 038 | A failed job carries an optional machine `error_code` beside its message, on `JobInfo` and `ExportQueueJob`; a short list of export codes, stored with the queued job and shown on the queue row (§7, §14) | **Accepted** (product owner, 2026-11-27) |
 | 039 | The standard MCP tool list keeps its 8,000-token budget with validation-only listed schemas: no parameter descriptions in `tools/list`, one example per tool, the docs through `cutweave_describe_command`. WP-2I.02 lists `render_contact_sheet` if it fits; the 36-tool cap is decided again at P3 (§14) | **Accepted** (product owner, 2026-11-27) |
+| 040 | MCP at scale: two audiences (the 8k / 36-tool standard list for clients that load every definition; a `described` endpoint with parameter docs, ≤ 16k tokens, for clients that defer them); from Phase 3 at most two core tools per feature area, by intent; an on-demand agent evaluation (WP-2I.09) before the next budget change; additive optional detail levels and concise reads (WP-2I.08) (§14) | **Accepted** (product owner, 2026-11-27) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 

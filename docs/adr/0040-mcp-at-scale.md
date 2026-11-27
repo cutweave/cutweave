@@ -1,6 +1,6 @@
 # ADR-0040: MCP at scale: two kinds of client, tools shaped by intent, and measuring before the next budget change
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-27): options 2 and B, yes to all five questions
 - **Date:** 2026-11-27
 - **Deciders:** Product owner
 - **Supersedes:** none. It narrows [ADR-0039](0039-mcp-tool-list-budget-and-parameter-docs.md) (see question 2) and builds on [ADR-0009](0009-mcp-server.md)
@@ -43,7 +43,7 @@ For growth past the P2 set:
 
 ## Decision
 
-Not decided here. Recommended: **option 2** and **option B**, built as WP-2I.07 to WP-2I.10, with the questions below settled by the product owner.
+Accepted by the product owner on 2026-11-27: **option 2** and **option B**, built as WP-2I.07 to WP-2I.10, and yes to all five questions below as recommended: two audiences (the 8,000-token / 36-tool budget is for clients that load every definition upfront); a `described` endpoint with the same tools in the same order, full parameter descriptions and its own 16,000-token budget in CI (`/mcp` and `/mcp/minimal` stay as ADR-0039 left them); from Phase 3 at most two core tools per feature area, shaped by intent; WP-2I.09 built now, with parameter docs on `/mcp`, splitting `cutweave_execute` by risk and a scripting tool left open until it reports; the additive optional parameters of WP-2I.08, today's behaviour the default.
 
 **Decided by:** the product owner, on five questions:
 
