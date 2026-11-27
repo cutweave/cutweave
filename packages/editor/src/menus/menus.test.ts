@@ -547,6 +547,46 @@ describe("row kinds", () => {
     expect(buildMenu(services, { surface: "fixture.surface", ids: [] }, () => {})).toBeNull();
   });
 
+  it("adds a submenu's rows that depend on the document, and leaves out a row its own check hides", () => {
+    const services = fixtureServices();
+    let names = ["b", "a"];
+    let shown = true;
+    services.surfaces.register({
+      ...FIXTURE_SURFACE,
+      rows: [
+        {
+          id: "add-to",
+          group: "edit",
+          order: 0,
+          submenu: {
+            label: { key: "contextMenu.field.paste" },
+            rows: [{ id: "new", command: "edit.undo", group: "x", order: 0 }],
+            // One row per name, built when the menu opens.
+            more: (ctx) =>
+              names.map((name, i) => ({
+                id: `to-${name}`,
+                command: "edit.redo",
+                group: "x",
+                order: 1 + i,
+                args: () => ({ name, ids: ctx.ids }),
+              })),
+          },
+        },
+        { id: "only-here", command: "edit.undo", group: "edit", order: 1, visibleIf: () => shown },
+      ],
+    });
+    const ids = () =>
+      (
+        buildMenu(services, { surface: "fixture.surface", ids: ["itm_a"] }, () => {})?.entries ?? []
+      ).flatMap((e) =>
+        e.kind === "submenu" ? e.items.map((i) => (i as MenuItem).id) : [(e as MenuItem).id],
+      );
+    expect(ids()).toEqual(["new", "to-b", "to-a", "only-here"]);
+    names = [];
+    shown = false;
+    expect(ids()).toEqual(["new"]);
+  });
+
   it("shows a check row's state and separates groups", () => {
     const services = fixtureServices();
     services.surfaces.register({

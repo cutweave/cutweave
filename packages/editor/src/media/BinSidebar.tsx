@@ -19,6 +19,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useEngineReady } from "../engine/engineStore.ts";
 import { useContextMenu } from "../menus/host.tsx";
+import { binKeyAction } from "../panels/binKeys.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectMediaCards, selectMediaUsage } from "./cards.ts";
 import { renameCollection } from "./collectionActions.ts";
@@ -65,6 +66,16 @@ export interface BinSidebarProps {
   /** Something was opened or Escape was pressed: an overlay closes. */
   onDone(): void;
 }
+
+/** The keys a tree moves with (`treeMove`). */
+const TREE_KEYS: ReadonlySet<string> = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+]);
 
 /** Moves the keyboard focus to row `index` of the tree `root`. */
 function focusRow(root: HTMLElement | null, index: number): void {
@@ -254,6 +265,7 @@ export function BinSidebar({ mode, open, collection, dropOver, dropOn, onDone }:
     if (row === undefined) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
+      e.stopPropagation();
       openFolderRow(row);
       return;
     }
@@ -262,10 +274,12 @@ export function BinSidebar({ mode, open, collection, dropOver, dropOn, onDone }:
       onDone();
       return;
     }
-    const move = treeMove(rows, folderStop, e.key);
-    if (move === null) return;
+    if (!TREE_KEYS.has(e.key)) return;
+    // A tree key is the tree's even at an end of the list: it never reaches the editor's keys.
     e.preventDefault();
     e.stopPropagation();
+    const move = treeMove(rows, folderStop, e.key);
+    if (move === null) return;
     if (move.kind === "focus") {
       setFolderFocus(move.index);
       focusRow(folderTree.current, move.index);
@@ -282,32 +296,37 @@ export function BinSidebar({ mode, open, collection, dropOver, dropOn, onDone }:
       return;
     }
     if (entry === undefined) return;
+    // Rename and Delete are the bin's own keys (binKeys.ts), so a rebinding holds here too.
+    const action = binKeyAction(e);
+    if (action === "rename") {
+      e.preventDefault();
+      e.stopPropagation();
+      sidebarUiStore.getState().startRename(entry.id);
+      return;
+    }
+    if (action === "remove") {
+      e.preventDefault();
+      e.stopPropagation();
+      void requestCollectionDelete(entry.id);
+      return;
+    }
     switch (e.key) {
       case "Enter":
       case " ":
         e.preventDefault();
+        e.stopPropagation();
         openCollectionRow(entry);
         return;
-      case "F2":
-        e.preventDefault();
-        e.stopPropagation();
-        sidebarUiStore.getState().startRename(entry.id);
-        return;
-      case "Delete":
-      case "Backspace":
-        e.preventDefault();
-        e.stopPropagation();
-        void requestCollectionDelete(entry.id);
-        return;
       default: {
+        if (!TREE_KEYS.has(e.key)) return;
+        e.preventDefault();
+        e.stopPropagation();
         const move = treeMove(
           collections.map(() => ({ level: 1, hasChildren: false, expanded: false })),
           collectionStop,
           e.key,
         );
         if (move === null || move.kind !== "focus") return;
-        e.preventDefault();
-        e.stopPropagation();
         focusCollection(move.index);
         focusRow(collectionTree.current, move.index);
       }
