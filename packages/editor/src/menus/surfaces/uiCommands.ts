@@ -667,6 +667,16 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     },
   },
   {
+    // A marker's Edit… (issue #222): asks for its name, colour and length, then sends one
+    // `timeline.update_marker`. A double-click on the marker opens the same dialog.
+    id: "timeline.edit_marker",
+    label: "contextMenu.item.editMarker",
+    run: (_args, ctx) => {
+      const marker = ctx.ids[0];
+      if (marker !== undefined) menuDialogStore.getState().open({ kind: "edit-marker", marker });
+    },
+  },
+  {
     // A marker's Go to marker, and the ruler's Go to marker ▸ (WP-2A.10): its time, or the
     // marker the menu is on.
     id: "timeline.go_to_marker",

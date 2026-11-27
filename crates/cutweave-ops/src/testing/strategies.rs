@@ -559,6 +559,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "track.list" => (1, track_list(p)),
         "timeline.add_marker" => (2, timeline_add_marker(p)),
         "timeline.move_marker" => (1, timeline_move_marker(p)),
+        "timeline.update_marker" => (1, timeline_update_marker(p)),
         "timeline.remove_marker" => (1, timeline_remove_marker(p)),
         "timeline.set_in_out" => (1, timeline_set_in_out(p)),
         "timeline.clear_in_out" => (1, timeline_clear_in_out(p)),
@@ -594,6 +595,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
         "item.reset_props" => (1, item_reset_props(p)),
+        "item.set_label_color" => (1, item_set_label_color(p)),
         "item.apply_layout" => (edits.div_ceil(3), item_apply_layout(p)),
         "item.layouts" => (1, item_layouts()),
         "audio.set" => (edits.div_ceil(2), audio_set(p)),
@@ -2104,6 +2106,45 @@ fn timeline_move_marker(p: &Pools) -> BoxedStrategy<Value> {
     mix(valid, invalid)
 }
 
+/// `timeline.update_marker` (issue #222): some of label, color, length and kind; sometimes
+/// none of them, a label that is too long or a negative length.
+fn timeline_update_marker(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.markers.clone()),
+        option::weighted(0.6, select(LABELS.to_vec())),
+        option::weighted(0.4, select(vec!["#336699", "#f2b134"])),
+        option::weighted(0.4, 0..60_i64),
+        option::weighted(0.4, select(vec!["user", "beat", "chapter"])),
+    )
+        .prop_map(|(id, label, color, dur, kind)| {
+            json!({
+                "id": id, "label": label, "color": color,
+                "duration": dur.map(|d| time_json(FPF_30, d, 0, 0)),
+                "kind": kind.unwrap_or(if label.is_none() && color.is_none() && dur.is_none() {
+                    "chapter"
+                } else {
+                    "user"
+                }),
+            })
+        })
+        .boxed();
+    let invalid = (
+        one_of(p.markers.clone()),
+        prop_oneof![
+            Just(json!({})),
+            Just(json!({"label": "x".repeat(201)})),
+            Just(json!({"duration": "-1.0s"})),
+            Just(json!({"color": "red"})),
+        ],
+    )
+        .prop_map(|(id, mut v)| {
+            v["id"] = id;
+            v
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
 fn timeline_remove_marker(p: &Pools) -> BoxedStrategy<Value> {
     mix(
         one_of(p.markers.clone())
@@ -3519,6 +3560,31 @@ fn item_reset_props(p: &Pools) -> BoxedStrategy<Value> {
         })
         .boxed();
     mix(valid, unknown_item("at"))
+}
+
+/// `item.set_label_color` (issue #222): one to three items get a colour or lose it;
+/// sometimes no item, an unknown one or a colour that is not one.
+fn item_set_label_color(p: &Pools) -> BoxedStrategy<Value> {
+    let ids = p.item_ids();
+    let bad = prop_oneof![
+        Just(json!({"items": []})),
+        fresh::<ItemId>().prop_map(|i| json!({"items": [i], "color": "#336699"})),
+    ]
+    .boxed();
+    if ids.is_empty() {
+        return mix(bad.clone(), bad);
+    }
+    let most = ids.len().min(3);
+    let valid = (
+        subsequence(ids.clone(), 1..=most),
+        option::weighted(0.7, select(vec!["#336699", "#d9534f", "#5cb85c"])),
+    )
+        .prop_map(|(items, color)| json!({"items": items, "color": color}))
+        .boxed();
+    let wrong = select(ids)
+        .prop_map(|i| json!({"items": [i], "color": "red"}))
+        .boxed();
+    mix(valid, prop_oneof![bad, wrong].boxed())
 }
 
 // ----- audio.* (WP-2E.01) -------------------------------------------------------------------

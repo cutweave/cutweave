@@ -30,6 +30,7 @@ import {
   machineKeyAction,
   type Rect,
   type SnapGuide,
+  type SnapOutcome,
   type SnapPort,
   type TimelineMachine,
   type TimelineMarker,
@@ -204,6 +205,8 @@ const NO_HIT: HitResult = {
 };
 
 const NO_GUIDES: readonly SnapGuide[] = [];
+/** A snap of one time (a marker), not of a span. */
+const SNAP_AT: readonly number[] = [0];
 const NO_ITEMS: readonly string[] = [];
 
 type Call = (name: string, args: unknown) => Promise<unknown>;
@@ -352,6 +355,31 @@ export class TimelineHost {
   /** A preference the machine reads changed (Settings > Editing, Settings > Timeline). */
   syncPrefs(): void {
     this.#syncEnv();
+  }
+
+  /** Whether a press or a gesture is under way (the ruler's marker drag stays out of its way). */
+  get busy(): boolean {
+    return this.#busy();
+  }
+
+  /**
+   * `raw` snapped as the machine snaps a drag (issue #222, a marker dragged on the ruler):
+   * `model` is the snapshot without what moves; `suspended` is Ctrl or Cmd held.
+   */
+  snapTime(model: TimelineModel, raw: number, suspended: boolean): SnapOutcome {
+    const env = this.#machine.state.env;
+    return this.#snap.snap({
+      model,
+      exclude: null,
+      raw,
+      offsets: SNAP_AT,
+      pxPerSec: env.pxPerSec,
+      thresholdPx: env.snapThresholdPx,
+      kinds: env.snapKinds,
+      suspended: suspended || !env.snapping,
+      playhead: env.playhead,
+      inOut: env.inOut,
+    });
   }
 
   /** Resolves when every edit started so far has finished (tests). */

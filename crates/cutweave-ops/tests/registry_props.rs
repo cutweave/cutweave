@@ -94,11 +94,12 @@ const REGRESSIONS: &str = concat!(
 );
 /// Sequences of the deterministic coverage run. Each new command shifts the fixed seed's
 /// stream; at 48 the export queue and lock commands dropped coverage to 93%, and at 128 the
-/// three import commands of ADR-0035 dropped it to 94.3%; `edit.set_history_limit`
-/// (WP-2A.13) took it from 160 to 176. Commands whose
+/// three import commands of ADR-0035 dropped it to 94.3%. Commands whose
 /// preconditions are rare (keyframes to move, a proxy to delete) want strategies that set
-/// them up rather than more cases (issue #184).
-const COVERAGE_CASES: u32 = 176;
+/// them up rather than more cases (issue #184). Raised from 160 to 176 with the two commands
+/// of issue #222 (`timeline.update_marker`, `item.set_label_color`), and to 192 with them and
+/// `edit.set_history_limit` together.
+const COVERAGE_CASES: u32 = 192;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 

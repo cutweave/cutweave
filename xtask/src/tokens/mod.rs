@@ -102,6 +102,15 @@ fn run_inner(root: &Path, check: bool) -> Result<bool, String> {
         failures.len()
     );
 
+    // A density only makes sizes larger (model.rs checks it), so the pairs above hold in each.
+    for d in &tokens.densities {
+        println!(
+            "tokens: density `{}` makes {} size and spacing tokens larger and changes no color",
+            d.id,
+            d.tokens.len()
+        );
+    }
+
     if check {
         let stale = stale(root, &outputs);
         for p in &stale {

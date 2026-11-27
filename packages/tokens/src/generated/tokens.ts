@@ -48,6 +48,14 @@ export const colors = {
     "clip-captions-body": "#2f2442",
     "clip-effects": "#a8c24c",
     "clip-effects-body": "#2c3514",
+    "label-red": "#e5534b",
+    "label-orange": "#e8833a",
+    "label-lime": "#a3b83a",
+    "label-green": "#3fae6e",
+    "label-teal": "#2aa7a0",
+    "label-blue": "#4a8fe0",
+    "label-purple": "#9a6fe0",
+    "label-pink": "#e06aa0",
     "success": "#58c08b",
     "warning": "#f0903f",
     "danger": "#f0625a",
@@ -96,6 +104,14 @@ export const colors = {
     "clip-captions-body": "#ebe1f9",
     "clip-effects": "#6b8619",
     "clip-effects-body": "#e8f0cf",
+    "label-red": "#e5534b",
+    "label-orange": "#e8833a",
+    "label-lime": "#a3b83a",
+    "label-green": "#3fae6e",
+    "label-teal": "#2aa7a0",
+    "label-blue": "#4a8fe0",
+    "label-purple": "#9a6fe0",
+    "label-pink": "#e06aa0",
     "success": "#1f7f4a",
     "warning": "#a8560f",
     "danger": "#c2332b",
@@ -145,6 +161,14 @@ export type ColorTokenName =
   | "clip-captions-body"
   | "clip-effects"
   | "clip-effects-body"
+  | "label-red"
+  | "label-orange"
+  | "label-lime"
+  | "label-green"
+  | "label-teal"
+  | "label-blue"
+  | "label-purple"
+  | "label-pink"
   | "success"
   | "warning"
   | "danger"
@@ -303,6 +327,26 @@ export const opacity = {
 } as const;
 export type OpacityTokenName =
   | "opacity-disabled";
+
+/** The tokens each density makes larger (`data-density` on the root). */
+export const density = {
+  "comfortable": {
+    "hit-min": "28px",
+    "control-sm": "28px",
+    "control-md": "32px",
+    "control-lg": "36px",
+    "toolbar": "44px",
+    "panel-header": "36px",
+    "track-sm": "36px",
+    "track-md": "56px",
+    "track-lg": "84px",
+    "space-2": "10px",
+    "space-3": "16px",
+    "space-4": "20px",
+  },
+} as const;
+export type DensityId =
+  | "comfortable";
 
 /** Font stacks by key (CSS `--font-<key>`). */
 export const fontFamilies = {

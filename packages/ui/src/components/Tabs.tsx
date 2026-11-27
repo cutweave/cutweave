@@ -90,7 +90,12 @@ export function TabList({ tabs, className, ...rest }: TabListProps) {
   }, [tabs, ownerWindow]);
   const page = (direction: 1 | -1) => {
     const list = listRef.current;
-    list?.scrollBy?.({ left: direction * list.clientWidth * 0.8, behavior: "smooth" });
+    // Settings > Appearance > Reduce motion (`data-motion` on the root) makes the scroll instant.
+    const instant = list?.ownerDocument.documentElement.dataset.motion === "reduce";
+    list?.scrollBy?.({
+      left: direction * list.clientWidth * 0.8,
+      behavior: instant ? "auto" : "smooth",
+    });
   };
   return (
     <div className={cx("cw-tabsbar", className)}>

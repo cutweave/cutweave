@@ -196,6 +196,25 @@ function drawBucket(
   ctx.stroke();
   stats.drawCalls += 4;
 
+  // Colour labels (issue #222): a labelled clip's strip is drawn over in its own colour. Few
+  // clips carry one, so each is its own stroke.
+  if (!proposed) {
+    for (let n = 0; n < bucket.length; n++) {
+      const i = bucket.data[n] as number;
+      const color = layout.items[i]?.colorLabel;
+      if (color === undefined) continue;
+      const x = edgeX(layout, vp, i, k, 0);
+      const w = edgeX(layout, vp, i, k, 1) - x;
+      if (w < 2 * r + 1) continue;
+      ctx.beginPath();
+      ctx.moveTo(x + r / 2, cy + th.clipStrip / 2);
+      ctx.lineTo(x + w - r / 2, cy + th.clipStrip / 2);
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      stats.drawCalls++;
+    }
+  }
+
   // Body area under the label band: tiles and waveform (a collapsed track has no room).
   const band = labelBand(th);
   const areaY = cy + th.clipStrip + band;

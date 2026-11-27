@@ -153,6 +153,26 @@
         "description": "Dark, light, or follow your system.",
         "keywords": "color, colour, dark mode, light mode, night, appearance, system, os"
       },
+      "interfaceScale": {
+        "label": "Interface scale",
+        "description": "The size of text and controls in every window. The preview and the timeline stay sharp.",
+        "keywords": "zoom, size, bigger, larger, smaller, text size, font size, ui scale, dpi, magnify, percent"
+      },
+      "density": {
+        "label": "Density",
+        "description": "Comfortable makes controls, rows and tracks taller and adds room around them.",
+        "keywords": "compact, spacing, padding, row height, track height, touch, roomy, cozy, tight",
+        "standard": "Standard",
+        "comfortable": "Comfortable"
+      },
+      "reduceMotion": {
+        "label": "Reduce motion",
+        "description": "On makes menus, dialogs and controls change at once, with no fade. Match system follows your system's setting.",
+        "keywords": "animation, animations, transitions, fade, accessibility, motion sickness, vestibular, instant",
+        "system": "Match system",
+        "on": "On",
+        "off": "Off"
+      },
       "exportFolder": {
         "label": "Save exports in",
         "description": "Where the Export dialog proposes to save the file.",
@@ -1648,7 +1668,9 @@
     "collectionAdd": "Add to collection",
     "collectionRemove": "Remove from collection",
     "collectionFilter": "Update smart collection",
-    "projectSettings": "Change project settings"
+    "projectSettings": "Change project settings",
+    "markerUpdate": "Edit marker",
+    "labelColor": "Set color label"
   },
   "mathStartup": {
     "versionTitle": "Cutweave can't start: its math module is out of date",
@@ -1866,7 +1888,8 @@
       "slip": "Slip clip",
       "slide": "Slide clip",
       "keyframe": "Move keyframe",
-      "insert": "Insert clip"
+      "insert": "Insert clip",
+      "marker": "Move marker"
     },
     "failed": {
       "move": "Clip not moved",
@@ -2342,7 +2365,9 @@
       "timelineExtract": "Extract range",
       "trackSetMagnetic": "Magnetic main track",
       "trackSetHeight": "Track height",
-      "trackReorder": "Move track"
+      "trackReorder": "Move track",
+      "timelineUpdateMarker": "Edit marker",
+      "itemSetLabelColor": "Color label"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -2515,7 +2540,12 @@
       "moveTrackUp": "Move up",
       "moveTrackDown": "Move down",
       "goToMarkerMenu": "Go to marker",
-      "markerAt": "{{name}} at {{time}}"
+      "markerAt": "{{name}} at {{time}}",
+      "editMarker": "Edit…",
+      "convertToChapter": "Convert to chapter",
+      "convertToMarker": "Convert to marker",
+      "colorLabel": "Color label",
+      "colorLabelNone": "None"
     },
     "dialog": {
       "cancel": "Cancel",
@@ -2557,11 +2587,27 @@
       "insertDurationSeconds": "Seconds",
       "insertDurationSet": "Set duration",
       "insertDurationDefault": "Use the project’s duration",
-      "insertDurationNote": "Clips already on the timeline keep their length. The choice lasts until you close Cutweave."
+      "insertDurationNote": "Clips already on the timeline keep their length. The choice lasts until you close Cutweave.",
+      "editMarkerTitle": "Edit marker",
+      "editMarkerBody": "A length makes it a range marker. Leave the length empty for a point.",
+      "markerName": "Marker name",
+      "markerColor": "Marker color",
+      "markerLength": "Length in seconds",
+      "save": "Save"
     },
     "diagnostics": {
       "connection": "Engine connection",
       "blocked": "Edits blocked"
+    },
+    "labelColor": {
+      "red": "Red",
+      "orange": "Orange",
+      "lime": "Lime",
+      "green": "Green",
+      "teal": "Teal",
+      "blue": "Blue",
+      "purple": "Purple",
+      "pink": "Pink"
     }
   },
   "keymap": {

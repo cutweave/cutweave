@@ -533,6 +533,40 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The marker's Edit… (issue #222): never taller than 60% of the window; colour swatches. */
+.cw-dialog.cw-marker-dialog {
+  max-height: 60vh;
+}
+.cw-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.cw-swatches__item {
+  display: inline-flex;
+  position: relative;
+  cursor: pointer;
+}
+.cw-swatches__item input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.cw-swatches__chip {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border: var(--border-thick) solid var(--surface-2);
+  border-radius: var(--radius-full);
+  outline: var(--border-thin) solid var(--border-default);
+}
+.cw-swatches__item input:checked + .cw-swatches__chip {
+  outline: var(--border-thick) solid var(--text-primary);
+}
+.cw-swatches__item input:focus-visible + .cw-swatches__chip {
+  outline: var(--border-thick) solid var(--focus-ring);
+}
 .cw-movelist {
   display: flex;
   flex-direction: column;
@@ -802,6 +836,12 @@ body {
 }
 @media (prefers-reduced-motion: no-preference) {
   .cw-media__card {
+    transition: background var(--duration-fast) var(--easing-standard);
+  }
+}
+/* Reduce motion Off keeps it when the system asks to reduce (WP-2H.09, components.css). */
+@media (prefers-reduced-motion: reduce) {
+  :where([data-motion="full"]) .cw-media__card {
     transition: background var(--duration-fast) var(--easing-standard);
   }
 }

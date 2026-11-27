@@ -133,6 +133,7 @@ function toItem(item: Item, track: Track, project: Project): TimelineItem {
     start: item.start,
     duration: item.duration,
     label,
+    ...(item.color_label != null && { colorLabel: item.color_label }),
     ...(item.linked_group !== null && { linkedGroup: item.linked_group }),
     source: {
       sourceIn: item.source_in,

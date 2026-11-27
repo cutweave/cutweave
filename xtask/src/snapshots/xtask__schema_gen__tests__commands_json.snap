@@ -14799,6 +14799,73 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Sets the color label of items, or clears it when `color` is left out. Only the listed\nitems change (name linked partners to label them too). `Locked` on a locked track.",
+        "properties": {
+          "color": {
+            "default": null,
+            "description": "`#rrggbb`; leave out (or null) to clear the label.",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "description": "The items.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ItemSetLabelColor",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "item_set_label_color",
+      "name": "item.set_label_color",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.set_label_color`.",
+        "properties": {
+          "items": {
+            "description": "The items whose label changed, in the order given.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ItemSetLabelColorOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set or clear the color label of items",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Set item properties (partial). An animated property is keyed at `at` (sequence time,\nrequired then). Example: `{item, props:{opacity:0.5, crop:{left:0.25}}}`.\n\nAbsent fields keep their value; setting a value it already has is a no-op. Static properties\nare set as before and `at` is ignored. With `auto_key: false` an animated property is\n`Invalid`: `keyframe_clear` makes it static first. `Locked` if the track is locked.",
         "properties": {
           "at": {
@@ -30137,6 +30204,14 @@ expression: text
                               ],
                               "type": "object"
                             },
+                            "color_label": {
+                              "description": "The color label (arch §4.2 `color_label`, issue #222): a display color that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
+                              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
                             "custom": {
                               "additionalProperties": true,
                               "description": "Plugin data (arch §4.3).",
@@ -33410,6 +33485,133 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Set the sequence's in and out points",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Changes a marker's label, color, length or kind; fields left out stay. `duration` 0 makes\nit a point marker. Its time stays (`timeline.move_marker` moves it).",
+        "properties": {
+          "color": {
+            "default": null,
+            "description": "Display color, `#rrggbb`.",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Length of a range marker (snapped to whole frames); 0 for a point marker."
+          },
+          "id": {
+            "description": "The marker (on a sequence or on an item).",
+            "pattern": "^mrk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "description": "What a marker means.",
+                "oneOf": [
+                  {
+                    "const": "user",
+                    "description": "Placed by a person or an agent.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "beat",
+                    "description": "A beat found by analysis (snaps like a marker, spec §6).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "chapter",
+                    "description": "A chapter start (exported to chaptered formats).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`user`, `beat` or `chapter`."
+          },
+          "label": {
+            "default": null,
+            "description": "Text shown with the marker, at most 200 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "TimelineUpdateMarker",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "timeline_update_marker",
+      "name": "timeline.update_marker",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.update_marker`.",
+        "properties": {
+          "changed": {
+            "description": "The fields whose value changed, of `label`, `color`, `duration`, `kind`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "marker": {
+            "description": "The marker.",
+            "pattern": "^mrk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "marker",
+          "changed"
+        ],
+        "title": "TimelineUpdateMarkerOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Change a marker's label, color, length or kind",
       "undoable": true,
       "view": false
     },

@@ -65,6 +65,33 @@ function setup(model: TimelineModel, opts: TimelineViewOptions = {}, width = 120
 
 const x = (t: number): number => HEADER + (t * 100) / F; // at 100 px/s, scroll 0
 
+describe("colour labels on clips (issue #222)", () => {
+  it("draws a labelled clip's header strip in its colour, and only that clip's", () => {
+    const model: TimelineModel = {
+      fps: { num: 24, den: 1 },
+      tracks: [track("V")],
+      items: [clip("a", "V", 0, 2), clip("b", "V", 3, 2, { colorLabel: "#336699" })],
+    };
+    const { rec, draw } = setup(model);
+    draw();
+    const strips = rec.named("stroke").filter((c) => c.strokeStyle === "#336699");
+    expect(strips).toHaveLength(1);
+  });
+
+  it("draws nothing extra without labels", () => {
+    const model: TimelineModel = {
+      fps: { num: 24, den: 1 },
+      tracks: [track("V")],
+      items: [clip("a", "V", 0, 2)],
+    };
+    const plain = setup(model);
+    plain.draw();
+    const labelled = setup({ ...model, items: [clip("a", "V", 0, 2, { colorLabel: "#336699" })] });
+    labelled.draw();
+    expect(labelled.view.stats.drawCalls).toBe(plain.view.stats.drawCalls + 1);
+  });
+});
+
 describe("sequence markers in the ruler", () => {
   const model: TimelineModel = {
     fps: { num: 24, den: 1 },
@@ -333,6 +360,38 @@ describe("zoom range and smooth zoom", () => {
     instant.view.zoomSmooth(2, 600);
     expect(instant.view.getViewState().pxPerSec).toBe(200);
     expect(instant.view.zooming).toBe(false);
+  });
+
+  it("follows the root's data-motion before the system's reduced-motion setting (WP-2H.09)", () => {
+    const canvasIn = (motion: string | null, systemReduces: boolean): HTMLCanvasElement =>
+      ({
+        ...fakeCanvas(),
+        ownerDocument: {
+          documentElement: { getAttribute: () => motion },
+          defaultView: { matchMedia: () => ({ matches: systemReduces }) },
+        },
+      }) as unknown as HTMLCanvasElement;
+    const eases = (motion: string | null, systemReduces: boolean): boolean => {
+      const frames = manualFrames();
+      const view = new TimelineView(canvasIn(motion, systemReduces), {
+        theme: th,
+        context: recordingContext().ctx,
+        requestFrame: frames.requestFrame,
+        cancelFrame: frames.cancelFrame,
+        now: () => 0,
+      });
+      view.resize(1200, 400, 1);
+      view.setModel(model);
+      view.setViewState({ pxPerSec: 100 });
+      view.zoomSmooth(2, 600);
+      return view.zooming;
+    };
+    // No choice: the system decides.
+    expect(eases(null, false)).toBe(true);
+    expect(eases(null, true)).toBe(false);
+    // Reduce motion On and Off win over the system.
+    expect(eases("reduce", false)).toBe(false);
+    expect(eases("full", true)).toBe(true);
   });
 
   it("a pan during a smooth zoom carries the zoom along", () => {

@@ -280,6 +280,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                               }
                             }
                           },
+                          "color_label": {
+                            "description": "The color label (arch §4.2 `color_label`, issue #222): a display color that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+                          },
                           "media": {
                             "description": "The media this clip plays.",
                             "type": "string",
@@ -3290,6 +3298,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                               ]
                             }
                           }
+                        },
+                        "color_label": {
+                          "description": "The color label (arch §4.2 `color_label`, issue #222): a display color that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
                         },
                         "media": {
                           "description": "The media this clip plays.",

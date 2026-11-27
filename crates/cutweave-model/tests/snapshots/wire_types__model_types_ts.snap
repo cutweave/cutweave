@@ -75,6 +75,13 @@ export type Clip = {
 	attached_to: ItemId | null,
 	/**  Markers in item-relative time; they move with the item. */
 	markers: { [key in MarkerId]: Marker },
+	/**
+	 *  The color label (arch §4.2 `color_label`, issue #222): a display color that marks the
+	 *  item on the timeline, set with `item.set_label_color`. It changes nothing in the picture
+	 *  or the sound. Absent: no label; left out of the file while absent, so documents written
+	 *  before the field read the same.
+	 */
+	color_label?: Color | null,
 	/**  The media this clip plays. */
 	media: MediaId,
 	/**

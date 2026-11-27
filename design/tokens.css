@@ -38,6 +38,14 @@
   --clip-captions-body: #2f2442;
   --clip-effects: #a8c24c;
   --clip-effects-body: #2c3514;
+  --label-red: #e5534b;
+  --label-orange: #e8833a;
+  --label-lime: #a3b83a;
+  --label-green: #3fae6e;
+  --label-teal: #2aa7a0;
+  --label-blue: #4a8fe0;
+  --label-purple: #9a6fe0;
+  --label-pink: #e06aa0;
   --success: #58c08b;
   --warning: #f0903f;
   --danger: #f0625a;
@@ -89,6 +97,14 @@
   --clip-captions-body: #ebe1f9;
   --clip-effects: #6b8619;
   --clip-effects-body: #e8f0cf;
+  --label-red: #e5534b;
+  --label-orange: #e8833a;
+  --label-lime: #a3b83a;
+  --label-green: #3fae6e;
+  --label-teal: #2aa7a0;
+  --label-blue: #4a8fe0;
+  --label-purple: #9a6fe0;
+  --label-pink: #e06aa0;
   --success: #1f7f4a;
   --warning: #a8560f;
   --danger: #c2332b;
@@ -151,6 +167,20 @@
   --font-ui: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
   --font-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+[data-density="comfortable"] {
+  --hit-min: 28px;
+  --control-sm: 28px;
+  --control-md: 32px;
+  --control-lg: 36px;
+  --toolbar: 44px;
+  --panel-header: 36px;
+  --track-sm: 36px;
+  --track-md: 56px;
+  --track-lg: 84px;
+  --space-2: 10px;
+  --space-3: 16px;
+  --space-4: 20px;
 }
 .display-xl { font-family: var(--font-display); font-size: 40px; line-height: 44px; font-weight: 700; letter-spacing: -0.02em; }
 .display-l { font-family: var(--font-display); font-size: 28px; line-height: 32px; font-weight: 650; letter-spacing: -0.01em; }

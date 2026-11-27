@@ -23,6 +23,10 @@ export interface MainWindowOptions {
   factory: WindowFactoryContext;
   /** The theme the editor will show: the window's frame and controls open in its colors. */
   theme?: ThemeId;
+  /** Settings > Appearance > Interface scale: the zoom factor the page opens at (WP-2H.09). */
+  zoomFactor?: number;
+  /** The top bar's height on screen at that scale and density: the OS window controls match it. */
+  titleBarHeight?: number;
 }
 
 export function createMainWindow(options: MainWindowOptions): BrowserWindow {
@@ -41,7 +45,10 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       show: false,
       title: "Cutweave",
       // No native title bar: the editor's top bar is the title bar (WP-1M.09, title-bar.ts).
-      ...titleBarOptions(process.platform, options.theme),
+      ...titleBarOptions(process.platform, options.theme, options.titleBarHeight),
+      ...(options.zoomFactor === undefined
+        ? {}
+        : { webPreferences: { zoomFactor: options.zoomFactor } }),
       url: options.url,
     },
     options.factory,

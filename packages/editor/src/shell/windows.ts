@@ -24,8 +24,17 @@ export interface RegisteredWindow {
   readonly window: Window;
 }
 
-/** The `<html>` attributes every window takes from the main one (interface scale joins later). */
-export const MIRRORED_ATTRIBUTES = ["data-theme", "data-density", "lang", "dir"] as const;
+/**
+ * The `<html>` attributes every window takes from the main one. The interface scale is not one:
+ * main sets the zoom factor of every window (WP-2H.09).
+ */
+export const MIRRORED_ATTRIBUTES = [
+  "data-theme",
+  "data-density",
+  "data-motion",
+  "lang",
+  "dir",
+] as const;
 
 type Listener = (window: RegisteredWindow) => void;
 

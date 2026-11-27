@@ -75,9 +75,9 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 |---|---|---|---|---|---|---|
 | `appearance.theme` | Theme: Dark, Light, Match system | Dark | App | Main (window colors) and renderer | — | WP-1M.11 |
 | `appearance.theme` (option) | High contrast theme (7:1) | — | App | Renderer | — | WP-7C.02 |
-| `appearance.scale` | Interface scale: 90 to 150% | 100% | App | Main (zoom factor) | — | WP-2H.09 |
-| `appearance.density` | Density: Standard or Comfortable | Standard | App | Renderer (tokens) | — | WP-2H.09 |
-| `appearance.reduce_motion` | Reduce motion: follow the system, on, off | Follow the system | App | Renderer | — | WP-2H.09 |
+| `appearance.scale` | Interface scale: 90, 100, 110, 125 or 150% | 100% | App | Main (the zoom factor of the editor window and of detached panels' windows) | — | WP-2H.09 |
+| `appearance.density` | Density: Standard or Comfortable | Standard | App | Renderer (the size tokens under `data-density="comfortable"`) and main (the height of the OS window controls) | — | WP-2H.09 |
+| `appearance.reduce_motion` | Reduce motion: Match system, On, Off | Match system | App | Renderer (`data-motion` on the root; Off keeps motion even when the system asks to reduce it) | — | WP-2H.09 |
 | — | Accent color | Not offered: marigold is the one "here" color ([design/README.md](../../design/README.md)); pending the product owner's call | — | — | — | — |
 
 ### Editing
