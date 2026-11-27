@@ -26229,7 +26229,7 @@
         "properties": {
           "patch": {
             "additionalProperties": false,
-            "description": "The settings to change, e.g. `{\"proxy_policy\": \"off\"}`. Times are flicks.",
+            "description": "The settings to change, e.g. `{\"proxy_policy\": \"off\"}`. Times are flicks or seconds\n(`\"3s\"`).",
             "properties": {
               "default_format": {
                 "description": "Format of new sequences.",

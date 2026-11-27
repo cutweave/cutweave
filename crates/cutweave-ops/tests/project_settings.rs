@@ -53,6 +53,13 @@ fn set_settings_patches_the_keys_it_names_as_one_undo_step() {
     // The sequences that exist keep their format.
     assert!(doc.sequences.values().all(|s| s.format.width == 1920));
 
+    // A time is flicks or a seconds string, as in every command.
+    h.ok(
+        "project.set_settings",
+        json!({"patch": {"still_duration": "2.5s"}}),
+    );
+    assert_eq!(h.doc().settings.still_duration().flicks(), flicks(5) / 2);
+
     // `null` puts an optional key back to its default.
     h.ok(
         "project.set_settings",

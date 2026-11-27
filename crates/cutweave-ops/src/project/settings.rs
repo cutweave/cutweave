@@ -118,7 +118,8 @@ pub struct ProjectSettingsOutput {
     annotations(destructive = false, idempotent = true)
 )]
 pub struct ProjectSetSettings {
-    /// The settings to change, e.g. `{"proxy_policy": "off"}`. Times are flicks.
+    /// The settings to change, e.g. `{"proxy_policy": "off"}`. Times are flicks or seconds
+    /// (`"3s"`).
     pub patch: SettingsPatch,
 }
 

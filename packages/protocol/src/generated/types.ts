@@ -5666,7 +5666,10 @@ export type ProjectSetAutosaveOutput = {
  *  never alters what exists: sequences keep their format and clips their length.
  */
 export type ProjectSetSettings = {
-	/**  The settings to change, e.g. `{"proxy_policy": "off"}`. Times are flicks. */
+	/**
+	 *  The settings to change, e.g. `{"proxy_policy": "off"}`. Times are flicks or seconds
+	 *  (`"3s"`).
+	 */
 	patch: { [key in string]: JsonValue },
 };
 
