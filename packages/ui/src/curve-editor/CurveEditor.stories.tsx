@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { useState } from "react";
-import { CurveEditor, type CurveValue } from "./CurveEditor.tsx";
 import { SAMPLE_PRESETS, sampleCurve } from "./fixtures.ts";
+// Through the index, which brings the component's stylesheet.
+import { CurveEditor, type CurveValue } from "./index.ts";
 
 export default { title: "Inputs/CurveEditor", component: CurveEditor, tags: ["autodocs"] };
 

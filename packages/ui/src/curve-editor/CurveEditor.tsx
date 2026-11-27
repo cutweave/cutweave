@@ -335,7 +335,7 @@ export function CurveEditor({
         </label>
         <select
           id={presetId}
-          className="cw-sf-select body cw-curve__select"
+          className="cw-curve__select body"
           value={current?.id ?? ""}
           disabled={disabled}
           onChange={(e) => {
