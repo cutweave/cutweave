@@ -39,6 +39,14 @@
   --color-clip-captions-body: var(--clip-captions-body);
   --color-clip-effects: var(--clip-effects);
   --color-clip-effects-body: var(--clip-effects-body);
+  --color-label-red: var(--label-red);
+  --color-label-orange: var(--label-orange);
+  --color-label-lime: var(--label-lime);
+  --color-label-green: var(--label-green);
+  --color-label-teal: var(--label-teal);
+  --color-label-blue: var(--label-blue);
+  --color-label-purple: var(--label-purple);
+  --color-label-pink: var(--label-pink);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
