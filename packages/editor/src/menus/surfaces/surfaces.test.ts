@@ -790,6 +790,85 @@ describe("the bin menus", () => {
     });
   });
 
+  it("Add tag… opens the tag editor for the card, or for all the selected cards", async () => {
+    const one = menuFor("bin.card", { ids: [MED_V], name: "interview.mp4" });
+    expect(one.item("Add tag…").disabled).toBeUndefined();
+    await one.choose("Add tag…");
+    expect(menuDialogStore.getState().dialog).toEqual({ kind: "tags", media: [MED_V] });
+    // Opening the editor changes nothing: its chips and field send the commands.
+    expect(call).not.toHaveBeenCalled();
+    menuDialogStore.getState().close();
+    await menuFor("bin.card", { ids: [MED_V, MED_A, MED_U] }).choose("Add tag…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "tags",
+      media: [MED_V, MED_A, MED_U],
+    });
+    menuDialogStore.getState().close();
+  });
+
+  it("Set rating ▸ None, 1 to 5 stars rates the cards with one media.set_rating, checked from the assets", async () => {
+    const labels = ["None", "1 star", "2 stars", "3 stars", "4 stars", "5 stars"];
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    const rating = m.menu.entries.find((e) => e.kind === "submenu" && e.label === "Set rating");
+    expect(rating).toBeDefined();
+    expect(
+      rating?.kind === "submenu" ? rating.items.map((i) => ("label" in i ? i.label : "")) : [],
+    ).toEqual(labels);
+    // An unrated asset: None is the checked one.
+    expect(labels.map((label) => m.item(label).checked)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(m.item("4 stars").choice).toBe("radio");
+    await m.choose("4 stars");
+    expect(call).toHaveBeenCalledExactlyOnceWith("media.set_rating", {
+      media: [MED_V],
+      rating: 4,
+    });
+    expect(schemaProblems("media.set_rating", call.mock.calls[0]?.[1])).toEqual([]);
+
+    // The rating as the document has it after the command.
+    const base = project();
+    const media = base.media as unknown as Record<string, Record<string, unknown>>;
+    docStore.setState({
+      project: {
+        ...base,
+        media: { ...media, [MED_V]: { ...media[MED_V], rating: 4 } },
+      } as unknown as Project,
+    });
+    expect(menuFor("bin.card", { ids: [MED_V] }).item("4 stars").checked).toBe(true);
+    expect(menuFor("bin.card", { ids: [MED_V] }).item("None").checked).toBe(false);
+
+    // Several cards: one command for all of them; nothing is checked while they differ.
+    call.mockClear();
+    const many = menuFor("bin.card", { ids: [MED_V, MED_A, MED_U] });
+    expect(labels.map((label) => many.item(label).checked)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    await many.choose("None");
+    expect(call).toHaveBeenCalledExactlyOnceWith("media.set_rating", {
+      media: [MED_V, MED_A, MED_U],
+      rating: null,
+    });
+    expect(schemaProblems("media.set_rating", call.mock.calls[0]?.[1])).toEqual([]);
+  });
+
+  it("Set rating is refused with its reason for more cards than one command takes", () => {
+    const ids = Array.from({ length: 257 }, (_, i) => hex("med", 1000 + i));
+    const row = menuFor("bin.card", { ids }).item("3 stars");
+    expect(row.disabled).toBe(true);
+    expect(row.disabledReason).toBe("Select 256 items or fewer");
+  });
+
   it("appends after the last clip of the sequence", async () => {
     await menuFor("bin.card", { ids: [MED_V] }).choose("Append to timeline");
     expect(call).toHaveBeenCalledWith("timeline.insert", {
