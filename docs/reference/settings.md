@@ -113,6 +113,8 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 
 ### Playback
 
+Shipped: `playback.return_to_start` (WP-2H.10). The other rows are applied by the engine and are not in the dialog yet: nothing in the engine loops playback, pins the preview's quality or plays audio while scrubbing so far, and the proxies switch comes with WP-2F.02. Each row joins the page with the work that gives the engine its behaviour.
+
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
 | `playback.quality_playing` | Preview quality while playing: auto, full, half, quarter | Auto | App | Engine (quality ladder) | — | WP-2H.10 |
@@ -120,7 +122,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | `playback.proxies` | Use proxies in the preview when they are ready | On | App | Engine | Read | WP-2H.10 (uses WP-2F.02) |
 | `playback.scrub_audio` | Play audio while scrubbing | On | App | Engine | — | WP-2H.10 |
 | `playback.loop` | Loop playback | Off | App | Engine | — | WP-2H.10 |
-| `playback.return_to_start` | When playback stops, go back to where it started | Off | App | Renderer | — | WP-2H.10 |
+| `playback.return_to_start` | When playback stops (a pause, or playing into the end), go back to where it started. A step, and a pause an agent makes, stay where they are | Off | App | Renderer (the transport) | — | WP-2H.10 |
 
 ### Audio
 

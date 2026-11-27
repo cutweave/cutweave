@@ -731,6 +731,7 @@ export async function openSettingsPage(
     | "General"
     | "Appearance"
     | "Editing"
+    | "Playback"
     | "Media and import"
     | "Export"
     | "Saving and backups"

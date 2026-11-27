@@ -79,6 +79,7 @@ test.describe("F19 settings", () => {
         "General",
         "Appearance",
         "Editing",
+        "Playback",
         "Media and import",
         "Export",
         "Saving and backups",
