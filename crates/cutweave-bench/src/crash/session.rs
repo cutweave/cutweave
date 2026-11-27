@@ -1204,7 +1204,9 @@ fn agent_answer(live: &mut Live, mut pending: Pending, gone: bool) -> Option<Ans
 /// [`Point::CommitAbort`], the engine's own abort after a seeded number of commits.
 fn abort_env(script: &mut Script, point: Option<Point>) -> Vec<(String, String)> {
     if point == Some(Point::CommitAbort) {
-        let after = 2 + script.below(10);
+        // The engine counts from its start, and its life begins with the commands that were in
+        // flight at the crash before (at most six) being sent again: it must outlast those.
+        let after = 8 + script.below(10);
         vec![("CUTWEAVE_TEST_CRASH_AFTER".to_owned(), after.to_string())]
     } else {
         Vec::new()

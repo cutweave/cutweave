@@ -1,6 +1,6 @@
 [package]
 name = "cutweave-bench"
-description = "Cutweave: seeded benchmark projects and the engine benchmark suite (WP-2J.01)"
+description = "Cutweave: seeded benchmark projects, the engine benchmark suite (WP-2J.01) and the crash harness (WP-2J.05)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,8 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-# `cutweave-bench gen|run|engine`: the generator, the suite without criterion and the engine
-# child process the start and memory probes measure. WP-2J.03 adds `playback|scrub|sync|export`.
+# `cutweave-bench gen|run|engine|crash`: the generator, the suite without criterion, the engine
+# child process the start and memory probes measure, and the crash harness (WP-2J.05).
+# WP-2J.03 adds `playback|scrub|sync|export`.
 [[bin]]
 name = "cutweave-bench"
 path = "src/main.rs"

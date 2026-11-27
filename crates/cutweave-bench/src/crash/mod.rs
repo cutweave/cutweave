@@ -198,8 +198,9 @@ pub struct CrashReport {
     pub acknowledged: usize,
     /// Commands it refused (they are part of the work, see [`script`]).
     pub refused: usize,
-    /// `Err`: the closing check (save, kill, clean start) failed.
-    pub closing: Result<(), String>,
+    /// The closing check (save, kill, clean start): `None` when a crash failed before it,
+    /// `Some(Err)` when it failed.
+    pub closing: Option<Result<(), String>>,
 }
 
 impl CrashReport {
@@ -219,10 +220,8 @@ impl CrashReport {
                 Some(format!("crash {} ({}): {why}", row.n, row.point.name()))
             })
             .or_else(|| {
-                self.closing
-                    .as_ref()
-                    .err()
-                    .map(|e| format!("closing check: {e}"))
+                let failed = self.closing.as_ref()?.as_ref().err()?;
+                Some(format!("closing check: {failed}"))
             })
     }
 
@@ -269,8 +268,9 @@ impl CrashReport {
         }
         let passed = self.rows.iter().filter(|r| r.result.is_ok()).count();
         let closing = match &self.closing {
-            Ok(()) => "clean start after the last save: PASS".to_owned(),
-            Err(why) => format!("clean start after the last save: FAIL: {why}"),
+            Some(Ok(())) => "clean start after the last save: PASS".to_owned(),
+            Some(Err(why)) => format!("clean start after the last save: FAIL: {why}"),
+            None => "clean start after the last save: not run".to_owned(),
         };
         let _ = writeln!(
             out,
@@ -357,11 +357,10 @@ pub fn run(options: &CrashOptions) -> Result<CrashReport, BenchError> {
             break;
         }
     }
-    let closing = if rows.iter().all(|r| r.result.is_ok()) {
-        session.closing_check()
-    } else {
-        Ok(())
-    };
+    let closing = rows
+        .iter()
+        .all(|r| r.result.is_ok())
+        .then(|| session.closing_check());
     let (acknowledged, refused) = session.totals();
     Ok(CrashReport {
         seed: options.seed,
@@ -572,7 +571,7 @@ mod tests {
             rows: vec![row(1, Point::Edit, Ok(())), row(2, Point::Save, Ok(()))],
             acknowledged: 24,
             refused: 3,
-            closing: Ok(()),
+            closing: Some(Ok(())),
         };
         assert!(report.passed());
         assert!(
@@ -581,6 +580,12 @@ mod tests {
                 .contains("2/2 crashes recovered with nothing lost")
         );
         assert!(!report.table().contains("FAILED"));
+        report.closing = Some(Err("recovery offered".into()));
+        assert_eq!(
+            report.failure().as_deref(),
+            Some("closing check: recovery offered")
+        );
+        report.closing = None;
         report
             .rows
             .push(row(3, Point::TornTail, Err("an edit is gone".into())));
@@ -590,6 +595,7 @@ mod tests {
         );
         let table = report.table();
         assert!(table.contains("FAIL: an edit is gone"), "{table}");
+        assert!(table.contains("clean start after the last save: not run"));
         assert!(
             table.contains("cutweave-bench crash --count 3 --seed 99"),
             "{table}"
