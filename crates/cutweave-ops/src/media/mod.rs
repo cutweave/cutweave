@@ -14,7 +14,9 @@
 //! queues background analysis jobs for the new assets ([`Analyzer`], [`AnalysisStage`]) and
 //! returns their `job_ids`, which callers await with `job.wait`. It runs against an
 //! [`ImportCtx`], so the engine decides how registrations are committed and who may read
-//! which folders.
+//! which folders. With `copy_to_project` (WP-2F.04c) each new file is first copied into the
+//! project's `media/` folder ([`on_import`](crate::project::collect::on_import)) and
+//! registered there.
 
 mod analysis;
 mod find;
@@ -79,6 +81,9 @@ pub use slideshow::{
 pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
 pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
 
+use crate::project::collect::on_import::{
+    CopyOutcome, ImportedFile, ProjectFolder, copy_into_project,
+};
 use crate::util::check_abs_path;
 
 /// Most files one `media.import` call accepts.
@@ -382,6 +387,9 @@ pub struct ImportCtx {
     /// The frame rate of the sequence the editor shows: what `media.import_sequence` gives a
     /// run when the caller names no `fps` (`None`: 30).
     pub sequence_fps: Option<FrameRate>,
+    /// The open project's folder, where `copy_to_project` copies to; `None` for an untitled
+    /// document, which has no folder.
+    pub project: Option<ProjectFolder>,
 }
 
 impl ImportCtx {
@@ -398,6 +406,7 @@ impl ImportCtx {
             events: None,
             frames: None,
             sequence_fps: None,
+            project: None,
         }
     }
 
@@ -405,6 +414,13 @@ impl ImportCtx {
     #[must_use]
     pub fn with_frames(mut self, frames: Arc<dyn FrameGrabber>) -> ImportCtx {
         self.frames = Some(frames);
+        self
+    }
+
+    /// The same context with the open project's folder (for `copy_to_project`).
+    #[must_use]
+    pub fn with_project(mut self, project: Option<ProjectFolder>) -> ImportCtx {
+        self.project = project;
         self
     }
 
@@ -534,6 +550,17 @@ pub struct MediaImportOutput {
 /// creates a bin folder for each directory that holds new media, named after it, inside
 /// `folder`. One undo removes the media and those folders; files already in the project stay
 /// where they are.
+///
+/// With `copy_to_project` (WP-2F.04c) each new file is first copied into the project's
+/// `media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from
+/// an imported folder keeps its place in that folder's tree) and the asset points at the copy,
+/// so the project keeps working when the original moves. The copy is compared with the
+/// original before it is used. A file already inside the project folder is not copied, and
+/// neither is one whose content the project already has (it is returned as a duplicate). The
+/// call fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it
+/// has no folder) or when the files do not fit on its drive; nothing is copied then. A file
+/// that cannot be copied is listed in `failed`. Undoing the import removes the assets; the
+/// copied files stay on disk (undo never deletes a file).
 #[command(
     name = "media.import",
     summary = "Import media files: probe and register them now, return media ids and analysis job ids",
@@ -550,7 +577,13 @@ pub struct MediaImport {
     /// For folders in `paths`: mirror their directories as bin folders (default true); false
     /// puts every file straight into `folder`.
     pub keep_structure: Option<bool>,
+    /// Copy each new file into the project's `media/` folder first (default false).
+    pub copy_to_project: Option<bool>,
 }
+
+/// What `copy_to_project` answers for an untitled document.
+pub const SAVE_FIRST: &str = "this project has not been saved yet, so it has no folder to copy \
+                              files into; save the project first, or import without copying";
 
 impl MediaImport {
     fn check(&self, policy: &ImportPolicy) -> Result<(), CmdError> {
@@ -682,8 +715,21 @@ struct Probing {
     dirs: Vec<Vec<String>>,
     /// The request index of each entry of `batch`.
     origin: Vec<usize>,
+    /// For each entry of `batch` found inside an imported folder: the folders that lead to it
+    /// (empty for a file named in the request).
+    found_in: Vec<Vec<String>>,
+    /// The path each entry of `batch` was asked for (its `path` may become a copy's).
+    requested: Vec<String>,
     /// The files named in the request that could not be imported.
     failed: Vec<ImportFailure>,
+}
+
+/// The entries of `all` whose `keep` flag is set.
+fn kept<T>(all: Vec<T>, keep: &[bool]) -> Vec<T> {
+    all.into_iter()
+        .zip(keep)
+        .filter_map(|(entry, keep)| keep.then_some(entry))
+        .collect()
 }
 
 impl MediaImport {
@@ -718,6 +764,8 @@ impl MediaImport {
             batch: Vec::with_capacity(items.len()),
             dirs: Vec::with_capacity(items.len()),
             origin: Vec::with_capacity(items.len()),
+            found_in: Vec::with_capacity(items.len()),
+            requested: Vec::with_capacity(items.len()),
             failed: Vec::new(),
         };
         for (item, result) in items.into_iter().zip(probed) {
@@ -734,8 +782,11 @@ impl MediaImport {
                     };
                     match register.kind() {
                         Ok(_) => {
+                            out.requested.push(path.clone());
                             out.batch.push(register);
-                            out.dirs.push(if keep { item.dirs } else { Vec::new() });
+                            out.dirs
+                                .push(if keep { item.dirs.clone() } else { Vec::new() });
+                            out.found_in.push(item.dirs);
                             out.origin.push(item.origin);
                             continue;
                         }
@@ -761,6 +812,60 @@ impl MediaImport {
         }
         out
     }
+
+    /// `copy_to_project`: copies the probed files that are new to the project into its
+    /// `media/` folder and points their registrations at the copies. A file that cannot be
+    /// copied leaves the batch (reported in `failed`, or counted in `skipped` when it came
+    /// from a folder).
+    fn copy_new_files(
+        &self,
+        project: &ProjectFolder,
+        probing: &mut Probing,
+        skipped: &mut ImportSkipped,
+    ) -> Result<(), CmdError> {
+        let files: Vec<ImportedFile<'_>> = probing
+            .batch
+            .iter()
+            .zip(&probing.found_in)
+            .map(|(register, dirs)| ImportedFile {
+                from: &register.path,
+                content_hash: &register.content_hash,
+                dirs,
+            })
+            .collect();
+        let outcomes = copy_into_project(project, &files)?;
+        let mut keep = Vec::with_capacity(outcomes.len());
+        for (i, outcome) in outcomes.into_iter().enumerate() {
+            match outcome {
+                CopyOutcome::Stays => keep.push(true),
+                CopyOutcome::At(path) => {
+                    probing.batch[i].path = path;
+                    keep.push(true);
+                }
+                CopyOutcome::Failed(error) => {
+                    if probing.found_in[i].is_empty() {
+                        probing.failed.push(ImportFailure {
+                            path: probing.requested[i].clone(),
+                            code: ImportFailureCode::Io,
+                            error,
+                        });
+                    } else {
+                        skipped.unreadable += 1;
+                    }
+                    keep.push(false);
+                }
+            }
+        }
+        if keep.contains(&false) {
+            let position = |path: &str| self.paths.iter().position(|p| p == path);
+            probing.failed.sort_by_key(|f| position(&f.path));
+            probing.batch = kept(std::mem::take(&mut probing.batch), &keep);
+            probing.dirs = kept(std::mem::take(&mut probing.dirs), &keep);
+            probing.origin = kept(std::mem::take(&mut probing.origin), &keep);
+            probing.requested = kept(std::mem::take(&mut probing.requested), &keep);
+        }
+        Ok(())
+    }
 }
 
 impl EngineCommand for MediaImport {
@@ -769,15 +874,25 @@ impl EngineCommand for MediaImport {
 
     fn run(&self, ctx: &mut ImportCtx) -> Result<MediaImportOutput, CmdError> {
         self.check(&ctx.policy)?;
+        let copy = self.copy_to_project.unwrap_or(false);
+        if copy && ctx.project.is_none() {
+            return Err(CmdError::invalid("/copy_to_project", SAVE_FIRST));
+        }
         let keep = self.keep_structure.unwrap_or(true);
         let mut skipped = ImportSkipped::default();
         let items = expand(&self.paths, &mut skipped)?;
+        let mut probing = self.probe_items(ctx, items, keep, &mut skipped);
+        if copy && let Some(project) = &ctx.project {
+            self.copy_new_files(project, &mut probing, &mut skipped)?;
+        }
         let Probing {
             batch,
             dirs,
             origin,
+            requested,
             failed,
-        } = self.probe_items(ctx, items, keep, &mut skipped);
+            ..
+        } = probing;
         let mut folders = 0;
         let results = if batch.is_empty() {
             Vec::new()
@@ -815,7 +930,7 @@ impl EngineCommand for MediaImport {
             skipped,
             folders,
         };
-        for (register, r) in batch.into_iter().zip(results) {
+        for ((register, requested), r) in batch.into_iter().zip(requested).zip(results) {
             let mut index_job = Vec::new();
             if r.created
                 && let Some(analyzer) = &ctx.analysis
@@ -841,7 +956,7 @@ impl EngineCommand for MediaImport {
                 .map_or(ImportProxy::None, |p| p.imported(r.media_id, &index_job));
             out.media_ids.push(r.media_id);
             out.media.push(ImportedMedia {
-                path: register.path,
+                path: requested,
                 media_id: r.media_id,
                 kind: r.kind,
                 duplicate: !r.created,

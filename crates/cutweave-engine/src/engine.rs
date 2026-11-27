@@ -49,7 +49,8 @@ use cutweave_ops::media::{
     AllowedRoots, AnalysisStages, Analyzer, DiskFiles, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
     RelinkCtx,
 };
-use cutweave_ops::project::collect::CollectCtx;
+use cutweave_ops::project::collect::on_import::ProjectFolder;
+use cutweave_ops::project::collect::{CollectCtx, CollectHost};
 use cutweave_ops::view::{UiState, ViewCtx};
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -530,6 +531,24 @@ impl Core {
             .values()
             .next()
             .map(|s| s.format.frame_rate);
+        // Where `copy_to_project` copies to (WP-2F.04c): the open project's folder, with the
+        // free-space probe collect uses; an untitled document has none.
+        let project = session.project_root().map(|root| {
+            let host = EngineCollectHost {
+                free_space: Arc::clone(&self.free_space),
+            };
+            ProjectFolder {
+                root: root.to_string_lossy().into_owned(),
+                free_space: Arc::new(move |folder| host.free_space(folder)),
+                known_hashes: handle
+                    .snapshot()
+                    .doc
+                    .media
+                    .values()
+                    .filter_map(|m| m.content_hash.clone())
+                    .collect(),
+            }
+        });
         let sink = ImportSink::new(handle, ctx_for(ctx.actor(), self.next_conn()));
         let prober = self
             .deps
@@ -548,7 +567,8 @@ impl Core {
             .with_analysis(analyzer)
             .with_events(bus)
             .with_frames(frames)
-            .with_sequence_fps(sequence_fps);
+            .with_sequence_fps(sequence_fps)
+            .with_project(project);
         if let Some(proxies) = self.deps.subsystems.proxy_service() {
             import = import.with_proxies(proxies);
         }

@@ -72,13 +72,15 @@ async function pickAndImport(what: "files" | "folders" = "files"): Promise<void>
   if (paths.length === 0) return;
   const deps = { engine: engineStore, toasts: toastStore, t: tr() };
   const keepStructure = preferences.get("media.keep_structure");
+  const copyToProject = preferences.get("media.copy_on_import");
   if (what === "folders") {
-    await importMedia(deps, paths, currentOpenFolder(), { keepStructure });
+    await importMedia(deps, paths, currentOpenFolder(), { keepStructure, copyToProject });
     return;
   }
   // Picked files that are a numbered run of pictures are asked about first (WP-2F.05c).
   await importPicked(deps, paths, currentOpenFolder(), {
     keepStructure,
+    copyToProject,
     fps: preferences.get("media.image_sequence_fps"),
   });
 }

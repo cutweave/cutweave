@@ -475,6 +475,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
         "project.collect" | "project.collect_estimate" => (1, project_collect()),
+        "project.archive" => (1, project_archive()),
         "media.set_location" => (1, media_set_location(p)),
         "media.relink" => (1, media_relink(p)),
         "media.relink_folder" => (1, media_relink_folder(p)),
@@ -862,19 +863,23 @@ fn media_import(p: &Pools) -> BoxedStrategy<Value> {
         vec(select(IMPORT_PATHS.to_vec()), 1..=3),
         unreadable,
         option::weighted(0.3, one_of(p.folders.clone())),
+        // Absent and `false` both leave the files where they are.
+        option::weighted(0.2, Just(false)),
     )
-        .prop_map(|(paths, unreadable, folder)| {
+        .prop_map(|(paths, unreadable, folder, copy)| {
             let mut unique: Vec<&str> = Vec::new();
             for p in paths.into_iter().chain(unreadable) {
                 if !unique.contains(&p) {
                     unique.push(p);
                 }
             }
-            json!({"paths": unique, "folder": folder})
+            json!({"paths": unique, "folder": folder, "copy_to_project": copy})
         })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"paths": []})),
+        // The harness document is untitled: it has no folder to copy into (WP-2F.04c).
+        Just(json!({"paths": [IMPORT_PATHS[0]], "copy_to_project": true})),
         Just(json!({"paths": ["import/relative.mp4"]})),
         select(IMPORT_PATHS.to_vec()).prop_map(|p| json!({"paths": [p, p]})),
     ]
@@ -1227,6 +1232,32 @@ fn project_collect() -> BoxedStrategy<Value> {
     mix(valid, invalid)
 }
 
+/// `project.archive`: like a collect, nothing is written (the harness's project write writes
+/// nothing, so the job ends before it makes a file).
+fn project_archive() -> BoxedStrategy<Value> {
+    let valid = (
+        select(vec![
+            ("folder", "/collect/archive"),
+            ("zip", "/collect/archive.zip"),
+        ]),
+        option::of(any::<bool>()),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|((format, dest), trim, generated)| {
+            json!({"dest": dest, "format": format, "trim_unused": trim,
+                   "include_generated": generated})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"dest": "collect/relative", "format": "folder"})),
+        Just(json!({"dest": "/collect/archive", "format": "zip"})),
+        Just(json!({"dest": "/collect/archive.zip", "format": "tar"})),
+        Just(json!({"dest": "/collect/archive"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
 /// The engine's part of a collect in a harness: an unknown amount of free space, no project
 /// anywhere, and a project write that writes nothing.
 #[derive(Clone, Copy, Debug, Default)]
@@ -1247,6 +1278,21 @@ impl crate::project::collect::CollectHost for NoDisk {
         _doc: &Project,
     ) -> Result<std::path::PathBuf, String> {
         Ok(folder.join("copy.cutweave"))
+    }
+
+    fn hasher(&self) -> Box<dyn crate::project::collect::ContentHasher> {
+        Box::new(NoHash)
+    }
+}
+
+/// The hasher of [`NoDisk`]: every file hashes to nothing.
+struct NoHash;
+
+impl crate::project::collect::ContentHasher for NoHash {
+    fn update(&mut self, _bytes: &[u8]) {}
+
+    fn finish(self: Box<Self>) -> String {
+        String::new()
     }
 }
 

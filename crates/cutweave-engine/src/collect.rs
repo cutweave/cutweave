@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The engine's part of `project.collect` (WP-2F.04; arch §17): the disk facts and the project
-//! format that `cutweave-ops` does not know ([`CollectHost`]).
+//! The engine's part of `project.collect` (WP-2F.04; arch §17) and `project.archive`
+//! (WP-2F.04b): the disk facts, the project format and the hash that `cutweave-ops` does not
+//! know ([`CollectHost`]).
 //!
 //! The copy's document is written with [`ProjectStore::create`], the same code that makes any
 //! new project (so its relative media paths are computed for the new folder), and the store is
@@ -9,7 +10,8 @@
 use std::path::{Path, PathBuf};
 
 use cutweave_model::Project;
-use cutweave_ops::project::collect::CollectHost;
+use cutweave_ops::project::collect::{CollectHost, ContentHasher};
+use sha2::{Digest, Sha256};
 
 use crate::export::FreeSpaceProbe;
 use crate::project_io::{DOCUMENT_EXTENSION, ProjectStore};
@@ -48,5 +50,26 @@ impl CollectHost for EngineCollectHost {
         let document = store.document_path().to_path_buf();
         store.close().map_err(|e| e.to_string())?;
         Ok(document)
+    }
+
+    fn hasher(&self) -> Box<dyn ContentHasher> {
+        Box::new(Sha256Hex(Sha256::new()))
+    }
+}
+
+/// SHA-256 in lowercase hex: the hashes of an archive's `archive.json` (WP-2F.04b).
+struct Sha256Hex(Sha256);
+
+impl ContentHasher for Sha256Hex {
+    fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+
+    fn finish(self: Box<Self>) -> String {
+        use std::fmt::Write as _;
+        self.0.finalize().iter().fold(String::new(), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        })
     }
 }

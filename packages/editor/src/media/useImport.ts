@@ -47,7 +47,10 @@ export function useImport(): UseImport {
         },
         paths,
         folder ?? null,
-        { keepStructure: preferences.get("media.keep_structure") },
+        {
+          keepStructure: preferences.get("media.keep_structure"),
+          copyToProject: preferences.get("media.copy_on_import"),
+        },
       );
     } finally {
       setBusy(false);
@@ -78,6 +81,7 @@ export function useImport(): UseImport {
           folder ?? null,
           {
             keepStructure: preferences.get("media.keep_structure"),
+            copyToProject: preferences.get("media.copy_on_import"),
             fps: preferences.get("media.image_sequence_fps"),
           },
         );

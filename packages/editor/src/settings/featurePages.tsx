@@ -185,6 +185,14 @@ const mediaPage: SettingsPageDef = {
       control: { kind: "switch" },
     },
     {
+      id: "media.copy_on_import",
+      key: "media.copy_on_import",
+      label: "settings.rows.copyOnImport.label",
+      description: "settings.rows.copyOnImport.description",
+      keywords: "settings.rows.copyOnImport.keywords",
+      control: { kind: "switch" },
+    },
+    {
       id: "media.image_sequence_fps",
       key: "media.image_sequence_fps",
       label: "settings.rows.imageSequenceFps.label",
