@@ -106,7 +106,7 @@ describe("planPlacement", () => {
 
   it("the timeline's in point wins over the playhead and the source marks give the length", () => {
     const project = sampleProject();
-    const sequence = project.sequences.seq_1 as unknown as { in_out: object };
+    const sequence = Object.values(project.sequences)[0] as unknown as { in_out: object };
     sequence.in_out = { start: sec(1), end: sec(2) };
     const both = planPlacement({ ...base, project, mode: "insert" });
     expect(both.ok && [both.args.at, both.args.source_in, both.args.duration]).toEqual([

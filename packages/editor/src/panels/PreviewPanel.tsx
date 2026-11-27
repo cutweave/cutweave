@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
-import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
+import { dragStore } from "../media/dragStore.ts";
 import { registerContextSurface } from "../menus/host.tsx";
 import { clipLabel } from "../menus/surfaces/facts.ts";
 import {
@@ -29,12 +29,14 @@ import {
   usePreviewAspect,
 } from "../preview/PreviewCanvas.tsx";
 import { sourceKeyAction } from "../preview/sourceKeys.ts";
+import { clearMarks, placeShownSource, setSourceMark } from "../source/actions.ts";
 import { docStore } from "../state/docStore.ts";
 import { usePreviewFrozen, usePreviewShowsSource } from "../state/sourceViewStore.ts";
 import { ASPECTS, type AspectId, useViewStore, viewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
 import { EmptyState } from "./EmptyState.tsx";
-import { SourceHeader, useInsertSource, useSourceAsset } from "./SourceHeader.tsx";
+import { beginSourceDrag, SourceHeader, useSourceAsset } from "./SourceHeader.tsx";
+import { SourceScrubBar } from "./SourceScrubBar.tsx";
 import { TransportBar } from "./TransportBar.tsx";
 
 /** Says the preview runs on still frames, and why (WP-1M.04 fallback). */
@@ -157,7 +159,6 @@ export function PreviewPanel() {
   const showsSource = usePreviewShowsSource();
   const frozen = usePreviewFrozen();
   const asset = useSourceAsset();
-  const insertSource = useInsertSource();
 
   // The picture's menu (WP-2H.13): the timeline's frame, or the Source view while one plays.
   const stageRef = useRef<HTMLDivElement>(null);
@@ -186,28 +187,41 @@ export function PreviewPanel() {
     );
   }, [showsSource]);
 
-  // Esc goes back to the timeline and Enter places the clip (a focused button keeps its Enter).
+  // The Source view's keys (the keymap's `source` context): Esc goes back to the timeline, I and
+  // O mark the source at its playhead, `,` (or Enter) inserts the marked range at the timeline's
+  // playhead and `.` overwrites with it. A focused button keeps its Enter.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!showsSource || e.defaultPrevented) return;
     const action = sourceKeyAction(e);
     if (action === null) return;
     const target = e.target as HTMLElement;
-    if (action === "insert" && target.closest("button, [role='slider'], input") !== null) return;
+    if (e.key === "Enter" && target.closest("button, [role='slider'], input") !== null) return;
+    if (target.closest("input, textarea, [contenteditable='true']") !== null) return;
     e.preventDefault();
-    if (action === "back") void transportController().closeSource();
-    else insertSource();
+    switch (action) {
+      case "back":
+        void transportController().closeSource();
+        return;
+      case "insert":
+      case "overwrite":
+        void placeShownSource(action);
+        return;
+      case "markIn":
+        setSourceMark("in");
+        return;
+      case "markOut":
+        setSourceMark("out");
+        return;
+      case "clearMarks":
+        clearMarks();
+        return;
+    }
   };
 
-  // Dragging the Source view's picture onto the timeline drops the whole asset like a card.
-  const onDragStart = (e: DragEvent<HTMLElement>) => {
-    if (!showsSource || asset === null) {
-      e.preventDefault();
-      return;
-    }
-    e.dataTransfer.setData(MEDIA_DRAG_TYPE, asset.id);
-    e.dataTransfer.effectAllowed = "copy";
-    dragStore.getState().begin({ id: asset.id, kind: asset.kind, duration: asset.duration });
-  };
+  // Dragging the Source view's picture onto the timeline drops its marked range (the whole asset
+  // without marks) like a card.
+  const onDragStart = (e: DragEvent<HTMLElement>) =>
+    beginSourceDrag(e, showsSource ? asset : null, "both");
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: Esc and Enter of the Source view; the buttons keep their own keys
@@ -277,6 +291,7 @@ export function PreviewPanel() {
           {engine && !showsSource ? <TransformOverlay /> : null}
         </div>
       </div>
+      {showsSource ? <SourceScrubBar /> : null}
       <TransportBar />
     </div>
   );

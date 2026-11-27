@@ -78,8 +78,10 @@ export function diffView(sent: Mirrored | null, now: Mirrored): ViewPatch | null
   return Object.keys(patch).length === 0 ? null : patch;
 }
 
+type MarksPatch = NonNullable<ViewPatch["source_marks"]>;
+
 /** The assets whose marks differ, as `view.set`'s per-asset entries (`{}` clears an asset's). */
-function diffMarks(sent: SourceMarksMap, now: SourceMarksMap): ViewPatch["source_marks"] | null {
+function diffMarks(sent: SourceMarksMap, now: SourceMarksMap): MarksPatch | null {
   if (sent === now) return null;
   const out: Record<string, { in?: number; out?: number }> = {};
   for (const id of new Set([...Object.keys(sent), ...Object.keys(now)]) as Set<MediaId>) {
@@ -91,7 +93,7 @@ function diffMarks(sent: SourceMarksMap, now: SourceMarksMap): ViewPatch["source
       ...(b?.out != null && { out: b.out }),
     };
   }
-  return Object.keys(out).length === 0 ? null : (out as ViewPatch["source_marks"]);
+  return Object.keys(out).length === 0 ? null : (out as MarksPatch);
 }
 
 export class ViewSync {

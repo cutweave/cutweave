@@ -87,6 +87,7 @@ import { useSessionStore } from "../session/sessionStore.ts";
 import { documentOf, forEveryWindow, observeSize } from "../shell/windows.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { useJobStore } from "../state/jobStore.ts";
+import { markedRange } from "../source/marks.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { useSourceViewStore } from "../state/sourceViewStore.ts";
 import { toastStore } from "../state/toastStore.ts";
@@ -309,6 +310,11 @@ function CardView({
     name: card.name,
   });
 
+  // The Source view's marked range of this asset (WP-2A.14), as a bar along the picture.
+  const marks = useViewStore((s) => s.sourceMarks[card.id]);
+  const range = card.duration === null ? null : markedRange(marks, card.duration);
+  const length = card.duration ?? 0;
+
   const size = card.width !== null && card.height !== null ? `${card.width}×${card.height}` : null;
   const meta = [size, card.fps === null ? null : t("mediaBin.card.fps", { fps: String(card.fps) })]
     .filter((part) => part !== null)
@@ -383,6 +389,22 @@ function CardView({
         {card.duration !== null && card.kind !== "image" ? (
           <span className="cw-media__duration numeric">{formatDuration(card.duration)}</span>
         ) : null}
+        {range === null ? null : (
+          <span
+            className="cw-media__range"
+            data-testid="card-marked-range"
+            data-in={range.in}
+            data-out={range.out}
+            title={t("mediaBin.card.markedRange", {
+              in: formatDuration(range.in),
+              out: formatDuration(range.out),
+            })}
+            style={{
+              insetInlineStart: `${(range.in / length) * 100}%`,
+              inlineSize: `${((range.out - range.in) / length) * 100}%`,
+            }}
+          />
+        )}
         {uses === 0 ? null : (
           // On a timeline (WP-2F.06c): the bin's "Used" filter, said on the card.
           <span

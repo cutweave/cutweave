@@ -14,6 +14,7 @@ import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
 import { timelineKeyOf } from "../keymap/timeline.ts";
 import { dragStore } from "../media/dragStore.ts";
+import { matchFrame } from "../source/actions.ts";
 import { requestForCanvasEvent } from "../menus/canvas.ts";
 import { menuDialogStore } from "../menus/dialogs.ts";
 import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
@@ -130,6 +131,7 @@ export function useTimelineHost(): TimelineBinding {
         // Settings > Editing and Settings > Timeline (WP-2A.13).
         prefs: () => machinePrefs(prefsStore.getState().values),
         linkAv: () => prefsStore.getState().values["editing.link_av"],
+        matchFrame: () => void matchFrame(),
         newTrackHeight: () =>
           newTrackHeight(prefsStore.getState().values["timeline.track_height"], surface.current),
       }),

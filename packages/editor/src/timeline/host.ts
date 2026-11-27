@@ -42,6 +42,7 @@ import type { StoreApi } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
+import type { DraggedMedia } from "../media/dragStore.ts";
 import { insertDurationFor } from "../media/insertDuration.ts";
 import type { DocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId, selectInOut, selectTimelineModel } from "../state/selectors.ts";
@@ -146,6 +147,8 @@ export interface TimelineHostDeps {
    * changed.
    */
   readonly prefs?: () => Partial<MachinePrefs>;
+  /** Match frame (F, WP-2A.14): opens the clip under the playhead in the Source view. */
+  readonly matchFrame?: () => void;
   /** "Keep video and audio linked": a placed video brings its sound (default: it does). */
   readonly linkAv?: () => boolean;
   /** "Height of new tracks" in pixels for `track.set_height`; `null`: the engine's default. */
@@ -219,6 +222,7 @@ export type HostKeyCommand =
   | "timeline.add_marker"
   | "timeline.mark_in"
   | "timeline.mark_out"
+  | "timeline.match_frame"
   | "track.rename";
 
 export class TimelineHost {
@@ -257,6 +261,8 @@ export class TimelineHost {
   #lockedPress: object | null = null;
   #disposed = false;
   #started = false;
+  /** What the drag over the canvas carries (a card, or the Source view's marked range). */
+  #dragged: DraggedMedia | null = null;
 
   constructor(deps: TimelineHostDeps) {
     this.#deps = deps;
@@ -588,6 +594,9 @@ export class TimelineHost {
       case "timeline.mark_out":
         this.markOut();
         return true;
+      case "timeline.match_frame":
+        this.#deps.matchFrame?.();
+        return true;
       case "track.rename":
         this.renameSelectedTrack();
         return true;
@@ -633,7 +642,8 @@ export class TimelineHost {
    * clip's media (`clip.replace`); otherwise the machine places it (a gesture: the clip shows
    * where it lands). Returns whether a drop would land here (the drag's `dropEffect`).
    */
-  mediaOver(x: number, y: number, media: DroppedMedia, mods: { alt?: boolean } = {}): boolean {
+  mediaOver(x: number, y: number, media: DraggedMedia, mods: { alt?: boolean } = {}): boolean {
+    this.#dragged = media;
     const target = mods.alt === true ? this.#replaceTargetAt(x, y, media) : null;
     if (target !== null) {
       if (this.#machine.state.mode.name === "dropping") this.send({ type: "media.leave" });
@@ -646,7 +656,8 @@ export class TimelineHost {
   }
 
   /** The card was released over the canvas. */
-  mediaDrop(x: number, y: number, media: DroppedMedia, mods: { alt?: boolean } = {}): void {
+  mediaDrop(x: number, y: number, media: DraggedMedia, mods: { alt?: boolean } = {}): void {
+    this.#dragged = media;
     const target = mods.alt === true ? this.#replaceTargetAt(x, y, media) : null;
     if (target !== null) {
       if (this.#machine.state.mode.name === "dropping") this.send({ type: "media.leave" });
@@ -910,21 +921,27 @@ export class TimelineHost {
 
   /**
    * A still dropped from the bin keeps the length its card's "Duration…" chose (WP-2F.05), and
-   * with "Keep video and audio linked" off a video comes without its sound (WP-2A.13).
+   * with "Keep video and audio linked" off a video comes without its sound (WP-2A.13). A drag
+   * from the Source view places its marked range, and its picture icon the picture alone
+   * (WP-2A.14).
    */
   #withStillLength(command: MachineCommand): MachineCommand {
     if (command.name !== "timeline.insert") return command;
-    const unlinked = this.#deps.linkAv?.() === false && command.args.link == null;
+    const dragged = this.#dragged?.id === command.args.media ? this.#dragged : null;
+    const unlinked =
+      (this.#deps.linkAv?.() === false || dragged?.link === false) && command.args.link == null;
+    const range = command.args.duration == null ? dragged?.range : undefined;
     const length =
-      command.args.duration != null
+      command.args.duration != null || range !== undefined
         ? undefined
         : insertDurationFor(this.#deps.doc.getState().project, command.args.media);
-    if (length === undefined && !unlinked) return command;
+    if (length === undefined && range === undefined && !unlinked) return command;
     return {
       name: command.name,
       args: {
         ...command.args,
         ...(length !== undefined && { duration: length }),
+        ...(range !== undefined && { source_in: range.sourceIn, duration: range.duration }),
         ...(unlinked && { link: false }),
       },
     };
