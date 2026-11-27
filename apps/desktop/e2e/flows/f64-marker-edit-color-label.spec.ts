@@ -32,7 +32,9 @@ import {
   type TimelineGeometry,
   timelineCanvas,
   timelineGeometry,
+  timelineTools,
   toolbar,
+  viewSettled,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -250,15 +252,22 @@ test.describe("F64 edit a marker and give a clip a colour label", () => {
         await expect.poll(() => labels(again, "V1")).toEqual([red]);
         await expect.poll(() => labels(again, "A1")).toEqual([red]);
         await editorCaughtUp(again);
-        await showTimeline(again, 24);
+        // Zoom out once, as a person does to see the marker past the clip: from here the
+        // engine's view and the canvas agree on the zoom (`timelineGeometry` reads the view).
+        const zoomOut = timelineTools(again).getByRole("button", { name: "Zoom out", exact: true });
+        await zoomOut.click();
+        await viewSettled(again);
+        await showTimeline(again, 14);
+        await viewSettled(again);
         const g2 = await timelineGeometry(again);
         const at2 = pin(g2, sec(11));
+        await snapshot(again, info, "reopened");
         await again.mouse.dblclick(at2.x, at2.y);
         const reopened = again.getByRole("dialog", { name: "Edit marker" });
         await expect(reopened).toBeVisible();
         await expect(reopened.getByRole("textbox", { name: "Marker name" })).toHaveValue("Intro");
         await expect(reopened.getByRole("radio", { name: "Blue" })).toBeChecked();
-        await again.keyboard.press("Escape");
+        await reopened.getByRole("button", { name: "Cancel" }).click();
         await expect(reopened).toBeHidden();
       } finally {
         await second.close();
