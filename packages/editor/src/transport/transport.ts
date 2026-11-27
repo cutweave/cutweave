@@ -245,8 +245,8 @@ export class TransportController {
   /** Playback began: remembers its position (the start, when `view.play` restarts at the end). */
   #noteStart(next: PlaybackStore, prev: PlaybackStore): void {
     const at = next.source !== null ? prev.sourcePlayhead : prev.playhead;
-    const { end, frame } = this.#content(next);
-    const restarts = next.rate > 0 && end > 0 && at >= end - frame;
+    const { end } = this.#content(next);
+    const restarts = next.rate > 0 && end > 0 && at >= end;
     this.#began = { media: next.source?.media ?? null, at: restarts ? 0 : at };
   }
 

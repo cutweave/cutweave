@@ -7,18 +7,23 @@
 //
 // The loop, preview quality, proxies and scrub audio steps of this flow join it with the work
 // that gives the engine each behaviour (docs/reference/settings.md, Playback).
+//
+// Playback needs the full engine: built with FFmpeg (`just e2e-flows` does when the bundle is set
+// up) and the fetched corpus (`just corpus`); without either the flow skips and says why.
 import type { ElectronApplication, Page } from "@playwright/test";
-import { expect, test } from "../fixtures.ts";
+import { editorCall, expect, test } from "../fixtures.ts";
+import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   closeSettings,
   createProject,
   editorCaughtUp,
   hasRealEngine,
-  importWithButton,
   launchFlowApp,
   layout,
   mediaCard,
+  mediaCards,
   openSettingsPage,
+  pickFiles,
   profileDir,
   removeDir,
   rulerY,
@@ -31,6 +36,7 @@ import {
   xAt,
 } from "./helpers.ts";
 
+const CLIP = "sintel_trailer_480p.mp4";
 const SWITCH = "Go back to where playback started";
 
 /** `HH:MM:SS:FF` → frames at 30 fps (the new project's rate). */
@@ -48,20 +54,25 @@ async function press(page: Page, key: string): Promise<void> {
   await page.keyboard.press(key);
 }
 
-/** A new project with a 5 s picture on the timeline, ready to play. */
+/** A new project with the corpus clip on the timeline, ready to play. */
 async function projectWithClip(
   app: ElectronApplication,
   page: Page,
   name: string,
   work: Workspace,
+  corpus: string,
 ) {
   await createProject(app, page, name, work.dir);
-  await importWithButton(app, page, [work.file("logo.png")]);
-  await mediaCard(page, "logo.png").click();
+  await pickFiles(app, copyCorpusClips(corpus, work.media, [CLIP]));
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(mediaCards(page)).toHaveCount(1);
+  await mediaCard(page, CLIP).click();
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await layout(page))[0]?.clips.length ?? 0).toBe(1);
   await editorCaughtUp(page);
-  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled({
+    timeout: 30_000,
+  });
 }
 
 /** Clicks the ruler at `seconds`, and waits for the timecode to say so. */
@@ -88,13 +99,20 @@ test.describe("F28 playback preferences", () => {
   test("go back to where playback started: off, on, at the end, and after a relaunch", async () => {
     test.setTimeout(240_000);
     const info = test.info();
+    const corpus = corpusDir();
+    test.skip(corpus === null, "the corpus is not fetched (just corpus)");
     const work = workspace();
     const home = profileDir();
     try {
-      const first = await launchFlowApp(work, home);
+      const first = await launchFlowApp(work, home, { realMedia: true });
       try {
         const { app, page } = first;
-        await projectWithClip(app, page, "Playback", work);
+        const caps = await editorCall<{ available?: boolean }>(page, "media.capabilities");
+        test.skip(
+          caps.available !== true,
+          "this engine has no media backend; build it with --features cutweave-engine/ffmpeg",
+        );
+        await projectWithClip(app, page, "Playback", work, corpus ?? "");
 
         // Off (the default): a pause stays where playback stopped.
         await goTo(page, 1);
@@ -115,14 +133,20 @@ test.describe("F28 playback preferences", () => {
         await playAndPause(page, 30);
         await expect(timecode(page)).toHaveText("00:00:01:00");
 
-        // Playing into the end of the timeline (5 s) comes back too.
-        await goTo(page, 4);
+        // Playing into the end of the timeline comes back too: from 45 frames before the end.
+        await page.getByRole("button", { name: "Go to end" }).click();
+        const last = Math.round(((await layout(page))[0]?.clips[0]?.[1] ?? 0) * 30) - 1;
+        await expect.poll(() => timecodeFrames(page)).toBe(last);
+        for (let i = 1; i <= 45; i += 1) {
+          await press(page, "ArrowLeft");
+          await expect.poll(() => timecodeFrames(page)).toBe(last - i);
+        }
         await press(page, "Space");
         await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
         await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible({
           timeout: 20_000,
         });
-        await expect(timecode(page)).toHaveText("00:00:04:00");
+        await expect.poll(() => timecodeFrames(page)).toBe(last - 45);
 
         // Found by search, from any page.
         settings = await openSettingsPage(page, app, "General");
@@ -134,13 +158,13 @@ test.describe("F28 playback preferences", () => {
       }
 
       // Relaunch: the switch is still on, and a new project's playback returns.
-      const second = await launchFlowApp(work, home);
+      const second = await launchFlowApp(work, home, { realMedia: true });
       try {
         const { app, page } = second;
         const settings = await openSettingsPage(page, app, "Playback");
         await expect(settings.getByRole("switch", { name: SWITCH })).toBeChecked();
         await closeSettings(settings);
-        await projectWithClip(app, page, "Again", work);
+        await projectWithClip(app, page, "Again", work, corpus ?? "");
         await goTo(page, 2);
         await playAndPause(page, 60);
         await expect(timecode(page)).toHaveText("00:00:02:00");
