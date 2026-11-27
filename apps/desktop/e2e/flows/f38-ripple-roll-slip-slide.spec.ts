@@ -24,6 +24,7 @@ import {
   layout,
   sec,
   shortcut,
+  showTimeline,
   snapshot,
   timelineCanvas,
   timelineGeometry,
@@ -58,6 +59,8 @@ test.describe("F38 ripple, roll, slip and slide", () => {
         work.file("broll-city.mp4"),
         work.file("broll-coffee.mp4"),
       ]);
+      // Zoom out (the toolbar) until the three clips will show.
+      await showTimeline(page, 31);
       await dropCard(page, "interview.mp4", "V1", 0);
       await expect.poll(() => clips(page)).toEqual([[0, 10]]);
       await editorCaughtUp(page);

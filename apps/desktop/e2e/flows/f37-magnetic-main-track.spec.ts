@@ -24,6 +24,7 @@ import {
   layout,
   sec,
   shortcut,
+  showTimeline,
   snapshot,
   timelineGeometry,
   timelineTools,
@@ -78,6 +79,8 @@ test.describe("F37 magnetic main track", () => {
         await expect(menu).toHaveCount(0);
       };
       await magnet(true);
+      // Zoom out (the toolbar) until the four clips will show.
+      await showTimeline(page, 42);
 
       // Three clips: wherever they are dropped they butt from 0, in the order they came.
       await dropCard(page, "interview.mp4", "V1", 1);

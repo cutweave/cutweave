@@ -30,6 +30,7 @@ import {
   sec,
   sequence,
   shortcut,
+  showTimeline,
   snapshot,
   type TimelineGeometry,
   timelineCanvas,
@@ -136,12 +137,16 @@ test.describe("F61 timeline tools, selection and track headers", () => {
       await expect(tool("Select")).toHaveAttribute("aria-pressed", "true");
       await expect(tool("Razor")).toHaveAttribute("aria-pressed", "false");
 
-      // Zoom out twice with the toolbar: the timeline shows more time (view state, no undo).
+      // The zoom buttons (view state, no undo): Zoom out twice is 0.8 × 0.8, Zoom in once back to
+      // 0.8; then Zoom out until the first 32 s show.
       const zoom = async () =>
         (await editorCall<{ zoom: number | null }>(page, "view.get")).zoom ?? 100;
       await tool("Zoom out").click();
       await tool("Zoom out").click();
       await expect.poll(zoom).toBeCloseTo(64, 6);
+      await tool("Zoom in").click();
+      await expect.poll(zoom).toBeCloseTo(80, 6);
+      await showTimeline(page, 32);
 
       // A marquee from the empty lane before the clips, across the B-roll and both sounds:
       // the two pictures and the two sounds are selected.

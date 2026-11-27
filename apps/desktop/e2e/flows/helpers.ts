@@ -626,6 +626,21 @@ export async function dropCard(
   });
 }
 
+/**
+ * Clicks the timeline toolbar's Zoom out (WP-2A.10) until the first `seconds` of the timeline
+ * show across the lanes, as a person does before dropping or dragging far to the right.
+ */
+export async function showTimeline(page: Page, seconds: number): Promise<void> {
+  const zoomOut = timelineTools(page).getByRole("button", { name: "Zoom out", exact: true });
+  for (let n = 0; n < 12; n += 1) {
+    const g = await timelineGeometry(page);
+    if (xAt(g, sec(seconds)) < g.box.x + g.box.width - 8) return;
+    await zoomOut.click();
+    await expect.poll(async () => (await timelineGeometry(page)).pxPerSec).toBeLessThan(g.pxPerSec);
+  }
+  throw new Error(`the timeline never showed ${seconds} s`);
+}
+
 // ---- project actions -------------------------------------------------------------------------
 
 /** The "New project" / "Save project as" dialog. */

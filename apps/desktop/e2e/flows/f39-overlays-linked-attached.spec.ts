@@ -25,6 +25,7 @@ import {
   sec,
   sequence,
   shortcut,
+  showTimeline,
   snapshot,
   type TimelineGeometry,
   timelineGeometry,
@@ -86,6 +87,8 @@ test.describe("F39 overlays, linked and attached clips", () => {
           return seq.tracks.find((t) => t.name === "V1")?.magnetic;
         })
         .toBe(true);
+      // Zoom out (the toolbar) until everything the flow places will show.
+      await showTimeline(page, 37);
       await dropCard(page, "interview.mp4", "V1", 0);
       await expect.poll(() => on(page, "V1")).toEqual([[0, 10]]);
       await editorCaughtUp(page);
