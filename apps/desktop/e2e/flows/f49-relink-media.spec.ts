@@ -5,7 +5,7 @@
 // Offline; "Search a folder…" (the OS folder picker is stubbed) finds every file by its content,
 // the renamed one too; the badges go; Ctrl+Z puts the old locations back in one step and Ctrl+Y
 // relinks again; "Relink…" on a card opens the same dialog. The offline slate and the export
-// refusal are later work (WP-2F.03 follow-ups) and are not driven here.
+// refusal are F58 (WP-2F.03c).
 import { mkdirSync, renameSync } from "node:fs";
 import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
