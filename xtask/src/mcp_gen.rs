@@ -93,12 +93,18 @@ pub fn reference_markdown(registry: Registry) -> Result<String, String> {
     }
     let _ = writeln!(
         out,
-        "- **Server instructions:** {} characters of at most {MAX_INSTRUCTIONS_CHARS}: a map \n         of the command namespaces, how to find, describe and run a command, batches, the \n         revision and undo. Built from the registry and the `[[namespace]]` lines of the core \n         tool table.",
+        "- **Server instructions:** {} characters of at most {MAX_INSTRUCTIONS_CHARS}: a map \
+         of the command namespaces, how to find, describe and run a command, batches, the \
+         revision and undo. Built from the registry and the `[[namespace]]` lines of the core \
+         tool table.",
         standard.instructions().chars().count()
     );
     let _ = writeln!(
         out,
-        "- **Loaded at the start:** {} carry `_meta` `\"{META_ALWAYS_LOAD}\": true`, which \n         asks a client that defers tool definitions (Claude Code's tool search) to load them \n         at the start. They are what an agent needs before it can search; other clients \n         ignore the key. Marked **always** below.",
+        "- **Loaded at the start:** {} carry `_meta` `\"{META_ALWAYS_LOAD}\": true`, which \
+         asks a client that defers tool definitions (Claude Code's tool search) to load them \
+         at the start. They are what an agent needs before it can search; other clients \
+         ignore the key. Marked **always** below.",
         table
             .always_loaded()
             .iter()
