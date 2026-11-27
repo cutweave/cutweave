@@ -41,6 +41,9 @@ toml.workspace = true
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
 tokio-tungstenite = "=0.29.0"
 futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
+# The crash harness's agent (WP-2J.05): rmcp's own Streamable HTTP client, at the version and
+# with the client features cutweave-api already builds (no new crate in the lock file).
+rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
 
 [dev-dependencies]
 criterion.workspace = true

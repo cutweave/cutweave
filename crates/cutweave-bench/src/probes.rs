@@ -366,6 +366,8 @@ fn child_spec(ws: &Workspace, scale: &Scale, exe: &Path, tag: &str) -> ChildSpec
         project: None,
         stub_media: scale.stub_media,
         gui: scale.gui_engine,
+        deterministic_ids: None,
+        env: Vec::new(),
     }
 }
 

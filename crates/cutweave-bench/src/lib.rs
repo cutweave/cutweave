@@ -13,6 +13,7 @@
 //! folders and read the same [`fixture::FixtureManifest`].
 
 pub mod cli;
+pub mod crash;
 pub mod fixture;
 pub mod harness;
 pub mod media;
