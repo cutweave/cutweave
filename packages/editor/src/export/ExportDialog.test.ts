@@ -14,6 +14,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineStore, initialEngineState } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { healthStore } from "../media/health.ts";
 import { preferences } from "../prefs/prefsStore.ts";
 import { initialSessionState, sessionStore } from "../session/sessionStore.ts";
 import { docStore } from "../state/docStore.ts";
@@ -363,6 +364,66 @@ describe("ExportDialog", () => {
     await user.selectOptions(within(again).getByLabelText("If the file exists"), "rename");
     await user.click(within(again).getByRole("button", { name: "Export" }));
     await waitFor(() => expect(lastCall("export.start")).toMatchObject({ collision: "rename" }));
+  });
+
+  it("says media files are missing, with Relink… and Export anyway (allow_offline)", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    const refusal = (text: string) => new RpcError("invalid", text, "/media/med_1");
+    call.mockRejectedValueOnce(
+      refusal("1 media file is missing: `beach.mp4`; relink them or pass `allow_offline: true`"),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    const notice = await within(dialog).findByTestId("export-offline");
+    expect(notice.getAttribute("role")).toBe("alert");
+    expect(notice.textContent).toContain(
+      'beach.mp4 is missing. Its clips would show a "Media offline" card in the video and stay silent.',
+    );
+    expect(lastCall("export.start")).not.toHaveProperty("allow_offline");
+    // The engine's own sentence (commands and parameters) is not shown.
+    expect(dialog.textContent).not.toContain("allow_offline");
+
+    // Export anyway: the same request again, with the slate allowed.
+    await user.click(within(notice).getByRole("button", { name: "Export anyway" }));
+    await waitFor(() => expect(lastCall("export.start")).toMatchObject({ allow_offline: true }));
+    expect(exportStore.getState().active).not.toBeNull();
+
+    // Several files are counted; Relink… closes the dialog and opens the relink dialog.
+    act(() => jobStore.getState().applyProgress({ ...running(1, ""), state: "succeeded" }));
+    act(() => exportController().open());
+    const again = await settings();
+    call.mockRejectedValueOnce(
+      refusal("3 media files are missing: `a.mp4`, `b.mp4`, `c.wav`; relink them"),
+    );
+    await user.click(within(again).getByRole("button", { name: "Add to queue" }));
+    const many = await within(again).findByTestId("export-offline");
+    expect(many.textContent).toContain("3 media files are missing.");
+    expect(healthStore.getState().dialogOpen).toBe(false);
+    await user.click(within(many).getByRole("button", { name: "Relink…" }));
+    expect(exportStore.getState().dialogOpen).toBe(false);
+    expect(healthStore.getState().dialogOpen).toBe(true);
+    act(() => healthStore.getState().closeDialog());
+  });
+
+  it("keeps Replace when the file exists and media is missing; a changed setting clears the notice", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    call.mockRejectedValueOnce(new RpcError("invalid", "exists", "/overwrite"));
+    await user.click(within(dialog).getByRole("button", { name: "Add to queue" }));
+    const replace = await screen.findByRole("dialog", { name: "Replace Film.mp4?" });
+    call.mockRejectedValueOnce(
+      new RpcError("invalid", "1 media file is missing: `beach.mp4`; relink", "/media/med_1"),
+    );
+    await user.click(within(replace).getByRole("button", { name: "Replace" }));
+    const back = await settings();
+    const notice = await within(back).findByTestId("export-offline");
+    await user.click(within(notice).getByRole("button", { name: "Export anyway" }));
+    await waitFor(() =>
+      expect(lastCall("export.enqueue")).toMatchObject({
+        allow_offline: true,
+        collision: "overwrite",
+      }),
+    );
   });
 
   it("adds to the queue: export.enqueue, the dialog closes, a toast says so", async () => {

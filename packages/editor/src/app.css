@@ -1035,6 +1035,15 @@ body {
 .cw-export__error svg {
   color: var(--danger);
 }
+.cw-export__offline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cw-export__offline-actions {
+  display: flex;
+  gap: var(--space-2);
+}
 .cw-export__pair {
   display: flex;
   flex-direction: column;

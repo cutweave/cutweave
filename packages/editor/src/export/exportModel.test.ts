@@ -23,6 +23,7 @@ import {
   isTemplate,
   markerRegions,
   markerTemplate,
+  offlineFacts,
   overridesFor,
   PRESET_SIZE,
   presetParam,
@@ -44,6 +45,27 @@ const F = 705_600_000;
 const spec = (id: string) => PRESET_SPECS.find((p) => p.id === id) as ExportPresetSpec;
 const seqOf = (project: ReturnType<typeof exportProject>) =>
   Object.values(project.sequences)[0] as Sequence;
+
+describe("offlineFacts", () => {
+  it("reads the count and the names of the engine's refusal", () => {
+    expect(
+      offlineFacts(
+        "1 media file is missing: `beach day.mp4`; relink them (media.relink_folder, " +
+          "media.relink) or pass `allow_offline: true` to export a slate",
+      ),
+    ).toEqual({ count: 1, names: ["beach day.mp4"] });
+    expect(
+      offlineFacts(
+        "invalid value at `/media/med_1`: 11 media files are missing: `0.mp4`, `1.mp4` and 9 " +
+          "more; relink them or pass `allow_offline: true`",
+      ),
+    ).toEqual({ count: 11, names: ["0.mp4", "1.mp4"] });
+  });
+
+  it("counts one unnamed file when the message has another form", () => {
+    expect(offlineFacts("media is offline")).toEqual({ count: 1, names: [] });
+  });
+});
 
 describe("the preset picker", () => {
   it("puts the platform presets made for a 9:16 sequence first, then each platform, then General", () => {

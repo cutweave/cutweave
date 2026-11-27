@@ -6,7 +6,8 @@
 // where it goes and what to do when the file exists; and an Advanced section (size and rate, the
 // quality, the hardware encoder and the encoder's own options, from `export.describe_options`).
 // Export starts it now; Add to queue leaves it to the export queue. Every refusal the engine
-// names a field for shows at that field.
+// names a field for shows at that field. Missing media (WP-2F.03c) shows as one line with
+// Relink… and Export anyway.
 
 import type {
   CodecEncoders,
@@ -33,6 +34,7 @@ import {
 import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
+import { openRelinkDialog } from "../media/RelinkDialog.tsx";
 import { type Translate, translator } from "../timeline/errors.ts";
 import type { ExportSource, ResolveOutcome, StartMode } from "./exportController.ts";
 import {
@@ -53,6 +55,7 @@ import {
   isTemplate,
   markerRegions,
   markerTemplate,
+  type OfflineFacts,
   overridesFor,
   PRESET_SIZE,
   presetParam,
@@ -259,6 +262,48 @@ function FieldError({ children }: { readonly children: ReactNode }) {
   );
 }
 
+/** The line the dialog shows for missing media: one file by name, several by number. */
+export function offlineText(facts: OfflineFacts, t: Translate): string {
+  return facts.count === 1 && facts.names.length === 1
+    ? t("export.offline.one", { name: facts.names[0] ?? "" })
+    : t("export.offline.many", { count: String(facts.count) });
+}
+
+/**
+ * Media files the export plays are missing (WP-2F.03c): what that means for the file, and the
+ * two ways on: find the files (the relink dialog) or export with the slate.
+ */
+function OfflineNotice({
+  facts,
+  busy,
+  onRelink,
+  onExportAnyway,
+}: {
+  readonly facts: OfflineFacts;
+  readonly busy: boolean;
+  readonly onRelink: () => void;
+  readonly onExportAnyway: () => void;
+}) {
+  const { t: rawT } = useTranslation();
+  const t = translator(rawT);
+  return (
+    <div className="cw-export__offline" role="alert" data-testid="export-offline">
+      <p className="cw-note cw-export__error">
+        <Icon name="circle-alert" size="md" />
+        <span>{offlineText(facts, t)}</span>
+      </p>
+      <div className="cw-export__offline-actions">
+        <Button variant="secondary" size="sm" onClick={onRelink}>
+          {t("contextMenu.item.relink")}
+        </Button>
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onExportAnyway}>
+          {t("export.offline.anyway")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** The settings form; the presets must be loaded (see {@link ExportForm}). */
 function PresetForm({
   source,
@@ -297,6 +342,13 @@ function PresetForm({
   const [submitted, setSubmitted] = useState(false);
   const [starting, setStarting] = useState<StartMode | null>(null);
   const [refusal, setRefusal] = useState<{ message: string; pointer: string | null } | null>(null);
+  // The engine refused because media files are missing: what was being started, to start it
+  // again with the slate allowed.
+  const [offline, setOffline] = useState<{
+    readonly facts: OfflineFacts;
+    readonly mode: StartMode;
+    readonly collision: Collision | undefined;
+  } | null>(null);
   const ids = {
     preset: useId(),
     path: useId(),
@@ -456,9 +508,14 @@ function PresetForm({
     if (refusedAt === "path") setRefusal(null);
   };
 
-  const run = async (mode: StartMode, collision?: Collision): Promise<void> => {
+  const run = async (
+    mode: StartMode,
+    collision?: Collision,
+    allowOffline = false,
+  ): Promise<void> => {
     setSubmitted(true);
     setRefusal(null);
+    setOffline(null);
     if (problem !== null || unsupported) {
       setStage("form");
       if (problem === "size") setAdvancedOpen(true);
@@ -474,6 +531,7 @@ function PresetForm({
         collision: collision ?? (exists === "ask" ? undefined : collisionFor(exists)),
         range: rangeParam(range),
         advanced: pruneOptions(options),
+        allowOffline,
       },
       mode,
     );
@@ -481,6 +539,9 @@ function PresetForm({
     if (outcome.kind === "exists") {
       setPendingMode(mode);
       setStage("replace");
+    } else if (outcome.kind === "offline") {
+      setStage("form");
+      setOffline({ facts: outcome, mode, collision });
     } else if (outcome.kind === "refused") {
       setStage("form");
       setRefusal({ message: outcome.message, pointer: outcome.pointer });
@@ -865,6 +926,17 @@ function PresetForm({
               </div>
             ) : null}
           </div>
+        ) : null}
+        {offline !== null ? (
+          <OfflineNotice
+            facts={offline.facts}
+            busy={starting !== null}
+            onRelink={() => {
+              controller.close();
+              openRelinkDialog();
+            }}
+            onExportAnyway={() => void run(offline.mode, offline.collision, true)}
+          />
         ) : null}
         {problem === null &&
         refusal !== null &&

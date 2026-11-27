@@ -304,6 +304,39 @@ describe("ExportController", () => {
     );
   });
 
+  it("says which media files are missing, and exports anyway with allow_offline", async () => {
+    const { controller, call, state } = setup();
+    call.mockRejectedValueOnce(
+      new RpcError(
+        "invalid",
+        "invalid value at `/media/med_2`: 2 media files are missing: `a.mp4`, `b.wav`; relink " +
+          "them (media.relink_folder, media.relink) or pass `allow_offline: true` to export a " +
+          '"media offline" slate in their place',
+        "/media/med_2",
+      ),
+    );
+    expect(await controller.start(request)).toEqual({
+      kind: "offline",
+      count: 2,
+      names: ["a.mp4", "b.wav"],
+    });
+    expect(state.getState().active).toBeNull();
+    // Not sent unless asked for: the engine's default refuses.
+    expect(call.mock.calls.at(-1)?.[1]).not.toHaveProperty("allow_offline");
+
+    expect((await controller.start({ ...request, allowOffline: true })).kind).toBe("started");
+    expect(call).toHaveBeenLastCalledWith(
+      "export.start",
+      expect.objectContaining({ allow_offline: true }),
+    );
+    // The queue takes the same choice.
+    await controller.start({ ...request, allowOffline: true }, "queue");
+    expect(call).toHaveBeenLastCalledWith(
+      "export.enqueue",
+      expect.objectContaining({ allow_offline: true }),
+    );
+  });
+
   it("passes the engine's refusal on, with the field it names", async () => {
     const { controller, call, state } = setup();
     call.mockRejectedValueOnce(

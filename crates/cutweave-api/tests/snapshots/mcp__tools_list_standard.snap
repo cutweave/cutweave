@@ -570,6 +570,13 @@ expression: catalog.tools_json()
               null
             ]
           },
+          "allow_offline": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Export although media files are missing: their clips show a \"media offline\" slate and\nare silent (default false: fails with `Invalid` at `/media/<id>` naming them)."
+          },
           "advanced": {
             "type": [
               "object",

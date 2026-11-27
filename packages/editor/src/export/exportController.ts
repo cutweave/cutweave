@@ -3,7 +3,8 @@
 // engine offers, resolves a preset for the sequence (size, rate, estimate, warnings), starts
 // `export.start` (Export) or `export.enqueue` (Add to queue), follows the started jobs through
 // `jobStore` (the engine's `job.progress` events), cancels them with `job.cancel`, and says how
-// they ended with a toast. The dialog and the top bar's chip only read `exportStore` and
+// they ended with a toast. An export that would play missing media is refused by the engine
+// (WP-2F.03c): the dialog then offers Relink… or Export anyway (`allow_offline`). The dialog and the top bar's chip only read `exportStore` and
 // `jobStore`, so the export carries on when the dialog is hidden.
 //
 // Every engine call goes over the editor's own connection; nothing here touches the document.
@@ -40,7 +41,13 @@ import { isActive, type JobStore } from "../state/jobStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
-import { dateToken, expandFileName, humanBytes, withExtension } from "./exportModel.ts";
+import {
+  dateToken,
+  expandFileName,
+  humanBytes,
+  offlineFacts,
+  withExtension,
+} from "./exportModel.ts";
 import {
   baseName,
   dirName,
@@ -100,6 +107,8 @@ export interface ExportRequest {
   readonly collision?: Collision | undefined;
   readonly range?: ExportRange | undefined;
   readonly advanced?: AdvancedExportOptions | null | undefined;
+  /** Export although media files are missing: their clips show the "media offline" slate. */
+  readonly allowOffline?: boolean | undefined;
 }
 
 /** Export now (`export.start`) or add it to the queue (`export.enqueue`). */
@@ -114,6 +123,8 @@ export type StartOutcome =
     }
   /** The file is already there: ask before replacing it. */
   | { readonly kind: "exists" }
+  /** Media files the export plays are missing: relink them, or export anyway (a slate). */
+  | { readonly kind: "offline"; readonly count: number; readonly names: readonly string[] }
   /** The engine refused; `pointer` says which field (`/path`, `/range/kind`, `/advanced/…`). */
   | { readonly kind: "refused"; readonly message: string; readonly pointer: string | null };
 
@@ -371,6 +382,7 @@ export class ExportController {
       ...(request.advanced === undefined || request.advanced === null
         ? {}
         : { advanced: request.advanced }),
+      ...(request.allowOffline === true ? { allow_offline: true } : {}),
     };
     try {
       const out =
@@ -392,6 +404,10 @@ export class ExportController {
       const failure = asRpcError(error);
       if (failure.code === "invalid" && failure.path?.endsWith("/overwrite") === true) {
         return { kind: "exists" };
+      }
+      // `/media/<id>` names an asset of the project, not a field of the form.
+      if (failure.code === "invalid" && failure.path?.startsWith("/media/") === true) {
+        return { kind: "offline", ...offlineFacts(failure.message) };
       }
       return { kind: "refused", message: failure.message, pointer: failure.path ?? null };
     }

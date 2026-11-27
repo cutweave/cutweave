@@ -658,6 +658,25 @@ export function advancedPath(pointer: string | null | undefined): string | null 
     .join(".");
 }
 
+/** What the engine's refusal of an export with missing media says (WP-2F.03c). */
+export interface OfflineFacts {
+  /** How many media files are missing (at least 1). */
+  readonly count: number;
+  /** The names the engine lists (it stops after a few; `count` is the whole number). */
+  readonly names: readonly string[];
+}
+
+/**
+ * Reads the engine's refusal at `/media/<id>` ("2 media files are missing: `a.mp4`, `b.wav`;
+ * relink them …"). A message in another form still counts as one missing file, unnamed.
+ */
+export function offlineFacts(message: string): OfflineFacts {
+  const said = /(\d+) media files? (?:is|are) missing: ([^;]*)/.exec(message);
+  if (said === null) return { count: 1, names: [] };
+  const names = [...(said[2] ?? "").matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
+  return { count: Math.max(1, Number(said[1])), names };
+}
+
 /** The options without empty objects and unset fields; `null` when nothing is set. */
 export function pruneOptions(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;

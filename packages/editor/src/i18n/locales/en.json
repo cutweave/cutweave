@@ -1719,6 +1719,11 @@
       "back": "Back",
       "replace": "Replace"
     },
+    "offline": {
+      "one": "{{name}} is missing. Its clips would show a \"Media offline\" card in the video and stay silent.",
+      "many": "{{count}} media files are missing. Their clips would show a \"Media offline\" card in the video and stay silent.",
+      "anyway": "Export anyway"
+    },
     "queued": {
       "title": "Added to the export queue",
       "message": "{{name}} exports when its turn comes.",
