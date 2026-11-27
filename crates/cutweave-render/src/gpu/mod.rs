@@ -28,6 +28,8 @@
 //! * A **watchdog** thread logs render frames slower than a threshold (500 ms by default)
 //!   without putting a clock in the render path.
 
+#[cfg(test)]
+mod backdrop_tests;
 mod backend;
 #[cfg(test)]
 mod composite_tests;

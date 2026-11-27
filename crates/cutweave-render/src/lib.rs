@@ -20,6 +20,9 @@
 //! decode lands, [`testcard::SyntheticSource`] serves generated test cards.
 
 pub mod alloc_scope;
+pub mod backdrop;
+#[cfg(test)]
+mod backdrop_tests;
 pub mod color;
 pub mod encode;
 mod eval;
@@ -66,6 +69,6 @@ pub use image::Image;
 pub use quality::{AutoQuality, AutoQualityConfig, Ladder, PlaybackMode, Quality, Scale};
 pub use query::register;
 pub use scene::{
-    AudioActivation, AudioSegment, BlendMode, Crop, EffectRef, Flip, FrameRequest, Layer,
-    LayerTransform, SceneDescription,
+    AudioActivation, AudioSegment, BackgroundNode, BlendMode, Crop, EffectRef, Flip, FrameRequest,
+    Layer, LayerTransform, SceneDescription,
 };

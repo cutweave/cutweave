@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (165 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (166 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -143,6 +143,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | sequence | `sequence.duplicate` | Copy a sequence (new IDs, shared media), for another platform | command, undoable | catalog |
 | sequence | `sequence.list` | List the sequences (and the aspect presets on request) | query | catalog |
 | sequence | `sequence.rename` | Rename a sequence | command, undoable, idempotent | catalog |
+| sequence | `sequence.set_background` | Fill a sequence's background with a color, a blur of the picture, an image or nothing | command, undoable, idempotent | catalog |
 | sequence | `sequence.set_format` | Change a sequence's size, frame rate, sample rate or background | command, undoable, destructive, idempotent | core |
 | timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | catalog |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |

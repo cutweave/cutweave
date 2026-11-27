@@ -96,6 +96,98 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       ],
       "type": "object"
     },
+    "BackgroundFill": {
+      "description": "What fills a sequence's canvas behind all tracks, over its `background` color (WP-2B.02).\nIt is static: a background has no keyframes.",
+      "oneOf": [
+        {
+          "description": "A blurred copy of a picture of the sequence, scaled to cover the canvas. Where no such\npicture shows, the color does.",
+          "properties": {
+            "dim": {
+              "default": 0.0,
+              "description": "How much of the blurred picture's light is taken away, `0..=1` (0: none, 1: black).",
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "blur",
+              "type": "string"
+            },
+            "radius": {
+              "description": "The blur's standard deviation as a fraction of the canvas height, `0..=1`, so\npreview and export blur alike at any size.",
+              "format": "double",
+              "type": "number"
+            },
+            "source": {
+              "$ref": "#/$defs/BlurSource",
+              "default": "below",
+              "description": "Which picture is blurred."
+            }
+          },
+          "required": [
+            "kind",
+            "radius"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A still image of the project. An image that no longer exists draws nothing.",
+          "properties": {
+            "fit": {
+              "$ref": "#/$defs/BackgroundFit",
+              "default": "cover",
+              "description": "How the image is sized to the canvas."
+            },
+            "kind": {
+              "const": "image",
+              "type": "string"
+            },
+            "media": {
+              "description": "The image asset.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "media"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Nothing: the canvas starts fully transparent and the color is not drawn. Only exports\nthat keep alpha show it; the others see black.",
+          "properties": {
+            "kind": {
+              "const": "transparent",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "BackgroundFit": {
+      "description": "How a [`BackgroundFill::Image`] is sized to the canvas.",
+      "oneOf": [
+        {
+          "const": "cover",
+          "description": "Fills the canvas, cropping what does not fit.",
+          "type": "string"
+        },
+        {
+          "const": "contain",
+          "description": "The whole image inside the canvas; the color shows around it.",
+          "type": "string"
+        },
+        {
+          "const": "stretch",
+          "description": "Stretched to the canvas, changing its shape.",
+          "type": "string"
+        }
+      ]
+    },
     "BlendMode": {
       "description": "How an item combines with what is below it (arch §8's core set).",
       "enum": [
@@ -109,6 +201,21 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "soft_light"
       ],
       "type": "string"
+    },
+    "BlurSource": {
+      "description": "The picture a [`BackgroundFill::Blur`] blurs.",
+      "oneOf": [
+        {
+          "const": "below",
+          "description": "The lowest picture showing at that time.",
+          "type": "string"
+        },
+        {
+          "const": "main_track",
+          "description": "The picture on the main track (the magnetic track; without one, the lowest video\ntrack).",
+          "type": "string"
+        }
+      ]
     },
     "Clip": {
       "description": "A media clip: a range of a `MediaAsset` placed on a track.\n\nThe clip occupies `[start, start + duration)` on the timeline and plays the source range\n`[source_in, source_in + duration × speed)`, backwards when `reverse`, or one frame of it for\nits whole length when it is a `freeze` frame (WP-2D.01; the mapping is `SourceMap`).",
@@ -1631,6 +1738,17 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "description": "Canvas color behind all tracks.",
           "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
           "type": "string"
+        },
+        "background_fill": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BackgroundFill"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What fills the canvas over that color, behind all tracks (WP-2B.02). Absent: the color\nalone. Left out of the file while absent, so documents without one read as before."
         },
         "color_space": {
           "$ref": "#/$defs/ColorSpace",

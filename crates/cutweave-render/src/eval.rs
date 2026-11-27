@@ -21,6 +21,10 @@
 //!   crop edges to `0..=1`, scale to `≥ 0`), then sanitized (a non-finite number falls back to
 //!   the identity) so the compositor never sees NaN. The blend mode is static. Values stay
 //!   `f64` here; they become `f32` only at the GPU boundary.
+//! * The background fill (WP-2B.02; [`crate::backdrop`]) is static. A blur names the layer it
+//!   blurs: the lowest one showing, or the one on the main track (the magnetic track; without
+//!   one, the lowest video track). With no such layer at `t`, or an image that is gone or is
+//!   not a still, the scene has no fill and the colour shows.
 //! * Anything that cannot be resolved (missing media, unrepresentable time) skips that clip
 //!   instead of failing: evaluation of a valid project never panics and never errors on content.
 //!
@@ -31,13 +35,13 @@
 //! stacks when walked once a track outgrows one node).
 
 use cutweave_model::{
-    Animatable, Clip, Color, Duration, FrameRate, Item, MediaAsset, MediaKind, Project, PropId,
-    Sequence, SequenceId, SourceMap, StreamKind, Time, Track, TrackId, TrackKind, Vec2,
-    VisualProps,
+    Animatable, BackgroundFill, BackgroundFit, BlurSource, Clip, Color, Duration, FrameRate, Item,
+    MediaAsset, MediaKind, Project, PropId, Sequence, SequenceId, SourceMap, StreamKind, Time,
+    Track, TrackId, TrackKind, Vec2, VisualProps,
 };
 
 use crate::scene::{
-    AudioActivation, AudioSegment, Crop, Flip, FrameRequest, Layer, LayerTransform,
+    AudioActivation, AudioSegment, BackgroundNode, Crop, Flip, FrameRequest, Layer, LayerTransform,
     SceneDescription,
 };
 
@@ -68,6 +72,7 @@ fn empty_scene(seq: SequenceId, sequence: &Sequence, t: Time) -> SceneDescriptio
         height: format.height,
         frame_rate: format.frame_rate,
         background: format.background,
+        background_node: None,
         layers: Vec::new(),
         audio: Vec::new(),
     }
@@ -104,6 +109,7 @@ pub fn evaluate(
             scene.layers.push(layer);
         }
     }
+    scene.background_node = node_at(fill_of(project, sequence).as_ref(), &scene.layers);
 
     let solo = any_solo(sequence);
     for track in sequence.tracks_in_order() {
@@ -117,6 +123,103 @@ pub fn evaluate(
         }
     }
     Ok(scene)
+}
+
+/// A sequence's background fill resolved against the project (once per document revision).
+#[derive(Clone, Debug)]
+enum Fill {
+    /// Blur the layer on track `main`, or the lowest layer when `None`.
+    Blur {
+        main: Option<TrackId>,
+        radius: f64,
+        dim: f64,
+    },
+    Image {
+        request: FrameRequest,
+        fit: BackgroundFit,
+    },
+    Transparent,
+}
+
+/// The fill of `sequence`, if it has one that can draw.
+fn fill_of(project: &Project, sequence: &Sequence) -> Option<Fill> {
+    match sequence.format.background_fill.as_ref()? {
+        BackgroundFill::Transparent => Some(Fill::Transparent),
+        BackgroundFill::Blur {
+            source,
+            radius,
+            dim,
+        } => {
+            let main = match source {
+                BlurSource::Below => None,
+                BlurSource::MainTrack => Some(main_track(sequence)?),
+            };
+            Some(Fill::Blur {
+                main,
+                radius: finite(*radius, 0.0).clamp(0.0, 1.0),
+                dim: finite(*dim, 0.0).clamp(0.0, 1.0),
+            })
+        }
+        BackgroundFill::Image { media, fit } => {
+            let asset = project.media.get(media)?;
+            if asset.kind != MediaKind::Image {
+                return None;
+            }
+            let stream = first_stream(asset, StreamKind::Video);
+            Some(Fill::Image {
+                request: FrameRequest {
+                    media: *media,
+                    stream: stream.map(|s| s.index),
+                    source_time: Time::ZERO,
+                    source_size: stream.and_then(|s| Some((s.width?, s.height?))),
+                    rotation: asset.probe.rotation,
+                    color: asset.probe.color.clone(),
+                    still: true,
+                    proxy: false,
+                    drawn_long_edge: None,
+                },
+                fit: *fit,
+            })
+        }
+    }
+}
+
+/// The main track of `sequence` for a blurred background: the magnetic track, else the lowest
+/// video track.
+fn main_track(sequence: &Sequence) -> Option<TrackId> {
+    let (mut magnetic, mut lowest) = (None, None);
+    for track in sequence
+        .tracks_in_order()
+        .filter(|t| t.kind == TrackKind::Video)
+    {
+        lowest = Some(track.id);
+        if track.magnetic && magnetic.is_none() {
+            magnetic = Some(track.id);
+        }
+    }
+    magnetic.or(lowest)
+}
+
+/// The background node of a scene with `layers` (bottom first). No heap allocation.
+fn node_at(fill: Option<&Fill>, layers: &[Layer]) -> Option<BackgroundNode> {
+    match fill? {
+        Fill::Transparent => Some(BackgroundNode::Transparent),
+        Fill::Image { request, fit } => Some(BackgroundNode::Image {
+            request: request.clone(),
+            fit: *fit,
+        }),
+        Fill::Blur { main, radius, dim } => {
+            let layer = match main {
+                None => (!layers.is_empty()).then_some(0)?,
+                Some(track) => layers.iter().position(|l| l.track == *track)?,
+            };
+            Some(BackgroundNode::Blur {
+                layer,
+                radius: *radius,
+                dim: *dim,
+            })
+        }
+    }
 }
 
 /// One item of an [`IndexedTrack`].
@@ -176,6 +279,7 @@ pub struct TimelineIndex {
     height: u32,
     frame_rate: FrameRate,
     background: Color,
+    fill: Option<Fill>,
     /// Visible video tracks, bottom first.
     video: Vec<IndexedTrack>,
     /// Audible audio tracks (mute and solo applied), top first.
@@ -210,6 +314,7 @@ impl TimelineIndex {
             height: format.height,
             frame_rate: format.frame_rate,
             background: format.background,
+            fill: fill_of(project, sequence),
             video,
             audio,
         })
@@ -231,6 +336,7 @@ impl TimelineIndex {
             height: self.height,
             frame_rate: self.frame_rate,
             background: self.background,
+            background_node: None,
             layers: Vec::new(),
             audio: Vec::new(),
         };
@@ -259,6 +365,7 @@ impl TimelineIndex {
                 scene.layers.push(layer);
             }
         }
+        scene.background_node = node_at(self.fill.as_ref(), &scene.layers);
         for track in &self.audio {
             if let Some(Entry {
                 clip: Some((clip, media)),

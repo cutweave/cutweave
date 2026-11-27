@@ -26,6 +26,11 @@
 //!   [`BlendMode`] (formulas in its docs); a non-normal layer reads the canvas below, which the
 //!   executor copies before drawing it. Only normal layers occlude: every other mode lets the
 //!   backdrop through.
+//! * **Background fill** (WP-2B.02; rules in [`crate::backdrop`]): an image is one more
+//!   `Composite` at the bottom; a blur draws its layer's picture onto a small canvas
+//!   (`Background` + `Composite`), runs two `Blur` passes on it and stretches the result over
+//!   the canvas with a `Composite`; its `Output` dithers. Under an opaque cover none of it is
+//!   built (nor its frame requested), and a scene without a fill compiles as before.
 //! * **Filtering**: [`GraphOptions::filter`] picks the resampling of every layer: exact-weight
 //!   bilinear, trilinear between mip levels when a layer is minified (the default: preview,
 //!   agent frames and export alike, so preview equals export), or bicubic (Catmull-Rom) for an
@@ -41,13 +46,14 @@ use std::sync::Arc;
 
 use cutweave_model::ItemId;
 
+use crate::backdrop::{BlurPlan, blur_plan, cover_layer, image_layer, stretch_geometry};
 use crate::color::{
     InputColor, InputTransform, OutputTransfer, ToneMap, merge_tags, srgb8_to_linear_premul,
 };
 use crate::frame::{FrameError, FrameSource, VideoFrame};
 use crate::geometry::{LayerGeometry, mip_levels_for};
 use crate::hash::{CacheKey, Fnv};
-use crate::scene::{BlendMode, SceneDescription};
+use crate::scene::{BackgroundNode, BlendMode, Layer, SceneDescription};
 use crate::slate;
 
 /// What a render produces.
@@ -179,8 +185,8 @@ pub struct DecodeOp {
 /// One layer placed over the canvas.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CompositeOp {
-    /// The item the layer comes from.
-    pub item: ItemId,
+    /// The item the layer comes from; `None` for a draw of the background fill.
+    pub item: Option<ItemId>,
     /// Placement and sampling.
     pub geometry: LayerGeometry,
     /// Opacity in `(0, 1]`.
@@ -198,6 +204,19 @@ pub struct CompositeOp {
     pub full_cover: bool,
 }
 
+/// One direction of the background's separable Gaussian blur ([`crate::backdrop`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlurOp {
+    /// Along x (else along y).
+    pub horizontal: bool,
+    /// Standard deviation in texels.
+    pub sigma: f64,
+    /// Taps on each side of the centre (0: a copy).
+    pub taps: u32,
+    /// The share of the colour's light taken away after the blur, `0..=1`.
+    pub dim: f64,
+}
+
 /// What a pass does.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PassOp {
@@ -208,12 +227,17 @@ pub enum PassOp {
     },
     /// Upload a frame and convert it to premultiplied linear Rec.709.
     Decode(DecodeOp),
-    /// Place input 1 (a decoded frame) over input 0 (the canvas).
+    /// Place input 1 (a decoded frame, or a blurred canvas) over input 0 (the canvas).
     Composite(CompositeOp),
+    /// Blur input 0 along one axis into a texture of the same size.
+    Blur(BlurOp),
     /// Encode input 0 for readback.
     Output {
         /// Output encoding.
         transfer: OutputTransfer,
+        /// Quantise with the ordered dither ([`crate::backdrop::dither_threshold`]) instead
+        /// of rounding half up.
+        dither: bool,
     },
 }
 
@@ -225,6 +249,7 @@ impl PassOp {
             PassOp::Background { .. } => "background",
             PassOp::Decode(_) => "decode",
             PassOp::Composite(_) => "composite",
+            PassOp::Blur(_) => "blur",
             PassOp::Output { .. } => "output",
         }
     }
@@ -561,7 +586,10 @@ impl RenderGraph {
         for (i, p) in self.passes.iter().enumerate() {
             let r = self.resources[p.output];
             let what = match &p.op {
-                PassOp::Composite(c) => format!("composite {}", c.item),
+                PassOp::Composite(c) => match c.item {
+                    Some(item) => format!("composite {item}"),
+                    None => "composite background".to_string(),
+                },
                 PassOp::Decode(d) => format!(
                     "decode frame {:016x} ({} mips)",
                     self.frames[d.frame].id.0, d.mip_levels
@@ -587,18 +615,33 @@ impl RenderGraph {
 /// A layer that survived culling.
 #[derive(Clone, Debug)]
 struct Visible {
+    /// Index of the layer in the scene (of the blurred layer, for a blur's draw).
     index: usize,
+    /// The layer's item; `None` for a draw of the background fill.
+    item: Option<ItemId>,
+    opacity: f64,
+    blend: BlendMode,
     frame: Arc<VideoFrame>,
     geometry: LayerGeometry,
     transform: InputTransform,
+}
+
+/// A blurred background being built: the draw of its picture onto the small canvas.
+#[derive(Clone, Debug)]
+struct BlurDraw {
+    draw: Visible,
+    plan: BlurPlan,
+    dim: f64,
 }
 
 /// Working memory of [`build_into`], kept across frames (no allocation once it has grown to the
 /// largest scene seen).
 #[derive(Clone, Debug, Default)]
 pub struct BuildScratch {
-    /// Layers that survived culling, bottom first.
+    /// Layers that survived culling, bottom first (an image background first of all).
     visible: Vec<Visible>,
+    /// The blurred background's draw, if the scene has one that shows.
+    blur: Option<BlurDraw>,
     /// Each visible layer's decode slot.
     decode_of: Vec<usize>,
     /// The decodes: `(frame index, input transform, mips)`.
@@ -616,6 +659,7 @@ impl BuildScratch {
     /// Drops the source frames held from the last build (see [`RenderGraph::release_frames`]).
     pub fn release_frames(&mut self) {
         self.visible.clear();
+        self.blur = None;
     }
 }
 
@@ -658,6 +702,7 @@ pub fn build_into(
     g.missing.clear();
     g.stats = BuildStats::default();
     scratch.visible.clear();
+    scratch.blur = None;
     let output = target.size();
     if output.0 == 0 || output.1 == 0 {
         return Err(GraphError::Empty {
@@ -675,11 +720,27 @@ pub fn build_into(
         });
     }
 
-    cull(scene, output, source, options, g, &mut scratch.visible);
+    let covered = cull(scene, output, source, options, g, &mut scratch.visible);
+    if !covered {
+        plan_fill(scene, output, source, options, scratch);
+    }
     plan_decodes(scratch, g);
+    push_passes(g, scratch, scene, target, options.filter)
+}
 
+/// Emits the passes of a planned frame (decodes, the background and its fill, one composite per
+/// visible layer, the output) and prunes what does not reach the output.
+fn push_passes(
+    g: &mut RenderGraph,
+    scratch: &mut BuildScratch,
+    scene: &SceneDescription,
+    target: Target,
+    filter: Filter,
+) -> Result<(), GraphError> {
+    let output = target.size();
     let BuildScratch {
         visible,
+        blur,
         decode_of,
         decodes,
         keys,
@@ -709,7 +770,19 @@ pub fn build_into(
         height: output.1,
         mip_levels: 1,
     };
-    let bg = srgb8_to_linear_premul(scene.background);
+    let bg = match scene.background_node {
+        Some(BackgroundNode::Transparent) => [0.0; 4],
+        _ => srgb8_to_linear_premul(scene.background),
+    };
+    // A blurred background is ready before the canvas starts: its decode slot is the one
+    // after the layers'.
+    let blurred = match blur.as_ref() {
+        Some(b) => {
+            let content = decode_res[decode_of[visible.len()]];
+            Some(push_blur(g, keys, b, bg, content, filter)?)
+        }
+        None => None,
+    };
     let mut cur = push_pass(
         g,
         keys,
@@ -717,22 +790,31 @@ pub fn build_into(
         PassInputs::new(),
         canvas_desc,
     );
-    for (v, &slot) in visible.iter().zip(decode_of.iter()) {
-        let layer = &scene.layers[v.index];
+    if let (Some(b), Some(res)) = (blur.as_ref(), blurred) {
+        let geometry = stretch_geometry(b.plan.size, output);
         let op = PassOp::Composite(CompositeOp {
-            item: layer.item,
-            geometry: v.geometry,
-            opacity: layer.opacity.min(1.0),
-            blend: layer.blend,
-            filter: options.filter,
-            lod: v.geometry.lod(),
-            rect: v.geometry.pixel_rect(output),
-            full_cover: v.geometry.covers(output),
+            item: None,
+            geometry,
+            opacity: 1.0,
+            blend: BlendMode::Normal,
+            filter: Filter::Bilinear,
+            lod: 0.0,
+            rect: [0, 0, output.0, output.1],
+            full_cover: true,
         });
         cur = push_pass(
             g,
             keys,
             op,
+            PassInputs::from_slice(&[cur, res])?,
+            canvas_desc,
+        );
+    }
+    for (v, &slot) in visible.iter().zip(decode_of.iter()) {
+        cur = push_pass(
+            g,
+            keys,
+            PassOp::Composite(composite_of(v, output, filter)),
             PassInputs::from_slice(&[cur, decode_res[slot]])?,
             canvas_desc,
         );
@@ -741,7 +823,10 @@ pub fn build_into(
         cur = push_pass(
             g,
             keys,
-            PassOp::Output { transfer },
+            PassOp::Output {
+                transfer,
+                dither: blur.is_some(),
+            },
             PassInputs::from_slice(&[cur])?,
             canvas_desc,
         );
@@ -750,8 +835,154 @@ pub fn build_into(
     g.prune_with(order)
 }
 
+/// The composite of a visible draw onto an `output`-sized canvas.
+fn composite_of(v: &Visible, output: (u32, u32), filter: Filter) -> CompositeOp {
+    CompositeOp {
+        item: v.item,
+        geometry: v.geometry,
+        opacity: v.opacity,
+        blend: v.blend,
+        filter,
+        lod: v.geometry.lod(),
+        rect: v.geometry.pixel_rect(output),
+        full_cover: v.geometry.covers(output),
+    }
+}
+
+/// The passes of a blurred background up to its blurred small canvas (which the caller
+/// stretches over the output): the colour, the picture drawn to cover it, then the horizontal
+/// and vertical Gaussian passes. Returns the blurred resource.
+fn push_blur(
+    g: &mut RenderGraph,
+    keys: &mut Vec<CacheKey>,
+    b: &BlurDraw,
+    bg: [f64; 4],
+    content: ResId,
+    filter: Filter,
+) -> Result<ResId, GraphError> {
+    let small = ResourceDesc {
+        width: b.plan.size.0,
+        height: b.plan.size.1,
+        mip_levels: 1,
+    };
+    let mut cur = push_pass(
+        g,
+        keys,
+        PassOp::Background { color: bg },
+        PassInputs::new(),
+        small,
+    );
+    cur = push_pass(
+        g,
+        keys,
+        PassOp::Composite(composite_of(&b.draw, b.plan.size, filter)),
+        PassInputs::from_slice(&[cur, content])?,
+        small,
+    );
+    for (axis, horizontal) in [(0, true), (1, false)] {
+        let op = PassOp::Blur(BlurOp {
+            horizontal,
+            sigma: b.plan.sigma[axis],
+            taps: b.plan.taps[axis],
+            dim: if horizontal { 0.0 } else { b.dim },
+        });
+        cur = push_pass(g, keys, op, PassInputs::from_slice(&[cur])?, small);
+    }
+    Ok(cur)
+}
+
+/// A frame's input transform for the layer requesting it.
+fn input_transform(frame: &VideoFrame, layer: &Layer, options: &GraphOptions) -> InputTransform {
+    let height = layer.request.source_size.map_or(frame.height, |s| s.1);
+    let color = InputColor::resolve(
+        &merge_tags(&frame.color, &layer.request.color),
+        frame.format.is_yuv(),
+        height,
+    );
+    InputTransform::new(&color, frame.format.bit_depth(), &options.tone_map)
+}
+
+/// Plans the scene's background fill (the layers are culled and none covers the output): an
+/// image becomes the bottom draw of `scratch.visible`, a blur fills `scratch.blur`. A fill
+/// whose frame is unavailable, or that cannot be placed, draws nothing: the colour shows.
+fn plan_fill(
+    scene: &SceneDescription,
+    output: (u32, u32),
+    source: &dyn FrameSource,
+    options: &GraphOptions,
+    scratch: &mut BuildScratch,
+) {
+    let canvas = (scene.width, scene.height);
+    let valid = |f: Arc<VideoFrame>| f.validate().map(|()| f);
+    match &scene.background_node {
+        None | Some(BackgroundNode::Transparent) => {}
+        Some(BackgroundNode::Image { request, fit }) => {
+            let Ok(frame) = source.frame(request).and_then(valid) else {
+                return;
+            };
+            let size = (frame.width, frame.height);
+            let layer = image_layer(request, *fit, size, canvas);
+            let Some(geometry) =
+                LayerGeometry::new(&layer, canvas, output, size).filter(|g| !g.offscreen(output))
+            else {
+                return;
+            };
+            let transform = input_transform(&frame, &layer, options);
+            scratch.visible.insert(
+                0,
+                Visible {
+                    index: 0,
+                    item: None,
+                    opacity: 1.0,
+                    blend: BlendMode::Normal,
+                    frame,
+                    geometry,
+                    transform,
+                },
+            );
+        }
+        Some(BackgroundNode::Blur { layer, radius, dim }) => {
+            let Some(blurred) = scene.layers.get(*layer) else {
+                return;
+            };
+            // The layer's own frame when it is drawn; else (hidden by its opacity or off the
+            // canvas) the source is asked for it. An offline one blurs its slate.
+            let drawn = scratch.visible.iter().find(|v| v.index == *layer);
+            let frame = match drawn {
+                Some(v) => Arc::clone(&v.frame),
+                None => match source.frame(&blurred.request).and_then(valid) {
+                    Ok(f) => f,
+                    Err(FrameError::Offline(_)) => slate::frame(),
+                    Err(_) => return,
+                },
+            };
+            let size = (frame.width, frame.height);
+            let plan = blur_plan(*radius, output);
+            let cover = cover_layer(blurred, size, canvas);
+            let Some(geometry) = LayerGeometry::new(&cover, canvas, plan.size, size) else {
+                return;
+            };
+            let transform = input_transform(&frame, &cover, options);
+            scratch.blur = Some(BlurDraw {
+                draw: Visible {
+                    index: *layer,
+                    item: None,
+                    opacity: 1.0,
+                    blend: BlendMode::Normal,
+                    frame,
+                    geometry,
+                    transform,
+                },
+                plan,
+                dim: *dim,
+            });
+        }
+    }
+}
+
 /// Culls layers top-down, so that nothing under an opaque cover is ever requested from the
-/// source; leaves the visible layers in `visible`, bottom-up.
+/// source; leaves the visible layers in `visible`, bottom-up. Returns whether the lowest of
+/// them hides everything below it (the background included).
 fn cull(
     scene: &SceneDescription,
     output: (u32, u32),
@@ -759,8 +990,9 @@ fn cull(
     options: &GraphOptions,
     g: &mut RenderGraph,
     visible: &mut Vec<Visible>,
-) {
+) -> bool {
     let canvas = (scene.width, scene.height);
+    let mut covered = false;
     visible.clear();
     for (index, layer) in scene.layers.iter().enumerate().rev() {
         if layer.opacity.is_nan() || layer.opacity <= 0.0 {
@@ -788,39 +1020,39 @@ fn cull(
             g.stats.layers_culled += 1;
             continue;
         };
-        let height = layer.request.source_size.map_or(frame.height, |s| s.1);
-        let color = InputColor::resolve(
-            &merge_tags(&frame.color, &layer.request.color),
-            frame.format.is_yuv(),
-            height,
-        );
-        let transform = InputTransform::new(&color, frame.format.bit_depth(), &options.tone_map);
+        let transform = input_transform(&frame, layer, options);
         let cover = layer.blend == BlendMode::Normal
             && layer.opacity >= 1.0
             && frame.format.is_opaque()
             && geometry.covers(output);
         visible.push(Visible {
             index,
+            item: Some(layer.item),
+            opacity: layer.opacity.min(1.0),
+            blend: layer.blend,
             frame,
             geometry,
             transform,
         });
         if cover {
             g.stats.layers_occluded += index;
+            covered = true;
             break;
         }
     }
     visible.reverse();
     g.missing.reverse();
     g.stats.layers_visible = visible.len();
+    covered
 }
 
 /// One decode per distinct (frame, input transform), with the most mips any of its layers
-/// needs: fills the scratch's decode slot of each visible layer and the decodes
-/// `(frame, transform, mips)`.
+/// needs: fills the scratch's decode slot of each visible layer (then of the blurred
+/// background's draw, if any) and the decodes `(frame, transform, mips)`.
 fn plan_decodes(scratch: &mut BuildScratch, g: &mut RenderGraph) {
     let BuildScratch {
         visible,
+        blur,
         decode_of,
         decodes,
         by_key,
@@ -829,7 +1061,7 @@ fn plan_decodes(scratch: &mut BuildScratch, g: &mut RenderGraph) {
     decode_of.clear();
     decodes.clear();
     by_key.clear();
-    for v in visible.iter() {
+    for v in visible.iter().chain(blur.as_ref().map(|b| &b.draw)) {
         let mut h = Fnv::new();
         h.u64(v.frame.id.0);
         hash_transform(&v.transform, &mut h);
@@ -890,8 +1122,18 @@ fn push_pass(
                 h.u32(v);
             }
         }
-        PassOp::Output { transfer } => {
+        PassOp::Blur(b) => {
+            h.u32(u32::from(b.horizontal))
+                .f64(b.sigma)
+                .u32(b.taps)
+                .f64(b.dim);
+        }
+        PassOp::Output { transfer, dither } => {
             h.u32(transfer.transfer().shader_id());
+            // Hashed only when set, so frames without a blurred background keep their keys.
+            if *dither {
+                h.str("dither");
+            }
         }
     }
     h.u32(size.width).u32(size.height).u32(size.mip_levels);
@@ -993,6 +1235,7 @@ mod tests {
             height: 36,
             frame_rate: FrameRate::FPS_24,
             background: Color::rgb(10, 20, 30),
+            background_node: None,
             layers,
             audio: Vec::new(),
         }
@@ -1139,7 +1382,7 @@ mod tests {
             .passes
             .iter()
             .find_map(|p| match &p.op {
-                PassOp::Composite(c) if c.item == ItemId::from_u128(2) => Some(c),
+                PassOp::Composite(c) if c.item == Some(ItemId::from_u128(2)) => Some(c),
                 _ => None,
             })
             .unwrap();

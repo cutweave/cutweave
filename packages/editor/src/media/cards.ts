@@ -77,7 +77,10 @@ export function selectMediaCards(project: Project | null): readonly MediaCard[] 
 
 const usageCache = new WeakMap<Project, ReadonlyMap<string, number>>();
 
-/** How many timeline clips use each asset (assets with none are absent). */
+/**
+ * How many timeline clips use each asset (assets with none are absent). A sequence's background
+ * image counts as one, as in the engine (`used_media`, WP-2B.02).
+ */
 export function selectMediaUsage(project: Project | null): ReadonlyMap<string, number> {
   if (project === null) return new Map();
   let usage = usageCache.get(project);
@@ -89,6 +92,10 @@ export function selectMediaUsage(project: Project | null): ReadonlyMap<string, n
           counts.set(item.media, (counts.get(item.media) ?? 0) + 1);
         }
       }
+      // A partial document (a sequence without its format) has no fill.
+      const format: typeof sequence.format | undefined = sequence.format;
+      const fill = format?.background_fill;
+      if (fill?.kind === "image") counts.set(fill.media, (counts.get(fill.media) ?? 0) + 1);
     }
     usage = counts;
     usageCache.set(project, usage);

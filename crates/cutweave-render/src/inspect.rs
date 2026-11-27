@@ -113,7 +113,7 @@ pub fn frame_items(
     let mut hidden = Vec::new();
     for layer in scene.layers.iter().rev() {
         let composite = graph.passes.iter().find_map(|p| match &p.op {
-            PassOp::Composite(c) if c.item == layer.item => Some(c),
+            PassOp::Composite(c) if c.item == Some(layer.item) => Some(c),
             _ => None,
         });
         if let Some(c) = composite {
@@ -213,6 +213,7 @@ mod tests {
             height: 1080,
             frame_rate: FrameRate::FPS_24,
             background: Color::BLACK,
+            background_node: None,
             layers,
             audio: Vec::new(),
         }

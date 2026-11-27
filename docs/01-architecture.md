@@ -191,7 +191,10 @@ MediaAsset { id, kind(video|audio|image|image-sequence|sequence-ref), name?: dis
 MediaFolder { id (fld_…), name, parent?: FolderId, custom }   # one home per asset; ≤ 32 levels,
                                                                # sibling names unique ignoring case
 
-Sequence { id, name, format{width,height,frame_rate,sample_rate,color_space,background},
+Sequence { id, name, format{width,height,frame_rate,sample_rate,color_space,background,
+                              background_fill?: blur{source,radius,dim} | image{media,fit} | transparent},
+           # the fill is drawn over the `background` color, behind all tracks (WP-2B.02); left
+           # out of the file while absent
            tracks: Vec<TrackId> (top→bottom; stored as `tracks` by ID plus `track_order`),
            markers: Map<MarkerId, Marker>, in_out?: {start, end} }
            # the main track is the track with `magnetic: true` (at most one, a video track; schema v2)

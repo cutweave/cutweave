@@ -15,9 +15,10 @@
 //! * `view.set_active_sequence` (in [`crate::view`]): which sequence the editor shows.
 //! * `sequence.list`: the sequences, and on request the preset tables.
 //!
-//! The background is the format's `background` color here; the blur and image backgrounds are
-//! WP-2B.02.
+//! * `sequence.set_background` ([`background`], WP-2B.02): the color, a blur of the picture, an
+//!   image or nothing behind the tracks.
 
+pub mod background;
 mod copy;
 pub mod reframe;
 pub mod regrid;
@@ -53,6 +54,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<SequenceRename>()?
         .register::<SequenceDelete>()?
         .register::<SequenceSetFormat>()?
+        .register::<background::SequenceSetBackground>()?
         .register::<SequenceList>()?;
     Ok(())
 }

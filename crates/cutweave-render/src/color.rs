@@ -774,6 +774,27 @@ pub fn encode_output(c: [f64; 4], tf: OutputTransfer) -> [u8; 4] {
     [e[0], e[1], e[2], quantize8(a)]
 }
 
+/// [`encode_output`] with an ordered dither on the colour: each encoded channel quantises to
+/// `⌊255·v + threshold⌋` (`threshold` in `(0, 1)`, [`crate::backdrop::dither_threshold`]); alpha
+/// still rounds half up.
+#[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn encode_output_dithered(c: [f64; 4], tf: OutputTransfer, threshold: f64) -> [u8; 4] {
+    let a = c[3].clamp(0.0, 1.0);
+    let rgb = if a >= 1.0 {
+        [c[0], c[1], c[2]]
+    } else if a > 0.0 {
+        [c[0] / a, c[1] / a, c[2] / a]
+    } else {
+        [0.0; 3]
+    };
+    let e = rgb.map(|v| {
+        let encoded = from_linear(v.clamp(0.0, 1.0), tf.transfer()).clamp(0.0, 1.0);
+        (encoded * 255.0 + threshold).floor().min(255.0) as u8
+    });
+    [e[0], e[1], e[2], quantize8(a)]
+}
+
 /// CIE XYZ → CIE L*a*b* relative to `white`.
 #[must_use]
 pub fn xyz_to_lab(xyz: [f64; 3], white: [f64; 3]) -> [f64; 3] {

@@ -16,6 +16,10 @@
 //!   the render pass ends before such a layer, its output rectangle is copied into a pooled
 //!   backdrop texture the shader reads, and a new pass draws it (one extra pass and a
 //!   rectangle copy per extended layer).
+//! * **Blur** (compute, WP-2B.02): one direction of the background's Gaussian, from a small
+//!   canvas (or the other direction's result) into a pooled texture of the same size, rounded
+//!   to the nearest half float like the decode. The small canvas is composited like the main
+//!   one, and the blurred result is stretched over the main canvas by an ordinary composite.
 //! * **Output** (compute): un-premultiply, encode, explicit round-half-up quantisation into a
 //!   storage buffer, then readback: blocking ([`Compositor::render`] / [`Compositor::execute`],
 //!   or [`Compositor::execute_with`], which hands the mapped pixels to the caller; one reused
@@ -55,8 +59,8 @@ use crate::color::{Eetf, OutputTransfer};
 use crate::frame::{FrameError, FrameSource, PixelFormat, VideoFrame};
 use crate::geometry::mip_size;
 use crate::graph::{
-    BuildStats, CompositeOp, DecodeOp, Filter, GraphError, GraphOptions, OrderScratch, Pass,
-    PassOp, RenderGraph, Target, build,
+    BlurOp, BuildStats, CompositeOp, DecodeOp, Filter, GraphError, GraphOptions, OrderScratch,
+    Pass, PassOp, RenderGraph, Target, build,
 };
 use crate::hash::CacheKey;
 use crate::image::Image;
@@ -69,6 +73,7 @@ const MIP_WGSL: &str = include_str!("shaders/mip.wgsl");
 const COMPOSITE_WGSL: &str = include_str!("shaders/composite.wgsl");
 const COMPOSITE_EXT_WGSL: &str = include_str!("shaders/composite_ext.wgsl");
 const OUTPUT_WGSL: &str = include_str!("shaders/output.wgsl");
+const BLUR_WGSL: &str = include_str!("shaders/blur.wgsl");
 
 const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const UNIFORM_SIZE: u64 = 256;
@@ -196,6 +201,8 @@ struct Pipelines {
     decode: ComputePipe,
     mip: ComputePipe,
     output: ComputePipe,
+    /// One direction of the background blur (`blur.wgsl`).
+    blur: ComputePipe,
     /// Normal blend, bilinear (`composite.wgsl`).
     composite: RenderPipe,
     /// Bicubic sampling and the other blend modes, which read a backdrop copy
@@ -301,6 +308,12 @@ fn create_pipelines(device: &wgpu::Device) -> Result<Pipelines, GpuError> {
         OUTPUT_WGSL,
         &[(0, Uniform), (1, TexF), (2, Buffer)],
     );
+    let blur = compute_pipe(
+        device,
+        "blur",
+        BLUR_WGSL,
+        &[(0, Uniform), (1, TexF), (2, Store)],
+    );
 
     // Normal-blend bilinear layers: fixed-function premultiplied "over" (the P1 shader).
     let composite = render_pipe(
@@ -327,6 +340,7 @@ fn create_pipelines(device: &wgpu::Device) -> Result<Pipelines, GpuError> {
         decode,
         mip,
         output,
+        blur,
         composite,
         composite_ext,
     })
@@ -507,6 +521,8 @@ struct BindCache {
     composite_ext: HashMap<(usize, wgpu::Texture, Option<wgpu::Texture>), wgpu::BindGroup>,
     /// Keyed by (uniform slot, canvas read); valid for the output buffer it was made with.
     output: HashMap<(usize, wgpu::Texture), (wgpu::Buffer, wgpu::BindGroup)>,
+    /// The blur pass's: keyed by (uniform slot, texture read, texture written).
+    blur: HashMap<(usize, wgpu::Texture, wgpu::Texture), wgpu::BindGroup>,
 }
 
 impl BindCache {
@@ -522,6 +538,8 @@ impl BindCache {
             self.composite_ext
                 .retain(|(_, t, b), _| t != texture && b.as_ref() != Some(texture));
             self.output.retain(|(_, t), _| t != texture);
+            self.blur
+                .retain(|(_, a, b), _| a != texture && b != texture);
         });
     }
 }
@@ -1258,8 +1276,10 @@ impl Compositor {
             match &pass.op {
                 PassOp::Decode(d) => self.run_decode(f, graph, pass, d, pos),
                 PassOp::Background { color } => {
-                    self.run_background(f, pass.output, *color, graph.target.size());
+                    let r = graph.resources[pass.output];
+                    self.run_background(f, pass.output, *color, (r.width, r.height));
                 }
+                PassOp::Blur(b) => self.run_blur(f, graph, pass, b, pos)?,
                 PassOp::Composite(_) => {
                     // A run of composites chained on one canvas shares a render pass.
                     while end + 1 < order.len() {
@@ -1273,8 +1293,9 @@ impl Compositor {
                     let last_reader = last[pass.inputs[0]] == Some(pos);
                     self.run_composites(f, graph, &order[pos..=end], pos, last_reader)?;
                 }
-                PassOp::Output { transfer } => {
-                    self.run_output(f, pass.inputs[0], *transfer, graph.target.size(), pos)?;
+                PassOp::Output { transfer, dither } => {
+                    let encoding = (*transfer, *dither);
+                    self.run_output(f, pass.inputs[0], encoding, graph.target.size(), pos)?;
                 }
             }
             // Recycle transient textures after their last reader.
@@ -1565,12 +1586,112 @@ impl Compositor {
         Ok(())
     }
 
+    /// A blur pass: one direction of the Gaussian from its input into a pooled texture of the
+    /// same size.
+    fn run_blur(
+        &mut self,
+        f: &mut Frame,
+        graph: &RenderGraph,
+        pass: &Pass,
+        b: &BlurOp,
+        slot: usize,
+    ) -> Result<(), RenderError> {
+        let input = pass.inputs[0];
+        flush_clear(&mut self.dev, &mut f.encoder, &mut f.scratch.held, input);
+        let (src, src_key) = f.scratch.held[input]
+            .as_ref()
+            .map(|h| (h.texture.clone(), h.key))
+            .ok_or_else(|| GraphError::Invalid("blur input not ready".into()))?;
+        let size = graph.resources[pass.output];
+        let key = TexKey {
+            kind: TexKind::Content(1),
+            width: size.width,
+            height: size.height,
+        };
+        let device = self.ctx.device().clone();
+        let dst = self.dev.take(&device, key, &mut f.stats);
+        let uniform = self.dev.uniform(&device, slot);
+        let falloff = if b.taps == 0 || b.sigma <= 0.0 {
+            0.0
+        } else {
+            1.0 / (2.0 * b.sigma * b.sigma)
+        };
+        let uniforms = Uniforms::default()
+            .u4([size.width, size.height, b.taps, u32::from(b.horizontal)])
+            .f4([falloff, 1.0 - b.dim, 0.0, 0.0]);
+        in_wgpu(|| {
+            self.ctx
+                .queue()
+                .write_buffer(&uniform, 0, uniforms.as_bytes());
+        });
+        let bind = self.blur_bind(&device, slot, (&src, src_key), (&dst, key), &uniform);
+        let pipeline = &self.dev.pipes.blur.pipeline;
+        in_wgpu(|| {
+            let mut cp = f.encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("blur"),
+                timestamp_writes: None,
+            });
+            cp.set_pipeline(pipeline);
+            cp.set_bind_group(0, &bind, &[]);
+            cp.dispatch_workgroups(size.width.div_ceil(8), size.height.div_ceil(8), 1);
+        });
+        f.scratch.held[pass.output] = Some(Held {
+            texture: dst,
+            key,
+            transient: true,
+            clear: None,
+        });
+        f.stats.passes_run += 1;
+        Ok(())
+    }
+
+    /// The blur pass's bind group reading `src` into `dst` with uniform `slot`.
+    fn blur_bind(
+        &mut self,
+        device: &wgpu::Device,
+        slot: usize,
+        (src, src_key): (&wgpu::Texture, TexKey),
+        (dst, dst_key): (&wgpu::Texture, TexKey),
+        uniform: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        let cache_key = (slot, src.clone(), dst.clone());
+        if let Some(bind) = self.dev.binds.blur.get(&cache_key) {
+            return bind.clone();
+        }
+        let src_view = self.dev.full_view(src, src_key);
+        let dst_view = self.dev.views(dst, dst_key).levels[0].clone();
+        let layout = &self.dev.pipes.blur.layout;
+        let bind = in_wgpu(|| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("blur"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&src_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&dst_view),
+                    },
+                ],
+            })
+        });
+        self.dev.binds.blur.insert(cache_key, bind.clone());
+        in_wgpu(|| drop((src_view, dst_view)));
+        bind
+    }
+
     /// The output pass: encode + quantise into the readback buffer.
     fn run_output(
         &mut self,
         f: &mut Frame,
         input: usize,
-        transfer: OutputTransfer,
+        (transfer, dither): (OutputTransfer, bool),
         (width, height): (u32, u32),
         slot: usize,
     ) -> Result<(), RenderError> {
@@ -1587,7 +1708,12 @@ impl Compositor {
             .map(|h| (h.texture.clone(), h.key))
             .ok_or_else(|| GraphError::Invalid("output input not ready".into()))?;
         let uniform = self.dev.uniform(&device, slot);
-        let u = Uniforms::default().u4([width, height, transfer.transfer().shader_id(), 0]);
+        let u = Uniforms::default().u4([
+            width,
+            height,
+            transfer.transfer().shader_id(),
+            u32::from(dither),
+        ]);
         in_wgpu(|| self.ctx.queue().write_buffer(&uniform, 0, u.as_bytes()));
         let bind = self.output_bind(&device, slot, &src, src_key, &uniform, &storage);
         let pipeline = &self.dev.pipes.output.pipeline;
@@ -1954,7 +2080,8 @@ impl Compositor {
         canvas: &mut Held,
     ) -> Result<(), GraphError> {
         let device = self.ctx.device().clone();
-        let output = graph.target.size();
+        // The canvas drawn on: the output, or a blurred background's small canvas.
+        let output = (canvas.key.width, canvas.key.height);
         // One backdrop texture (kept per canvas size) serves every extended layer of the run:
         // each copies its rectangle just before it draws.
         let needs_backdrop = run.iter().any(|&pi| {

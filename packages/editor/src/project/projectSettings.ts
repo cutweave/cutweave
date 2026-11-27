@@ -206,7 +206,9 @@ export function settingsForm(
     if (inner.background !== undefined) {
       inner.background = withHint(inner.background, { widget: "color", order: 3 });
     }
-    props.default_format = { ...format, properties: inner };
+    // The background fill (WP-2B.02) has no row here: it is set per sequence, in the Inspector.
+    const { background_fill: _fill, ...shown } = inner;
+    props.default_format = { ...format, properties: shown };
     value.default_format = { ...current, frame_rate: rateKey(current.frame_rate) };
   }
 

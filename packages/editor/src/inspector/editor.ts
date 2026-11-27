@@ -17,6 +17,7 @@ import type {
   ResetGroup,
   RpcClient,
   SequenceId,
+  SequenceSetBackground,
   SequenceSetFormat,
   SpeedKeep,
   TrackId,
@@ -494,6 +495,21 @@ export class InspectorEditor {
       name,
       async (rpc, tx) => {
         await rpc.call("sequence.set_format", { sequence, ...patch }, { tx });
+      },
+    );
+  }
+
+  /** What shows behind the picture (`sequence.set_background`): one undo entry. */
+  setSequenceBackground(
+    sequence: SequenceId,
+    background: Omit<SequenceSetBackground, "sequence">,
+    name: string,
+  ): Promise<void> {
+    return this.#batch(
+      this.#deps.t("inspector.history.sequence", { name }),
+      name,
+      async (rpc, tx) => {
+        await rpc.call("sequence.set_background", { sequence, ...background }, { tx });
       },
     );
   }

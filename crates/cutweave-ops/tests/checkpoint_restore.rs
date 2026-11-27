@@ -22,8 +22,8 @@ use cutweave_commands::{
     invert,
 };
 use cutweave_model::{
-    Collection, CollectionId, CollectionKind, Duration, FrameRate, ImageSequence, MediaFilter,
-    MediaId, MediaKind, Project, ProxyMode, ProxyPolicy,
+    BackgroundFill, BackgroundFit, BlurSource, Collection, CollectionId, CollectionKind, Duration,
+    FrameRate, ImageSequence, MediaFilter, MediaId, MediaKind, Project, ProxyMode, ProxyPolicy,
 };
 use cutweave_ops::{
     media::FakeProbe,
@@ -322,6 +322,92 @@ fn a_new_project_with_a_still_duration_and_a_policy() {
             json!({"name": "Stills", "still_duration": "2s", "proxy_policy": "off"}),
         );
     });
+}
+
+/// WP-2B.02: a sequence's background fill is left out of the file while it is the plain color.
+#[test]
+fn a_background_fill_appears_changes_kind_and_disappears() {
+    let mut s = state();
+    let created = ok(
+        &mut s,
+        "sequence.create",
+        json!({"name": "Vertical", "preset": "9:16"}),
+    );
+    let sequence: cutweave_model::SequenceId =
+        serde_json::from_value(created["sequence"].clone()).unwrap();
+    let still = {
+        let p = FakeProbe::image("/m/paper.png");
+        let out = ok(
+            &mut s,
+            "media.register",
+            json!({"path": "/m/paper.png", "probe": p.probe, "content_hash": p.content_hash}),
+        );
+        serde_json::from_value::<MediaId>(out["media_id"].clone()).unwrap()
+    };
+    let set = |s: &mut DocState, params: Value| {
+        let mut params = params;
+        params["sequence"] = json!(sequence);
+        ok(s, "sequence.set_background", params);
+    };
+    // None → blur, then the blur's numbers, then another kind, then none again.
+    restores(&mut s, |s| set(s, json!({"kind": "blur"})));
+    set(&mut s, json!({"kind": "blur", "radius": 0.1}));
+    restores(&mut s, |s| {
+        set(
+            s,
+            json!({"kind": "blur", "radius": 0.02, "dim": 0.5, "source": "main_track"}),
+        );
+    });
+    restores(&mut s, |s| set(s, json!({"kind": "image", "media": still})));
+    restores(&mut s, |s| set(s, json!({"kind": "transparent"})));
+    restores(&mut s, |s| {
+        set(s, json!({"kind": "color", "color": "#336699"}));
+    });
+    set(
+        &mut s,
+        json!({"kind": "image", "media": still, "fit": "contain"}),
+    );
+    restores(&mut s, |s| set(s, json!({"kind": "color"})));
+    restores(&mut s, |s| {
+        set(s, json!({"kind": "image", "fit": "stretch"}));
+    });
+
+    // Document to document, with the JSON mirror: every pair of fills.
+    let base = s.committed_doc().clone();
+    let with = |fill: Option<BackgroundFill>| {
+        let mut doc = base.clone();
+        let mut seq = doc.sequences[&sequence].clone();
+        seq.format.background_fill = fill;
+        doc.sequences.insert(sequence, seq);
+        doc
+    };
+    let fills = [
+        with(None),
+        with(Some(BackgroundFill::Transparent)),
+        with(Some(BackgroundFill::Blur {
+            source: BlurSource::Below,
+            radius: 0.05,
+            dim: 0.25,
+        })),
+        with(Some(BackgroundFill::Blur {
+            source: BlurSource::MainTrack,
+            radius: 0.5,
+            dim: 0.0,
+        })),
+        with(Some(BackgroundFill::Image {
+            media: still,
+            fit: BackgroundFit::Cover,
+        })),
+        with(Some(BackgroundFill::Image {
+            media: MediaId::from_u128(7),
+            fit: BackgroundFit::Stretch,
+        })),
+    ];
+    for (i, x) in fills.iter().enumerate() {
+        for y in &fills[i + 1..] {
+            expressible(x, y);
+        }
+    }
 }
 
 /// The same shapes, document to document: no command sequence is needed to reach them, and

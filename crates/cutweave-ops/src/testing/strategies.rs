@@ -549,6 +549,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "sequence.rename" => (1, sequence_rename(p)),
         "sequence.delete" => (1, sequence_delete(p)),
         "sequence.set_format" => (2, sequence_set_format(p)),
+        "sequence.set_background" => (2, sequence_set_background(p)),
         "sequence.list" => (1, sequence_list()),
         "track.add" => (2, track_add(p)),
         "track.remove" => (1, track_remove(p)),
@@ -1861,6 +1862,67 @@ fn sequence_delete(p: &Pools) -> BoxedStrategy<Value> {
         .prop_map(|sequence| json!({"sequence": sequence}))
         .boxed();
     mix(valid.clone(), valid)
+}
+
+fn sequence_set_background(p: &Pools) -> BoxedStrategy<Value> {
+    let stills: Vec<MediaId> = p
+        .media
+        .iter()
+        .filter(|m| m.kind == MediaKind::Image)
+        .map(|m| m.id)
+        .collect();
+    let color = || option::weighted(0.3, select(vec!["#000000", "#336699"]));
+    let blur = (
+        color(),
+        option::weighted(0.5, select(vec!["below", "main_track"])),
+        option::weighted(0.7, select(vec![0.0, 0.02, 0.05, 0.5, 1.0])),
+        option::weighted(0.5, select(vec![0.0, 0.25, 1.0])),
+    )
+        .prop_map(|(color, source, radius, dim)| {
+            json!({"kind": "blur", "color": color, "source": source, "radius": radius,
+                   "dim": dim})
+        });
+    let plain = (select(vec!["color", "transparent"]), color()).prop_map(|(kind, color)| {
+        let color = if kind == "color" {
+            json!(color)
+        } else {
+            Value::Null
+        };
+        json!({"kind": kind, "color": color})
+    });
+    let kinds = if stills.is_empty() {
+        prop_oneof![3 => blur, 2 => plain].boxed()
+    } else {
+        let image = (
+            select(stills),
+            option::weighted(0.6, select(vec!["cover", "contain", "stretch"])),
+        )
+            .prop_map(|(media, fit)| json!({"kind": "image", "media": media, "fit": fit}));
+        prop_oneof![3 => blur, 2 => plain, 3 => image].boxed()
+    };
+    let valid = (one_of(p.seqs.clone()), kinds)
+        .prop_map(|(sequence, mut params)| {
+            params["sequence"] = sequence;
+            params
+        })
+        .boxed();
+    let invalid = (
+        one_of(p.seqs.clone()),
+        prop_oneof![
+            Just(json!({"kind": "blur", "radius": 1.5})),
+            Just(json!({"kind": "blur", "dim": -0.1})),
+            Just(json!({"kind": "color", "radius": 0.1})),
+            Just(json!({"kind": "transparent", "color": "#000000"})),
+            Just(json!({"kind": "image", "media": MediaId::from_u128(404).to_string()})),
+            Just(json!({"kind": "gradient"})),
+        ],
+    )
+        .prop_map(|(sequence, mut params)| {
+            params["sequence"] = sequence;
+            params
+        })
+        .boxed();
+    mix(valid, invalid)
 }
 
 fn sequence_set_format(p: &Pools) -> BoxedStrategy<Value> {

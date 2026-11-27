@@ -5,7 +5,9 @@
 //! skipped by pointer without being visited (`imbl` diffs skip shared nodes), so the cost is
 //! proportional to what changed, plus one pass over the items of each changed track.
 
-use cutweave_model::{Collection, Item, MediaAsset, Project, Sequence, Track, TrackItems};
+use cutweave_model::{
+    BackgroundFill, Collection, Item, MediaAsset, Project, Sequence, Track, TrackItems,
+};
 use imbl::{OrdMap, ordmap::DiffItem};
 use serde::Serialize;
 use serde_json::Value;
@@ -84,11 +86,21 @@ pub(crate) fn diff_sequence(
     after: &Sequence,
     out: &mut Ops,
 ) -> Result<(), PatchError> {
-    let shallow = |s: &Sequence| Sequence {
-        tracks: OrdMap::new(),
-        ..s.clone()
+    let shallow = |s: &Sequence| {
+        let mut s = Sequence {
+            tracks: OrdMap::new(),
+            ..s.clone()
+        };
+        s.format.background_fill = None;
+        s
     };
     diff_shallow(path, &shallow(before), &shallow(after), &["tracks"], out)?;
+    diff_background_fill(
+        &path.join("format").join("background_fill"),
+        before.format.background_fill.as_ref(),
+        after.format.background_fill.as_ref(),
+        out,
+    )?;
     diff_keyed(
         &path.join("tracks"),
         &before.tracks,
@@ -96,6 +108,34 @@ pub(crate) fn diff_sequence(
         out,
         diff_track,
     )
+}
+
+/// A sequence's background fill (WP-2B.02) is left out of the document while there is none, and
+/// its kinds share no field: it appears and disappears whole, and one that changes kind is
+/// replaced whole (the halfway states are not valid values). The same kind is diffed field by
+/// field.
+fn diff_background_fill(
+    path: &DocPath,
+    before: Option<&BackgroundFill>,
+    after: Option<&BackgroundFill>,
+    out: &mut Ops,
+) -> Result<(), PatchError> {
+    match (before, after) {
+        (None, None) => Ok(()),
+        (None, Some(new)) => add(path, new, out),
+        (Some(old), None) => remove(path, old, out),
+        (Some(old), Some(new)) if std::mem::discriminant(old) == std::mem::discriminant(new) => {
+            diff_value(path, old, new, out)
+        }
+        (Some(old), Some(new)) => {
+            out.push(PatchOp::Replace {
+                path: path.clone(),
+                old: to_json(old, path)?,
+                value: to_json(new, path)?,
+            });
+            Ok(())
+        }
+    }
 }
 
 pub(crate) fn diff_track(

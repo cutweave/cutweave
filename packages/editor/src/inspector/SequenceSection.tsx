@@ -2,7 +2,16 @@
 // The Sequence section of the Inspector (WP-2H.03b), shown when nothing is selected: the canvas
 // size, frame rate and background of the active sequence, each a `sequence.set_format`. A new
 // canvas size reframes the video clips as chosen in "Reframe clips" (the engine's `reframe`).
-import type { FrameRate, ReframePolicy, SequenceFormat, SequenceId } from "@cutweave/protocol";
+// "Fill" is what shows behind the picture (`sequence.set_background`, WP-2B.02): the color, a
+// blurred copy of the picture with its Blur and Dim, or nothing. An image fill is listed only
+// while the sequence has one: choosing the image belongs to the sequence settings (WP-2B.03).
+import type {
+  BackgroundKind,
+  FrameRate,
+  ReframePolicy,
+  SequenceFormat,
+  SequenceId,
+} from "@cutweave/protocol";
 import { type JsonSchema, SchemaForm } from "@cutweave/ui";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +39,15 @@ const REFRAME_LABEL: Readonly<Record<ReframePolicy, TKey>> = {
   none: "inspector.sequence.reframes.none",
 };
 
+const FILL_LABEL: Readonly<Record<BackgroundKind, TKey>> = {
+  color: "inspector.sequence.fills.color",
+  blur: "inspector.sequence.fills.blur",
+  image: "inspector.sequence.fills.image",
+  transparent: "inspector.sequence.fills.transparent",
+};
+/** The Blur slider's range: up to a fifth of the canvas height (more only if already set). */
+const BLUR_MAX = 0.2;
+
 const rateKey = (r: FrameRate): string => `${r.num}/${r.den}`;
 
 /** `23.976`, `24`, `29.97`: how a person names the rate. */
@@ -37,7 +55,15 @@ export function rateLabel(r: FrameRate): string {
   return String(Math.round((r.num / r.den) * 1000) / 1000);
 }
 
-type Key = "width" | "height" | "frame_rate" | "background" | "reframe";
+type Key =
+  | "width"
+  | "height"
+  | "frame_rate"
+  | "background"
+  | "reframe"
+  | "fill"
+  | "blur_radius"
+  | "blur_dim";
 
 export function SequenceSection({
   sequence,
@@ -56,6 +82,11 @@ export function SequenceSection({
     const known = RATES.some((r) => rateKey(r) === rateKey(format.frame_rate));
     return known ? RATES : [...RATES, format.frame_rate];
   }, [format.frame_rate]);
+  const fill = format.background_fill ?? null;
+  const fillKind: BackgroundKind = fill?.kind ?? "color";
+  const blurRadius = fill?.kind === "blur" ? (fill.radius ?? 0) : 0;
+  const blurDim = fill?.kind === "blur" ? (fill.dim ?? 0) : 0;
+  const blurMax = blurRadius > BLUR_MAX ? 1 : BLUR_MAX;
   const schema = useMemo<JsonSchema>(
     () => ({
       type: "object",
@@ -89,9 +120,46 @@ export function SequenceSection({
           type: "string",
           "x-ui": { label: t("inspector.sequence.background"), widget: "color", order: 4 },
         },
+        fill: {
+          type: "string",
+          oneOf: (["color", "blur", "image", "transparent"] as const)
+            .filter((k) => k !== "image" || fillKind === "image")
+            .map((k) => ({ const: k, title: t(FILL_LABEL[k]) })),
+          "x-ui": { label: t("inspector.sequence.fill"), widget: "select", order: 5 },
+        },
+        ...(fillKind === "blur"
+          ? {
+              blur_radius: {
+                type: "number",
+                minimum: 0,
+                maximum: blurMax,
+                "x-ui": {
+                  label: t("inspector.sequence.blur"),
+                  widget: "slider",
+                  step: 0.005,
+                  unit: "%",
+                  scale: 100,
+                  order: 6,
+                },
+              },
+              blur_dim: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+                "x-ui": {
+                  label: t("inspector.sequence.dim"),
+                  widget: "slider",
+                  step: 0.01,
+                  unit: "%",
+                  scale: 100,
+                  order: 7,
+                },
+              },
+            }
+          : {}),
       },
     }),
-    [rates, t],
+    [rates, t, fillKind, blurMax],
   );
   const value = {
     width: format.width,
@@ -99,6 +167,9 @@ export function SequenceSection({
     reframe,
     frame_rate: rateKey(format.frame_rate),
     background: format.background,
+    fill: fillKind,
+    blur_radius: blurRadius,
+    blur_dim: blurDim,
     ...draft,
   };
   const onChange = useCallback(
@@ -111,6 +182,29 @@ export function SequenceSection({
       const settle = (): void => setDraft(({ [key]: _gone, ...rest }) => rest);
       if (key === "reframe") {
         setReframe(next as ReframePolicy);
+        return;
+      }
+      if (key === "fill") {
+        const kind = next as BackgroundKind;
+        if (kind === fillKind) return settle();
+        void editor
+          .setSequenceBackground(sequence, { kind }, t("inspector.sequence.fillName"))
+          .finally(settle);
+        return;
+      }
+      if (key === "blur_radius" || key === "blur_dim") {
+        const amount = Number(next);
+        const radius = key === "blur_radius";
+        if (!Number.isFinite(amount) || amount === (radius ? blurRadius : blurDim)) {
+          return settle();
+        }
+        void editor
+          .setSequenceBackground(
+            sequence,
+            radius ? { kind: "blur", radius: amount } : { kind: "blur", dim: amount },
+            t(radius ? "inspector.sequence.blurName" : "inspector.sequence.dimName"),
+          )
+          .finally(settle);
         return;
       }
       if (key === "width" || key === "height") {
@@ -141,7 +235,7 @@ export function SequenceSection({
           .finally(settle);
       }
     },
-    [editor, sequence, format, rates, reframe, t],
+    [editor, sequence, format, rates, reframe, t, fillKind, blurRadius, blurDim],
   );
   return (
     <Section id="sequence" label={t("inspector.sequence.title")}>

@@ -23,6 +23,14 @@
 //!    light).
 //! 5. **Output**: un-premultiply, clamp, encode, round half up.
 //!
+//! Before the layers, the **background fill** ([`crate::backdrop`], WP-2B.02): the canvas starts
+//! as the colour (transparent black for a transparent background); an image is drawn over it
+//! like a layer; a blur draws its layer's picture, covering, onto the small canvas, blurs it
+//! there (two Gaussian passes, then the dim) and stretches the result over the canvas with the
+//! bilinear rule of step 3. A frame with a blur quantises with the ordered dither. Only the
+//! plan ([`crate::backdrop::blur_plan`]), the synthetic layers and the dither matrix are shared
+//! with the GPU path.
+//!
 //! The GPU stores intermediates as `Rgba16Float`; the reference does not round them, which
 //! bounds agreement at about one 8-bit code, or about `1e-3` in linear light
 //! ([`render_linear`]).
@@ -35,12 +43,16 @@
     clippy::cast_sign_loss
 )]
 
-use crate::color::{InputColor, InputTransform, encode_output, merge_tags, srgb8_to_linear_premul};
+use crate::backdrop::{blur_plan, cover_layer, dither_threshold, gaussian_weight, image_layer};
+use crate::color::{
+    InputColor, InputTransform, encode_output, encode_output_dithered, merge_tags,
+    srgb8_to_linear_premul,
+};
 use crate::frame::{FrameError, FrameSource, PixelFormat, VideoFrame};
 use crate::geometry::{LayerGeometry, apply_affine, mip_levels_for, mip_size};
 use crate::graph::{Filter, GraphError, GraphOptions, Target};
 use crate::image::Image;
-use crate::scene::SceneDescription;
+use crate::scene::{BackgroundNode, BlendMode, Layer, SceneDescription};
 
 type Rgba = [f64; 4];
 
@@ -235,11 +247,214 @@ pub fn render(
         Target::Texture { .. } => crate::color::OutputTransfer::Srgb,
     };
     let canvas = render_linear(scene, (w, h), source, options)?;
+    let dither = dithers(scene, (w, h), source);
     let mut img = Image::filled(w, h, [0; 4]);
-    for (px, c) in img.data.as_chunks_mut::<4>().0.iter_mut().zip(&canvas) {
-        px.copy_from_slice(&encode_output(*c, transfer));
+    for (i, (px, c)) in img
+        .data
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(&canvas)
+        .enumerate()
+    {
+        px.copy_from_slice(&if dither {
+            let (x, y) = ((i % w as usize) as u32, (i / w as usize) as u32);
+            encode_output_dithered(*c, transfer, dither_threshold(x, y))
+        } else {
+            encode_output(*c, transfer)
+        });
     }
     Ok(img)
+}
+
+/// The frame of `layer` as the compositor shows it: its picture, the slate when the media is
+/// offline, nothing when it is unavailable.
+fn frame_of(layer: &Layer, source: &dyn FrameSource) -> Option<std::sync::Arc<VideoFrame>> {
+    match source.frame(&layer.request) {
+        Ok(frame) => Some(frame),
+        // The file is gone: the "media offline" slate, as on the GPU.
+        Err(FrameError::Offline(_)) => Some(crate::slate::frame()),
+        Err(_) => None,
+    }
+}
+
+/// Whether `layer` hides everything below it on an `out`-sized frame: opaque content, normal
+/// blend, full opacity, covering every pixel (the rule the graph culls by).
+fn hides_below(
+    layer: &Layer,
+    canvas: (u32, u32),
+    out: (u32, u32),
+    source: &dyn FrameSource,
+) -> bool {
+    if layer.blend != BlendMode::Normal || layer.opacity.is_nan() || layer.opacity < 1.0 {
+        return false;
+    }
+    let Some(frame) = frame_of(layer, source) else {
+        return false;
+    };
+    frame.format.is_opaque()
+        && LayerGeometry::new(layer, canvas, out, (frame.width, frame.height))
+            .is_some_and(|geo| geo.covers(out))
+}
+
+/// Whether the frame quantises with the ordered dither: it has a blurred background that is
+/// drawn (one under an opaque cover is not, and changes no pixel).
+fn dithers(scene: &SceneDescription, out: (u32, u32), source: &dyn FrameSource) -> bool {
+    let Some(BackgroundNode::Blur { layer, .. }) = scene.background_node else {
+        return false;
+    };
+    let canvas = (scene.width, scene.height);
+    scene
+        .layers
+        .get(layer)
+        .is_some_and(|l| frame_of(l, source).is_some())
+        && !scene
+            .layers
+            .iter()
+            .any(|l| hides_below(l, canvas, out, source))
+}
+
+/// Draws `layer` showing `frame` onto `canvas` (`out`-sized, row by row), a `scene`-sized
+/// frame scaled to it: steps 1 to 4 of the module docs.
+fn draw_layer(
+    canvas: &mut [Rgba],
+    out: (u32, u32),
+    scene: (u32, u32),
+    layer: &Layer,
+    frame: &VideoFrame,
+    options: &GraphOptions,
+) {
+    let (w, h) = out;
+    let Some(geo) = LayerGeometry::new(layer, scene, out, (frame.width, frame.height)) else {
+        return;
+    };
+    let height = layer.request.source_size.map_or(frame.height, |s| s.1);
+    let color = InputColor::resolve(
+        &merge_tags(&frame.color, &layer.request.color),
+        frame.format.is_yuv(),
+        height,
+    );
+    let it = InputTransform::new(&color, frame.format.bit_depth(), &options.tone_map);
+    let lod = geo.lod();
+    let mut levels = vec![decode(frame, &it)];
+    for _ in 1..mip_levels_for(lod, frame.width, frame.height) {
+        let next = levels[levels.len() - 1].downsample();
+        levels.push(next);
+    }
+    let opacity = layer.opacity.min(1.0);
+    for y in 0..h {
+        for x in 0..w {
+            let p = [f64::from(x) + 0.5, f64::from(y) + 0.5];
+            let cov = geo.coverage(p);
+            if cov <= 0.0 {
+                continue;
+            }
+            let t = apply_affine(&geo.to_texel, apply_affine(&geo.from_output, p));
+            let s = sample(&levels, t, lod, options.filter).map(|c| c * cov * opacity);
+            let d = &mut canvas[y as usize * w as usize + x as usize];
+            *d = layer.blend.composite(s, *d);
+        }
+    }
+}
+
+/// One Gaussian pass over `src` along x (`horizontal`) or y: weights `exp(−i² / 2σ²)` for `i`
+/// in `−taps..=taps`, normalised, edges clamped; then the colour times `1 − dim`.
+fn blur_pass(src: &Level, horizontal: bool, sigma: f64, taps: u32, dim: f64) -> Level {
+    let taps = i32::try_from(taps).unwrap_or(0);
+    let weights: Vec<f64> = (-taps..=taps)
+        .map(|i| {
+            if taps == 0 {
+                1.0
+            } else {
+                gaussian_weight(i, sigma)
+            }
+        })
+        .collect();
+    let total: f64 = weights.iter().sum();
+    let keep = 1.0 - dim;
+    let mut px = Vec::with_capacity(src.px.len());
+    for y in 0..i64::from(src.h) {
+        for x in 0..i64::from(src.w) {
+            let mut acc = [0.0; 4];
+            for (i, wgt) in (-taps..=taps).zip(&weights) {
+                let i = i64::from(i);
+                let s = if horizontal {
+                    src.at(x + i, y)
+                } else {
+                    src.at(x, y + i)
+                };
+                for c in 0..4 {
+                    acc[c] += s[c] * wgt;
+                }
+            }
+            px.push([
+                acc[0] / total * keep,
+                acc[1] / total * keep,
+                acc[2] / total * keep,
+                acc[3] / total,
+            ]);
+        }
+    }
+    Level {
+        w: src.w,
+        h: src.h,
+        px,
+    }
+}
+
+/// Draws the scene's background fill over `canvas` (already the colour).
+fn draw_fill(
+    canvas: &mut [Rgba],
+    bg: Rgba,
+    scene: &SceneDescription,
+    (w, h): (u32, u32),
+    source: &dyn FrameSource,
+    options: &GraphOptions,
+) {
+    let size = (scene.width, scene.height);
+    match &scene.background_node {
+        None | Some(BackgroundNode::Transparent) => {}
+        Some(BackgroundNode::Image { request, fit }) => {
+            let Ok(frame) = source.frame(request) else {
+                return;
+            };
+            let layer = image_layer(request, *fit, (frame.width, frame.height), size);
+            draw_layer(canvas, (w, h), size, &layer, &frame, options);
+        }
+        Some(BackgroundNode::Blur { layer, radius, dim }) => {
+            let Some(blurred) = scene.layers.get(*layer) else {
+                return;
+            };
+            let Some(frame) = frame_of(blurred, source) else {
+                return;
+            };
+            let plan = blur_plan(*radius, (w, h));
+            let cover = cover_layer(blurred, (frame.width, frame.height), size);
+            let mut small = vec![bg; plan.size.0 as usize * plan.size.1 as usize];
+            draw_layer(&mut small, plan.size, size, &cover, &frame, options);
+            let small = Level {
+                w: plan.size.0,
+                h: plan.size.1,
+                px: small,
+            };
+            let across = blur_pass(&small, true, plan.sigma[0], plan.taps[0], 0.0);
+            let blurred = blur_pass(&across, false, plan.sigma[1], plan.taps[1], *dim);
+            let scale = [
+                f64::from(plan.size.0) / f64::from(w),
+                f64::from(plan.size.1) / f64::from(h),
+            ];
+            for y in 0..h {
+                for x in 0..w {
+                    let t = [
+                        (f64::from(x) + 0.5) * scale[0],
+                        (f64::from(y) + 0.5) * scale[1],
+                    ];
+                    let d = &mut canvas[y as usize * w as usize + x as usize];
+                    *d = BlendMode::Normal.composite(blurred.bilinear(t), *d);
+                }
+            }
+        }
+    }
 }
 
 /// Renders `scene` at `size` on the CPU into the compositor's working space: premultiplied
@@ -258,53 +473,27 @@ pub fn render_linear(
             height: h,
         });
     }
-    let bg = srgb8_to_linear_premul(scene.background);
+    let bg = match scene.background_node {
+        Some(BackgroundNode::Transparent) => [0.0; 4],
+        _ => srgb8_to_linear_premul(scene.background),
+    };
     let mut canvas = vec![bg; w as usize * h as usize];
+    draw_fill(&mut canvas, bg, scene, (w, h), source, options);
     for layer in &scene.layers {
         if layer.opacity.is_nan() || layer.opacity <= 0.0 {
             continue;
         }
-        let frame = match source.frame(&layer.request) {
-            Ok(frame) => frame,
-            // The file is gone: the "media offline" slate, as on the GPU.
-            Err(FrameError::Offline(_)) => crate::slate::frame(),
-            Err(_) => continue,
-        };
-        let Some(geo) = LayerGeometry::new(
-            layer,
-            (scene.width, scene.height),
-            (w, h),
-            (frame.width, frame.height),
-        ) else {
+        let Some(frame) = frame_of(layer, source) else {
             continue;
         };
-        let height = layer.request.source_size.map_or(frame.height, |s| s.1);
-        let color = InputColor::resolve(
-            &merge_tags(&frame.color, &layer.request.color),
-            frame.format.is_yuv(),
-            height,
+        draw_layer(
+            &mut canvas,
+            (w, h),
+            (scene.width, scene.height),
+            layer,
+            &frame,
+            options,
         );
-        let it = InputTransform::new(&color, frame.format.bit_depth(), &options.tone_map);
-        let lod = geo.lod();
-        let mut levels = vec![decode(&frame, &it)];
-        for _ in 1..mip_levels_for(lod, frame.width, frame.height) {
-            let next = levels[levels.len() - 1].downsample();
-            levels.push(next);
-        }
-        let opacity = layer.opacity.min(1.0);
-        for y in 0..h {
-            for x in 0..w {
-                let p = [f64::from(x) + 0.5, f64::from(y) + 0.5];
-                let cov = geo.coverage(p);
-                if cov <= 0.0 {
-                    continue;
-                }
-                let t = apply_affine(&geo.to_texel, apply_affine(&geo.from_output, p));
-                let s = sample(&levels, t, lod, options.filter).map(|c| c * cov * opacity);
-                let d = &mut canvas[y as usize * w as usize + x as usize];
-                *d = layer.blend.composite(s, *d);
-            }
-        }
     }
     Ok(canvas)
 }
@@ -395,6 +584,7 @@ mod tests {
             height: h,
             frame_rate: FrameRate::FPS_24,
             background: Color::BLACK,
+            background_node: None,
             layers,
             audio: Vec::new(),
         }

@@ -1,0 +1,61 @@
+{
+  "description": "Background fill (WP-2B.02): a sequence's background as a blur of the picture (the defaults, then its own numbers and source), a still image (its fit changed without naming it again), nothing (transparent) and the plain color again; the failing cases (a radius out of range, a field of another kind, a video as the image, no image, an unknown sequence) change nothing.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Backgrounds" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.png" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0,
+        "duration": "2s"
+      }
+    },
+    {
+      "cmd": "sequence.set_format",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "width": 1080, "height": 1920 }
+    },
+    { "cmd": "sequence.set_background", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "blur" } },
+    {
+      "cmd": "sequence.set_background",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "blur", "radius": 0.1, "dim": 0.5, "source": "main_track", "color": "#102030" }
+    },
+    {
+      "cmd": "sequence.set_background",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "blur", "radius": 1.5 },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "sequence.set_background",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "transparent", "dim": 0.5 },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "sequence.set_background",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "image" },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "sequence.set_background",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "image", "media": { "$ref": "steps[1].output.media_ids[0]" } },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "sequence.set_background",
+      "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "image", "media": { "$ref": "steps[1].output.media_ids[1]" } }
+    },
+    { "cmd": "sequence.set_background", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "image", "fit": "contain" } },
+    { "cmd": "media.remove", "args": { "id": { "$ref": "steps[1].output.media_ids[1]" } }, "expect": { "error": "invalid" } },
+    { "cmd": "sequence.set_background", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "transparent" } },
+    { "cmd": "sequence.set_background", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "color", "color": "#336699" } },
+    {
+      "cmd": "sequence.set_background",
+      "args": { "sequence": "seq_0000000000000000000000000000beef", "kind": "blur" },
+      "expect": { "error": "not_found" }
+    },
+    { "cmd": "sequence.list" },
+    { "cmd": "project.info" }
+  ]
+}

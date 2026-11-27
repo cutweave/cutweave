@@ -9,7 +9,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 use crate::{
-    Custom, Duration, Extra, FrameRate, InOut, Item, ItemId, MarkerId, Markers, MediaKind,
+    Custom, Duration, Extra, FrameRate, InOut, Item, ItemId, MarkerId, Markers, MediaId, MediaKind,
     SampleRate, SequenceId, Time, TrackId,
 };
 
@@ -140,6 +140,10 @@ pub struct SequenceFormat {
     pub color_space: ColorSpace,
     /// Canvas color behind all tracks.
     pub background: Color,
+    /// What fills the canvas over that color, behind all tracks (WP-2B.02). Absent: the color
+    /// alone. Left out of the file while absent, so documents without one read as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_fill: Option<BackgroundFill>,
     /// Fields unknown to this version.
     #[serde(flatten)]
     #[schemars(skip)]
@@ -157,9 +161,119 @@ impl SequenceFormat {
             sample_rate,
             color_space: ColorSpace::Rec709,
             background: Color::BLACK,
+            background_fill: None,
             extra: Extra::new(),
         }
     }
+}
+
+/// The largest [`BackgroundFill::Blur`] radius: the whole canvas height.
+pub const MAX_BACKGROUND_BLUR_RADIUS: f64 = 1.0;
+
+/// What fills a sequence's canvas behind all tracks, over its `background` color (WP-2B.02).
+/// It is static: a background has no keyframes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BackgroundFill {
+    /// A blurred copy of a picture of the sequence, scaled to cover the canvas. Where no such
+    /// picture shows, the color does.
+    Blur {
+        /// Which picture is blurred.
+        #[serde(default)]
+        source: BlurSource,
+        /// The blur's standard deviation as a fraction of the canvas height, `0..=1`, so
+        /// preview and export blur alike at any size.
+        radius: f64,
+        /// How much of the blurred picture's light is taken away, `0..=1` (0: none, 1: black).
+        #[serde(default)]
+        dim: f64,
+    },
+    /// A still image of the project. An image that no longer exists draws nothing.
+    Image {
+        /// The image asset.
+        media: MediaId,
+        /// How the image is sized to the canvas.
+        #[serde(default)]
+        fit: BackgroundFit,
+    },
+    /// Nothing: the canvas starts fully transparent and the color is not drawn. Only exports
+    /// that keep alpha show it; the others see black.
+    Transparent,
+}
+
+impl BackgroundFill {
+    /// The image asset the fill shows, if it is an image.
+    #[must_use]
+    pub fn media(&self) -> Option<MediaId> {
+        match self {
+            BackgroundFill::Image { media, .. } => Some(*media),
+            BackgroundFill::Blur { .. } | BackgroundFill::Transparent => None,
+        }
+    }
+
+    /// What is wrong with the fill's numbers, if anything.
+    #[must_use]
+    pub fn problem(&self) -> Option<&'static str> {
+        let BackgroundFill::Blur { radius, dim, .. } = self else {
+            return None;
+        };
+        if !(0.0..=MAX_BACKGROUND_BLUR_RADIUS).contains(radius) {
+            return Some("the blur radius must be between 0 and 1 (a fraction of the height)");
+        }
+        if !(0.0..=1.0).contains(dim) {
+            return Some("the dim must be between 0 and 1");
+        }
+        None
+    }
+}
+
+/// The picture a [`BackgroundFill::Blur`] blurs.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum BlurSource {
+    /// The lowest picture showing at that time.
+    #[default]
+    Below,
+    /// The picture on the main track (the magnetic track; without one, the lowest video
+    /// track).
+    MainTrack,
+}
+
+/// How a [`BackgroundFill::Image`] is sized to the canvas.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundFit {
+    /// Fills the canvas, cropping what does not fit.
+    #[default]
+    Cover,
+    /// The whole image inside the canvas; the color shows around it.
+    Contain,
+    /// Stretched to the canvas, changing its shape.
+    Stretch,
 }
 
 /// 1920×1080 at 30 fps, 48 kHz (the `project.new` default, WP-1B.05).
