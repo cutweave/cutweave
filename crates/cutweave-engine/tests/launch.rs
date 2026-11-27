@@ -275,24 +275,34 @@ fn an_occupied_port_exits_12() {
     drop(ProjectStore::open(&folder).unwrap());
 }
 
+/// The wgpu backend of another platform: `WGPU_BACKEND` naming it leaves the engine no backend,
+/// hence no adapter at all, without loading a GPU driver.
+const NO_BACKEND_HERE: &str = if cfg!(target_os = "macos") {
+    "dx12"
+} else {
+    "metal"
+};
+
 /// WP-1I.05: a `Gui` engine whose GPU cannot start exits 11 with a JSON error line; a headless
 /// engine falls back to the software adapter (or the CPU) and serves.
 #[test]
 fn a_gui_engine_without_a_usable_gpu_exits_11_and_a_headless_one_falls_back() {
     let t = TempDir::new("gpu");
-    // One wgpu backend keeps the adapter search short. A search that outlasts the Gui engine's
-    // 4 s GPU wait (all backends, on a machine busy with other GPU work) would make it report
-    // ready and fall back to software, by design, instead of exiting 11.
+    // No usable GPU, decided without a driver (issue #224): with a real backend the adapter
+    // search loads its driver, which on a machine busy with other GPU work (a full test run)
+    // outlasted the Gui engine's 4 s GPU wait, so the engine reported ready and fell back to
+    // software, by design, instead of exiting 11. With no backend the search fails at once.
     let no_gpu = [
         ("CUTWEAVE_GPU", "no-adapter-is-called-this"),
         ("CUTWEAVE_AUDIO", "null"),
-        ("WGPU_BACKEND", "vulkan"),
+        ("WGPU_BACKEND", NO_BACKEND_HERE),
     ];
     let mut gui = Engine::spawn_with_env(t.path(), &["--port", "0", "--token-stdin"], &no_gpu);
     gui.handshake(UI);
     let line = gui.line();
+    // A ready line here would keep the engine running: say so now, not after `wait` gives up.
+    assert_eq!(line["event"], "error", "{line}");
     assert_eq!(gui.wait().code(), Some(11), "{line}");
-    assert_eq!(line["event"], "error");
     assert_eq!(line["code"], "gpu_init_failed");
     assert_eq!(line["exit_code"], 11);
     assert_eq!(files_under(&t.path().join("run")), Vec::<PathBuf>::new());

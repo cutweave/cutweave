@@ -310,6 +310,11 @@ impl MediaBackend for FfmpegBackend {
             ..(*self.caps).clone()
         }
     }
+
+    fn software_capabilities(&self) -> Capabilities {
+        // Listed when the backend was made: no hardware probe.
+        (*self.caps).clone()
+    }
 }
 
 #[cfg(test)]

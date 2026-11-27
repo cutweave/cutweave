@@ -143,13 +143,23 @@ fn open_errors(b: &dyn MediaBackend, path: &Path) -> [(&'static str, Option<Medi
 }
 
 /// Two calls agree; codecs are sorted by name without duplicates; every implementation list is
-/// sorted; every hardware entry names a known codec.
+/// sorted; every hardware entry names a known codec; the software capabilities are the same
+/// codecs without the hardware lists.
 pub fn capabilities_are_stable_and_sorted(b: &dyn MediaBackend) {
+    let software = b.software_capabilities();
     let caps = b.capabilities();
     assert_eq!(
         caps,
         b.capabilities(),
         "capabilities() changed between calls"
+    );
+    assert_eq!(
+        software.codecs, caps.codecs,
+        "software_capabilities() lists other codecs than capabilities()"
+    );
+    assert!(
+        software.hw_decode.is_empty() && software.hw_encode.is_empty(),
+        "software_capabilities() lists hardware: {software:?}"
     );
     for pair in caps.codecs.windows(2) {
         assert!(

@@ -527,8 +527,23 @@ pub trait MediaBackend: Send + Sync {
         })
     }
 
-    /// What this backend can decode and encode on this machine. Cheap: backends compute it once.
+    /// What this backend can decode and encode on this machine. Backends compute it once per
+    /// process, but the first call may probe the hardware encoders and decoders (FFmpeg:
+    /// seconds, tens of seconds on a busy machine); see
+    /// [`software_capabilities`](Self::software_capabilities).
     fn capabilities(&self) -> Capabilities;
+
+    /// The software codecs of [`capabilities`](Self::capabilities), with its hardware lists
+    /// (`hw_decode`, `hw_encode`) left empty: never probes the hardware, so it is cheap from
+    /// the first call (issue #224: what an engine's start needs, such as the proxy codec).
+    /// The default reads `capabilities()` and drops the hardware lists.
+    fn software_capabilities(&self) -> Capabilities {
+        Capabilities {
+            hw_decode: Vec::new(),
+            hw_encode: Vec::new(),
+            ..self.capabilities()
+        }
+    }
 }
 
 /// A video decoder on the main video stream of a file. Frames come back in presentation order
