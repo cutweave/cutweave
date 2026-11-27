@@ -3677,7 +3677,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Lists the media of the project, filtered (also by bin folder) and ordered, one page at a\ntime. Each asset carries the name the bin shows and its folder.",
+        "description": "Lists the media of the project, filtered (also by bin folder, tags, rating and collection)\nand ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags\nand rating.",
         "properties": {
           "cursor": {
             "default": null,
@@ -3693,8 +3693,15 @@
             "default": null,
             "description": "Keep only matching media.",
             "properties": {
+              "collection": {
+                "description": "On this collection.",
+                "pattern": "^col_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "folder": {
-                "default": null,
                 "description": "Only this bin folder.",
                 "pattern": "^fld_[0-9a-f]{32}$",
                 "type": [
@@ -3703,7 +3710,6 @@
                 ]
               },
               "kinds": {
-                "default": null,
                 "description": "Only these kinds.",
                 "items": {
                   "description": "What a [`MediaAsset`] is.",
@@ -3760,7 +3766,6 @@
                     "type": "null"
                   }
                 ],
-                "default": null,
                 "description": "Longest length (flicks), inclusive."
               },
               "min_duration": {
@@ -3783,11 +3788,19 @@
                     "type": "null"
                   }
                 ],
-                "default": null,
                 "description": "Shortest length (flicks), inclusive; stills never match a bound."
               },
+              "min_rating": {
+                "description": "Rated at least this (1-5).",
+                "format": "uint8",
+                "maximum": 5,
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "problems": {
-                "default": null,
                 "description": "`true`: only files nothing can be read from (no streams).",
                 "type": [
                   "boolean",
@@ -3795,23 +3808,30 @@
                 ]
               },
               "recursive": {
-                "default": null,
                 "description": "With subfolders (default: true without folder).",
                 "type": [
                   "boolean",
                   "null"
                 ]
               },
+              "tags": {
+                "description": "Has all these tags.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
               "text": {
-                "default": null,
-                "description": "Terms that must all occur in the name, ignoring case and accents.",
+                "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
                 "type": [
                   "string",
                   "null"
                 ]
               },
               "used": {
-                "default": null,
                 "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
                 "type": [
                   "boolean",
@@ -3821,6 +3841,24 @@
             },
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "include": {
+            "default": null,
+            "description": "Extra fields per asset: `note`.",
+            "items": {
+              "description": "What `media.list` adds to each asset on request.",
+              "oneOf": [
+                {
+                  "const": "note",
+                  "description": "The asset's note.",
+                  "type": "string"
+                }
+              ]
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -3956,12 +3994,36 @@
                   "description": "The name the bin shows: the display name, else the file name.",
                   "type": "string"
                 },
+                "note": {
+                  "description": "Its note; only with `include: [\"note\"]`, and left out otherwise.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "path": {
                   "description": "Absolute path when it was last found (file kinds).",
                   "type": [
                     "string",
                     "null"
                   ]
+                },
+                "rating": {
+                  "description": "Stars, 1 to 5; absent: unrated.",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "tags": {
+                  "description": "Its tags, sorted ignoring case and accents.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 }
               },
               "required": [
@@ -3972,7 +4034,9 @@
                 "path",
                 "duration",
                 "has_video",
-                "has_audio"
+                "has_audio",
+                "tags",
+                "rating"
               ],
               "type": "object"
             },
@@ -4005,6 +4069,218 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "List the project's media (filter, sort, paged; default by id)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the project's collections of media: each one's ID, name, kind (manual or smart), the\nfilter of a smart one and how many assets are on it. List the members with `media.list` and\n`filter.collection`.",
+        "title": "MediaListCollections",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "media_list_collections",
+      "name": "media.list_collections",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.list_collections`.",
+        "properties": {
+          "collections": {
+            "description": "Every collection, by name ignoring case.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One collection of media.",
+              "properties": {
+                "filter": {
+                  "additionalProperties": false,
+                  "description": "The filter of a smart collection; absent for a manual one.",
+                  "properties": {
+                    "collection": {
+                      "description": "On this collection.",
+                      "pattern": "^col_[0-9a-f]{32}$",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "folder": {
+                      "description": "Only this bin folder.",
+                      "pattern": "^fld_[0-9a-f]{32}$",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "kinds": {
+                      "description": "Only these kinds.",
+                      "items": {
+                        "description": "What a [`MediaAsset`] is.",
+                        "oneOf": [
+                          {
+                            "const": "video",
+                            "description": "A video file (may also carry audio).",
+                            "type": "string"
+                          },
+                          {
+                            "const": "audio",
+                            "description": "An audio-only file.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "image",
+                            "description": "A still image (no duration).",
+                            "type": "string"
+                          },
+                          {
+                            "const": "image_sequence",
+                            "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sequence_ref",
+                            "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "max_duration": {
+                      "description": "Longest length (flicks), inclusive.",
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "min_duration": {
+                      "description": "Shortest length (flicks), inclusive; stills never match a bound.",
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "min_rating": {
+                      "description": "Rated at least this (1-5).",
+                      "format": "uint8",
+                      "maximum": 5,
+                      "minimum": 1,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "problems": {
+                      "description": "`true`: only files nothing can be read from (no streams).",
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "recursive": {
+                      "description": "With subfolders (default: true without folder).",
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "tags": {
+                      "description": "Has all these tags.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "text": {
+                      "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "used": {
+                      "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "description": "The collection.",
+                  "pattern": "^col_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "Manual or smart.",
+                  "oneOf": [
+                    {
+                      "const": "manual",
+                      "description": "Stored members.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "smart",
+                      "description": "A stored filter; the members are computed.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "media_count": {
+                  "description": "How many assets are on it now (a smart collection's filter is run; members that no\nlonger exist are not counted).",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "name": {
+                  "description": "Its name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "kind",
+                "filter",
+                "media_count"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collections"
+        ],
+        "title": "MediaListCollectionsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the project's media collections with kind and member count",
       "undoable": false,
       "view": false
     },
@@ -4113,6 +4389,66 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "List the media bin's folder tree with paths and counts",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists every tag in the project with the number of assets that carry it. Tags that differ\nonly in case or accents count as one.",
+        "title": "MediaListTags",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "media_list_tags",
+      "name": "media.list_tags",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.list_tags`.",
+        "properties": {
+          "tags": {
+            "description": "Every tag some asset has, sorted ignoring case and accents.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One tag of the project.",
+              "properties": {
+                "count": {
+                  "description": "How many assets have it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "tag": {
+                  "description": "The tag, in the spelling of the first asset (by ID) that has it.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tag",
+                "count"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tags"
+        ],
+        "title": "MediaListTagsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the project's media tags with how many assets have each",
       "undoable": false,
       "view": false
     },

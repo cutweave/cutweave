@@ -1115,6 +1115,91 @@ export type CollectMode =
  */
 "copy_external_only";
 
+/**
+ *  A collection of media (ADR-0036): a named list an asset can be on without leaving its
+ *  folder.
+ */
+export type Collection = {
+	/**  The collection ID (also its key in `Project::collections`). */
+	id: CollectionId,
+	/**
+	 *  The name shown in the bin: 1 to 255 characters without control characters, unique
+	 *  among collections ignoring case.
+	 */
+	name: string,
+	/**  Manual (stored members) or smart (a stored filter). */
+	kind: CollectionKind,
+	/**  Plugin data (arch §4.3). */
+	custom: { [key in string]: JsonValue },
+} & { [key in string]: unknown };
+
+/**  Result of `media.delete_collection`. */
+export type CollectionDeleted = {
+	/**  The deleted collection. */
+	collection_id: CollectionId,
+};
+
+/**  Result of `media.set_collection_filter`. */
+export type CollectionFilterSet = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  How many assets pass the new filter now. */
+	members: number,
+};
+
+/**
+ *  The ID of a collection of media (ADR-0036): `col_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type CollectionId = string & { readonly __brand: "CollectionId" };
+
+/**  What a collection holds (ADR-0036). */
+export type CollectionKind = 
+/**  A list of assets, kept in the order they were added. */
+{ type: "manual"; 
+/**
+ *  The members, without repeats. One that names no asset is skipped by queries and
+ *  dropped by the next edit of the collection.
+ */
+media?: MediaId[] } | 
+/**  A saved search: the assets that pass the filter, computed when asked. */
+{ type: "smart"; 
+/**  The filter. It may not name a collection. */
+filter: MediaFilter };
+
+/**  Result of `media.create_collection` and `media.rename_collection`. */
+export type CollectionNamed = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  Its name (trimmed). */
+	name: string,
+};
+
+/**  One collection of media. */
+export type CollectionSummary = {
+	/**  The collection. */
+	id: CollectionId,
+	/**  Its name. */
+	name: string,
+	/**  Manual or smart. */
+	kind: CollectionType,
+	/**  The filter of a smart collection; absent for a manual one. */
+	filter: MediaFilter | null,
+	/**
+	 *  How many assets are on it now (a smart collection's filter is run; members that no
+	 *  longer exist are not counted).
+	 */
+	media_count: number,
+};
+
+/**  Whether a collection stores its members or a filter. */
+export type CollectionType = 
+/**  Stored members. */
+"manual" | 
+/**  A stored filter; the members are computed. */
+"smart";
+
 /**  What to do when the output file exists. */
 export type Collision = 
 /**  Pick a free name (`name (1).mp4`). */
@@ -1493,7 +1578,9 @@ export type EntityKind =
 /**  A timeline or item marker (`mrk_`). */
 "marker" | 
 /**  A folder of the media bin (`fld_`, ADR-0020). */
-"folder";
+"folder" | 
+/**  A collection of media (`col_`, ADR-0036). */
+"collection";
 
 /**  Why a transaction is in the history. */
 export type EntryCause = 
@@ -2652,6 +2739,24 @@ first: FolderId;
 second: FolderId; 
 /**  The name of `second`. */
 name: string } | 
+/**
+ *  A collection that breaks ADR-0036: a bad name, too many members or a repeated one, a
+ *  smart filter that cannot be used or that names a collection, or more collections than
+ *  allowed. (A member that names no asset is allowed.)
+ */
+{ invariant: "invalid_collection"; 
+/**  The collection. */
+collection: CollectionId; 
+/**  What is wrong. */
+reason: string } | 
+/**  Two collections whose names are equal ignoring case (ADR-0036). */
+{ invariant: "duplicate_collection_name"; 
+/**  The collection with the lower ID. */
+first: CollectionId; 
+/**  Another collection with the same name. */
+second: CollectionId; 
+/**  The name of `second`. */
+name: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
 { invariant: "custom_namespace"; 
 /**  The custom map. */
@@ -3641,6 +3746,41 @@ export type MarkerKind =
 export type MatrixCoefficients = string;
 
 /**
+ *  Adds tags to media assets. A tag is 1 to 64 characters without commas or control characters
+ *  (trimmed); two tags are the same when they are equal ignoring case and accents, and an
+ *  asset that already has a tag keeps its spelling. An asset holds at most 64 tags. Adding a
+ *  tag an asset already has changes nothing, so the call can be repeated.
+ */
+export type MediaAddTags = {
+	/**  The assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  The tags to add (1..=16). */
+	tags: string[],
+};
+
+/**
+ *  Adds assets to the end of a manual collection, in the order given. An asset already on it
+ *  stays where it is, so the call can be repeated. A collection holds at most 10,000 members.
+ *  Fails with `Invalid` for a smart collection, whose members come from its filter.
+ */
+export type MediaAddToCollection = {
+	/**  The collection (manual). */
+	collection: CollectionId,
+	/**  The assets to add (at least one, no repeats). */
+	media: MediaId[],
+};
+
+/**  Result of `media.add_to_collection`. */
+export type MediaAddedToCollection = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  The assets that joined it, in order (those already on it are left out). */
+	added: MediaId[],
+	/**  How many members it has now. */
+	members: number,
+};
+
+/**
  *  `media.analysis_failed`: a background analysis stage failed on an asset. The asset stays
  *  usable; what the stage produces (thumbnails, waveform, …) may be missing.
  */
@@ -3689,6 +3829,22 @@ export type MediaAsset = {
 	 *  `auto` is left out of the file, so documents written before the field read the same.
 	 */
 	proxy_mode?: ProxyMode,
+	/**
+	 *  Tags (ADR-0036): each 1 to 64 characters without commas or control characters, at most
+	 *  64, sorted ignoring case and accents, without repeats. Left out of the file while
+	 *  empty.
+	 */
+	tags?: string[],
+	/**
+	 *  Rating in whole stars, 1 to 5 (ADR-0036); absent: unrated. Left out of the file while
+	 *  absent.
+	 */
+	rating?: number | null,
+	/**
+	 *  A note in plain text, at most 2,000 characters (ADR-0036). Left out of the file while
+	 *  absent.
+	 */
+	note?: string | null,
 	/**  Probe results. */
 	probe: ProbeInfo,
 	/**  Plugin data (arch §4.3). */
@@ -3763,6 +3919,23 @@ export type MediaClearCacheOutput = {
 };
 
 /**
+ *  Creates a collection of media: a named list an asset can be on without leaving its folder.
+ *  `kind` is `{"type": "manual", "media": [...]}` (the members, in order; may be empty or left
+ *  out) or `{"type": "smart", "filter": {...}}` (a saved `media.list` filter whose matches are
+ *  the members, always current; it cannot name a collection). The name must be new, ignoring
+ *  case. A project holds at most 1,000 collections and a manual one at most 10,000 members.
+ */
+export type MediaCreateCollection = {
+	/**
+	 *  Its name: 1 to 255 characters without control characters (trimmed), unique ignoring
+	 *  case.
+	 */
+	name: string,
+	/**  Manual (members) or smart (a filter). */
+	kind: CollectionKind,
+};
+
+/**
  *  Creates a folder in the media bin, at the top level or inside `parent` (at most 32 levels
  *  deep). Without a name it is "New folder" (or "New folder 2", … when taken). A name that a
  *  sibling already has, ignoring case, fails with `Invalid` unless `on_conflict` is `rename`.
@@ -3780,11 +3953,20 @@ export type MediaCreateFolder = {
 };
 
 /**
+ *  Deletes a collection. Its assets stay in the project, in their folders and on their
+ *  timelines; only the list goes.
+ */
+export type MediaDeleteCollection = {
+	/**  The collection. */
+	collection: CollectionId,
+};
+
+/**
  *  Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one
  *  level (a subfolder whose name the parent already has gets the next free name);
  *  `contents: remove` also removes its subfolders and every asset inside that no timeline
- *  uses, and moves the used assets to the deleted folder's parent. Timelines and files on disk
- *  never change; one undo restores everything.
+ *  uses (taking them off every manual collection), and moves the used assets to the deleted
+ *  folder's parent. Timelines and files on disk never change; one undo restores everything.
  */
 export type MediaDeleteFolder = {
 	/**  The folder. */
@@ -3803,9 +3985,12 @@ export type MediaDeleteProxy = {
 	media: MediaId[],
 };
 
-/**  Which media to list; every part that is absent or empty lets everything through. */
+/**
+ *  Which media to list; every part that is absent or empty lets everything through. The filter
+ *  of `media.list`, and what a smart collection stores (ADR-0036).
+ */
 export type MediaFilter = {
-	/**  Terms that must all occur in the name, ignoring case and accents. */
+	/**  Terms that must all occur in the name, tags or note, ignoring case and accents. */
 	text?: string | null,
 	/**  Only these kinds. */
 	kinds?: MediaKind[] | null,
@@ -3821,6 +4006,12 @@ export type MediaFilter = {
 	folder?: FolderId | null,
 	/**  With subfolders (default: true without folder). */
 	recursive?: boolean | null,
+	/**  Has all these tags. */
+	tags?: string[] | null,
+	/**  Rated at least this (1-5). */
+	min_rating?: number | null,
+	/**  On this collection. */
+	collection?: CollectionId | null,
 };
 
 /**
@@ -4120,6 +4311,11 @@ export type MediaImportSequenceOutput = {
 	proxy: ImportProxy,
 };
 
+/**  What `media.list` adds to each asset on request. */
+export type MediaInclude = 
+/**  The asset's note. */
+"note";
+
 /**  `media.indexed`: the asset's frame index is ready. */
 export type MediaIndexed = {
 	/**  The asset. */
@@ -4143,8 +4339,9 @@ export type MediaKind =
 "sequence_ref";
 
 /**
- *  Lists the media of the project, filtered (also by bin folder) and ordered, one page at a
- *  time. Each asset carries the name the bin shows and its folder.
+ *  Lists the media of the project, filtered (also by bin folder, tags, rating and collection)
+ *  and ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags
+ *  and rating.
  */
 export type MediaList = {
 	/**  Page size, `1..=500` (default 50). */
@@ -4155,6 +4352,21 @@ export type MediaList = {
 	filter?: MediaFilter | null,
 	/**  Order. */
 	sort?: MediaSort | null,
+	/**  Extra fields per asset: `note`. */
+	include?: MediaInclude[] | null,
+};
+
+/**
+ *  Lists the project's collections of media: each one's ID, name, kind (manual or smart), the
+ *  filter of a smart one and how many assets are on it. List the members with `media.list` and
+ *  `filter.collection`.
+ */
+export type MediaListCollections = Record<string, never>;
+
+/**  Result of `media.list_collections`. */
+export type MediaListCollectionsOutput = {
+	/**  Every collection, by name ignoring case. */
+	collections: CollectionSummary[],
 };
 
 /**
@@ -4186,6 +4398,18 @@ export type MediaListOutput = {
 	total: number,
 	/**  Number of assets that pass `filter` (all of them without one). */
 	matched: number,
+};
+
+/**
+ *  Lists every tag in the project with the number of assets that carry it. Tags that differ
+ *  only in case or accents count as one.
+ */
+export type MediaListTags = Record<string, never>;
+
+/**  Result of `media.list_tags`. */
+export type MediaListTagsOutput = {
+	/**  Every tag some asset has, sorted ignoring case and accents. */
+	tags: TagCount[],
 };
 
 /**  Result of `media.set_location`. */
@@ -4222,6 +4446,14 @@ export type MediaMoved = {
 	folders: FolderId[],
 	/**  Folders renamed because their name was taken (`on_conflict: rename`). */
 	renamed: FolderRenamed[],
+};
+
+/**  Result of `media.set_note`. */
+export type MediaNoteSet = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  Whether it has a note now. */
+	has_note: boolean,
 };
 
 /**
@@ -4337,18 +4569,52 @@ export type MediaRelinkFolderOutput = {
 };
 
 /**
- *  Removes a media asset from the project (the file on disk is untouched). Fails with
- *  `Invalid` while any clip uses it; delete those clips first.
+ *  Removes a media asset from the project (the file on disk is untouched) and takes it off
+ *  every manual collection. Fails with `Invalid` while any clip uses it; delete those clips
+ *  first.
  */
 export type MediaRemove = {
 	/**  The asset to remove. */
 	id: MediaId,
 };
 
+/**
+ *  Takes assets off a manual collection; the assets themselves stay in the project. An asset
+ *  that is not on it is ignored, so the call can be repeated. Fails with `Invalid` for a smart
+ *  collection, whose members come from its filter.
+ */
+export type MediaRemoveFromCollection = {
+	/**  The collection (manual). */
+	collection: CollectionId,
+	/**  The assets to take off (at least one, no repeats). */
+	media: MediaId[],
+};
+
 /**  Result of `media.remove`. */
 export type MediaRemoveOutput = {
 	/**  The removed asset. */
 	media_id: MediaId,
+};
+
+/**
+ *  Removes tags from media assets, matching them ignoring case and accents. Removing a tag an
+ *  asset does not have changes nothing, so the call can be repeated.
+ */
+export type MediaRemoveTags = {
+	/**  The assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  The tags to remove (1..=16). */
+	tags: string[],
+};
+
+/**  Result of `media.remove_from_collection`. */
+export type MediaRemovedFromCollection = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  The assets that left it (those that were not on it are left out). */
+	removed: MediaId[],
+	/**  How many members it has now. */
+	members: number,
 };
 
 /**
@@ -4366,6 +4632,17 @@ export type MediaRename = {
 };
 
 /**
+ *  Renames a collection. Fails with `Invalid` when another collection has the name, ignoring
+ *  case (changing only the case of its own name is fine).
+ */
+export type MediaRenameCollection = {
+	/**  The collection. */
+	collection: CollectionId,
+	/**  The new name: 1 to 255 characters without control characters (trimmed). */
+	name: string,
+};
+
+/**
  *  Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the
  *  name, ignoring case (changing only the case of the folder's own name is fine).
  */
@@ -4374,6 +4651,19 @@ export type MediaRenameFolder = {
 	folder: FolderId,
 	/**  The new name: 1 to 255 characters, no `/` or control characters (trimmed). */
 	name: string,
+};
+
+/**
+ *  Renames a tag on every asset that has it, as one undo step. `from` is matched ignoring case
+ *  and accents; afterwards each of those assets carries `to` exactly as given (an asset that
+ *  had both keeps one). Renaming to another spelling of the same tag (`interview` to
+ *  `Interview`) respells it. When no asset has `from`, nothing changes.
+ */
+export type MediaRenameTag = {
+	/**  The tag to rename. */
+	from: string,
+	/**  Its new name: 1 to 64 characters without commas or control characters (trimmed). */
+	to: string,
 };
 
 /**  Result of `media.rename`. */
@@ -4399,6 +4689,17 @@ export type MediaSetCacheConfig = {
 	 *  1 GiB and a quarter of the machine's RAM). Left out: unchanged.
 	 */
 	frame_cache_bytes?: number | null,
+};
+
+/**
+ *  Replaces the filter of a smart collection (the same filter `media.list` takes; it cannot
+ *  name a collection). Fails with `Invalid` for a manual collection.
+ */
+export type MediaSetCollectionFilter = {
+	/**  The collection (smart). */
+	collection: CollectionId,
+	/**  The new filter. */
+	filter: MediaFilter,
 };
 
 /**
@@ -4434,6 +4735,18 @@ export type MediaSetLocation = {
 	content_hash?: string | null,
 	/**  What probing the file found, when its content differs from the asset's. */
 	probe?: ProbeInfo | null,
+};
+
+/**
+ *  Sets the note of a media asset: plain text of at most 2,000 characters (line breaks and
+ *  tabs allowed, other control characters not; space around it is trimmed). Without `note`, or
+ *  with a blank one, the note is removed.
+ */
+export type MediaSetNote = {
+	/**  The asset. */
+	media: MediaId,
+	/**  The note; absent, null or blank: no note. */
+	note?: string | null,
 };
 
 /**
@@ -4474,6 +4787,14 @@ export type MediaSetProxyMode = {
 export type MediaSetProxyPolicy = {
 	/**  `off`, `auto` or `all`. */
 	policy: ProxyPolicy,
+};
+
+/**  Rates media assets from 1 to 5 stars, or clears their rating without `rating`. */
+export type MediaSetRating = {
+	/**  The assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  Whole stars, 1 to 5; absent or null: unrated. */
+	rating?: number | null,
 };
 
 /**  Result of `media.import_images_as_slideshow`. */
@@ -4549,6 +4870,18 @@ export type MediaSummary = {
 	has_video: boolean,
 	/**  Whether it has sound. */
 	has_audio: boolean,
+	/**  Its tags, sorted ignoring case and accents. */
+	tags: string[],
+	/**  Stars, 1 to 5; absent: unrated. */
+	rating: number | null,
+	/**  Its note; only with `include: ["note"]`, and left out otherwise. */
+	note?: string | null,
+};
+
+/**  Result of the tag and rating commands. */
+export type MediaTagged = {
+	/**  The assets that changed (those that already were as asked are left out). */
+	changed: MediaId[],
 };
 
 /**  Result of `media.register_tree`. */
@@ -4876,6 +5209,11 @@ export type Project = {
 	media: { [key in MediaId]: MediaAsset },
 	/**  The folder tree of the media bin, keyed by ID (ADR-0020). */
 	folders: { [key in FolderId]: MediaFolder },
+	/**
+	 *  Collections of media, keyed by ID (ADR-0036). Left out of the file while empty, so
+	 *  documents written before the field read the same.
+	 */
+	collections?: { [key in CollectionId]: Collection },
 	/**  Sequences, keyed by ID. */
 	sequences: { [key in SequenceId]: Sequence },
 	/**  Plugin data (arch §4.3). */
@@ -5705,6 +6043,8 @@ export type ResourceKind =
 "marker" | 
 /**  A folder of the media bin (`fld_…`, ADR-0020). */
 "folder" | 
+/**  A collection of media (`col_…`, ADR-0036). */
+"collection" | 
 /**  A registry entry: an unknown command or query name. */
 "command" | 
 /**  An open transaction (WP-1B.04). */
@@ -6203,6 +6543,14 @@ export type StreamKind =
 "data" | 
 /**  Attached files (fonts, cover art). */
 "attachment";
+
+/**  One tag of the project. */
+export type TagCount = {
+	/**  The tag, in the spelling of the first asset (by ID) that has it. */
+	tag: string,
+	/**  How many assets have it. */
+	count: number,
+};
 
 /**
  *  A position on a timeline or in a source, in flicks (1/705,600,000 s).

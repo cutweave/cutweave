@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (148 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (161 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -76,10 +76,14 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | keyframe | `keyframe.paste` | Paste copied keys onto an item at a time | command, undoable, idempotent | catalog |
 | keyframe | `keyframe.set` | Add or replace keys on one property of an item | command, undoable, idempotent | core |
 | keyframe | `keyframe.set_interp` | Set the easing of the segments starting at keys | command, undoable, idempotent | catalog |
+| media | `media.add_tags` | Add tags to media assets (idempotent) | command, undoable, idempotent | catalog |
+| media | `media.add_to_collection` | Add media assets to a manual collection (idempotent) | command, undoable, idempotent | catalog |
 | media | `media.cache_status` | Show the media caches: folder, usage and limits, hardware decoding, frame memory | engine, read-only, idempotent | catalog |
 | media | `media.capabilities` | List the codecs and hardware encoders/decoders the media backend supports | engine, read-only, idempotent | catalog |
 | media | `media.clear_cache` | Delete everything in the named media caches (they rebuild on demand) | engine, destructive, idempotent, ui-only | catalog |
+| media | `media.create_collection` | Create a manual or smart (saved filter) collection of media | command, undoable | catalog |
 | media | `media.create_folder` | Create a folder in the media bin (top level or inside another folder) | command, undoable | catalog |
+| media | `media.delete_collection` | Delete a collection of media (the assets stay) | command, undoable, destructive | catalog |
 | media | `media.delete_folder` | Delete a media bin folder: lift its contents one level, or remove unused media in it | command, undoable, destructive | catalog |
 | media | `media.delete_proxy` | Remove the proxies of video assets (the preview uses the originals again) | engine, destructive, idempotent | catalog |
 | media | `media.find_missing` | List the media whose file is missing (or, with verify, changed) on this computer | engine, read-only, idempotent | catalog |
@@ -89,7 +93,9 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.import_images_as_slideshow` | Import pictures as stills and place them one after the other on a track | engine | catalog |
 | media | `media.import_sequence` | Import a numbered run of pictures as one image sequence that plays like video | engine, idempotent | catalog |
 | media | `media.list` | List the project's media (filter, sort, paged; default by id) | query | core |
+| media | `media.list_collections` | List the project's media collections with kind and member count | query | catalog |
 | media | `media.list_folders` | List the media bin's folder tree with paths and counts | query | catalog |
+| media | `media.list_tags` | List the project's media tags with how many assets have each | query | catalog |
 | media | `media.move` | Move media assets and folders into a folder of the bin, or to its top level | command, undoable, idempotent | catalog |
 | media | `media.proxy_status` | Show the proxies of video assets: status, progress, file, size, policy | engine, read-only, idempotent | catalog |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
@@ -97,14 +103,21 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.relink` | Point a media asset at a file (the moved original, or a replacement) | engine, idempotent | catalog |
 | media | `media.relink_folder` | Find the files of missing media in a folder (by content, then name) and relink them | engine, idempotent | catalog |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
+| media | `media.remove_from_collection` | Take media assets off a manual collection (the assets stay; idempotent) | command, undoable, idempotent | catalog |
+| media | `media.remove_tags` | Remove tags from media assets (idempotent) | command, undoable, idempotent | catalog |
 | media | `media.rename` | Set the name the media bin shows for an asset, or go back to the file name | command, undoable, idempotent | catalog |
+| media | `media.rename_collection` | Rename a collection of media | command, undoable, idempotent | catalog |
 | media | `media.rename_folder` | Rename a folder of the media bin | command, undoable, idempotent | catalog |
+| media | `media.rename_tag` | Rename a tag on every media asset that has it | command, undoable, idempotent | catalog |
 | media | `media.set_cache_config` | Set the cache limits and the memory for decoded frames | engine, destructive, idempotent, ui-only | catalog |
+| media | `media.set_collection_filter` | Replace the filter of a smart collection of media | command, undoable, idempotent | catalog |
 | media | `media.set_decode_policy` | Choose hardware or software decoding for the preview | engine, idempotent, ui-only | catalog |
 | media | `media.set_location` | Record where a media file is now (used by relink) | command, undoable, idempotent | hidden |
+| media | `media.set_note` | Set or clear the note of a media asset | command, undoable, idempotent | catalog |
 | media | `media.set_proxy_config` | Set the proxy size and how many proxy jobs run at once | engine, idempotent, ui-only | catalog |
 | media | `media.set_proxy_mode` | Set whether video assets get a proxy whatever the policy: auto, force or off | command, undoable, idempotent | catalog |
 | media | `media.set_proxy_policy` | Choose which of the project's video gets proxies automatically: off, auto or all | command, undoable, idempotent | catalog |
+| media | `media.set_rating` | Rate media assets 1 to 5 stars, or clear the rating | command, undoable, idempotent | catalog |
 | project | `project.archive` | Bundle the project, its media and a checked file list into a folder or a zip (a job) | engine, idempotent | catalog |
 | project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, destructive, idempotent | catalog |
 | project | `project.collect` | Copy the project and all its media into one folder that opens anywhere (a job) | engine, idempotent | catalog |

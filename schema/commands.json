@@ -18260,6 +18260,149 @@
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Adds tags to media assets. A tag is 1 to 64 characters without commas or control characters\n(trimmed); two tags are the same when they are equal ignoring case and accents, and an\nasset that already has a tag keeps its spelling. An asset holds at most 64 tags. Adding a\ntag an asset already has changes nothing, so the call can be repeated.",
+        "properties": {
+          "media": {
+            "description": "The assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "description": "The tags to add (1..=16).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media",
+          "tags"
+        ],
+        "title": "MediaAddTags",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_add_tags",
+      "name": "media.add_tags",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add tags to media assets (idempotent)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Adds assets to the end of a manual collection, in the order given. An asset already on it\nstays where it is, so the call can be repeated. A collection holds at most 10,000 members.\nFails with `Invalid` for a smart collection, whose members come from its filter.",
+        "properties": {
+          "collection": {
+            "description": "The collection (manual).",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "media": {
+            "description": "The assets to add (at least one, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collection",
+          "media"
+        ],
+        "title": "MediaAddToCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_add_to_collection",
+      "name": "media.add_to_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.add_to_collection`.",
+        "properties": {
+          "added": {
+            "description": "The assets that joined it, in order (those already on it are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "members": {
+            "description": "How many members it has now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection_id",
+          "added",
+          "members"
+        ],
+        "title": "MediaAddedToCollection",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add media assets to a manual collection (idempotent)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": true
       },
       "input_schema": {
@@ -18707,6 +18850,255 @@
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Creates a collection of media: a named list an asset can be on without leaving its folder.\n`kind` is `{\"type\": \"manual\", \"media\": [...]}` (the members, in order; may be empty or left\nout) or `{\"type\": \"smart\", \"filter\": {...}}` (a saved `media.list` filter whose matches are\nthe members, always current; it cannot name a collection). The name must be new, ignoring\ncase. A project holds at most 1,000 collections and a manual one at most 10,000 members.",
+        "properties": {
+          "kind": {
+            "description": "Manual (members) or smart (a filter).",
+            "oneOf": [
+              {
+                "description": "A list of assets, kept in the order they were added.",
+                "properties": {
+                  "media": {
+                    "default": [],
+                    "description": "The members, without repeats. One that names no asset is skipped by queries and\ndropped by the next edit of the collection.",
+                    "items": {
+                      "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "const": "manual",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A saved search: the assets that pass the filter, computed when asked.",
+                "properties": {
+                  "filter": {
+                    "additionalProperties": false,
+                    "description": "The filter. It may not name a collection.",
+                    "properties": {
+                      "collection": {
+                        "description": "On this collection.",
+                        "pattern": "^col_[0-9a-f]{32}$",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "folder": {
+                        "description": "Only this bin folder.",
+                        "pattern": "^fld_[0-9a-f]{32}$",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "kinds": {
+                        "description": "Only these kinds.",
+                        "items": {
+                          "description": "What a [`MediaAsset`] is.",
+                          "oneOf": [
+                            {
+                              "const": "video",
+                              "description": "A video file (may also carry audio).",
+                              "type": "string"
+                            },
+                            {
+                              "const": "audio",
+                              "description": "An audio-only file.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "image",
+                              "description": "A still image (no duration).",
+                              "type": "string"
+                            },
+                            {
+                              "const": "image_sequence",
+                              "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sequence_ref",
+                              "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "max_duration": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                                "type": "string"
+                              }
+                            ],
+                            "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Longest length (flicks), inclusive."
+                      },
+                      "min_duration": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                                "type": "string"
+                              }
+                            ],
+                            "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Shortest length (flicks), inclusive; stills never match a bound."
+                      },
+                      "min_rating": {
+                        "description": "Rated at least this (1-5).",
+                        "format": "uint8",
+                        "maximum": 5,
+                        "minimum": 1,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "problems": {
+                        "description": "`true`: only files nothing can be read from (no streams).",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "recursive": {
+                        "description": "With subfolders (default: true without folder).",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "tags": {
+                        "description": "Has all these tags.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "text": {
+                        "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "used": {
+                        "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "smart",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "filter"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "name": {
+            "description": "Its name: 1 to 255 characters without control characters (trimmed), unique ignoring\ncase.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "MediaCreateCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_create_collection",
+      "name": "media.create_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.create_collection` and `media.rename_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id",
+          "name"
+        ],
+        "title": "CollectionNamed",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Create a manual or smart (saved filter) collection of media",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Creates a folder in the media bin, at the top level or inside `parent` (at most 32 levels\ndeep). Without a name it is \"New folder\" (or \"New folder 2\", … when taken). A name that a\nsibling already has, ignoring case, fails with `Invalid` unless `on_conflict` is `rename`.",
         "properties": {
           "name": {
@@ -18804,7 +19196,57 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses, and moves the used assets to the deleted folder's parent. Timelines and files on disk\nnever change; one undo restores everything.",
+        "description": "Deletes a collection. Its assets stay in the project, in their folders and on their\ntimelines; only the list goes.",
+        "properties": {
+          "collection": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection"
+        ],
+        "title": "MediaDeleteCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_delete_collection",
+      "name": "media.delete_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.delete_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The deleted collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id"
+        ],
+        "title": "CollectionDeleted",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete a collection of media (the assets stay)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses (taking them off every manual collection), and moves the used assets to the deleted\nfolder's parent. Timelines and files on disk never change; one undo restores everything.",
         "properties": {
           "contents": {
             "description": "`move_up` (lift the contents one level) or `remove` (remove the unused media in it).",
@@ -22087,7 +22529,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Removes a media asset from the project (the file on disk is untouched). Fails with\n`Invalid` while any clip uses it; delete those clips first.",
+        "description": "Removes a media asset from the project (the file on disk is untouched) and takes it off\nevery manual collection. Fails with `Invalid` while any clip uses it; delete those clips\nfirst.",
         "properties": {
           "id": {
             "description": "The asset to remove.",
@@ -22125,6 +22567,149 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Remove an unused media asset from the project",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Takes assets off a manual collection; the assets themselves stay in the project. An asset\nthat is not on it is ignored, so the call can be repeated. Fails with `Invalid` for a smart\ncollection, whose members come from its filter.",
+        "properties": {
+          "collection": {
+            "description": "The collection (manual).",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "media": {
+            "description": "The assets to take off (at least one, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collection",
+          "media"
+        ],
+        "title": "MediaRemoveFromCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_remove_from_collection",
+      "name": "media.remove_from_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.remove_from_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "members": {
+            "description": "How many members it has now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "description": "The assets that left it (those that were not on it are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collection_id",
+          "removed",
+          "members"
+        ],
+        "title": "MediaRemovedFromCollection",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Take media assets off a manual collection (the assets stay; idempotent)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes tags from media assets, matching them ignoring case and accents. Removing a tag an\nasset does not have changes nothing, so the call can be repeated.",
+        "properties": {
+          "media": {
+            "description": "The assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "description": "The tags to remove (1..=16).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media",
+          "tags"
+        ],
+        "title": "MediaRemoveTags",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_remove_tags",
+      "name": "media.remove_tags",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Remove tags from media assets (idempotent)",
       "undoable": true,
       "view": false
     },
@@ -22208,6 +22793,66 @@
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Renames a collection. Fails with `Invalid` when another collection has the name, ignoring\ncase (changing only the case of its own name is fine).",
+        "properties": {
+          "collection": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "The new name: 1 to 255 characters without control characters (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection",
+          "name"
+        ],
+        "title": "MediaRenameCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_rename_collection",
+      "name": "media.rename_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.create_collection` and `media.rename_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id",
+          "name"
+        ],
+        "title": "CollectionNamed",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rename a collection of media",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the\nname, ignoring case (changing only the case of the folder's own name is fine).",
         "properties": {
           "folder": {
@@ -22256,6 +22901,64 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Rename a folder of the media bin",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Renames a tag on every asset that has it, as one undo step. `from` is matched ignoring case\nand accents; afterwards each of those assets carries `to` exactly as given (an asset that\nhad both keeps one). Renaming to another spelling of the same tag (`interview` to\n`Interview`) respells it. When no asset has `from`, nothing changes.",
+        "properties": {
+          "from": {
+            "description": "The tag to rename.",
+            "type": "string"
+          },
+          "to": {
+            "description": "Its new name: 1 to 64 characters without commas or control characters (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "MediaRenameTag",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_rename_tag",
+      "name": "media.rename_tag",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rename a tag on every media asset that has it",
       "undoable": true,
       "view": false
     },
@@ -22444,6 +23147,216 @@
       "secret_fields": [],
       "summary": "Set the cache limits and the memory for decoded frames",
       "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Replaces the filter of a smart collection (the same filter `media.list` takes; it cannot\nname a collection). Fails with `Invalid` for a manual collection.",
+        "properties": {
+          "collection": {
+            "description": "The collection (smart).",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "filter": {
+            "additionalProperties": false,
+            "description": "The new filter.",
+            "properties": {
+              "collection": {
+                "description": "On this collection.",
+                "pattern": "^col_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "folder": {
+                "description": "Only this bin folder.",
+                "pattern": "^fld_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kinds": {
+                "description": "Only these kinds.",
+                "items": {
+                  "description": "What a [`MediaAsset`] is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "max_duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Longest length (flicks), inclusive."
+              },
+              "min_duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Shortest length (flicks), inclusive; stills never match a bound."
+              },
+              "min_rating": {
+                "description": "Rated at least this (1-5).",
+                "format": "uint8",
+                "maximum": 5,
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "problems": {
+                "description": "`true`: only files nothing can be read from (no streams).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "recursive": {
+                "description": "With subfolders (default: true without folder).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "tags": {
+                "description": "Has all these tags.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "text": {
+                "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "used": {
+                "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "collection",
+          "filter"
+        ],
+        "title": "MediaSetCollectionFilter",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_collection_filter",
+      "name": "media.set_collection_filter",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_collection_filter`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "members": {
+            "description": "How many assets pass the new filter now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection_id",
+          "members"
+        ],
+        "title": "CollectionFilterSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Replace the filter of a smart collection of media",
+      "undoable": true,
       "view": false
     },
     {
@@ -22895,6 +23808,69 @@
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Sets the note of a media asset: plain text of at most 2,000 characters (line breaks and\ntabs allowed, other control characters not; space around it is trimmed). Without `note`, or\nwith a blank one, the note is removed.",
+        "properties": {
+          "media": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "note": {
+            "default": null,
+            "description": "The note; absent, null or blank: no note.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaSetNote",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_note",
+      "name": "media.set_note",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_note`.",
+        "properties": {
+          "has_note": {
+            "description": "Whether it has a note now.",
+            "type": "boolean"
+          },
+          "media_id": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id",
+          "has_note"
+        ],
+        "title": "MediaNoteSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set or clear the note of a media asset",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960\npixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size\napplies to proxies made from now on: generations of the old size stop, the open project's\nwanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache\nunused until its limit removes them. Not undoable, not journaled, never marks the project\ndirty; UI credential only (the desktop app applies the person's machine preferences).",
         "properties": {
           "jobs": {
@@ -23242,6 +24218,75 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Choose which of the project's video gets proxies automatically: off, auto or all",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Rates media assets from 1 to 5 stars, or clears their rating without `rating`.",
+        "properties": {
+          "media": {
+            "description": "The assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rating": {
+            "default": null,
+            "description": "Whole stars, 1 to 5; absent or null: unrated.",
+            "format": "uint8",
+            "maximum": 5,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaSetRating",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_rating",
+      "name": "media.set_rating",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rate media assets 1 to 5 stars, or clear the rating",
       "undoable": true,
       "view": false
     },
