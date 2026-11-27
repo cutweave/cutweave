@@ -120,6 +120,23 @@ const presetSelect = (dialog: HTMLElement) =>
 const lastCall = (name: string) =>
   call.mock.calls.filter(([n]) => n === name).at(-1)?.[1] as Record<string, unknown> | undefined;
 
+/**
+ * Makes the engine refuse the next export that does not allow offline media, the way it does
+ * when `text` names missing files (other calls, like the preset's resolve, go through).
+ */
+function refuseOffline(text: string): void {
+  const answer = call.getMockImplementation();
+  let refused = false;
+  call.mockImplementation(async (name: string, input: Record<string, unknown>) => {
+    const starts = name === "export.start" || name === "export.enqueue";
+    if (starts && !refused && input.allow_offline !== true) {
+      refused = true;
+      throw new RpcError("invalid", text, "/media/med_1");
+    }
+    return answer?.(name, input);
+  });
+}
+
 describe("ExportDialog", () => {
   it("on a 9:16 sequence puts the portrait platform presets first; Reels shows its size and limit", async () => {
     useProject(exportProject(1080, 1920, 200), { width: 1080, height: 1920, seconds: 200 });
@@ -369,9 +386,8 @@ describe("ExportDialog", () => {
   it("says media files are missing, with Relink… and Export anyway (allow_offline)", async () => {
     const user = userEvent.setup();
     const dialog = await openDialog();
-    const refusal = (text: string) => new RpcError("invalid", text, "/media/med_1");
-    call.mockRejectedValueOnce(
-      refusal("1 media file is missing: `beach.mp4`; relink them or pass `allow_offline: true`"),
+    refuseOffline(
+      "1 media file is missing: `beach.mp4`; relink them or pass `allow_offline: true`",
     );
     await user.click(within(dialog).getByRole("button", { name: "Export" }));
     const notice = await within(dialog).findByTestId("export-offline");
@@ -392,9 +408,7 @@ describe("ExportDialog", () => {
     act(() => jobStore.getState().applyProgress({ ...running(1, ""), state: "succeeded" }));
     act(() => exportController().open());
     const again = await settings();
-    call.mockRejectedValueOnce(
-      refusal("3 media files are missing: `a.mp4`, `b.mp4`, `c.wav`; relink them"),
-    );
+    refuseOffline("3 media files are missing: `a.mp4`, `b.mp4`, `c.wav`; relink them");
     await user.click(within(again).getByRole("button", { name: "Add to queue" }));
     const many = await within(again).findByTestId("export-offline");
     expect(many.textContent).toContain("3 media files are missing.");
@@ -405,7 +419,7 @@ describe("ExportDialog", () => {
     act(() => healthStore.getState().closeDialog());
   });
 
-  it("keeps Replace when the file exists and media is missing; a changed setting clears the notice", async () => {
+  it("keeps Replace when the file exists and media is missing", async () => {
     const user = userEvent.setup();
     const dialog = await openDialog();
     call.mockRejectedValueOnce(new RpcError("invalid", "exists", "/overwrite"));
