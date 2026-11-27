@@ -9,7 +9,6 @@
 //! - [`probes`]: the measurements (`cargo bench -p cutweave-bench`), over [`harness`] and
 //!   [`workload`]; [`result`] holds the result format and the budget comparison, [`cli`] the
 //!   commands of `cutweave-bench` and `cargo xtask gen-bench-project`.
-//!
 //! - [`crash`]: the crash harness (`cutweave-bench crash`): a real engine process is killed
 //!   during seeded editing work, restarted, and its recovery compared with a reference
 //!   engine that was never killed.

@@ -27,6 +27,11 @@
 //!
 //! A run ends with a save, one more kill and a start that must find nothing to recover.
 //!
+//! With real media ([`CrashOptions::media`]) the engine under test is the full engine, and two
+//! more points kill it while an export is encoded and while a proxy is made; the exports
+//! queued before the kill must still be queued, in order, and finish with their files, and the
+//! proxy must come out of the restart in a sane state and be made when asked again.
+//!
 //! # Reproducing
 //!
 //! The work, the crash points, their order and the delays before each kill follow from the
