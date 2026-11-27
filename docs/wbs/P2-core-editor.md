@@ -977,7 +977,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - **Context menu:** Add to collection ▸ is an item of `bin.card`; Save as smart collection is an item of `bin.background` when a filter is active.
 - **Interfaces:** the WP-2F.06a collection commands and queries.
 - **Acceptance criteria:**
-  - **A user flow (ADR-0018, F22 extended):** tag three assets, filter by tag, save as a smart collection, reopen the project and the collection is in the sidebar; drag a clip onto a folder in the sidebar's tree and it moves there.
+  - **A user flow (ADR-0018, F60; the sidebar's folder drop extends F22):** tag three assets, filter by tag, save as a smart collection, reopen the project and the collection is in the sidebar; drag a clip onto a folder in the sidebar's tree and it moves there.
 - **Tests:** Vitest, user flow.
 - **Out of scope:** collections of collections (ADR-0036).
 

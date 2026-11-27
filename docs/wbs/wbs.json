@@ -5638,7 +5638,7 @@
       "scope": "(split from WP-2F.06 by ADR-0036)\n- \"Save as smart collection\" from the current search and filters; Add to collection ▸; a **bin sidebar** (toggle, shown when the panel is wide enough) with the folder tree (WP-2F.07 folders, each a drop target like the breadcrumb) and the collections; a \"used/unused\" badge. Whether the sidebar is shown, its width and the open collection are workspace state, not document state (ADR-0036).\n- **Context menu:** Add to collection ▸ is an item of `bin.card`; Save as smart collection is an item of `bin.background` when a filter is active.",
       "interfaces": "the WP-2F.06a collection commands and queries.",
       "acceptance": [
-        "**A user flow (ADR-0018, F22 extended):** tag three assets, filter by tag, save as a smart collection, reopen the project and the collection is in the sidebar; drag a clip onto a folder in the sidebar's tree and it moves there."
+        "**A user flow (ADR-0018, F60; the sidebar's folder drop extends F22):** tag three assets, filter by tag, save as a smart collection, reopen the project and the collection is in the sidebar; drag a clip onto a folder in the sidebar's tree and it moves there."
       ],
       "tests": "Vitest, user flow.",
       "out_of_scope": "collections of collections (ADR-0036)."
