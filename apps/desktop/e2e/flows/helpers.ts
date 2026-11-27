@@ -960,21 +960,18 @@ export async function revealTime(
     const left = geometry.box.x + geometry.headerWidth;
     return x >= left && x <= geometry.box.x + geometry.box.width - 8;
   };
-  if (shows(g)) return g;
   // Half a second of timeline before it, so it is clear of the track headers.
   const target = Math.max(0, sec(seconds - 0.5));
-  const lanes = {
-    x: g.box.x + g.headerWidth + (g.box.width - g.headerWidth) / 2,
-    y: g.box.y + g.box.height / 2,
-  };
-  await drawnIn.mouse.move(lanes.x, lanes.y);
-  await drawnIn.mouse.wheel(((target - g.scrollX) * g.pxPerSec) / FLICKS, 0);
-  await expect
-    .poll(async () => {
-      g = await timelineGeometry(page, drawnIn);
-      return shows(g);
-    })
-    .toBe(true);
-  await viewSettled(page);
-  return timelineGeometry(page, drawnIn);
+  // A person scrolls, looks, and scrolls again if it is not there yet.
+  for (let attempt = 0; attempt < 6 && !shows(g); attempt += 1) {
+    await drawnIn.mouse.move(
+      g.box.x + g.headerWidth + (g.box.width - g.headerWidth) / 2,
+      g.box.y + g.box.height / 2,
+    );
+    await drawnIn.mouse.wheel(((target - g.scrollX) * g.pxPerSec) / FLICKS, 0);
+    await viewSettled(page);
+    g = await timelineGeometry(page, drawnIn);
+  }
+  if (!shows(g)) throw new Error(`the timeline never showed ${seconds} s`);
+  return g;
 }
