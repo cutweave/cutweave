@@ -29,6 +29,7 @@ import {
   timelineGeometry,
   timelineTools,
   toolbar,
+  viewSettled,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -105,6 +106,7 @@ test.describe("F37 magnetic main track", () => {
         ]);
       await editorCaughtUp(page);
       await timelineTools(page).getByRole("button", { name: "Zoom to fit", exact: true }).click();
+      await viewSettled(page);
       await expect.poll(async () => (await timelineGeometry(page)).pxPerSec).toBeLessThan(60);
 
       // A fourth (the interview again) dropped just before the first cut goes in there and
@@ -128,6 +130,7 @@ test.describe("F37 magnetic main track", () => {
 
       // The last one dragged to the front: the clips reorder, still butted.
       await timelineTools(page).getByRole("button", { name: "Zoom to fit", exact: true }).click();
+      await viewSettled(page);
       g = await timelineGeometry(page);
       let box = clipBox(g, clipAt(g, "V1", 30).id);
       await drag(

@@ -26,6 +26,7 @@ import {
   laneY,
   launchFlowApp,
   layout,
+  movePlayhead,
   rulerY,
   sec,
   sequence,
@@ -150,6 +151,7 @@ test.describe("F61 timeline tools, selection and track headers", () => {
 
       // A marquee from the empty lane before the clips, across the B-roll and both sounds:
       // the two pictures and the two sounds are selected.
+      await movePlayhead(page, 14);
       await dropCard(page, "broll-city.mp4", "V1", 14);
       await expect
         .poll(() => layout(page))
@@ -226,6 +228,7 @@ test.describe("F61 timeline tools, selection and track headers", () => {
 
       // Copy the logo and paste it on another video track: Add track > Video track in the
       // corner above the headers, click the new track's header, move the playhead, Ctrl+V.
+      await movePlayhead(page, 26);
       await dropCard(page, "logo.png", "V1", 26);
       await expect
         .poll(async () => (await layout(page))[0]?.clips)
@@ -250,10 +253,7 @@ test.describe("F61 timeline tools, selection and track headers", () => {
       await shortcut(app, "Control+C");
       await page.mouse.click(g.box.x + 12, laneY(g, added.name));
       await expect.poll(async () => (await selection(page)).map((r) => r.kind)).toEqual(["track"]);
-      await page.mouse.click(inLanes(g, xAt(g, sec(5))), rulerY(g));
-      await expect
-        .poll(async () => (await editorCall<{ playhead: number }>(page, "view.get")).playhead)
-        .toBe(sec(5));
+      await movePlayhead(page, 5);
       await shortcut(app, "Control+V");
       await expect
         .poll(async () => (await layout(page)).find((t) => t.track === added.name)?.clips)
@@ -281,10 +281,7 @@ test.describe("F61 timeline tools, selection and track headers", () => {
       await expect.poll(markers).toEqual([sec(5)]);
       await page.keyboard.press("i");
       g = await timelineGeometry(page);
-      await page.mouse.click(inLanes(g, xAt(g, sec(9))), rulerY(g));
-      await expect
-        .poll(async () => (await editorCall<{ playhead: number }>(page, "view.get")).playhead)
-        .toBe(sec(9));
+      await movePlayhead(page, 9);
       await canvas.focus();
       await page.keyboard.press("o");
       const inOut = async () =>

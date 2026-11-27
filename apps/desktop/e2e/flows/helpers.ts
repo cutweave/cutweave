@@ -627,6 +627,43 @@ export async function dropCard(
 }
 
 /**
+ * Clicks the timeline's ruler at `seconds` and waits for the playhead to be there. A card dropped
+ * near the playhead then snaps onto it: a drop's position is in whole pixels, a frame or more at
+ * the zoom a long timeline needs, so a flow that checks where a card landed drops it there.
+ */
+export async function movePlayhead(page: Page, seconds: number): Promise<void> {
+  const g = await timelineGeometry(page);
+  await page.mouse.click(xAt(g, sec(seconds)) + 0.5, rulerY(g));
+  await expect
+    .poll(async () => (await editorCall<{ playhead: number }>(page, "view.get")).playhead)
+    .toBe(sec(seconds));
+}
+
+/**
+ * Waits until the engine's view (zoom and scroll, which `timelineGeometry` reads) has caught up
+ * with the timeline after a zoom: the same answer twice, further apart than the editor's view
+ * sync delay (`VIEW_SYNC_DEBOUNCE_MS`, 500 ms).
+ */
+export async function viewSettled(page: Page): Promise<void> {
+  let last = "";
+  await expect
+    .poll(
+      async () => {
+        const v = await editorCall<{ zoom: number | null; scroll: { x: number; y: number } }>(
+          page,
+          "view.get",
+        );
+        const now = JSON.stringify([v.zoom, v.scroll]);
+        const same = now === last;
+        last = now;
+        return same;
+      },
+      { intervals: [700], timeout: 15_000 },
+    )
+    .toBe(true);
+}
+
+/**
  * Clicks the timeline toolbar's Zoom out (WP-2A.10) until the first `seconds` of the timeline
  * show across the lanes, as a person does before dropping or dragging far to the right.
  */

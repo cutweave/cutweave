@@ -21,6 +21,7 @@ import {
   laneY,
   launchFlowApp,
   layout,
+  movePlayhead,
   rulerY,
   sec,
   sequence,
@@ -30,6 +31,7 @@ import {
   type TimelineGeometry,
   timelineGeometry,
   timelineTools,
+  viewSettled,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -66,6 +68,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
       const menu = page.getByRole("menu");
       const fit = async () => {
         await timelineTools(page).getByRole("button", { name: "Zoom to fit", exact: true }).click();
+        await viewSettled(page);
         await editorCaughtUp(page);
       };
 
@@ -112,6 +115,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
       if (overlay === undefined) throw new Error("no overlay track");
 
       // The coffee B-roll on the overlay at 22 s (its sound goes to A1, after the others).
+      await movePlayhead(page, 22);
       await dropCard(page, "broll-coffee.mp4", overlay, 22);
       await expect.poll(() => on(page, overlay)).toEqual([[22, 10]]);
       await editorCaughtUp(page);
@@ -147,10 +151,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
       // The playhead at 13 s; the coffee dragged so its start comes 3 px past it lands on it.
       g = await timelineGeometry(page);
       const near = (geometry: TimelineGeometry, t: number) => xAt(geometry, sec(t)) + 3;
-      await page.mouse.click(xAt(g, sec(13)), rulerY(g));
-      await expect
-        .poll(async () => (await editorCall<{ playhead: number }>(page, "view.get")).playhead)
-        .toBe(sec(13));
+      await movePlayhead(page, 13);
       box = clipBox(g, coffee);
       let grab = { x: box.x + 20, y: box.y };
       await drag(page, grab, { x: near(g, 13) + 20, y: box.y });
@@ -183,6 +184,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
       // The logo dropped onto the overlay at 22 s does not fit before the coffee: a new track
       // above takes it. Ctrl+Z.
       const tracksBefore = (await sequence(page)).tracks.length;
+      await movePlayhead(page, 22);
       await dropCard(page, "logo.png", overlay, 22);
       await expect.poll(async () => (await sequence(page)).tracks.length).toBe(tracksBefore + 1);
       const seq = await sequence(page);
@@ -196,6 +198,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
 
       // A title (the logo) on the overlay at 2 s, attached to the interview from its menu; the
       // interview dragged after the B-roll takes it along.
+      await movePlayhead(page, 2);
       await dropCard(page, "logo.png", overlay, 2);
       await expect
         .poll(() => on(page, overlay))

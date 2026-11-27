@@ -31,6 +31,7 @@ import {
   timelineTools,
   toast,
   toolbar,
+  viewSettled,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -86,6 +87,7 @@ test.describe("F38 ripple, roll, slip and slide", () => {
       const undo = toolbar(page).getByRole("button", { name: /^Undo/ });
       const canvas = timelineCanvas(page).locator("canvas");
       await tool("Zoom to fit").click();
+      await viewSettled(page);
       await expect.poll(async () => (await timelineGeometry(page)).pxPerSec).toBeLessThan(60);
 
       // B: the ripple tool. The interview's end 4 s to the left: what follows moves 4 s left.
