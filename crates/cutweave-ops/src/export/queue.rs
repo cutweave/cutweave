@@ -181,6 +181,8 @@ pub struct ExportEnqueue {
     pub overwrite: Option<bool>,
     /// An existing file: "fail" (default), "rename" or "overwrite".
     pub collision: Option<Collision>,
+    /// Export although media files are missing (a "media offline" slate), as in export.start.
+    pub allow_offline: Option<bool>,
     /// Fine control (rate control, GOP, encoder, color tags, audio), as in export.start.
     pub advanced: Option<AdvancedExportOptions>,
 }
@@ -198,6 +200,7 @@ impl EngineCommand for ExportEnqueue {
             hw: self.hw.as_ref(),
             overwrite: self.overwrite,
             collision: self.collision,
+            allow_offline: self.allow_offline,
             advanced: self.advanced.as_ref(),
         };
         queue_request(&request, ctx, false)
@@ -409,6 +412,9 @@ struct StoredPlan {
     sequence: SequenceId,
     path: String,
     overwrite: bool,
+    /// Absent in jobs queued before WP-2F.03c: those refuse missing media.
+    #[serde(default)]
+    allow_offline: bool,
     start: Time,
     end: Time,
     width: u32,
@@ -440,6 +446,7 @@ impl TaskCodec<ExportPlan> for PlanCodec {
             sequence: plan.sequence,
             path: plan.path.to_string_lossy().into_owned(),
             overwrite: plan.overwrite,
+            allow_offline: plan.allow_offline,
             start: plan.start,
             end: plan.end,
             width: plan.width,
@@ -476,6 +483,7 @@ impl TaskCodec<ExportPlan> for PlanCodec {
             sequence: stored.sequence,
             path: stored.path.into(),
             overwrite: stored.overwrite,
+            allow_offline: stored.allow_offline,
             start: stored.start,
             end: stored.end,
             width: stored.width,

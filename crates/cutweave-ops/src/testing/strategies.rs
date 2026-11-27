@@ -3481,13 +3481,14 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         ])),
         option::of(any::<bool>()),
         option::of(select(vec!["rename", "overwrite", "fail"])),
+        option::of(any::<bool>()),
         option::weighted(0.4, advanced_block()),
     )
         .prop_map(
-            move |(sequence, range, preset, hw, overwrite, collision, advanced)| {
+            move |(sequence, range, preset, hw, overwrite, collision, allow_offline, advanced)| {
                 json!({"sequence": sequence, "path": to, "range": range, "preset": preset,
                        "hw": hw, "overwrite": overwrite, "collision": collision,
-                       "advanced": advanced})
+                       "allow_offline": allow_offline, "advanced": advanced})
             },
         )
         .boxed();
@@ -3712,6 +3713,7 @@ pub fn export_queue(jobs: &JobManager) -> cutweave_jobs::ExportQueue<ExportPlan>
         sequence: SequenceId::from_u128(1),
         path: std::env::temp_dir().join(EXPORT_FILE_NAME),
         overwrite: true,
+        allow_offline: false,
         start: cutweave_model::Time::ZERO,
         end: cutweave_model::Time::from_secs(1).unwrap_or(cutweave_model::Time::ZERO),
         width: 64,

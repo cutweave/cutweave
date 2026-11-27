@@ -1566,6 +1566,8 @@ export type ExportEnqueue = {
 	overwrite?: boolean | null,
 	/**  An existing file: "fail" (default), "rename" or "overwrite". */
 	collision?: Collision | null,
+	/**  Export although media files are missing (a "media offline" slate), as in export.start. */
+	allow_offline?: boolean | null,
 	/**  Fine control (rate control, GOP, encoder, color tags, audio), as in export.start. */
 	advanced?: AdvancedExportOptions | null,
 };
@@ -1777,7 +1779,9 @@ export type ExportRetry = {
  *  .mov for ProRes) with {seq}, {marker_label}, {n}; the
  *  output lists every job). `collision` says what happens to an existing file: "fail"
  *  (default), "rename" (pick a free name) or "overwrite" (replace it when the export
- *  succeeds). Fails with `Invalid` when the drive has too little free space.
+ *  succeeds). Fails with `Invalid` when the drive has too little free space, and with `Invalid`
+ *  at `/media/<id>` when a clip in the range plays a media file that is missing, unless
+ *  `allow_offline` is true (such clips then show a "media offline" slate and are silent).
  */
 export type ExportStart = {
 	/**  Sequence; optional when the project has one. */
@@ -1800,6 +1804,11 @@ export type ExportStart = {
 	overwrite?: boolean | null,
 	/**  An existing file: "fail" (default), "rename" or "overwrite". */
 	collision?: Collision | null,
+	/**
+	 *  Export although media files are missing: their clips show a "media offline" slate and
+	 *  are silent (default false: fails with `Invalid` at `/media/<id>` naming them).
+	 */
+	allow_offline?: boolean | null,
 	/**
 	 *  Fine control (export.describe_options{codec} gives a codec's options as a JSON Schema):
 	 *  video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
