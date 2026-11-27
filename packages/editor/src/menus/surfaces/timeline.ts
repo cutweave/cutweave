@@ -437,8 +437,22 @@ function pathOfClip(ctx: MenuContext): string | null {
   return only === undefined ? null : mediaPath(only.clip.media);
 }
 
+/**
+ * Whether `ids` are one linked group and nothing else: a click selects a clip with its sound
+ * (timeline spec INV-341, WP-2A.10), and the menu still names the one clip.
+ */
+function oneGroup(ids: readonly string[]): boolean {
+  const facts = clipFacts(ids);
+  const group = facts[0]?.clip.linked_group ?? null;
+  return (
+    group !== null &&
+    facts.length === ids.length &&
+    facts.every((f) => f.clip.linked_group === group)
+  );
+}
+
 const clipName = (target: MenuTarget) =>
-  target.ids.length > 1
+  target.ids.length > 1 && !oneGroup(target.ids)
     ? ({ key: "contextMenu.name.clips", vars: { count: target.ids.length } } as const)
     : ({
         key: "contextMenu.name.clip",

@@ -30,8 +30,6 @@ import {
   snapshot,
   type TimelineGeometry,
   timelineGeometry,
-  timelineTools,
-  viewSettled,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -66,11 +64,6 @@ test.describe("F39 overlays, linked and attached clips", () => {
         work.file("logo.png"),
       ]);
       const menu = page.getByRole("menu");
-      const fit = async () => {
-        await timelineTools(page).getByRole("button", { name: "Zoom to fit", exact: true }).click();
-        await viewSettled(page);
-        await editorCaughtUp(page);
-      };
 
       // V1 becomes the magnetic main track (its header menu); two clips butt from 0.
       let g = await timelineGeometry(page);
@@ -119,7 +112,6 @@ test.describe("F39 overlays, linked and attached clips", () => {
       await dropCard(page, "broll-coffee.mp4", overlay, 22);
       await expect.poll(() => on(page, overlay)).toEqual([[22, 10]]);
       await editorCaughtUp(page);
-      await fit();
 
       // Its clip menu: Unlink clips. Then the picture dragged 2 s right moves alone.
       g = await timelineGeometry(page);
