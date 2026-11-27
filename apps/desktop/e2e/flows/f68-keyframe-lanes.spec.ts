@@ -262,6 +262,12 @@ test.describe("F68 keyframe lanes and the curve editor", () => {
       await expect.poll(() => times(page, id)).toEqual([2, 5, 6, 8, 9]);
       const pasted = await opacityKeys(page, id);
       expect(pasted[4]?.value).toBe(pasted[0]?.value);
+      // Ctrl+X takes the pasted key (it is selected), never its clip; Ctrl+V puts it back.
+      await shortcut(app, "Control+X");
+      await expect.poll(() => times(page, id)).toEqual([2, 5, 6, 8]);
+      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
+      await shortcut(app, "Control+V");
+      await expect.poll(() => times(page, id)).toEqual([2, 5, 6, 8, 9]);
       await snapshot(page, info, "keys added and pasted");
 
       // 10. The keyboard reaches the keys too: Alt+Right steps to the next key and the playhead

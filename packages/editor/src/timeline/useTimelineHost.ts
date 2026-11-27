@@ -45,6 +45,7 @@ import { toRpcError } from "./gestureTx.ts";
 import { type LaneBox, TimelineHost, type TimelineUi, withCode } from "./host.ts";
 import {
   copyKeys,
+  deleteKeys,
   isWritingKeys,
   KEY_CLIPBOARD_MIME,
   keyClipboardStore,
@@ -331,6 +332,17 @@ export function useTimelineHost(): TimelineBinding {
       };
       const onCut = (e: ClipboardEvent): void => {
         if (isTextEntry(e.target)) return;
+        // Selected keys are what Cut takes (never their clip): copied, then deleted in one step.
+        const keys = keySelectionStore.getState();
+        if (keys.item !== null && keys.keys.length > 0) {
+          const item = keys.item;
+          e.preventDefault();
+          runKeys("timeline.failed.keyframeCopy", async () => {
+            await copyKeys(engineCall, item, keys.keys);
+            await deleteKeys(engineCall, item, keys.keys);
+          });
+          return;
+        }
         const ids = selectedClips();
         if (ids.length === 0) return;
         e.preventDefault();
