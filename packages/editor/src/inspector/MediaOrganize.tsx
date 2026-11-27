@@ -6,7 +6,7 @@
 // one undo step: `media.set_rating`, `media.add_tags`, `media.remove_tags`, `media.set_note`.
 import type { MediaAsset } from "@cutweave/protocol";
 import { InspectorRow, RatingStars, TextArea } from "@cutweave/ui";
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineReady } from "../engine/engineStore.ts";
 import { binDeps } from "../media/requestDelete.ts";
@@ -22,8 +22,15 @@ function NoteField({ media }: { readonly media: MediaAsset }) {
   const stored = media.note ?? null;
   // What is typed and not yet committed; `null`: the field shows the stored note.
   const [draft, setDraft] = useState<string | null>(null);
-  // Another asset, or the note changed under the field (undo, an agent): show what is stored.
-  useEffect(() => setDraft(null), [media.id, stored]);
+  // The note a command was sent for and the document has not shown yet: Ctrl+Enter and then
+  // leaving the field is one command, not two. `undefined`: nothing is on its way.
+  const sent = useRef<string | null | undefined>(undefined);
+  // Another asset, or the note changed under the field (the command's own patch, undo, an
+  // agent): show what is stored.
+  useEffect(() => {
+    sent.current = undefined;
+    setDraft(null);
+  }, [media.id, stored]);
   const text = draft ?? stored ?? "";
   const count = charCount(text.trim());
   const tooLong = noteTooLong(text);
@@ -35,9 +42,11 @@ function NoteField({ media }: { readonly media: MediaAsset }) {
       setDraft(null);
       return;
     }
+    if (sent.current !== undefined && sent.current === plan.note) return;
+    sent.current = plan.note;
     // The draft stays on screen until the document's patch replaces it (or the engine refuses).
     void setNote(binDeps(), media.id, plan.note).then((ok) => {
-      if (ok) setDraft((current) => (current === draft ? null : current));
+      if (!ok) sent.current = undefined;
     });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

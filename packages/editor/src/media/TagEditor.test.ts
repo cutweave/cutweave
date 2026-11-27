@@ -445,10 +445,7 @@ describe("the media info's rating, tags and note", () => {
       media: "med_1",
       note: "Second take is the good one. Keep.",
     });
-    // The document's patch arrives: the field shows the stored note again.
-    load(
-      project([asset("med_1", [], null, "Second take is the good one. Keep."), ...DEMO.slice(1)]),
-    );
+    // Leaving the field before the document's patch arrives sends nothing more.
     await user.tab();
     expect(call).toHaveBeenCalledTimes(1);
   });
