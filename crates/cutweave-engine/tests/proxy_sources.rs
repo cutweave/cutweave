@@ -426,7 +426,11 @@ fn the_toggle_turns_the_previews_proxies_off_and_a_new_or_deleted_proxy_swaps_at
     )
     .unwrap();
     let closed = call(&r.ui, "project.close", json!({ "save": false })).unwrap();
-    assert_eq!(closed["project"]["rev"], json!(0), "a new document: {closed}");
+    assert_eq!(
+        closed["project"]["rev"],
+        json!(0),
+        "a new document: {closed}"
+    );
     let state = eventually("the new project's playback", || {
         call(&r.ui, "view.set_preview_quality", json!({})).ok()
     });
