@@ -114,15 +114,13 @@ fn write_optional<T: serde::Serialize>(
     value: Option<&T>,
 ) -> Result<(), CmdError> {
     let path = DocPath::media(media).join(field);
-    match value {
-        Some(value) => tx.set(&path, value),
-        None => {
-            if tx.get(&path).is_some() {
-                tx.remove_path(&path)?;
-            }
-            Ok(())
-        }
+    if let Some(value) = value {
+        return tx.set(&path, value);
     }
+    if tx.get(&path).is_some() {
+        tx.remove_path(&path)?;
+    }
+    Ok(())
 }
 
 /// Result of the tag and rating commands.

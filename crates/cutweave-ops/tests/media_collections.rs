@@ -9,7 +9,12 @@
 //! and edits without error; removing an asset takes it off every manual collection in the same
 //! undo step.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::needless_pass_by_value,
+    clippy::many_single_char_names
+)]
 
 mod common;
 

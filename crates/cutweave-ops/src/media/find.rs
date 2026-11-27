@@ -328,6 +328,8 @@ impl<'a> Matcher<'a> {
 /// collection's in ID order. `used` is [`used_media`] of `doc`, needed when the collection is
 /// smart and its filter asks for `used`.
 #[must_use]
+// `used` is the set `used_media` returns, which `Matcher` borrows as it is.
+#[allow(clippy::implicit_hasher)]
 pub fn collection_members(
     doc: &Project,
     collection: &Collection,

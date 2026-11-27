@@ -23,6 +23,7 @@ fn three(h: &mut H) -> (MediaId, MediaId, MediaId) {
     )
 }
 
+#[allow(clippy::needless_pass_by_value)] // call sites pass `json!` literals
 fn listed(h: &H, filter: Value) -> Vec<MediaId> {
     let out = h.query("media.list", json!({"filter": filter})).unwrap();
     out["media"]

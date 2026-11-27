@@ -83,7 +83,9 @@ fn editable(text: &str) -> Project {
             assert!(report.steps.is_empty(), "no migration ran");
             project
         }
-        other => panic!("expected an editable document: {other:?}"),
+        other @ OpenOutcome::ReadOnly { .. } => {
+            panic!("expected an editable document: {other:?}")
+        }
     }
 }
 
@@ -218,6 +220,9 @@ fn an_older_build_that_removes_an_asset_leaves_a_member_that_still_opens() {
     assert!(!reopened.media.contains_key(&mid(3)));
 }
 
+/// An edit that breaks one rule.
+type Edit<T> = Box<dyn Fn(&mut T)>;
+
 fn reasons(doc: &Project) -> Vec<String> {
     doc.violations()
         .into_iter()
@@ -231,7 +236,7 @@ fn reasons(doc: &Project) -> Vec<String> {
 
 #[test]
 fn tags_ratings_and_notes_are_checked() {
-    let cases: Vec<(&str, Box<dyn Fn(&mut MediaAsset)>)> = vec![
+    let cases: Vec<(&str, Edit<MediaAsset>)> = vec![
         (
             "sorted",
             Box::new(|m| m.tags = vec!["interview".into(), "b-roll".into()]),
@@ -265,7 +270,7 @@ fn tags_ratings_and_notes_are_checked() {
 
 #[test]
 fn collections_are_checked() {
-    let cases: Vec<(&str, Box<dyn Fn(&mut Project)>)> = vec![
+    let cases: Vec<(&str, Edit<Project>)> = vec![
         (
             "empty",
             Box::new(|d| d.collections.get_mut(&cid(1)).unwrap().name = " ".into()),
