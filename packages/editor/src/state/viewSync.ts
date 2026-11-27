@@ -111,6 +111,7 @@ export class ViewSync {
   #adopting = false;
   #unsubscribe: (() => void) | null = null;
   #offChanged: (() => void) | null = null;
+  #offProject: (() => void)[] = [];
 
   constructor(options: ViewSyncOptions) {
     this.#store = options.store;
@@ -140,6 +141,8 @@ export class ViewSync {
     this.#unsubscribe = null;
     this.#offChanged?.();
     this.#offChanged = null;
+    for (const off of this.#offProject) off();
+    this.#offProject = [];
     if (this.#timer !== null) {
       this.#cancelTimer();
       await this.flush();
@@ -197,6 +200,12 @@ export class ViewSync {
         }
       });
     }
+    if (this.#offProject.length === 0) {
+      this.#offProject = [
+        this.#rpc.onUntyped("project.opened", () => void this.#reloadMarks(true)),
+        this.#rpc.onUntyped("project.closed", () => void this.#reloadMarks(false)),
+      ];
+    }
     if (this.#offChanged === null) {
       // Another client (an agent) moved the playhead or changed the selection.
       this.#offChanged = this.#rpc.onUntyped("view.changed", (payload) => {
@@ -204,6 +213,34 @@ export class ViewSync {
           this.#adopt(payload as Partial<UiState>);
         }
       });
+    }
+  }
+
+  /**
+   * Another project is open (or none): the marks in the store belong to the assets of the one
+   * before. They are dropped at once, so they are never sent to a project that has no such
+   * assets (the engine would refuse the whole patch), and the new project's own are read.
+   */
+  async #reloadMarks(opened: boolean): Promise<void> {
+    this.#adoptMarks({});
+    if (!opened) return;
+    try {
+      const ui = await this.#rpc.call("view.get", {});
+      this.#adoptMarks(ui.source_marks ?? {});
+    } catch (error) {
+      this.#onError(error);
+    }
+  }
+
+  #adoptMarks(marks: SourceMarksMap): void {
+    this.#adopting = true;
+    try {
+      this.#store.getState().applyEngineView({ source_marks: marks as UiState["source_marks"] });
+    } finally {
+      this.#adopting = false;
+    }
+    if (this.#sent !== null) {
+      this.#sent = { ...this.#sent, sourceMarks: this.#store.getState().sourceMarks };
     }
   }
 

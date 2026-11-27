@@ -630,8 +630,15 @@ test.describe("F31 preview media before placing it", () => {
         const normalized = async () => {
           const track = (await sequence(page)).tracks.find((t) => t.kind === "video");
           const got = await item(page, track?.items[0]?.id ?? "");
-          const { id: _id, ...rest } = got.item;
-          return { ...got, item: rest, linked: got.linked.length };
+          // Its own id and its link group's are new each time; that it has a group is compared.
+          const {
+            id: _id,
+            linked_group: group,
+            ...rest
+          } = got.item as typeof got.item & {
+            linked_group?: string | null;
+          };
+          return { ...got, item: { ...rest, linked: group != null }, linked: got.linked.length };
         };
 
         // Play it in the Source view, mark in at 2 s and out at 5 s: on the bar and on its card.
@@ -647,6 +654,15 @@ test.describe("F31 preview media before placing it", () => {
         await expect(cardRange).toBeVisible();
         await expect(cardRange).toHaveAttribute("data-in", String(sec(2)));
         await expect(cardRange).toHaveAttribute("data-out", String(sec(5)));
+        // The engine holds them with the project's view state, by asset.
+        await expect
+          .poll(async () =>
+            Object.values(
+              (await editorCall<{ source_marks: Record<string, object> }>(page, "view.get"))
+                .source_marks,
+            ),
+          )
+          .toEqual([{ in: sec(2), out: sec(5) }]);
         await snapshot(page, info, "source-marked");
         // Marks are not edits: the project is still clean.
         await expect(dirtyDot(page)).toBeHidden();

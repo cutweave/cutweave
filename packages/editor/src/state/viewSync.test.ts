@@ -236,6 +236,33 @@ describe("diffView and panel layout", () => {
     expect(store.getState().sourceMarks).toEqual({ [a]: { in: null, out: 400 } });
   });
 
+  it("another project opened: the old marks are dropped, never sent, and its own are read", async () => {
+    const a = "m_a" as MediaId;
+    const b = "m_b" as MediaId;
+    let held: UiState = engineView({
+      source_marks: { [a]: { in: 1, out: 9 } } as UiState["source_marks"],
+    });
+    const transport = new MockTransport()
+      .handle("view.get", () => held)
+      .handle("view.set", () => held);
+    const store = createViewStore();
+    const timers = new FakeTimers();
+    const sync = new ViewSync({ store, rpc: new RpcClient(transport), timers });
+    await sync.restore();
+    expect(store.getState().sourceMarks).toEqual({ [a]: { in: 1, out: 9 } });
+    held = engineView({ source_marks: { [b]: { in: 2, out: null } } as UiState["source_marks"] });
+    transport.emit("project.opened", { name: "Other" });
+    // At once: nothing of the project before is left to send.
+    expect(store.getState().sourceMarks).toEqual({});
+    await settle();
+    expect(store.getState().sourceMarks).toEqual({ [b]: { in: 2, out: null } });
+    timers.advance(5_000);
+    await settle();
+    expect(transport.requests.filter((r) => r.method === "view.set")).toHaveLength(0);
+    transport.emit("project.closed", {});
+    expect(store.getState().sourceMarks).toEqual({});
+  });
+
   it("panelLayoutFrom narrows the opaque engine value", () => {
     expect(panelLayoutFrom(null)).toBeNull();
     expect(panelLayoutFrom({})).toBeNull();
