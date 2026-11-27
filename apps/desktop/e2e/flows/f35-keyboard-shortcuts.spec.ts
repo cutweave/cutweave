@@ -71,7 +71,6 @@ async function clipWithPlayhead(
   work: ReturnType<typeof workspace>,
   name: string,
 ): Promise<void> {
-  await freeMainTrack(app, page); // clips stay where they are dropped
   await createProject(app, page, name, work.dir);
   await importWithButton(app, page, [work.file("interview.mp4")]);
   await dropCard(page, "interview.mp4", "V1", 1);
@@ -124,6 +123,8 @@ test.describe("F35 keyboard shortcuts", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
+      // Clips stay where they are dropped; the setting is kept for the relaunch below.
+      await freeMainTrack(app, page);
       await clipWithPlayhead(page, app, work, "Keys");
 
       // The page lists the keys the app has now, and the preset.
@@ -273,6 +274,8 @@ test.describe("F35 keyboard shortcuts", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
+      // Clips stay where they are dropped; the setting is kept for the relaunch below.
+      await freeMainTrack(app, page);
       await clipWithPlayhead(page, app, work, "CapCut keys");
 
       // With the NLE preset Ctrl+B does nothing on the timeline.
