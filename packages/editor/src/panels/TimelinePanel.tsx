@@ -62,7 +62,6 @@ const EngineTimeline = memo(function EngineTimeline({
   // Opening or closing a lane moves the tracks below it: once the canvas has laid them out (its
   // effect runs before this one), what is placed over the headers and clips follows.
   const lanesShape = lanesShapeOf(keyframeLanes);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the lanes' shape changes
   useEffect(() => lanesRelaid(), [lanesShape]);
   // The sequence's in and out points shade the timeline (markers come with the model).
   const range = selectInOut(project);

@@ -29,7 +29,12 @@ function mount(state: { toggle: LanesToggle }) {
       { i18n },
       h(
         Profiler,
-        { id: "toolbar", onRender: () => void (commits += 1) },
+        {
+          id: "toolbar",
+          onRender: () => {
+            commits += 1;
+          },
+        },
         h(TimelineToolbar, { host, tool, linkedSelection: true, live: true }),
       ),
     );
