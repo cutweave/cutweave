@@ -853,6 +853,104 @@ fn undo_depth_and_memory_are_bounded() {
     assert!(!items(s.committed_doc()).contains(&mine));
 }
 
+/// WP-2A.13: `edit.set_history_limit` drops the oldest steps per actor, undo still works up
+/// to the limit, and only the UI credential may call it.
+#[test]
+fn set_history_limit_drops_the_oldest_steps_per_actor() {
+    let (doc, tracks, _) = project(1);
+    let mut s = state(doc);
+    let x = append(&mut s, &ui(), tracks[0], 10);
+    let y = append(&mut s, &agent(), tracks[0], 10);
+    for i in 0..4 {
+        rename(&mut s, &ui(), x, &format!("u{i}"));
+        rename(&mut s, &agent(), y, &format!("a{i}"));
+    }
+    assert_eq!(s.history_limit(), 1_000);
+    let before = s.committed_doc().clone();
+    let rev = s.rev();
+    drop(s.take_events());
+
+    // An agent may not change the person's preference.
+    let refused = run(
+        &mut s,
+        &agent(),
+        "edit.set_history_limit",
+        json!({"steps": 2}),
+    );
+    assert_eq!(refused.unwrap_err().code(), "forbidden");
+    assert_eq!(s.history_limit(), 1_000);
+    for bad in [json!({"steps": 0}), json!({"steps": 10_001}), json!({})] {
+        let err = run(&mut s, &ui(), "edit.set_history_limit", bad).unwrap_err();
+        assert_eq!(err.code(), "invalid");
+    }
+
+    let out = run(&mut s, &ui(), "edit.set_history_limit", json!({"steps": 2})).unwrap();
+    assert_eq!(out.output, json!({"steps": 2}));
+    assert_eq!(s.history_limit(), 2);
+    // Nothing in the document changed and no revision was made.
+    assert_eq!(s.committed_doc(), &before);
+    assert_eq!(s.rev(), rev);
+    s.verify().unwrap();
+    // Each actor that lost steps is told (`trimmed`), with its new depth.
+    let trimmed: Vec<(Actor, u32)> = s
+        .take_events()
+        .into_iter()
+        .filter_map(|e| match e {
+            cutweave_commands::DocEvent::History(h) if h.change == HistoryChange::Trimmed => {
+                Some((h.stacks.actor.clone(), h.stacks.undo_depth))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(trimmed.len(), 2, "{trimmed:?}");
+    assert!(trimmed.iter().all(|(_, depth)| *depth == 2));
+    // The log keeps every entry; only the stacks are shorter.
+    let page = history(&mut s);
+    assert_eq!(page.entries.len(), 10);
+    assert!(page.stacks.iter().all(|st| st.undo_depth == 2));
+
+    // Undo works up to the limit, for each actor on its own.
+    undo(&mut s, &ui(), None).unwrap();
+    undo(&mut s, &ui(), None).unwrap();
+    assert_eq!(item_name(s.committed_doc(), x).as_deref(), Some("u1"));
+    assert_eq!(undo(&mut s, &ui(), None).unwrap_err().code(), "invalid");
+    undo(&mut s, &agent(), None).unwrap();
+    undo(&mut s, &agent(), None).unwrap();
+    assert_eq!(item_name(s.committed_doc(), y).as_deref(), Some("a1"));
+    assert_eq!(undo(&mut s, &agent(), None).unwrap_err().code(), "invalid");
+
+    // New changes keep to the limit; raising it does not bring dropped steps back.
+    for i in 0..5 {
+        rename(&mut s, &ui(), x, &format!("n{i}"));
+    }
+    run(
+        &mut s,
+        &ui(),
+        "edit.set_history_limit",
+        json!({"steps": 50}),
+    )
+    .unwrap();
+    let page = history(&mut s);
+    let user = page
+        .stacks
+        .iter()
+        .find(|st| st.actor == Actor::User)
+        .unwrap();
+    assert_eq!(user.undo_depth, 2);
+    rename(&mut s, &ui(), x, "one more");
+    let page = history(&mut s);
+    let user = page
+        .stacks
+        .iter()
+        .find(|st| st.actor == Actor::User)
+        .unwrap();
+    assert_eq!(user.undo_depth, 3);
+    s.verify().unwrap();
+
+    let meta = &s.registry().get("edit.set_history_limit").unwrap().meta;
+    assert!(!meta.undoable && !meta.is_journaled());
+}
+
 // ----- checkpoints ---------------------------------------------------------------------------
 
 #[test]

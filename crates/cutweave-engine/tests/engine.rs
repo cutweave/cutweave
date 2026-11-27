@@ -1212,6 +1212,64 @@ fn without_the_dev_stub_an_existing_mp4_still_fails_to_import() {
     engine.shutdown();
 }
 
+// ----- edit.set_history_limit (WP-2A.13) ------------------------------------------------------
+
+#[test]
+fn set_history_limit_holds_across_projects_and_project_info_reports_it() {
+    let t = TempDir::new("history-limit");
+    let a = empty_project(t.path(), "A");
+    let b = empty_project(t.path(), "B");
+    let mut config = oneshot(t.path());
+    config.mode = EngineMode::Gui;
+    config.ui_token = Some(ui_token());
+    config.api.run_dir = Some(t.path().join("run"));
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let conn = h.connect(&Credential::Ui).unwrap();
+    let cli = h.connect(&agent("cli")).unwrap();
+    must(&conn, "project.open", json!({ "path": path_str(&a) }));
+    assert_eq!(
+        must(&conn, "project.info", json!({}))["history_limit"],
+        1000
+    );
+
+    // An agent reads the limit and cannot change it.
+    let err = cli
+        .call(Call::new("edit.set_history_limit", json!({ "steps": 2 })))
+        .unwrap_err();
+    assert_eq!(err.code(), "forbidden");
+    assert_eq!(must(&cli, "project.info", json!({}))["history_limit"], 1000);
+
+    for name in ["one", "two", "three"] {
+        must(&conn, "project.rename", json!({ "name": name }));
+    }
+    let rev = h.status().unwrap().rev;
+    let out = must(&conn, "edit.set_history_limit", json!({ "steps": 2 }));
+    assert_eq!(out["steps"], 2);
+    // Not an edit: the document revision holds.
+    assert_eq!(h.status().unwrap().rev, rev);
+    assert_eq!(must(&cli, "project.info", json!({}))["history_limit"], 2);
+    // Two of the three edits undo; the oldest was dropped.
+    must(&conn, "edit.undo", json!({}));
+    must(&conn, "edit.undo", json!({}));
+    let err = conn.call(Call::new("edit.undo", json!({}))).unwrap_err();
+    assert_eq!(err.code(), "invalid");
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "one");
+
+    // The limit also holds for the next project the engine opens (a session swap).
+    must(&conn, "project.close", json!({ "save": false }));
+    must(&conn, "project.open", json!({ "path": path_str(&b) }));
+    assert_eq!(must(&conn, "project.info", json!({}))["history_limit"], 2);
+    for name in ["b1", "b2", "b3"] {
+        must(&conn, "project.rename", json!({ "name": name }));
+    }
+    must(&conn, "edit.undo", json!({}));
+    must(&conn, "edit.undo", json!({}));
+    let err = conn.call(Call::new("edit.undo", json!({}))).unwrap_err();
+    assert_eq!(err.code(), "invalid");
+    engine.shutdown();
+}
+
 // ----- project.set_autosave (WP-1M.10) --------------------------------------------------------
 
 fn fast_autosave(t: &TempDir) -> EngineConfig {

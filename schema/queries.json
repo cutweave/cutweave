@@ -4558,6 +4558,12 @@
             ],
             "type": "object"
           },
+          "history_limit": {
+            "description": "Undo steps kept per person or agent (`edit.undo` reaches no further back). The person\nsets it in Settings > Editing; 1000 until then. Filled by the engine.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "media_count": {
             "description": "Number of media assets.",
             "format": "uint32",
@@ -4826,7 +4832,8 @@
           "settings",
           "media_count",
           "sequences",
-          "allowed_roots"
+          "allowed_roots",
+          "history_limit"
         ],
         "title": "ProjectInfoOutput",
         "type": "object"

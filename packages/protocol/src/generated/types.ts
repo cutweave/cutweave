@@ -2314,6 +2314,12 @@ export type HistoryEntry = {
 	ops: number,
 };
 
+/**  Result of `edit.set_history_limit`. */
+export type HistoryLimitSet = {
+	/**  The undo steps now kept per person or agent (`project.info`'s `history_limit`). */
+	steps: number,
+};
+
 /**  The result of `edit.undo` / `edit.redo`. */
 export type HistoryMoved = {
 	/**  The new transaction that undid or redid it. */
@@ -5402,6 +5408,11 @@ export type ProjectInfoOutput = {
 	 *  and the project folders. Filled by the engine; empty outside one.
 	 */
 	allowed_roots: string[],
+	/**
+	 *  Undo steps kept per person or agent (`edit.undo` reaches no further back). The person
+	 *  sets it in Settings > Editing; 1000 until then. Filled by the engine.
+	 */
+	history_limit: number,
 };
 
 /**  Document metadata. */
@@ -6438,6 +6449,18 @@ export type SessionState =
 "open" | 
 /**  The project is being closed (a swap or engine shutdown is under way). */
 "closing";
+
+/**
+ *  Sets how many undo steps are kept per person or agent (1 to 10000; 1000 until it is set).
+ *  A lower limit drops each actor's oldest steps at once: they stay in `edit.history` but can
+ *  no longer be undone. Not undoable, not journaled and never marks the project dirty: it is
+ *  the app applying the person's preference (Settings > Editing) to its own engine, so it is
+ *  UI credential only (ADR-0016) and agents get `forbidden`. `project.info` reports the limit.
+ */
+export type SetHistoryLimit = {
+	/**  Undo steps to keep for each person or agent (1 to 10000). */
+	steps: number,
+};
 
 /**  One key `keyframe.set` wrote. */
 export type SetKey = {

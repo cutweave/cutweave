@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (162 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (163 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -36,6 +36,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | edit | `edit.locks` | List open transactions and the items they soft-lock (who is editing what) | engine, read-only, idempotent | catalog |
 | edit | `edit.redo` | Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone) | engine | catalog |
 | edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | catalog |
+| edit | `edit.set_history_limit` | Set how many undo steps are kept per person or agent | engine, destructive, idempotent, ui-only | catalog |
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
 | export | `export.cancel` | Cancel a queued or running export; the queue goes on with the next one | engine, idempotent | catalog |
 | export | `export.delete_preset` | Delete one of your export presets | engine, destructive, idempotent | catalog |

@@ -94,10 +94,11 @@ const REGRESSIONS: &str = concat!(
 );
 /// Sequences of the deterministic coverage run. Each new command shifts the fixed seed's
 /// stream; at 48 the export queue and lock commands dropped coverage to 93%, and at 128 the
-/// three import commands of ADR-0035 dropped it to 94.3%. Commands whose
+/// three import commands of ADR-0035 dropped it to 94.3%; `edit.set_history_limit`
+/// (WP-2A.13) took it from 160 to 176. Commands whose
 /// preconditions are rare (keyframes to move, a proxy to delete) want strategies that set
 /// them up rather than more cases (issue #184).
-const COVERAGE_CASES: u32 = 160;
+const COVERAGE_CASES: u32 = 176;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 
@@ -886,10 +887,18 @@ impl<'s> Harness<'s> {
         let patched = self.absorb(&what, &after);
         match &result {
             Err(e) => {
-                if !matches!(
-                    e.code(),
-                    "invalid" | "not_found" | "locked" | "conflict" | "unsupported"
-                ) {
+                // A UI-only entry (`edit.set_history_limit`) refuses every other credential.
+                let ui_only = e.code() == "forbidden"
+                    && self
+                        .registry
+                        .get(name)
+                        .is_some_and(|entry| !ctx.access().allows(entry.meta.scope));
+                if !ui_only
+                    && !matches!(
+                        e.code(),
+                        "invalid" | "not_found" | "locked" | "conflict" | "unsupported"
+                    )
+                {
                     self.fail(format!("{what}: unexpected error `{}`: {e}", e.code()));
                 }
                 // (3) A failure changes nothing.

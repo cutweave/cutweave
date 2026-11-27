@@ -7311,6 +7311,59 @@
     },
     {
       "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets how many undo steps are kept per person or agent (1 to 10000; 1000 until it is set).\nA lower limit drops each actor's oldest steps at once: they stay in `edit.history` but can\nno longer be undone. Not undoable, not journaled and never marks the project dirty: it is\nthe app applying the person's preference (Settings > Editing) to its own engine, so it is\nUI credential only (ADR-0016) and agents get `forbidden`. `project.info` reports the limit.",
+        "properties": {
+          "steps": {
+            "description": "Undo steps to keep for each person or agent (1 to 10000).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "SetHistoryLimit",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_set_history_limit",
+      "name": "edit.set_history_limit",
+      "namespace": "edit",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `edit.set_history_limit`.",
+        "properties": {
+          "steps": {
+            "description": "The undo steps now kept per person or agent (`project.info`'s `history_limit`).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "HistoryLimitSet",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "Set how many undo steps are kept per person or agent",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
