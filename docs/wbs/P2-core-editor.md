@@ -1672,6 +1672,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - A plugin load sends the change notification via the mechanism of each negotiated revision (test clients on 2025-11-25 and 2026-07-28 both receive it); a connection to `/mcp/minimal` never sees `standard` tools.
   - `cutweave_execute` still reaches every command under `minimal`.
 - **Tests:** unit, conformance.
+  - (2026-11-27, ADR-0040, Proposed) If the owner accepts its question 2, this WP also owns the budget of the `described` profile that WP-2I.07 adds (the same tools with parameter descriptions, for clients that defer tool definitions). Change notifications are for real catalog changes only (a plugin loads), never for switching toolsets in a session: that breaks prompt caching, and the 2026-07-28 revision forbids lists that differ per connection.
 - **Out of scope:** per-client auto-profile detection; per-connection profile switching.
 
 ### WP-2I.06 — Scripted-agent e2e: YouTube edit and 9:16 short via MCP only
@@ -1684,13 +1685,96 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Both scripts assert state via `timeline_get`/`cutweave_query` and validate visually through `render_contact_sheet` byte counts and a rendered-frame golden compare; each script checkpoints before risky steps and tests restore.
   - Run in CI headless on 3 OSes (software rendering) and in a nightly with the attach transport against the GUI engine.
   - A written transcript of tool calls is kept as an example in `docs/examples/agent-session-p2.md` (generated, not hand-written).
+  - (2026-11-27) Each script also records the bytes of every tool result and of `tools/list`, and writes them beside the transcript, so the cost of a scripted session is tracked from run to run. Whether a model uses the tools well is WP-2I.09's question, not this script's.
 - **Interfaces:** none new; consumes all.
 - **Acceptance criteria:**
   - Both scripts pass in CI on Windows/macOS/Linux; total tool calls for (a) ≤ 40 and for (b) ≤ 30 (efficiency guard).
   - The timeline produced by the MCP run equals (structural JSON diff, ignoring IDs) the one built by the equivalent CLI script (parity).
   - Exported files pass the ffprobe checks (duration ±1 frame, 1080×1920 for the short).
 - **Tests:** the WP itself is the test suite.
-- **Out of scope:** LLM-in-the-loop evals (P6).
+- **Out of scope:** LLM-in-the-loop evals beyond WP-2I.09's on-demand run (P6).
+
+**Epic 2I order after the MCP-at-scale research (2026-11-27).**
+
+The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mcp-at-scale.md) (Proposed) change what the rest of this epic builds against. The remaining work runs in this order, ahead of other Phase 2 work that does not block the exit:
+
+1. **ADR-0040**: the product owner answers its five questions.
+2. **WP-2I.07** (hints for clients that defer tool definitions). Its first part needs no decision and starts at once.
+3. **WP-2I.09** (the evaluation), so later choices are measured. It can run beside WP-2I.07.
+4. **WP-2I.08** (discovery and concise results), then **WP-2I.05** (profiles, with the described profile) and **WP-2I.04**.
+5. **WP-2I.02** (visual tools), then **WP-2I.06** (the scripted run), which now also records the size of what a run costs.
+6. **WP-2I.10** (the command line with a skill in the Agent Kit), when WP-2I.09 can compare it.
+
+### WP-2I.07 — Ready for tool search: always-loaded tools, the instructions as a map, words a user would say
+- **Area:** crates/cutweave-api (`mcp_core.toml`, `src/mcp/core.rs`, `src/mcp/catalog.rs`, the server instructions), docs/reference/mcp-core-tools.md (generated), docs/01-architecture.md §14
+- **Depends on:** WP-2I.01; ADR-0040 (questions 1 and 2) for the second part only
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - **Part 1, no decision needed (no schema and no list changes):**
+    - A per-tool `always_load` flag in `mcp_core.toml`, emitted as the hint clients that defer definitions read (for Claude Code, `_meta` key `anthropic/alwaysLoad`; confirm the key and its meaning against the client's current documentation before building). Set on `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command` and `cutweave_execute`. Clients that do not know the hint ignore it.
+    - The server `instructions` rewritten as a map of the catalog in at most 4,096 characters: the command namespaces and what each is for, "describe a command before its first use", "batch through `cutweave_execute`", how to read a result's revision, and how to undo. A test fails above 4,096 characters.
+    - Descriptions and the keywords `cutweave_search_commands` matches on use the words a user would say (cut, split, ripple, fade, crop, speed up, caption). Add a `keywords` list per command where the registry has none; no tool or command is renamed.
+  - **Part 2, after ADR-0040:** the `described` profile of question 2: the same tools in the same order with full parameter descriptions, its own endpoint and its own budget in `mcp_core.toml`; a test compares the two standard lists (names, order, and that both validate the same values).
+- **Interfaces:** `always_load` and `keywords` in `mcp_core.toml`; the `/mcp/described` endpoint (part 2). No command changes.
+- **Acceptance criteria:**
+  - The `tools/list` snapshot shows the hint on the five tools and nowhere else; the standard list stays within 8,000 tokens and 36 tools.
+  - A search test: each of 30 plain-language phrases ("make the clip faster", "fade the music out", "cut here") returns the right command among the first three results.
+  - Part 2: `/mcp/described` lists the same names in the same order as `/mcp`, every listed parameter has a description, and CI fails when it leaves its budget.
+- **Tests:** unit, snapshot, the search phrase table.
+- **Out of scope:** detecting the client; lists that differ per connection; renaming tools.
+
+### WP-2I.08 — Discovery and results that stay small: search detail levels, describe several, concise reads
+- **Area:** crates/cutweave-api (`src/mcp/catalog.rs`, the generic tools), crates/cutweave-ops (`timeline.get`, `media.list` output shaping), docs/reference
+- **Depends on:** WP-2I.01; ADR-0040 (question 5)
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - `cutweave_search_commands{query, detail?: "names" | "summary" | "schema"}`: `summary` is today's result and stays the default; `names` returns names only; `schema` adds each hit's input schema, capped at 5 hits.
+  - `cutweave_describe_command{name | names[]}`: up to 8 commands in one call.
+  - `timeline_get` and `media_list` gain `detail?: "concise" | "full"` (`full` is today's result and stays the default): concise drops fields an agent can ask for again (per-item properties at their defaults, probe details) and keeps ids, names, times and the revision.
+  - All additive and optional; today's calls return today's results byte for byte.
+- **Interfaces:** the optional parameters above (ADR-0040, question 5).
+- **Acceptance criteria:**
+  - Snapshot tests for each detail level; a call without the new parameters matches the snapshot from before this work package.
+  - On the P-400 fixture, a concise `timeline_get` at depth 2 is at most half the bytes of the full one.
+  - The standard list stays within 8,000 tokens with the new parameters.
+- **Tests:** unit, snapshot, parity (the same parameters through RPC and the CLI).
+- **Out of scope:** changing what `full` returns; pagination beyond what WP-2I.01 added.
+
+### WP-2I.09 — Agent evaluation: measure how a model uses the tools, on demand
+- **Area:** crates/cutweave-cli/tests/agent_eval/ or tools/agent-eval/ (a runner outside the gate), docs/reference/agent-eval.md, docs/examples
+- **Depends on:** WP-2I.01; WP-2J.01 (fixtures)
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - A runner that gives a model a task and an MCP connection to a headless engine on a generated fixture, and records every tool call. Ten tasks to start: split and trim, insert and reorder, set speed, add a marker, fade audio, keyframe a move, set a 9:16 format, undo and checkpoint, import and place, and one long-tail task that needs a catalog command.
+  - Each task has a checker that reads the final document through `timeline_get` or `cutweave_query`; no judgement by a model.
+  - Variants it can compare in one run: the standard list against the described one; a core tool against the same command through `cutweave_execute`; one batch against several calls; MCP against the command line with the skill (when WP-2I.10 exists).
+  - Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.
+  - It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.
+  - A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.
+- **Interfaces:** none in the product.
+- **Acceptance criteria:**
+  - One full run on the standard and the described list, with the report committed under `docs/reference/agent-eval/`.
+  - The report answers, with numbers: do parameter descriptions change first-call validity, and by how much; what does a core tool save over `cutweave_execute`; what does a batch save.
+  - The replay smoke test passes in the gate with no network.
+- **Tests:** the replay smoke test; the checkers have unit tests.
+- **Out of scope:** judging the quality of an edit; a benchmark across many models; running in CI.
+
+### WP-2I.10 — The command line with a skill, as a second way in for agents with a shell
+- **Area:** the Agent Kit (the skill and its reference files), crates/cutweave-cli (only if a gap shows), docs
+- **Depends on:** WP-2I.09
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - A skill that teaches an agent with a shell to drive Cutweave through `cutweave exec`, `cutweave query` and `cutweave describe`: the same catalog map as the server instructions, the batch form, how to read revisions and undo.
+  - Measured against MCP with WP-2I.09 on the same tasks.
+- **Interfaces:** none new.
+- **Acceptance criteria:**
+  - The ten tasks of WP-2I.09 run through the command line path, and the report compares success, turns and tokens with the MCP path.
+- **Tests:** WP-2I.09's runner.
+- **Out of scope:** replacing MCP; a scripting tool on the server.
 
 ---
 
@@ -1910,6 +1994,10 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | MCP: checkpoints | 2I.03 |
 | MCP: `expected_rev` | 2I.04 |
 | MCP: tool profiles | 2I.05 |
+| MCP: hints for clients that defer tool definitions, the described profile (ADR-0040) | 2I.07 |
+| MCP: discovery detail levels and concise results (ADR-0040) | 2I.08 |
+| MCP: on-demand agent evaluation | 2I.09 |
+| Agents: the command line with a skill | 2I.10 |
 | Performance: benchmark suite in CI (timeline, scrub, playback, command RTT) | 2J.01, 2J.02, 2J.03, 2J.04 |
 | Background render cache (smart pre-render while idle) | 2J.09 |
 

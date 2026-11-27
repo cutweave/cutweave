@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 513,
+  "count": 517,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -6907,7 +6907,7 @@
         "A plugin load sends the change notification via the mechanism of each negotiated revision (test clients on 2025-11-25 and 2026-07-28 both receive it); a connection to `/mcp/minimal` never sees `standard` tools.",
         "`cutweave_execute` still reaches every command under `minimal`."
       ],
-      "tests": "unit, conformance.",
+      "tests": "unit, conformance.\n- (2026-11-27, ADR-0040, Proposed) If the owner accepts its question 2, this WP also owns the budget of the `described` profile that WP-2I.07 adds (the same tools with parameter descriptions, for clients that defer tool definitions). Change notifications are for real catalog changes only (a plugin loads), never for switching toolsets in a session: that breaks prompt caching, and the 2026-07-28 revision forbids lists that differ per connection.",
       "out_of_scope": "per-client auto-profile detection; per-connection profile switching."
     },
     {
@@ -6915,7 +6915,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1677
+        "line": 1678
       },
       "phase": "P2",
       "epic": "2I",
@@ -6943,7 +6943,7 @@
         "WP-2I.03",
         "WP-2I.04"
       ],
-      "scope": "- Deterministic MCP client scripts (Rust or Python via the MCP SDK) that perform, without any screenshots and using only core tools plus `cutweave_execute`: (a) a rough-cut + B-roll insert + audio normalize + 1080p export from corpus media; (b) a 9:16 short: new sequence, manual reframe via `keyframe_set`/`item_set_props`, music with `audio_set` fades, export Shorts preset.\n- Both scripts assert state via `timeline_get`/`cutweave_query` and validate visually through `render_contact_sheet` byte counts and a rendered-frame golden compare; each script checkpoints before risky steps and tests restore.\n- Run in CI headless on 3 OSes (software rendering) and in a nightly with the attach transport against the GUI engine.\n- A written transcript of tool calls is kept as an example in `docs/examples/agent-session-p2.md` (generated, not hand-written).",
+      "scope": "- Deterministic MCP client scripts (Rust or Python via the MCP SDK) that perform, without any screenshots and using only core tools plus `cutweave_execute`: (a) a rough-cut + B-roll insert + audio normalize + 1080p export from corpus media; (b) a 9:16 short: new sequence, manual reframe via `keyframe_set`/`item_set_props`, music with `audio_set` fades, export Shorts preset.\n- Both scripts assert state via `timeline_get`/`cutweave_query` and validate visually through `render_contact_sheet` byte counts and a rendered-frame golden compare; each script checkpoints before risky steps and tests restore.\n- Run in CI headless on 3 OSes (software rendering) and in a nightly with the attach transport against the GUI engine.\n- A written transcript of tool calls is kept as an example in `docs/examples/agent-session-p2.md` (generated, not hand-written).\n- (2026-11-27) Each script also records the bytes of every tool result and of `tools/list`, and writes them beside the transcript, so the cost of a scripted session is tracked from run to run. Whether a model uses the tools well is WP-2I.09's question, not this script's.",
       "interfaces": "none new; consumes all.",
       "acceptance": [
         "Both scripts pass in CI on Windows/macOS/Linux; total tool calls for (a) ≤ 40 and for (b) ≤ 30 (efficiency guard).",
@@ -6951,14 +6951,138 @@
         "Exported files pass the ffprobe checks (duration ±1 frame, 1080×1920 for the short)."
       ],
       "tests": "the WP itself is the test suite.",
-      "out_of_scope": "LLM-in-the-loop evals (P6)."
+      "out_of_scope": "LLM-in-the-loop evals beyond WP-2I.09's on-demand run (P6).\n\n**Epic 2I order after the MCP-at-scale research (2026-11-27).**\n\nThe research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mcp-at-scale.md) (Proposed) change what the rest of this epic builds against. The remaining work runs in this order, ahead of other Phase 2 work that does not block the exit:\n\n1. **ADR-0040**: the product owner answers its five questions.\n2. **WP-2I.07** (hints for clients that defer tool definitions). Its first part needs no decision and starts at once.\n3. **WP-2I.09** (the evaluation), so later choices are measured. It can run beside WP-2I.07.\n4. **WP-2I.08** (discovery and concise results), then **WP-2I.05** (profiles, with the described profile) and **WP-2I.04**.\n5. **WP-2I.02** (visual tools), then **WP-2I.06** (the scripted run), which now also records the size of what a run costs.\n6. **WP-2I.10** (the command line with a skill in the Agent Kit), when WP-2I.09 can compare it."
+    },
+    {
+      "id": "WP-2I.07",
+      "title": "Ready for tool search: always-loaded tools, the instructions as a map, words a user would say",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1708
+      },
+      "phase": "P2",
+      "epic": "2I",
+      "area": "crates/cutweave-api (`mcp_core.toml`, `src/mcp/core.rs`, `src/mcp/catalog.rs`, the server instructions), docs/reference/mcp-core-tools.md (generated), docs/01-architecture.md §14",
+      "size": "S",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2I.01; ADR-0040 (questions 1 and 2) for the second part only",
+      "depends_wps": [
+        "WP-2I.01"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2I.01"
+      ],
+      "scope": "- **Part 1, no decision needed (no schema and no list changes):**\n  - A per-tool `always_load` flag in `mcp_core.toml`, emitted as the hint clients that defer definitions read (for Claude Code, `_meta` key `anthropic/alwaysLoad`; confirm the key and its meaning against the client's current documentation before building). Set on `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command` and `cutweave_execute`. Clients that do not know the hint ignore it.\n  - The server `instructions` rewritten as a map of the catalog in at most 4,096 characters: the command namespaces and what each is for, \"describe a command before its first use\", \"batch through `cutweave_execute`\", how to read a result's revision, and how to undo. A test fails above 4,096 characters.\n  - Descriptions and the keywords `cutweave_search_commands` matches on use the words a user would say (cut, split, ripple, fade, crop, speed up, caption). Add a `keywords` list per command where the registry has none; no tool or command is renamed.\n- **Part 2, after ADR-0040:** the `described` profile of question 2: the same tools in the same order with full parameter descriptions, its own endpoint and its own budget in `mcp_core.toml`; a test compares the two standard lists (names, order, and that both validate the same values).",
+      "interfaces": "`always_load` and `keywords` in `mcp_core.toml`; the `/mcp/described` endpoint (part 2). No command changes.",
+      "acceptance": [
+        "The `tools/list` snapshot shows the hint on the five tools and nowhere else; the standard list stays within 8,000 tokens and 36 tools.",
+        "A search test: each of 30 plain-language phrases (\"make the clip faster\", \"fade the music out\", \"cut here\") returns the right command among the first three results.",
+        "Part 2: `/mcp/described` lists the same names in the same order as `/mcp`, every listed parameter has a description, and CI fails when it leaves its budget."
+      ],
+      "tests": "unit, snapshot, the search phrase table.",
+      "out_of_scope": "detecting the client; lists that differ per connection; renaming tools."
+    },
+    {
+      "id": "WP-2I.08",
+      "title": "Discovery and results that stay small: search detail levels, describe several, concise reads",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1727
+      },
+      "phase": "P2",
+      "epic": "2I",
+      "area": "crates/cutweave-api (`src/mcp/catalog.rs`, the generic tools), crates/cutweave-ops (`timeline.get`, `media.list` output shaping), docs/reference",
+      "size": "S",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2I.01; ADR-0040 (question 5)",
+      "depends_wps": [
+        "WP-2I.01"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2I.01"
+      ],
+      "scope": "- `cutweave_search_commands{query, detail?: \"names\" | \"summary\" | \"schema\"}`: `summary` is today's result and stays the default; `names` returns names only; `schema` adds each hit's input schema, capped at 5 hits.\n- `cutweave_describe_command{name | names[]}`: up to 8 commands in one call.\n- `timeline_get` and `media_list` gain `detail?: \"concise\" | \"full\"` (`full` is today's result and stays the default): concise drops fields an agent can ask for again (per-item properties at their defaults, probe details) and keeps ids, names, times and the revision.\n- All additive and optional; today's calls return today's results byte for byte.",
+      "interfaces": "the optional parameters above (ADR-0040, question 5).",
+      "acceptance": [
+        "Snapshot tests for each detail level; a call without the new parameters matches the snapshot from before this work package.",
+        "On the P-400 fixture, a concise `timeline_get` at depth 2 is at most half the bytes of the full one.",
+        "The standard list stays within 8,000 tokens with the new parameters."
+      ],
+      "tests": "unit, snapshot, parity (the same parameters through RPC and the CLI).",
+      "out_of_scope": "changing what `full` returns; pagination beyond what WP-2I.01 added."
+    },
+    {
+      "id": "WP-2I.09",
+      "title": "Agent evaluation: measure how a model uses the tools, on demand",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1745
+      },
+      "phase": "P2",
+      "epic": "2I",
+      "area": "crates/cutweave-cli/tests/agent_eval/ or tools/agent-eval/ (a runner outside the gate), docs/reference/agent-eval.md, docs/examples",
+      "size": "M",
+      "executor": "opus",
+      "executor_note": "",
+      "depends_raw": "WP-2I.01; WP-2J.01 (fixtures)",
+      "depends_wps": [
+        "WP-2I.01",
+        "WP-2J.01"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2I.01",
+        "WP-2J.01"
+      ],
+      "scope": "- A runner that gives a model a task and an MCP connection to a headless engine on a generated fixture, and records every tool call. Ten tasks to start: split and trim, insert and reorder, set speed, add a marker, fade audio, keyframe a move, set a 9:16 format, undo and checkpoint, import and place, and one long-tail task that needs a catalog command.\n- Each task has a checker that reads the final document through `timeline_get` or `cutweave_query`; no judgement by a model.\n- Variants it can compare in one run: the standard list against the described one; a core tool against the same command through `cutweave_execute`; one batch against several calls; MCP against the command line with the skill (when WP-2I.10 exists).\n- Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.\n- It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.\n- A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.",
+      "interfaces": "none in the product.",
+      "acceptance": [
+        "One full run on the standard and the described list, with the report committed under `docs/reference/agent-eval/`.",
+        "The report answers, with numbers: do parameter descriptions change first-call validity, and by how much; what does a core tool save over `cutweave_execute`; what does a batch save.",
+        "The replay smoke test passes in the gate with no network."
+      ],
+      "tests": "the replay smoke test; the checkers have unit tests.",
+      "out_of_scope": "judging the quality of an edit; a benchmark across many models; running in CI."
+    },
+    {
+      "id": "WP-2I.10",
+      "title": "The command line with a skill, as a second way in for agents with a shell",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1765
+      },
+      "phase": "P2",
+      "epic": "2I",
+      "area": "the Agent Kit (the skill and its reference files), crates/cutweave-cli (only if a gap shows), docs",
+      "size": "S",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2I.09",
+      "depends_wps": [
+        "WP-2I.09"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2I.09"
+      ],
+      "scope": "- A skill that teaches an agent with a shell to drive Cutweave through `cutweave exec`, `cutweave query` and `cutweave describe`: the same catalog map as the server instructions, the batch form, how to read revisions and undo.\n- Measured against MCP with WP-2I.09 on the same tasks.",
+      "interfaces": "none new.",
+      "acceptance": [
+        "The ten tasks of WP-2I.09 run through the command line path, and the report compares success, turns and tokens with the MCP path."
+      ],
+      "tests": "WP-2I.09's runner.",
+      "out_of_scope": "replacing MCP; a scripting tool on the server."
     },
     {
       "id": "WP-2J.01",
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1699
+        "line": 1783
       },
       "phase": "P2",
       "epic": "2J",
@@ -7015,7 +7139,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1716
+        "line": 1800
       },
       "phase": "P2",
       "epic": "2J",
@@ -7049,7 +7173,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1731
+        "line": 1815
       },
       "phase": "P2",
       "epic": "2J",
@@ -7091,7 +7215,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1746
+        "line": 1830
       },
       "phase": "P2",
       "epic": "2J",
@@ -7132,7 +7256,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1762
+        "line": 1846
       },
       "phase": "P2",
       "epic": "2J",
@@ -7176,7 +7300,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1780
+        "line": 1864
       },
       "phase": "P2",
       "epic": "2J",
@@ -7216,7 +7340,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1795
+        "line": 1879
       },
       "phase": "P2",
       "epic": "2J",
@@ -7254,7 +7378,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1809
+        "line": 1893
       },
       "phase": "P2",
       "epic": "2J",
@@ -7292,7 +7416,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1822
+        "line": 1906
       },
       "phase": "P2",
       "epic": "2J",
@@ -9142,6 +9266,10 @@
         "WP-2I.04",
         "WP-2I.05",
         "WP-2I.06",
+        "WP-2I.07",
+        "WP-2I.08",
+        "WP-2I.09",
+        "WP-2I.10",
         "WP-3D.05",
         "WP-3E.01",
         "WP-3F.02",
@@ -11751,6 +11879,10 @@
         "WP-2I.04",
         "WP-2I.05",
         "WP-2I.06",
+        "WP-2I.07",
+        "WP-2I.08",
+        "WP-2I.09",
+        "WP-2I.10",
         "WP-5A.02",
         "WP-5A.03",
         "WP-5A.04",
@@ -13705,6 +13837,10 @@
         "WP-2I.04",
         "WP-2I.05",
         "WP-2I.06",
+        "WP-2I.07",
+        "WP-2I.08",
+        "WP-2I.09",
+        "WP-2I.10",
         "WP-3D.01",
         "WP-3D.02",
         "WP-3D.03",
@@ -14400,6 +14536,10 @@
         "WP-2I.04",
         "WP-2I.05",
         "WP-2I.06",
+        "WP-2I.07",
+        "WP-2I.08",
+        "WP-2I.09",
+        "WP-2I.10",
         "WP-3H.01",
         "WP-3H.02",
         "WP-3H.03",
@@ -16268,6 +16408,10 @@
         "WP-2I.04",
         "WP-2I.05",
         "WP-2I.06",
+        "WP-2I.07",
+        "WP-2I.08",
+        "WP-2I.09",
+        "WP-2I.10",
         "WP-6G.01",
         "WP-6G.02"
       ],
@@ -17504,6 +17648,10 @@
         "WP-2I.04",
         "WP-2I.05",
         "WP-2I.06",
+        "WP-2I.07",
+        "WP-2I.08",
+        "WP-2I.09",
+        "WP-2I.10",
         "WP-6I.01"
       ],
       "scope": "- Every agent turn runs in a transaction tagged `agent:copilot:<session>` with an automatic `edit.checkpoint` before it (a tx is owned by its connection; a dropped connection rolls it back); **per-actor history** so \"undo agent turn\" reverts exactly that turn without touching user edits made meanwhile (conflict detection when the user edited the same items → offer partial undo/abort).\n- **Pending proposal mode = an ephemeral `proposal` transaction** (decision B): the copilot session owns the tx, which soft-locks the items it touches (the P1/P2 soft-lock), has **no idle timeout** and is cancellable. The loop applies edits inside the tx, publishes a diff (created/modified/deleted ids, resulting duration) and preview renders from the tx's working state; **accept** commits the tx as ONE undo step tagged `agent:<id>`; **reject** rolls it back (doc byte-identical). Per-edit accept/reject granularity is done by re-playing the accepted subset into a fresh committed tx. No speculative branch and no rebase exist: concurrent edits to locked items fail fast with `Conflict{item_in_gesture}`, other items proceed.\n- Jobs started by a turn (paid generation, export) are linked to the turn for cancel/cost.",
@@ -17798,6 +17946,10 @@
         "WP-2I.04",
         "WP-2I.05",
         "WP-2I.06",
+        "WP-2I.07",
+        "WP-2I.08",
+        "WP-2I.09",
+        "WP-2I.10",
         "WP-6J.01"
       ],
       "scope": "- Measure `tools/list` token size (documented tokenizer approximation) per profile; **budgets** (single source, decision A): `minimal` ≤ 12 tools / ≤ 3k tokens; `standard` ≤ 36 tools / ≤ 8k tokens (incl. the 4 generic ones and `skill_load`); `full` = standard + search-based long tail (no extra listed tools). Profiles are selected per MCP endpoint (`/mcp`, `/mcp/minimal`, `/mcp/full`) or the `--profile` launch flag — never per connection. CI fails above budget.\n- Deterministic ordering; schema snapshot of `tools/list`, `prompts/list`, resources; breaking-change detector (removed/renamed tool or field, narrowed enum) requiring a deprecation alias + `schemaVersion` bump.\n- Per-tool description length cap and lint for vague descriptions.",
