@@ -344,3 +344,114 @@ fn the_post_script_needs_a_key_and_an_https_address() {
     assert!(refused.contains("must be https"), "{refused}");
     assert!(!refused.contains("made-up-key"), "{refused}");
 }
+
+/// The whole run as the owner starts it, up to the network: the binary, the Python script,
+/// the session loop, a real engine, the checker and the two files. The "model" is a listener
+/// on this machine that answers three requests with a script (look, set the speed, done);
+/// the key is a made-up one.
+#[test]
+fn a_run_against_a_scripted_model_on_this_machine_writes_a_result_and_a_report() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://127.0.0.1:{}/v1/messages",
+        listener.local_addr().unwrap().port()
+    );
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("agent-eval-run");
+    let _ = std::fs::remove_dir_all(&dir);
+    let uses = |id: &str, name: &str, input: serde_json::Value, read: u64| {
+        json!({"content": [{"type": "tool_use", "id": id, "name": name, "input": input}],
+               "stop_reason": "tool_use",
+               "usage": {"input_tokens": 12, "cache_read_input_tokens": read, "output_tokens": 40}})
+        .to_string()
+    };
+    let speed = json!({"item": "itm_00000000001273cfbb25fc71bda8f9c3", "speed": "2x"});
+    let replies = [
+        uses("toolu_1", "project_info", json!({}), 0),
+        uses("toolu_2", "clip_set_speed", speed, 9_000),
+        json!({"content": [{"type": "text", "text": "The clip now plays at double speed."}],
+               "stop_reason": "end_turn",
+               "usage": {"input_tokens": 9, "cache_read_input_tokens": 9_500, "output_tokens": 11}})
+        .to_string(),
+    ];
+    let (output, requests) = std::thread::scope(|scope| {
+        let server = scope.spawn(|| {
+            let serve = |reply: &String| serve_once(&listener, "200 OK", "", reply).1;
+            replies.iter().map(serve).collect::<Vec<String>>()
+        });
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_cutweave-bench"))
+            .args([
+                "agent-eval",
+                "--tasks",
+                "set-speed",
+                "--variants",
+                "standard",
+            ])
+            .args(["--client", "upfront", "--api-url", &url])
+            .arg("--out")
+            .arg(dir.join("out"))
+            .arg("--scratch")
+            .arg(dir.join("scratch"))
+            .env("ANTHROPIC_API_KEY", "made-up-key-for-the-test")
+            .output()
+            .unwrap();
+        (output, server.join().unwrap())
+    });
+    let said = String::from_utf8_lossy(&output.stdout).into_owned();
+    let errors = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(output.status.success(), "{said}\n{errors}");
+    assert!(
+        said.starts_with("1 of 1 sessions passed\n"),
+        "{said}\n{errors}"
+    );
+    assert!(!said.contains("made-up-key") && !errors.contains("made-up-key"));
+
+    // What the model was sent: the task, then its own calls with the engine's results.
+    let requests: Vec<serde_json::Value> = requests
+        .iter()
+        .map(|r| serde_json::from_str(r).unwrap())
+        .collect();
+    assert_eq!(requests[0]["model"], "claude-sonnet-5-5");
+    let first = requests[0]["messages"][0]["content"].as_str().unwrap();
+    assert_eq!(
+        first,
+        "Make the first clip on video track V2 play at double speed."
+    );
+    assert!(requests[0]["tools"].as_array().unwrap().len() >= 28);
+    let result = &requests[2]["messages"][4]["content"][0];
+    assert_eq!(
+        (&result["type"], &result["tool_use_id"]),
+        (&json!("tool_result"), &json!("toolu_2"))
+    );
+    assert!(
+        result["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("clip.set_speed: done"),
+        "{result}"
+    );
+
+    // What was written.
+    let out = dir.join("out");
+    let mut names: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names.len(), 2, "{names:?}");
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(out.join(&names[0])).unwrap()).unwrap();
+    let session = &written["sessions"][0];
+    assert_eq!(session["measures"]["success"], true);
+    assert_eq!(session["measures"]["turns"], 3);
+    assert_eq!(
+        session["measures"]["input_tokens"],
+        12 + 12 + 9_000 + 9 + 9_500
+    );
+    assert_eq!(session["measures"]["first_calls_valid"], 2);
+    assert_eq!(session["transcript"]["ended"], "end_turn");
+    let report = std::fs::read_to_string(out.join(&names[1])).unwrap();
+    assert!(
+        report.contains("| set-speed | `standard` | upfront | pass | 3 | 2 | 2/2 |"),
+        "{report}"
+    );
+}

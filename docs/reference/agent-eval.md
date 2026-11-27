@@ -127,11 +127,12 @@ One run is one sample of a model that does not answer the same way twice. A diff
 
 ## What the gate runs
 
-`crates/cutweave-bench/tests/agent_eval.rs`, an ordinary test (about 10 s, no GPU, no network, no key):
+`crates/cutweave-bench/tests/agent_eval.rs`, ordinary tests (about 10 s, no GPU, no key, nothing leaves the machine):
 
 - ten recorded sessions, one per task, are made again on real headless engines: every call goes through MCP, the task's checker reads the final document, and the measures are computed and compared. The sessions cover every variant and both client modes;
 - a session that leaves its task undone must fail its checker, and a call that goes differently than recorded must be reported;
-- the script that carries a request to the API is run against a listener on this machine with a made-up key.
+- the script that carries a request to the API is run against a listener on this machine with a made-up key;
+- one whole run, as started from the command line, against a "model" that is a listener on this machine answering from a script: the binary, the Python script, the session loop, a real engine, the checker and the two files.
 
 The recorded sessions are in `crates/cutweave-bench/tests/fixtures/agent-eval/`. They were **written by hand**, not made by a model, and recorded with `--record`; the token counts in `split-and-trim.json` are made up so that the sums are tested. Each checker also has unit tests with a passing and a failing document.
 
