@@ -183,10 +183,7 @@ impl Finished {
     #[must_use]
     pub fn report(&self) -> String {
         let mut out = format!(
-            "{}
-result:    {}
-histogram: {}
-",
+            "{}\nresult:    {}\nhistogram: {}\n",
             self.table,
             self.result_path.display(),
             self.histogram_path.display()

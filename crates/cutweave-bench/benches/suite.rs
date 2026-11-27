@@ -148,9 +148,5 @@ fn main() {
     let exe = Path::new(env!("CARGO_BIN_EXE_cutweave-bench"));
     let outcome = run_all(&workspace, &scale, exe).expect("probes");
     let finished = cli::finish(&workspace_root(), &scale, &outcome, None).expect("result");
-    print!(
-        "
-{}",
-        finished.report()
-    );
+    print!("\n{}", finished.report());
 }

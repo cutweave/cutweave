@@ -133,9 +133,7 @@ fn gen_bench_project(args: &[String]) -> bool {
         }
         Err(e) => {
             eprintln!(
-                "gen-bench-project: {e}
-
-{}",
+                "gen-bench-project: {e}\n\n{}",
                 cutweave_bench::cli::GEN_USAGE
             );
             false
