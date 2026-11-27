@@ -44,6 +44,21 @@ import { UI_COMMANDS } from "./uiCommands.ts";
 
 /** Catalog commands the tables name beyond the framework's own (`builtins.ts`). */
 export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
+  // The palette's rows for the two WP-2F.05d commands: the menus' words, and the editor carries
+  // them out its own way (`palette/builtinActions.ts`), reading the frame on screen and asking
+  // for the pictures.
+  {
+    name: "media.import_frame",
+    label: "contextMenu.command.mediaImportFrame",
+    icon: "image",
+    when: "engine.live",
+  },
+  {
+    name: "media.import_images_as_slideshow",
+    label: "contextMenu.command.mediaImportImagesAsSlideshow",
+    icon: "film",
+    when: "engine.live",
+  },
   {
     name: "item.set_props",
     label: "contextMenu.command.itemSetProps",

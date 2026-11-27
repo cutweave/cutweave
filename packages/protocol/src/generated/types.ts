@@ -1994,6 +1994,16 @@ export type FormatSpec = {
 	sample_rate: SampleRate | null,
 };
 
+/**  Which picture `media.import_frame` saves. */
+export type FrameOf = 
+/**  The frame the Preview shows: the sequence the editor shows, composited. */
+"sequence" | 
+/**
+ *  The frame the Source viewer shows for this video or image-sequence asset, at its own
+ *  size.
+ */
+{ media: MediaId };
+
 /**
  *  A video frame rate as an exact rational `num/den` frames per second (`30000/1001` is
  *  29.97 fps), always in lowest terms.
@@ -3903,6 +3913,17 @@ export type MediaId = string & { readonly __brand: "MediaId" };
  *  creates a bin folder for each directory that holds new media, named after it, inside
  *  `folder`. One undo removes the media and those folders; files already in the project stay
  *  where they are.
+ * 
+ *  With `copy_to_project` (WP-2F.04c) each new file is first copied into the project's
+ *  `media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from
+ *  an imported folder keeps its place in that folder's tree) and the asset points at the copy,
+ *  so the project keeps working when the original moves. The copy is compared with the
+ *  original before it is used. A file already inside the project folder is not copied, and
+ *  neither is one whose content the project already has (it is returned as a duplicate). The
+ *  call fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it
+ *  has no folder) or when the files do not fit on its drive; nothing is copied then. A file
+ *  that cannot be copied is listed in `failed`. Undoing the import removes the assets; the
+ *  copied files stay on disk (undo never deletes a file).
  */
 export type MediaImport = {
 	/**  Absolute paths of files or folders (1..=256, no repeats). */
@@ -3914,6 +3935,76 @@ export type MediaImport = {
 	 *  puts every file straight into `folder`.
 	 */
 	keep_structure?: boolean | null,
+	/**  Copy each new file into the project's `media/` folder first (default false). */
+	copy_to_project?: boolean | null,
+};
+
+/**
+ *  Saves the frame the Preview shows (`source: "sequence"`: the sequence the editor shows) or
+ *  the frame of a video or image-sequence asset (`source: {"media": id}`) at time `at` as a PNG
+ *  picture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`
+ *  at that time. The file goes into the project's `generated/frames/` folder, named after the
+ *  new asset; `name` is the name the bin shows (default: the source's name and the timecode)
+ *  and `folder` the bin folder. One undo step removes the asset; the file stays. Fails with
+ *  `Invalid` while the project has never been saved (it has no folder yet: save it first),
+ *  and with `Unsupported` on an engine without a renderer.
+ */
+export type MediaImportFrame = {
+	/**  `"sequence"` (the Preview) or `{"media": id}` (a video or image sequence on its own). */
+	source: FrameOf,
+	/**  The time of the frame: flicks, "2.5s", "f:60" or a timecode. */
+	at: TimeInput,
+	/**  The name the bin shows (default: the source's name and the timecode). */
+	name?: string | null,
+	/**  Bin folder (default: top level). */
+	folder?: FolderId | null,
+};
+
+/**  Result of `media.import_frame`. */
+export type MediaImportFrameOutput = {
+	/**  The picture's asset; the existing one when the same picture was already in the project. */
+	media_id: MediaId,
+	/**  Absolute path of the PNG the asset points at. */
+	path: string,
+	/**  The name the bin shows for it. */
+	name: string,
+	/**  Picture width in px. */
+	width: number,
+	/**  Picture height in px. */
+	height: number,
+	/**  The time that was rendered: of the sequence, or of the source. */
+	time: Time,
+	/**  `true` when the same picture was already in the project and nothing was added. */
+	duplicate: boolean,
+	/**  Background analysis jobs queued for the new asset (wait with `job.wait`). */
+	job_ids: JobId[],
+};
+
+/**
+ *  Imports pictures as stills and places them one after the other on a video track, each
+ *  `per_image` long (default: the project's still duration), as one undo step. Pictures whose
+ *  content is already in the project reuse that asset. Files that cannot be read or are not
+ *  still pictures are listed in `failed` and left out; with no picture at all the call fails
+ *  with `Invalid`. `order` is `given` (default), `name` or `name_numeric`. The pictures go to
+ *  `track` (default: the main video track, else the first unlocked video track) of `sequence`
+ *  (optional when the project has one), starting at `at` (default: the end of that track). On
+ *  the magnetic main track what is after `at` moves later; on another track the range must be
+ *  free. Agents and headless callers may only import from the project folder and user-approved
+ *  folders.
+ */
+export type MediaImportImagesAsSlideshow = {
+	/**  Absolute paths of the pictures (1..=256, no repeats). */
+	files: string[],
+	/**  How long each picture stays, `> 0` (default: the project's still duration). */
+	per_image?: TimeInput | null,
+	/**  `given` (default), `name` or `name_numeric`. */
+	order?: SlideshowOrder | null,
+	/**  The sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  A video track (default: the main video track, else the first unlocked one). */
+	track?: TrackId | null,
+	/**  Where the first picture starts (default: the end of the track). */
+	at?: TimeInput | null,
 };
 
 /**  Result of `media.import`. */
@@ -4338,6 +4429,30 @@ export type MediaSetProxyMode = {
 export type MediaSetProxyPolicy = {
 	/**  `off`, `auto` or `all`. */
 	policy: ProxyPolicy,
+};
+
+/**  Result of `media.import_images_as_slideshow`. */
+export type MediaSlideshowOutput = {
+	/**  The sequence the pictures went into. */
+	sequence: SequenceId,
+	/**  The track they are on. */
+	track: TrackId,
+	/**  Where the first picture starts (snapped to the frame grid). */
+	at: Time,
+	/**  How long each picture stays (a whole number of frames). */
+	per_image: Duration,
+	/**  Where the last picture ends. */
+	end: Time,
+	/**  The new clips, in slideshow order. */
+	clips: ItemId[],
+	/**  One entry per placed picture, in slideshow order. */
+	media: ImportedMedia[],
+	/**  The assets of `media`, in the same order (a duplicate names the existing asset). */
+	media_ids: MediaId[],
+	/**  The files that were left out: unreadable, or not a still picture. */
+	failed: ImportFailure[],
+	/**  Background analysis jobs queued for the new assets (wait with `job.wait`). */
+	job_ids: JobId[],
 };
 
 /**  How to order the list; without one, by ID ascending. */
@@ -5911,6 +6026,15 @@ export type SetKey = {
 	/**  The key lies outside the item's `[0, duration)`. */
 	outside: boolean,
 };
+
+/**  The order the pictures of a slideshow are placed in. */
+export type SlideshowOrder = 
+/**  As listed in `files`. */
+"given" | 
+/**  By file name, ignoring case. */
+"name" | 
+/**  By file name, ignoring case, numbers compared by value (`img2` before `img10`). */
+"name_numeric";
 
 /**
  *  A constant playback speed: `num/den` times normal, from 1/10 to 100, in lowest terms.

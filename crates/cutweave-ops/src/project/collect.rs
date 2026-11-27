@@ -43,6 +43,8 @@ use cutweave_model::{MediaAsset, MediaId, MediaKind, Project};
 use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT, asset_name, used_media};
 use crate::util::check_abs_path;
 
+pub mod on_import;
+
 /// The label of a collect job (`job.list`, the job UI).
 pub const COLLECT_JOB_LABEL: &str = "collect";
 /// The folder of a collected project that holds its media.

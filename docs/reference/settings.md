@@ -144,7 +144,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | `media.proxy_policy` | Proxies for new projects: off, auto (H.264 and HEVC video larger than 1920 pixels, faster than 60 fps, or 10-bit HEVC), all video | Auto | App, copied to the project | Renderer (passes it to `project.new` as `proxy_policy`) | Read and change the project's value (`media.set_proxy_policy`) | WP-2F.03b ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md)) |
 | `media.proxy_size` | Proxy size: 540p, 720p, 960p (the longest side of a proxy picture in pixels; a new size applies to proxies made from then on) | 960p | Machine | Engine (UI-only, `media.set_proxy_config`) | Read (`media.cache_status`) | WP-2F.03b |
 | `media.keep_structure` | Keep folder structure when importing folders | On | App | Renderer (passes it to `media.import`) | — | WP-2F.09 |
-| `media.copy_on_import` | Copy imported files into the project folder | Off | App | Renderer | — | WP-2F.04 |
+| `media.copy_on_import` | Copy imported files into the project folder | Off | App | Renderer (passes it to `media.import` as `copy_to_project`; the project must be saved first) | — | WP-2F.04c |
 | `media.image_sequence_fps` | Frame rate for image sequences: the sequence's frame rate, or 23.976, 24, 25, 29.97, 30, 50, 59.94 or 60 fps | The sequence's frame rate | App | Renderer (passes it to `media.import_sequence` as `fps`; the engine's own default is the frame rate of the sequence the editor shows, 30 without one) | — | WP-2F.05c |
 | `media.transcribe_on_import` | Transcribe speech in new media | Off | App | Renderer | — | WP-3D.06 |
 | `media.analyze_on_import` | Detect scenes and beats in new media | Off | App | Renderer | — | WP-5G.11 |

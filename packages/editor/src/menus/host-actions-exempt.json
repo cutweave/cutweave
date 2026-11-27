@@ -38,6 +38,10 @@
       "reason": "Import folder… opens the OS folder picker (`dialog:pickMediaFolders`) and then sends the chosen folders as one `media.import`, the command the CLI and MCP call with folders of their own. Only the picker is host; the document change is the catalog command."
     },
     {
+      "id": "bin.import_slideshow",
+      "reason": "Import as slideshow… opens the OS file picker (`dialog:pickMediaFiles`), asks for the seconds per picture and the order in the app's own dialog, and then sends the chosen paths as one `media.import_images_as_slideshow`, the command the CLI and MCP call with paths of their own. Only the picker is host; the document change is the catalog command."
+    },
+    {
       "id": "palette.copy_id",
       "reason": "Copy command id in the command palette's row menu writes the command's id (`clip.split`) to the OS clipboard through the page's clipboard API. It is the person's clipboard, not project state."
     },

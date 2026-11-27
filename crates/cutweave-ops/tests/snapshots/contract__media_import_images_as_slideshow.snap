@@ -1,0 +1,664 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.import_images_as_slideshow",
+    "summary": "Import pictures as stills and place them one after the other on a track",
+    "kind": "engine",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Absolute paths of the pictures (1..=256, no repeats)."
+        },
+        "per_image": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How long each picture stays, `> 0` (default: the project's still duration).",
+          "default": null
+        },
+        "order": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "given",
+                  "description": "As listed in `files`."
+                },
+                {
+                  "type": "string",
+                  "const": "name",
+                  "description": "By file name, ignoring case."
+                },
+                {
+                  "type": "string",
+                  "const": "name_numeric",
+                  "description": "By file name, ignoring case, numbers compared by value (`img2` before `img10`)."
+                }
+              ],
+              "description": "The order the pictures of a slideshow are placed in."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`given` (default), `name` or `name_numeric`.",
+          "default": null
+        },
+        "sequence": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence; optional when the project has one.",
+          "default": null
+        },
+        "track": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "A video track (default: the main video track, else the first unlocked one).",
+          "default": null
+        },
+        "at": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Where the first picture starts (default: the end of the track).",
+          "default": null
+        }
+      },
+      "required": [
+        "files"
+      ],
+      "description": "Imports pictures as stills and places them one after the other on a video track, each\n`per_image` long (default: the project's still duration), as one undo step. Pictures whose\ncontent is already in the project reuse that asset. Files that cannot be read or are not\nstill pictures are listed in `failed` and left out; with no picture at all the call fails\nwith `Invalid`. `order` is `given` (default), `name` or `name_numeric`. The pictures go to\n`track` (default: the main video track, else the first unlocked video track) of `sequence`\n(optional when the project has one), starting at `at` (default: the end of that track). On\nthe magnetic main track what is after `at` moves later; on another track the range must be\nfree. Agents and headless callers may only import from the project folder and user-approved\nfolders.",
+      "title": "MediaImportImagesAsSlideshow"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence the pictures went into."
+        },
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The track they are on."
+        },
+        "at": {
+          "description": "Where the first picture starts (snapped to the frame grid).",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "per_image": {
+          "description": "How long each picture stays (a whole number of frames).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end": {
+          "description": "Where the last picture ends.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "clips": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The new clips, in slideshow order."
+        },
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "One imported file.",
+            "type": "object",
+            "properties": {
+              "path": {
+                "description": "The path as requested.",
+                "type": "string"
+              },
+              "media_id": {
+                "description": "The asset; an existing one if the same content was imported before.",
+                "type": "string",
+                "pattern": "^med_[0-9a-f]{32}$"
+              },
+              "kind": {
+                "description": "What the asset is.",
+                "oneOf": [
+                  {
+                    "description": "A video file (may also carry audio).",
+                    "type": "string",
+                    "const": "video"
+                  },
+                  {
+                    "description": "An audio-only file.",
+                    "type": "string",
+                    "const": "audio"
+                  },
+                  {
+                    "description": "A still image (no duration).",
+                    "type": "string",
+                    "const": "image"
+                  },
+                  {
+                    "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                    "type": "string",
+                    "const": "image_sequence"
+                  },
+                  {
+                    "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                    "type": "string",
+                    "const": "sequence_ref"
+                  }
+                ]
+              },
+              "duplicate": {
+                "description": "`true` when the content was already in the project and nothing was added.",
+                "type": "boolean"
+              },
+              "proxy": {
+                "description": "Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is\nalready in the cache.",
+                "oneOf": [
+                  {
+                    "description": "None is made (the policy does not want one, or the file cannot have one).",
+                    "type": "string",
+                    "const": "none"
+                  },
+                  {
+                    "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                    "type": "string",
+                    "const": "queued"
+                  },
+                  {
+                    "description": "One is already in the cache (the same content was imported before).",
+                    "type": "string",
+                    "const": "ready"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "media_id",
+              "kind",
+              "duplicate",
+              "proxy"
+            ]
+          },
+          "description": "One entry per placed picture, in slideshow order."
+        },
+        "media_ids": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets of `media`, in the same order (a duplicate names the existing asset)."
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "description": "A file that was not imported (no asset was created for it).",
+            "type": "object",
+            "properties": {
+              "path": {
+                "description": "The path as requested.",
+                "type": "string"
+              },
+              "code": {
+                "description": "Machine-readable reason.",
+                "oneOf": [
+                  {
+                    "description": "There is no readable file at the path.",
+                    "type": "string",
+                    "const": "not_found"
+                  },
+                  {
+                    "description": "The file holds no playable audio or video.",
+                    "type": "string",
+                    "const": "unsupported"
+                  },
+                  {
+                    "description": "Probing took longer than the per-file timeout.",
+                    "type": "string",
+                    "const": "timed_out"
+                  },
+                  {
+                    "description": "Reading the file failed.",
+                    "type": "string",
+                    "const": "io"
+                  },
+                  {
+                    "description": "The probe result cannot be registered (for example a zero duration).",
+                    "type": "string",
+                    "const": "invalid"
+                  }
+                ]
+              },
+              "error": {
+                "description": "Human-readable reason.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "code",
+              "error"
+            ]
+          },
+          "description": "The files that were left out: unreadable, or not a still picture."
+        },
+        "job_ids": {
+          "type": "array",
+          "items": {
+            "description": "A job id: `^job_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$"
+          },
+          "description": "Background analysis jobs queued for the new assets (wait with `job.wait`)."
+        }
+      },
+      "required": [
+        "sequence",
+        "track",
+        "at",
+        "per_image",
+        "end",
+        "clips",
+        "media",
+        "media_ids",
+        "failed",
+        "job_ids"
+      ],
+      "description": "Result of `media.import_images_as_slideshow`.",
+      "title": "MediaSlideshowOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Absolute paths of the pictures (1..=256, no repeats)."
+      },
+      "per_image": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "How long each picture stays, `> 0` (default: the project's still duration).",
+        "default": null
+      },
+      "order": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "given",
+                "description": "As listed in `files`."
+              },
+              {
+                "type": "string",
+                "const": "name",
+                "description": "By file name, ignoring case."
+              },
+              {
+                "type": "string",
+                "const": "name_numeric",
+                "description": "By file name, ignoring case, numbers compared by value (`img2` before `img10`)."
+              }
+            ],
+            "description": "The order the pictures of a slideshow are placed in."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "`given` (default), `name` or `name_numeric`.",
+        "default": null
+      },
+      "sequence": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence; optional when the project has one.",
+        "default": null
+      },
+      "track": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "A video track (default: the main video track, else the first unlocked one).",
+        "default": null
+      },
+      "at": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Where the first picture starts (default: the end of the track).",
+        "default": null
+      }
+    },
+    "required": [
+      "files"
+    ],
+    "description": "Imports pictures as stills and places them one after the other on a video track, each\n`per_image` long (default: the project's still duration), as one undo step. Pictures whose\ncontent is already in the project reuse that asset. Files that cannot be read or are not\nstill pictures are listed in `failed` and left out; with no picture at all the call fails\nwith `Invalid`. `order` is `given` (default), `name` or `name_numeric`. The pictures go to\n`track` (default: the main video track, else the first unlocked video track) of `sequence`\n(optional when the project has one), starting at `at` (default: the end of that track). On\nthe magnetic main track what is after `at` moves later; on another track the range must be\nfree. Agents and headless callers may only import from the project folder and user-approved\nfolders.",
+    "title": "MediaImportImagesAsSlideshow"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence the pictures went into."
+      },
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The track they are on."
+      },
+      "at": {
+        "description": "Where the first picture starts (snapped to the frame grid).",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "per_image": {
+        "description": "How long each picture stays (a whole number of frames).",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "end": {
+        "description": "Where the last picture ends.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "clips": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The new clips, in slideshow order."
+      },
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "One imported file.",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The path as requested.",
+              "type": "string"
+            },
+            "media_id": {
+              "description": "The asset; an existing one if the same content was imported before.",
+              "type": "string",
+              "pattern": "^med_[0-9a-f]{32}$"
+            },
+            "kind": {
+              "description": "What the asset is.",
+              "oneOf": [
+                {
+                  "description": "A video file (may also carry audio).",
+                  "type": "string",
+                  "const": "video"
+                },
+                {
+                  "description": "An audio-only file.",
+                  "type": "string",
+                  "const": "audio"
+                },
+                {
+                  "description": "A still image (no duration).",
+                  "type": "string",
+                  "const": "image"
+                },
+                {
+                  "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                  "type": "string",
+                  "const": "image_sequence"
+                },
+                {
+                  "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                  "type": "string",
+                  "const": "sequence_ref"
+                }
+              ]
+            },
+            "duplicate": {
+              "description": "`true` when the content was already in the project and nothing was added.",
+              "type": "boolean"
+            },
+            "proxy": {
+              "description": "Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is\nalready in the cache.",
+              "oneOf": [
+                {
+                  "description": "None is made (the policy does not want one, or the file cannot have one).",
+                  "type": "string",
+                  "const": "none"
+                },
+                {
+                  "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                  "type": "string",
+                  "const": "queued"
+                },
+                {
+                  "description": "One is already in the cache (the same content was imported before).",
+                  "type": "string",
+                  "const": "ready"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "media_id",
+            "kind",
+            "duplicate",
+            "proxy"
+          ]
+        },
+        "description": "One entry per placed picture, in slideshow order."
+      },
+      "media_ids": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets of `media`, in the same order (a duplicate names the existing asset)."
+      },
+      "failed": {
+        "type": "array",
+        "items": {
+          "description": "A file that was not imported (no asset was created for it).",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The path as requested.",
+              "type": "string"
+            },
+            "code": {
+              "description": "Machine-readable reason.",
+              "oneOf": [
+                {
+                  "description": "There is no readable file at the path.",
+                  "type": "string",
+                  "const": "not_found"
+                },
+                {
+                  "description": "The file holds no playable audio or video.",
+                  "type": "string",
+                  "const": "unsupported"
+                },
+                {
+                  "description": "Probing took longer than the per-file timeout.",
+                  "type": "string",
+                  "const": "timed_out"
+                },
+                {
+                  "description": "Reading the file failed.",
+                  "type": "string",
+                  "const": "io"
+                },
+                {
+                  "description": "The probe result cannot be registered (for example a zero duration).",
+                  "type": "string",
+                  "const": "invalid"
+                }
+              ]
+            },
+            "error": {
+              "description": "Human-readable reason.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "code",
+            "error"
+          ]
+        },
+        "description": "The files that were left out: unreadable, or not a still picture."
+      },
+      "job_ids": {
+        "type": "array",
+        "items": {
+          "description": "A job id: `^job_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{32}$"
+        },
+        "description": "Background analysis jobs queued for the new assets (wait with `job.wait`)."
+      }
+    },
+    "required": [
+      "sequence",
+      "track",
+      "at",
+      "per_image",
+      "end",
+      "clips",
+      "media",
+      "media_ids",
+      "failed",
+      "job_ids"
+    ],
+    "description": "Result of `media.import_images_as_slideshow`.",
+    "title": "MediaSlideshowOutput"
+  }
+}

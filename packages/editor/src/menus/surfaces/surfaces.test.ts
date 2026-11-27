@@ -751,6 +751,32 @@ describe("the bin menus", () => {
 });
 
 describe("the other surfaces", () => {
+  it("offers Import as slideshow… in the bin and Add frame to media bin in the Preview (WP-2F.05d)", async () => {
+    const engineCall = vi.fn(async (_name: string, _args?: unknown) => ({
+      media_id: MED_V,
+      name: "Main 00:00:05:00",
+      duplicate: false,
+    }));
+    engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+    try {
+      expect(menuFor("bin.background").item("Import as slideshow…").disabled).toBeUndefined();
+      // The Preview's frame at the playhead: one catalog command, with arguments of its schema.
+      await menuFor("preview.canvas").choose("Add frame to media bin");
+      expect(engineCall).toHaveBeenCalledTimes(1);
+      expect(engineCall).toHaveBeenCalledWith("media.import_frame", {
+        source: "sequence",
+        at: 5 * F,
+      });
+      expect(schemaProblems("media.import_frame", engineCall.mock.calls[0]?.[1])).toEqual([]);
+      expect(toastStore.getState().notices.map((n) => n.title)).toEqual([
+        "Frame added to the media bin",
+      ]);
+      expect(menuFor("source.view").item("Add frame to media bin").disabled).toBeUndefined();
+    } finally {
+      engineStore.setState({ rpc: null, connection: "none" });
+    }
+  });
+
   it("collapses and expands every Inspector section", async () => {
     await menuFor("inspector.section", { name: "Clip" }).choose("Collapse all");
     expect(sectionsStore.getState().closed.size).toBeGreaterThan(3);

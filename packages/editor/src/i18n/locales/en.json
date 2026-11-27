@@ -206,6 +206,11 @@
         "description": "Importing a folder makes a bin folder for each of its folders that holds media. Off puts every file straight into the open folder.",
         "keywords": "import, folder, directory, structure, hierarchy, bin, subfolders, flat"
       },
+      "copyOnImport": {
+        "label": "Copy imported files into the project folder",
+        "description": "Each file you import is copied into the project's media folder first, so the project keeps working when the original is moved or deleted. The project must be saved first. Undoing an import leaves the copy on disk.",
+        "keywords": "import, copy, collect, consolidate, project folder, media folder, self-contained, portable, external drive"
+      },
       "stillDuration": {
         "label": "Still image duration",
         "description": "How long a photo or other still is when you place it on the timeline. New projects take this value; clips already on a timeline keep their length.",
@@ -955,6 +960,29 @@
         "evicted": "The proxy was removed from the cache, so scrubbing uses the original file. Right-click and choose Regenerate proxies to make it again.",
         "incomplete": "Making the proxy was stopped before the end. Regenerate proxies continues from where it stopped."
       }
+    },
+    "slideshow": {
+      "title": "Import as slideshow",
+      "body": "{{count}} pictures go onto the timeline one after the other. Undo removes them in one step.",
+      "seconds": "Seconds per picture",
+      "order": "Order",
+      "orderGiven": "As selected",
+      "orderName": "By name",
+      "orderNumber": "By number",
+      "confirm": "Import",
+      "tooFewTitle": "Choose two or more pictures",
+      "tooFewBody": "A slideshow needs at least two pictures. Use Import… for a single one.",
+      "failed": "The slideshow was not imported",
+      "notPicture": "This file is not a still picture, so it was left out of the slideshow.",
+      "doneTitle": "Slideshow imported",
+      "doneBody": "{{count}} pictures are on the timeline."
+    },
+    "frame": {
+      "doneTitle": "Frame added to the media bin",
+      "doneBody": "{{name}} is in the media bin.",
+      "duplicateTitle": "This frame is already in the media bin",
+      "duplicateBody": "{{name}} shows the same picture.",
+      "failed": "The frame was not added"
     }
   },
   "preview": {
@@ -1905,7 +1933,9 @@
       "editRedo": "Redo",
       "viewSelect": "Select",
       "viewSetPlayhead": "Move playhead here",
-      "itemApplyLayout": "Apply layout"
+      "itemApplyLayout": "Apply layout",
+      "mediaImportFrame": "Add frame to media bin",
+      "mediaImportImagesAsSlideshow": "Import as slideshow…"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
