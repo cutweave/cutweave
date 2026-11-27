@@ -604,7 +604,12 @@ mod tests {
     fn a_deferred_request_defers_all_but_the_always_load_tools() {
         let tools = [tool("project_info", true), tool("clip_split", false)];
         let user = json!({"role": "user", "content": "Split the clip."});
-        let body = build_request(&shape(ClientMode::Deferred), "sys", &tools, &[user.clone()]);
+        let body = build_request(
+            &shape(ClientMode::Deferred),
+            "sys",
+            &tools,
+            std::slice::from_ref(&user),
+        );
         assert_eq!(
             body["tools"],
             json!([
@@ -692,7 +697,7 @@ mod tests {
         assert_eq!(reply.content, body["content"]);
         assert_eq!(reply.usage.total_input(), 2048 + 1800 + 248);
         assert_eq!(reply.usage.output_tokens, 503);
-        assert!(reply.searches.is_empty());
+        assert_eq!(reply.searches, []);
     }
 
     /// "Response format" of the tool search page: a search, its result, then the call of the
@@ -758,7 +763,7 @@ mod tests {
             reply.searches[0].error.as_deref(),
             Some("invalid_tool_input")
         );
-        assert!(reply.searches[0].found.is_empty());
+        assert_eq!(reply.searches[0].found, Vec::<String>::new());
     }
 
     /// The `tool_result` examples of the handle-tool-calls page: a result, and an error with

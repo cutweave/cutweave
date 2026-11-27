@@ -393,7 +393,16 @@ fn run_all(root: &Path, bench: &Bench<'_>, args: &EvalArgs) -> Result<(String, b
     while let Some(plan) = plans.next() {
         eprintln!("agent-eval: {} ...", plan.label());
         let shape = args.shape(plan.client);
-        let (session, fatal) = run_session(bench, &plan, &shape, max_turns, &mut transport)?;
+        // A session that could not be run at all (its engine did not start) is noted and the
+        // run goes on: what the other sessions cost must not be lost with it.
+        let (session, fatal) = match run_session(bench, &plan, &shape, max_turns, &mut transport) {
+            Ok(ran) => ran,
+            Err(e) => {
+                eprintln!("agent-eval:   not run: {e}");
+                skipped.push(format!("{}: {e}", plan.label()));
+                continue;
+            }
+        };
         let m = &session.measures;
         eprintln!(
             "agent-eval:   {} in {} turns, {} tokens in, {} out ({})",
@@ -420,25 +429,39 @@ fn run_all(root: &Path, bench: &Bench<'_>, args: &EvalArgs) -> Result<(String, b
         }
         sessions.push(session);
     }
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let fixture = crate::fixture::generate(&surface::eval_spec())?;
+    if sessions.is_empty() {
+        return Err(BenchError::Other(format!(
+            "no session could be run; nothing was written. {}",
+            skipped.join("; ")
+        )));
+    }
     let result = RunResult {
         format: FORMAT,
-        date: iso_date(secs),
+        date: String::new(),
         model: args.shape(ClientMode::Upfront).model,
         effort: args.effort.clone(),
         max_turns,
-        fixture: format!(
-            "{} (sha256 {})",
-            fixture.manifest.spec.name,
-            fixture.sha256()
-        ),
+        fixture: String::new(),
         estimates: ESTIMATES.to_owned(),
         sessions,
         skipped,
     };
+    // The exit code says whether the run was made, not whether the model did well.
+    write_result(root, args, result).map(|text| (text, true))
+}
+
+/// Dates a run's result, and writes it and its report.
+fn write_result(root: &Path, args: &EvalArgs, mut result: RunResult) -> Result<String, BenchError> {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let fixture = crate::fixture::generate(&surface::eval_spec())?;
+    result.date = iso_date(secs);
+    result.fixture = format!(
+        "{} (sha256 {})",
+        fixture.manifest.spec.name,
+        fixture.sha256()
+    );
     let dir = args
         .out
         .clone()
@@ -453,14 +476,12 @@ fn run_all(root: &Path, bench: &Bench<'_>, args: &EvalArgs) -> Result<(String, b
         .iter()
         .filter(|s| s.measures.success)
         .count();
-    let text = format!(
+    Ok(format!(
         "{passed} of {} sessions passed\nresult: {}\nreport: {}\n",
         result.sessions.len(),
         json.display(),
         report.display()
-    );
-    // The exit code says whether the run was made, not whether the model did well.
-    Ok((text, true))
+    ))
 }
 
 /// `cutweave-bench agent-eval`: runs in the checkout at `root` with the engine of `exe`,
@@ -562,7 +583,7 @@ mod tests {
         // standard and described in both client modes (40), via-execute on the nine tasks
         // with a core tool, batch and no-batch on the four tasks with two changes.
         assert_eq!(plans.len(), 40 + 9 + 4 + 4);
-        assert!(skipped.is_empty());
+        assert_eq!(skipped, Vec::<String>::new());
         let labels: Vec<String> = plans.iter().map(Plan::label).collect();
         assert_eq!(labels[0], "split-and-trim/standard/upfront");
         assert!(labels.contains(&"long-tail/described/deferred".to_owned()));
@@ -590,6 +611,66 @@ mod tests {
                 .plans()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn a_result_is_written_with_its_report_and_never_over_an_earlier_one() {
+        let root = crate::workspace_root();
+        let dir = root
+            .join("target")
+            .join("tmp")
+            .join("agent-eval-unit-result");
+        let _ = std::fs::remove_dir_all(&dir);
+        let args = EvalArgs {
+            out: Some(dir.clone()),
+            ..EvalArgs::default()
+        };
+        let result = || RunResult {
+            format: FORMAT,
+            date: String::new(),
+            model: "claude-sonnet-5-5".into(),
+            effort: None,
+            max_turns: 20,
+            fixture: String::new(),
+            estimates: ESTIMATES.to_owned(),
+            sessions: Vec::new(),
+            skipped: vec!["set-speed/standard/upfront: the engine did not start".into()],
+        };
+        let said = write_result(&root, &args, result()).unwrap();
+        assert!(
+            said.starts_with("0 of 0 sessions passed\nresult: "),
+            "{said}"
+        );
+        write_result(&root, &args, result()).unwrap();
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names.len(), 4, "{names:?}");
+        assert!(names[0].ends_with("-claude-sonnet-5-5-2.json"), "{names:?}");
+        assert!(names[3].ends_with("-claude-sonnet-5-5.md"), "{names:?}");
+        let json = dir.join(&names[2]);
+        let written: RunResult = read_json(&json).unwrap();
+        assert_eq!(written.date.len(), 10);
+        assert!(
+            written.fixture.starts_with("P-eval (sha256 "),
+            "{}",
+            written.fixture
+        );
+        // The report is made from the file, and can be made again from it.
+        let report = std::fs::read_to_string(dir.join(&names[3])).unwrap();
+        assert!(
+            report.contains(&format!("agent-eval --report {}`", names[2])),
+            "{report}"
+        );
+        std::fs::remove_file(dir.join(&names[3])).unwrap();
+        assert!(report_again(&json).unwrap().starts_with("wrote "));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(&names[3])).unwrap(),
+            report
+        );
+        assert!(!report.contains(char::from(13)), "LF line endings");
     }
 
     #[test]

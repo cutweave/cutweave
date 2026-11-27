@@ -284,8 +284,13 @@ pub fn conduct(
                     });
                     results.push((call.id.clone(), outcome.text, outcome.is_error));
                 }
-                messages.push(tool_results_message(&results));
                 done.turns.push(turn);
+                if results.is_empty() {
+                    // Not a documented response; an empty user message would be refused.
+                    "tool_use without a call".clone_into(&mut done.ended);
+                    return Ok(done);
+                }
+                messages.push(tool_results_message(&results));
             }
             // A server tool (the tool search) is still running: the same conversation again.
             Stop::PauseTurn => done.turns.push(turn),
@@ -403,8 +408,8 @@ pub fn run_session(
         },
         &mut |wait| std::thread::sleep(wait),
     )?;
-    let state = stage.engine.final_state()?;
-    let verdict = (plan.task.check)(&stage.scene, &state);
+    let ended_with = stage.engine.final_state()?;
+    let verdict = (plan.task.check)(&stage.scene, &ended_with);
     let transcript = Transcript {
         format: FORMAT,
         task: plan.task.id.to_owned(),
@@ -489,8 +494,8 @@ pub fn replay(bench: &Bench<'_>, recorded: &Transcript) -> Result<Replayed, Benc
         }
         turns.push(made);
     }
-    let state = stage.engine.final_state()?;
-    let verdict = (plan.task.check)(&stage.scene, &state);
+    let ended_with = stage.engine.final_state()?;
+    let verdict = (plan.task.check)(&stage.scene, &ended_with);
     let transcript = Transcript {
         format: FORMAT,
         task: plan.task.id.to_owned(),
@@ -538,7 +543,7 @@ mod tests {
         fn tools(&self) -> &[ToolDef] {
             &self.0
         }
-        fn instructions(&self) -> &str {
+        fn instructions(&self) -> &'static str {
             "A fake editor."
         }
         fn call(&mut self, name: &str, input: &Value) -> Result<Outcome, BenchError> {

@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use cutweave_bench::agent_eval::anthropic::{PythonTransport, Stop, Transport as _, parse_reply};
+use cutweave_bench::agent_eval::anthropic::{
+    PythonTransport, Stop, Transport as _, Usage, parse_reply,
+};
 use cutweave_bench::agent_eval::run::{Bench, Replayed, replay};
 use cutweave_bench::agent_eval::tasks::TASKS;
 use cutweave_bench::agent_eval::transcript::{Transcript, tokens_estimate};
@@ -75,7 +77,7 @@ fn a_recorded_session_replays_on_a_real_engine_and_is_measured() {
     let usage: Vec<_> = record.turns.iter().map(|t| t.usage).collect();
     assert_eq!(
         m.input_tokens,
-        usage.iter().map(|u| u.total_input()).sum::<u64>()
+        usage.iter().map(Usage::total_input).sum::<u64>()
     );
     assert_eq!(m.input_tokens, 73_706);
     assert_eq!(m.cache_read_tokens, 58_920);

@@ -44,10 +44,10 @@ pub struct Lane {
 }
 
 fn secs(seconds: f64) -> i64 {
-    // Whole flicks for every time a task names (multiples of half a second).
+    // Every time a task names is a whole number of milliseconds.
     #[allow(clippy::cast_possible_truncation)]
-    let flicks = (seconds * FLICKS_PER_SECOND as f64).round() as i64;
-    flicks
+    let millis = (seconds * 1000.0).round() as i64;
+    millis * FLICKS_PER_SECOND / 1000
 }
 
 fn text(value: &Value) -> &str {
