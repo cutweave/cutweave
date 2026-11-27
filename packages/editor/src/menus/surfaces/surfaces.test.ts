@@ -616,6 +616,146 @@ describe("the track, lane, ruler and playhead menus", () => {
   });
 });
 
+describe("the timeline's own edits (WP-2A.10)", () => {
+  const lastCall = () => {
+    const [name, args] = call.mock.calls[0] ?? [];
+    expect(schemaProblems(String(name), args)).toEqual([]);
+    return { name, args };
+  };
+
+  it("ripple deletes the clip, or the whole selection, with timeline.ripple_delete", async () => {
+    viewStore.getState().setSelection([C1, C2].map((id) => ({ kind: "item", id }) as never));
+    const m = menuFor("timeline.clip", { ids: [C1] });
+    expect(m.item("Ripple delete 2 clips")).toBeDefined();
+    await m.choose("Ripple delete 2 clips");
+    expect(lastCall()).toEqual({ name: "timeline.ripple_delete", args: { items: [C1, C2] } });
+    expect(menuFor("timeline.clip", { ids: [CL] }).item("Ripple delete").disabledReason).toBe(
+      "Track is locked",
+    );
+  });
+
+  it("adds a marker where the lane or the ruler was clicked, on its frame", async () => {
+    await menuFor("timeline.lane", { place: { time: 2 * F + 1234, trackId: V1 } }).choose(
+      "Add marker here",
+    );
+    expect(lastCall()).toEqual({ name: "timeline.add_marker", args: { sequence: SEQ, t: 2 * F } });
+    call.mockClear();
+    await menuFor("timeline.playhead", { place: { time: 5 * F } }).choose("Add marker at playhead");
+    expect(lastCall()).toEqual({ name: "timeline.add_marker", args: { sequence: SEQ, t: 5 * F } });
+  });
+
+  it("deletes a gap between clips, and shows no such row elsewhere", async () => {
+    const p = project() as unknown as {
+      sequences: Record<
+        string,
+        { tracks: Record<string, { items: Record<string, { start: number }> }> }
+      >;
+    };
+    const items = p.sequences[SEQ]?.tracks[V1]?.items ?? {};
+    if (items[C2] !== undefined) items[C2].start = 12 * F;
+    if (items[C3] !== undefined) items[C3].start = 22 * F;
+    docStore.setState({ project: p as unknown as Project });
+    await menuFor("timeline.lane", { place: { time: 11 * F, trackId: V1 } }).choose("Delete gap");
+    expect(lastCall()).toEqual({ name: "timeline.delete_gap", args: { track: V1, at: 11 * F } });
+    expect(
+      menuFor("timeline.lane", { place: { time: 40 * F, trackId: V1 } }).items.some(
+        (i) => i.label === "Delete gap",
+      ),
+    ).toBe(false);
+  });
+
+  it("goes to a marker from the ruler's Go to marker submenu, by time, only when there are some", async () => {
+    expect(
+      menuFor("timeline.ruler", { place: { time: 3 * F } }).items.some((i) =>
+        /at 00:/.test(i.label),
+      ),
+    ).toBe(false);
+    const p = project() as unknown as { sequences: Record<string, { markers?: object }> };
+    const seq = p.sequences[SEQ];
+    if (seq !== undefined) {
+      seq.markers = {
+        [hex("mrk", 2)]: { id: hex("mrk", 2), t: 8 * F, label: "Outro", kind: "user" },
+        [hex("mrk", 1)]: { id: hex("mrk", 1), t: 2 * F, label: "", kind: "user" },
+      };
+    }
+    docStore.setState({ project: p as unknown as Project });
+    const ruler = menuFor("timeline.ruler", { place: { time: 3 * F } });
+    const rows = ruler.items.filter((i) => / at 00:/.test(i.label)).map((i) => i.label);
+    expect(rows).toEqual(["- at 00:00:02:00", "Outro at 00:00:08:00"]);
+    await ruler.choose("Outro at 00:00:08:00");
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("sets the in or the out point here, clears them, lifts and extracts the range", async () => {
+    const ruler = menuFor("timeline.ruler", { place: { time: 3 * F } });
+    expect(ruler.item("Clear in and out").disabledReason).toBe("Set an in and out point first");
+    expect(ruler.item("Lift range").disabled).toBe(true);
+    await ruler.choose("Set in point here");
+    // No range yet: it runs to the end of the clips.
+    expect(lastCall()).toEqual({
+      name: "timeline.set_in_out",
+      args: { sequence: SEQ, start: 3 * F, end: 30 * F },
+    });
+    const withRange = project() as unknown as {
+      sequences: Record<string, { in_out: unknown }>;
+    };
+    const seq = withRange.sequences[SEQ];
+    if (seq !== undefined) seq.in_out = { start: 3 * F, end: 8 * F };
+    docStore.setState({ project: withRange as unknown as Project });
+    call.mockClear();
+    await menuFor("timeline.ruler", { place: { time: 6 * F } }).choose("Set out point here");
+    expect(lastCall()).toEqual({
+      name: "timeline.set_in_out",
+      args: { sequence: SEQ, start: 3 * F, end: 6 * F },
+    });
+    for (const [label, command] of [
+      ["Clear in and out", "timeline.clear_in_out"],
+      ["Lift range", "timeline.lift"],
+      ["Extract range", "timeline.extract"],
+    ] as const) {
+      call.mockClear();
+      await menuFor("timeline.ruler", { place: { time: 6 * F } }).choose(label);
+      expect(lastCall()).toEqual({ name: command, args: { sequence: SEQ } });
+    }
+  });
+
+  it("makes a video track the magnetic main track, sets its height, moves it", async () => {
+    const m = menuFor("timeline.track", { ids: [V2] });
+    expect(m.item("Magnetic main track").checked).toBe(false);
+    expect(m.item("Medium").checked).toBe(true);
+    expect(m.item("Move up").disabledReason).toBe("Already the top track");
+    await m.choose("Magnetic main track");
+    expect(lastCall()).toEqual({
+      name: "track.set_magnetic",
+      args: { track: V2, magnetic: true },
+    });
+    call.mockClear();
+    await menuFor("timeline.track", { ids: [V2] }).choose("Move down");
+    expect(lastCall()).toEqual({ name: "track.reorder", args: { track: V2, index: 1 } });
+    call.mockClear();
+    await menuFor("timeline.track", { ids: [V2] }).choose("Medium");
+    expect(lastCall()).toEqual({ name: "track.set_height", args: { track: V2, height: null } });
+    expect(
+      menuFor("timeline.track", { ids: [A1] }).item("Magnetic main track").disabledReason,
+    ).toBe("Only a video track can be the main track");
+  });
+
+  it("goes to a marker and deletes it", async () => {
+    const marker = hex("mrk", 1);
+    const m = menuFor("timeline.marker", { ids: [marker], name: "Intro", place: { time: 4 * F } });
+    expect(m.menu.name).toBe("Marker actions for Intro");
+    expect(m.item("Go to marker")).toBeDefined();
+    await m.choose("Delete marker");
+    expect(lastCall()).toEqual({ name: "timeline.remove_marker", args: { marker } });
+  });
+
+  it("splits at the playhead from the playhead's menu", () => {
+    expect(
+      menuFor("timeline.playhead", { place: { time: 5 * F } }).item("Split at playhead"),
+    ).toBeDefined();
+  });
+});
+
 describe("the bin menus", () => {
   it("inserts at the playhead on the first free track that fits, as timeline.insert", async () => {
     viewStore.setState({ playhead: 4 * F + 1 });
@@ -1278,6 +1418,7 @@ describe("accessibility", () => {
     "timeline.track": { ids: [V1] },
     "timeline.ruler": { place: { time: 0 } },
     "timeline.playhead": { place: { time: 0 } },
+    "timeline.marker": { ids: [hex("mrk", 1)], name: "Intro", place: { time: 0 } },
     "inspector.section": { name: "Clip" },
     "inspector.row": { name: "Name", data: { text: "x" } },
     "inspector.path": { ids: [MED_V] },

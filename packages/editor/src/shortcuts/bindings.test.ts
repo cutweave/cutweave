@@ -5,12 +5,12 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TIMELINE_KEYS, timelineKeyAction } from "@cutweave/timeline";
+import { MACHINE_KEYS, machineKeyAction } from "@cutweave/timeline";
 import { describe, expect, it } from "vitest";
 import { i18n } from "../i18n/index.ts";
 import { KEY_COMMANDS } from "../keymap/commands.ts";
 import { PRESETS } from "../keymap/model.ts";
-import { timelineActionOf } from "../keymap/timeline.ts";
+import { EDITOR_COMMANDS, TIMELINE_COMMANDS, timelineActionOf } from "../keymap/timeline.ts";
 import { BIN_COMMANDS, binKeyAction } from "../panels/binKeys.ts";
 import { SOURCE_COMMANDS, sourceKeyAction } from "../preview/sourceKeys.ts";
 import {
@@ -211,36 +211,44 @@ describe("the playback keys", () => {
 });
 
 describe("the timeline's keys", () => {
-  it("lists every key of the interaction table, and the NLE preset agrees with its defaults", () => {
+  /** The key event a machine default is pressed with (Shift+, prints `<` on a US layout). */
+  const machineEvent = (key: string, shift: boolean) =>
+    ({
+      ...event(key, { shiftKey: shift }),
+      ...(key === "<" && { code: "Comma" }),
+      ...(key === ">" && { code: "Period" }),
+    }) as ReturnType<typeof event>;
+
+  it("lists every default key of the interaction machine, and the NLE preset agrees with them", () => {
     const listed = listBindings("windows").filter((b) => b.context === "timeline");
     const byCommand = new Map(listed.map((b) => [b.id, b]));
-    for (const entry of TIMELINE_KEYS) {
-      const id = {
-        cancel: "timeline.cancel",
-        split: "clip.split",
-        delete: "item.delete",
-        "toggle-snapping": "timeline.toggle_snapping",
-        "rename-track": "track.rename",
-      }[entry.action];
-      const binding = byCommand.get(id);
+    for (const entry of MACHINE_KEYS) {
+      const shift = entry.shift === true;
+      const id = TIMELINE_COMMANDS[entry.action];
+      const combos = byCommand.get(id)?.combos ?? [];
+      const spelled = entry.key === "<" ? "," : entry.key === ">" ? "." : entry.key;
       expect(
-        binding?.combos.map((c) => c.key.toLowerCase()),
-        id,
-      ).toEqual(entry.keys.map((k) => k.toLowerCase()));
-      for (const key of entry.keys) {
-        expect(timelineKeyAction(key), key).toBe(entry.action);
-        // The keymap decides in the app, and it agrees.
-        expect(timelineActionOf(event(key)), key).toBe(entry.action);
-        // A letter works in either case.
-        if (key.length === 1) {
-          expect(timelineKeyAction(key.toUpperCase()), key).toBe(entry.action);
-          expect(timelineActionOf(event(key.toUpperCase())), key).toBe(entry.action);
-        }
+        combos.some(
+          (c) => c.key.toLowerCase() === spelled.toLowerCase() && (c.shift === true) === shift,
+        ),
+        `${id} ${entry.key}`,
+      ).toBe(true);
+      expect(machineKeyAction(entry.key, { shift }), entry.key).toBe(entry.action);
+      // The keymap decides in the app, and it agrees.
+      expect(timelineActionOf(machineEvent(entry.key, shift)), entry.key).toBe(entry.action);
+      // A letter works in either case.
+      if (/^[a-z]$/.test(entry.key)) {
+        expect(timelineActionOf(event(entry.key.toUpperCase())), entry.key).toBe(entry.action);
       }
     }
-    // Plus Duplicate (WP-2A.06): the editor runs it itself, the interaction machine has no key for it.
-    expect(listed.length).toBe(TIMELINE_KEYS.length + 1);
+    // Every timeline binding is a machine action or one the editor runs itself (Duplicate, the
+    // markers, in and out, Rename).
+    const known = new Set<string>([...Object.values(TIMELINE_COMMANDS), ...EDITOR_COMMANDS]);
+    for (const binding of listed) expect(known.has(binding.id), binding.id).toBe(true);
     expect(byCommand.get("item.duplicate")?.combos.map((c) => c.key.toLowerCase())).toEqual(["d"]);
+    expect(byCommand.get("timeline.add_marker")?.combos.map((c) => c.key)).toEqual(["M"]);
+    expect(byCommand.get("timeline.mark_in")?.combos.map((c) => c.key)).toEqual(["I"]);
+    expect(byCommand.get("timeline.mark_out")?.combos.map((c) => c.key)).toEqual(["O"]);
   });
 });
 
@@ -300,7 +308,7 @@ describe("every key handler in the editor is accounted for", () => {
     "shell/appCommands.ts": "the menu shortcuts: appMenu.ts, from the keymap",
     "timeline/TrackRenameInput.tsx":
       "track name field: Enter commits, Escape puts the old name back (dialogs group)",
-    "timeline/useTimelineIntents.ts": "the timeline's keys: the keymap's `timeline` context",
+    "timeline/useTimelineHost.ts": "the timeline's keys: the keymap's `timeline` context",
     "transport/keymap.ts": "the playback keys: the keymap's `playback` context",
   };
 

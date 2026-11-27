@@ -36,6 +36,7 @@ import {
   TIMELINE_CLIP,
   TIMELINE_EDGE,
   TIMELINE_LANE,
+  TIMELINE_MARKER,
   TIMELINE_PLAYHEAD,
   TIMELINE_RULER,
   TIMELINE_TRACK,
@@ -115,6 +116,55 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
     icon: "copy",
     undoable: true,
   },
+  // WP-2A.10: the timeline's edits from WP-2A.02 and WP-2A.03.
+  {
+    name: "timeline.ripple_delete",
+    label: "contextMenu.command.timelineRippleDelete",
+    labelMany: "contextMenu.command.timelineRippleDeleteMany",
+    icon: "trash-2",
+    destructive: true,
+    undoable: true,
+  },
+  {
+    name: "timeline.add_marker",
+    label: "contextMenu.command.timelineAddMarker",
+    icon: "bookmark",
+    undoable: true,
+  },
+  {
+    name: "timeline.remove_marker",
+    label: "contextMenu.command.timelineRemoveMarker",
+    icon: "trash-2",
+    destructive: true,
+    undoable: true,
+  },
+  { name: "timeline.set_in_out", label: "contextMenu.command.timelineSetInOut", undoable: true },
+  {
+    name: "timeline.clear_in_out",
+    label: "contextMenu.command.timelineClearInOut",
+    undoable: true,
+  },
+  { name: "timeline.delete_gap", label: "contextMenu.command.timelineDeleteGap", undoable: true },
+  {
+    name: "timeline.lift",
+    label: "contextMenu.command.timelineLift",
+    destructive: true,
+    undoable: true,
+  },
+  {
+    name: "timeline.extract",
+    label: "contextMenu.command.timelineExtract",
+    destructive: true,
+    undoable: true,
+  },
+  {
+    name: "track.set_magnetic",
+    label: "contextMenu.command.trackSetMagnetic",
+    icon: "magnet",
+    undoable: true,
+  },
+  { name: "track.set_height", label: "contextMenu.command.trackSetHeight", undoable: true },
+  { name: "track.reorder", label: "contextMenu.command.trackReorder", undoable: true },
 ];
 
 export const SURFACES: readonly MenuSurfaceDef[] = [
@@ -137,6 +187,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
   TIMELINE_TRACK,
   TIMELINE_RULER,
   TIMELINE_PLAYHEAD,
+  TIMELINE_MARKER,
   INSPECTOR_SECTION,
   INSPECTOR_ROW,
   INSPECTOR_PATH,
@@ -171,6 +222,7 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
   "timeline.cut": "edit.text.cut",
   "timeline.copy_clips": "edit.text.copy",
   "timeline.paste_here": "edit.text.paste",
+  "timeline.split_at_playhead": "clip.split",
 };
 
 /**

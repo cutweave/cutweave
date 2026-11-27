@@ -83,6 +83,8 @@ describe("the Video sections", () => {
 
   it("edits two clips with one command, and a typed +10 adds to the value", async () => {
     select("itm_v", "itm_a");
+    // Two clips of their own: a linked pair inspects as the clip clicked (WP-2A.10).
+    docStore.setState({ project: sampleProject({ itm_a: { linked_group: null } }) } as never);
     view();
     const user = userEvent.setup();
     const rotation = screen.getByRole("spinbutton", { name: "Rotation" });

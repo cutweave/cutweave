@@ -205,8 +205,23 @@ test.describe("F6 inspector", () => {
       }
       await expect(f.panel.getByTestId("clip-source")).toHaveText("interview.mp4");
 
-      // Select the picture and its sound: opacity for both with one drag, one undo step.
+      // Select the picture and its sound as two clips: a click selects a linked pair, which the
+      // inspector shows as the clip clicked (WP-2A.10), so unlink them first (the clip menu),
+      // then click one and Shift+click the other. Opacity for both with one drag, one undo step.
       let g = await timelineGeometry(page);
+      await page.mouse.click(xAt(g, sec(3)), laneY(g, "V1"), { button: "right" });
+      await page
+        .getByRole("menu", { name: /^Clip actions for/ })
+        .getByRole("menuitem", { name: /^Unlink clips/ })
+        .click();
+      await expect
+        .poll(
+          async () =>
+            (await sequence(page)).tracks.find((t) => t.name === "V1")?.items[0]?.linked_group,
+        )
+        .toBeNull();
+      await editorCaughtUp(page);
+      await clickClip(page, videoId);
       await page.keyboard.down("Shift");
       await page.mouse.click(xAt(g, sec(3)), laneY(g, "A1"));
       await page.keyboard.up("Shift");

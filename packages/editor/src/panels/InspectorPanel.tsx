@@ -8,7 +8,7 @@ import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { AudioSection } from "../inspector/AudioSection.tsx";
-import { selectSelectedClips, selectSelectedMedia } from "../inspector/clips.ts";
+import { selectInspectedClips, selectSelectedMedia } from "../inspector/clips.ts";
 import { InspectorEditor } from "../inspector/editor.ts";
 import {
   FIELDS,
@@ -533,7 +533,7 @@ export function InspectorPanel() {
   const selection = useViewStore((s) => s.selection);
   const project = useDocStore((s) => s.project);
   const editor = useInspectorEditor();
-  const clips = useMemo(() => selectSelectedClips(project, selection), [project, selection]);
+  const clips = useMemo(() => selectInspectedClips(project, selection), [project, selection]);
   const media = useMemo(() => selectSelectedMedia(project, selection), [project, selection]);
   if (clips.length > 0) return <ClipInspector clips={clips} editor={editor} />;
   if (media !== null) return <MediaInfo media={media} />;

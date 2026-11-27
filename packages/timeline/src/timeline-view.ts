@@ -3,7 +3,7 @@
 // layout, the media caches and the render loop; takes a read-only `TimelineModel` and a
 // `ViewState`, never mutates either, and reports pointer events (with hit-test results) and
 // user-driven view changes (wheel zoom, scroll) to its host. Interactions (select, move, trim,
-// snap) are the state machine of `interaction.ts` (WP-1M.06), fed from `onPointer`.
+// snap) are the state machine of `interaction/` (WP-2A.08), fed from `onPointer` (WP-2A.10).
 import { MediaCaches, type MediaLoaders } from "./cache.ts";
 import { nameRect } from "./geometry.ts";
 import { type HitResult, hitTest } from "./hit-test.ts";

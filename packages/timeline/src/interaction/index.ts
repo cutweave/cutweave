@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The timeline interaction state machine (WP-2A.08). See `packages/timeline/README.md` for the
 // state chart, the gestures and how the editor wires it (WP-2A.10).
-// `DRAG_THRESHOLD_PX` and `STILL_DROP_DURATION` have the P1 machine's values and names; they are
-// exported from `../interaction.ts` until WP-2A.10 retires it.
 export {
   AUTO_SCROLL_EDGE_PX,
   AUTO_SCROLL_MAX_PX,
   DEFAULT_SNAP_PX,
+  DRAG_THRESHOLD_PX,
   NUDGE_FAR_FRAMES,
+  STILL_DROP_DURATION,
   ZOOM_CLICK_FACTOR,
 } from "./constants.ts";
 export { MACHINE_KEYS, type MachineKey, MODIFIER_KEYS, machineKeyAction } from "./keys.ts";

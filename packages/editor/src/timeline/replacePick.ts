@@ -8,8 +8,12 @@ import type { MediaAsset } from "@cutweave/protocol";
 import { createStore } from "zustand/vanilla";
 import { i18n } from "../i18n/index.ts";
 import { clipFact, mediaAsset } from "../menus/surfaces/facts.ts";
+import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
+import { onePerGroup } from "./groups.ts";
+
+const docProject = () => docStore.getState().project;
 
 interface ReplacePick {
   /** The last clip picked alone on the timeline. */
@@ -24,8 +28,11 @@ export const replacePickStore = createStore<ReplacePick>()(() => ({ clip: null, 
 export function trackReplacePicks(): () => void {
   return viewStore.subscribe((state, previous) => {
     if (state.selection === previous.selection) return;
+    // A click on the timeline picks a clip with its sound (WP-2A.10): one clip per linked group.
+    const items = state.selection.filter((r) => r.kind === "item").map((r) => r.id as string);
+    const clips = items.length === state.selection.length ? onePerGroup(docProject(), items) : [];
     const only = state.selection.length === 1 ? state.selection[0] : undefined;
-    if (only?.kind === "item") replacePickStore.setState({ clip: only.id });
+    if (clips.length === 1 && clips[0] !== undefined) replacePickStore.setState({ clip: clips[0] });
     else if (only?.kind === "media") replacePickStore.setState({ media: only.id });
   });
 }

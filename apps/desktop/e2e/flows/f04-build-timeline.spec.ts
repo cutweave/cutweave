@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // F4 Build a timeline (docs/user-flows.md): drag clips from the bin onto the tracks, insert one
 // with Enter, toggle snapping. Clips land where they are dropped (to the frame), snapping pulls
-// an edge onto a nearby clip edge, and a drop onto an occupied spot gets a new track.
+// an edge onto a nearby clip edge, and a drop onto free space too short for the clip gets a new
+// track (timeline spec INV-40, WP-2A.10: a drop onto a clip overwrites it by default).
 import { expect, test } from "../fixtures.ts";
 import {
   clipNames,
@@ -68,16 +69,17 @@ test.describe("F4 build a timeline", () => {
       await page.keyboard.press("n");
       await expect(snapping).toHaveAttribute("aria-pressed", "false");
 
-      // Music dropped 5 px after 11 s on Audio 1, now without snapping: it stays where it was
-      // dropped (to the frame), and since Audio 1 is taken there it gets a track of its own.
-      await dropCard(page, "music.wav", "A1", 11, 5);
+      // Music dropped 5 px after 0 s on Audio 1, now without snapping: it stays where it was
+      // dropped (to the frame), and since it does not fit before the interview's sound it gets a
+      // track of its own.
+      await dropCard(page, "music.wav", "A1", 0, 5);
       await expect.poll(async () => (await sequence(page)).tracks.length).toBe(3);
       const music = (await sequence(page)).tracks.find(
         (t) => t.kind === "audio" && t.items.length === 1 && t.items[0]?.linked_group === null,
       )?.items[0];
       expect(music).toBeDefined();
-      expect(music?.start).not.toBe(sec(11));
-      expect(Math.abs((music?.start ?? 0) - sec(11.05))).toBeLessThanOrEqual(FRAME);
+      expect(music?.start).not.toBe(0);
+      expect(Math.abs((music?.start ?? 0) - sec(0.05))).toBeLessThanOrEqual(FRAME);
       await editorCaughtUp(page);
 
       // The toolbar button turns snapping back on.

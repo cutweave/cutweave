@@ -28,43 +28,8 @@ export {
 export type { HeaderToggle } from "./geometry.ts";
 export type { HitContext, HitResult, HitZone } from "./hit-test.ts";
 export { hitTest } from "./hit-test.ts";
-// The P2 interaction state machine (WP-2A.08); the P1 one above stays until WP-2A.10 wires this.
+// The interaction state machine (WP-2A.08); the editor wires it (WP-2A.10).
 export * from "./interaction/index.ts";
-export type {
-  DroppingMediaMode,
-  HoveringMode,
-  IdleMode,
-  Intent,
-  InteractionEnv,
-  InteractionEvent,
-  InteractionState,
-  InteractionStateName,
-  KeyInput,
-  MediaDrag,
-  MediaDragPoint,
-  Mode,
-  MovingMode,
-  PanningMode,
-  PointerInput,
-  ScrubbingMode,
-  SelectingMode,
-  Transition,
-  TrimmingMode,
-} from "./interaction.ts";
-export {
-  DEFAULT_ENV,
-  DRAG_THRESHOLD_PX,
-  fromPointerEvent,
-  initialState,
-  isBusy,
-  isGestureOpen,
-  reduce,
-  STILL_DROP_DURATION,
-  TIMELINE_KEYS,
-  type TimelineKeyAction,
-  timelineKeyAction,
-  trimLimits,
-} from "./interaction.ts";
 export { IntervalIndex } from "./interval-index.ts";
 export type { TrackMetrics } from "./layout.ts";
 export { TimelineLayout } from "./layout.ts";
