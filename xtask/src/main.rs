@@ -8,6 +8,7 @@ mod deps;
 mod fixtures;
 mod golden;
 mod headers;
+mod mcp_gen;
 mod schema_gen;
 mod tokens;
 mod ts_gen;

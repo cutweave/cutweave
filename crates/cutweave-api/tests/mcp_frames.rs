@@ -280,8 +280,32 @@ async fn the_standard_list_fits_the_standard_budget_with_render_frame() {
                 size.tokens()
             );
             if profile == Profile::Standard {
-                assert_eq!(size.tools, 24);
+                // WP-2I.01: the whole core table (`mcp_core.toml`) and the 4 generic tools.
+                assert_eq!(size.tools, 32);
                 assert!(STANDARD_BUDGET.fits(size), "{size:?}");
+                let table = cutweave_api::mcp::core::CoreTable::get();
+                let listed: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
+                let expected: Vec<&str> = table
+                    .tools
+                    .iter()
+                    .map(|t| t.name.as_str())
+                    .chain(cutweave_api::mcp::catalog::GENERIC_TOOLS)
+                    .collect();
+                assert_eq!(listed, expected);
+                for tool in &tools {
+                    let Some(entry) = table.tools.iter().find(|t| t.name == *tool.name) else {
+                        continue;
+                    };
+                    assert_eq!(tool.description.as_deref(), Some(&*entry.listing()));
+                }
+                // `render_frame`'s example is a valid call (the other examples: tests/mcp.rs).
+                let frame = table.by_command("render.frame").unwrap();
+                let registry = h.engine.handle().registry();
+                let schema = &registry.get("render.frame").unwrap().meta.input_schema;
+                assert_eq!(
+                    mcp_support::schema_error(schema, &mcp_support::example_args(frame), ""),
+                    None
+                );
             } else {
                 assert!(profile.budget().fits(size), "{size:?}");
                 assert!(tools.iter().any(|t| t.name == "render_frame"));

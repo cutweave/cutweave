@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The core tool table (`mcp_core.toml`, WP-2I.01; arch §14): which tools the standard profile
+//! lists next to the generic ones, and what each listing says.
+//!
+//! The registry stays the source of what a tool *does*: a core tool is a registered command or
+//! query marked `mcp = "core"`, named after it with `.` replaced by `_`, with its input schema,
+//! annotations, result and errors. The table adds what the registry's 100-character summary
+//! cannot hold: a description written for an agent and one example call. It is also the
+//! checked-in gate of the list: the tests fail when the table and the registry's core entries
+//! differ, when an example is not valid, or when the list leaves the table's budget.
+
+use std::sync::LazyLock;
+
+use serde::Deserialize;
+
+/// The table, as committed.
+pub const SOURCE: &str = include_str!("../../mcp_core.toml");
+
+/// Longest listed description ([`CoreTool::listing`]), in characters.
+pub const MAX_DESCRIPTION_CHARS: usize = 300;
+
+/// What stands for the 32 hex digits of an id in an example.
+pub const ID_PLACEHOLDER: &str = "…";
+
+/// The tool name of a command: `.` becomes `_` (`clip.split` is `clip_split`; arch §14).
+#[must_use]
+pub fn tool_name(command: &str) -> String {
+    command.replace('.', "_")
+}
+
+/// The budget the table states (the standard profile's, arch §14).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TableBudget {
+    /// Most tools listed, the generic ones included.
+    pub max_tools: usize,
+    /// Most estimated tokens of the `tools/list` result.
+    pub max_tokens: usize,
+}
+
+/// One listed core tool.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoreTool {
+    /// The tool name (`clip_split`).
+    pub name: String,
+    /// The registered command or query it runs (`clip.split`).
+    pub command: String,
+    /// What an agent reads, without the example.
+    pub description: String,
+    /// One valid arguments object, as JSON text ([`ID_PLACEHOLDER`] for an id's hex digits).
+    pub example: String,
+}
+
+impl CoreTool {
+    /// The description as listed: the text, then the example.
+    #[must_use]
+    pub fn listing(&self) -> String {
+        format!("{} E.g. {}", self.description, self.example)
+    }
+}
+
+/// A tool of the plan that is not listed yet.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PendingTool {
+    /// The planned tool name.
+    pub name: String,
+    /// The work package or phase that brings it.
+    pub arrives: String,
+}
+
+/// `mcp_core.toml`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoreTable {
+    /// The budget of the standard profile's list.
+    pub budget: TableBudget,
+    /// The listed core tools.
+    #[serde(rename = "tool", default)]
+    pub tools: Vec<CoreTool>,
+    /// Planned tools that are not listed yet.
+    #[serde(default)]
+    pub pending: Vec<PendingTool>,
+}
+
+impl CoreTable {
+    /// Parses a table.
+    pub fn parse(text: &str) -> Result<CoreTable, String> {
+        toml::from_str(text).map_err(|e| e.to_string())
+    }
+
+    /// The committed table. Should the embedded file not parse (the tests rule it out), the
+    /// table is empty and every tool is described by its registry summary.
+    #[must_use]
+    pub fn get() -> &'static CoreTable {
+        static TABLE: LazyLock<CoreTable> = LazyLock::new(|| {
+            CoreTable::parse(SOURCE).unwrap_or_else(|error| {
+                tracing::error!(%error, "mcp_core.toml does not parse; using registry summaries");
+                CoreTable {
+                    budget: TableBudget {
+                        max_tools: 0,
+                        max_tokens: 0,
+                    },
+                    tools: Vec::new(),
+                    pending: Vec::new(),
+                }
+            })
+        });
+        &TABLE
+    }
+
+    /// The entry of the tool that runs `command`.
+    #[must_use]
+    pub fn by_command(&self, command: &str) -> Option<&CoreTool> {
+        self.tools.iter().find(|t| t.command == command)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_committed_table_parses_and_is_well_formed() {
+        let table = CoreTable::parse(SOURCE).unwrap();
+        assert_eq!(CoreTable::get(), &table);
+        assert!(!table.tools.is_empty());
+        let mut names: Vec<&str> = table.tools.iter().map(|t| t.name.as_str()).collect();
+        let listed = names.len();
+        names.extend(table.pending.iter().map(|p| p.name.as_str()));
+        let mut unique = names.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), names.len(), "a tool is named twice");
+        let mut sorted = names[..listed].to_vec();
+        sorted.sort_unstable();
+        assert_eq!(sorted, names[..listed], "listed tools are in name order");
+        for tool in &table.tools {
+            // The naming rule; an alias (a name that is not the rule's) needs an ADR.
+            assert_eq!(tool.name, tool_name(&tool.command), "{}", tool.name);
+            let listing = tool.listing();
+            assert!(
+                listing.chars().count() <= MAX_DESCRIPTION_CHARS,
+                "{}: {} characters",
+                tool.name,
+                listing.chars().count()
+            );
+            assert!(!tool.description.contains('\n'), "{}", tool.name);
+            assert!(
+                tool.description.ends_with('.'),
+                "{}: a sentence, so the example reads on",
+                tool.name
+            );
+            let example: serde_json::Value = serde_json::from_str(&tool.example)
+                .unwrap_or_else(|e| panic!("{}: the example is not JSON: {e}", tool.name));
+            assert!(example.is_object(), "{}", tool.name);
+        }
+    }
+
+    #[test]
+    fn a_table_with_an_unknown_key_is_refused() {
+        let text = "[budget]\nmax_tools = 1\nmax_tokens = 1\n[[tool]]\nname = \"a_b\"\n\
+                    command = \"a.b\"\ndescription = \"X.\"\nexample = '{}'\nextra = 1\n";
+        assert!(CoreTable::parse(text).unwrap_err().contains("extra"));
+    }
+}

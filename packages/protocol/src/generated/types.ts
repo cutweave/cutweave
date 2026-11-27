@@ -2285,6 +2285,14 @@ export type GetLevelsOutput = {
 	source_errors: number,
 };
 
+/**  The part of the timeline whose items `timeline.get` lists: `[from, to)`. */
+export type GetRange = {
+	/**  Start (default 0). */
+	from: TimeInput | null,
+	/**  End, exclusive (default: the sequence end). */
+	to: TimeInput | null,
+};
+
 /**  The graphics adapter the renderer runs on. */
 export type GpuAdapterInfo = {
 	/**  The adapter's name (`NVIDIA GeForce RTX 3060`). */
@@ -3232,6 +3240,8 @@ export type ItemSource = {
 export type ItemSummary = {
 	/**  The item. */
 	id: ItemId,
+	/**  Its own name, when it has one (`item.set_props`); otherwise its media's name is shown. */
+	name?: string | null,
 	/**  Item kind (`clip`). */
 	kind: string,
 	/**  Timeline position of the first frame. */
@@ -6885,8 +6895,12 @@ export type TimelineExtract = {
 
 /**
  *  Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries
- *  only, small), 2 adds every item. `fields` limits the sections returned (`name`, `format`,
- *  `duration`, `tracks`); the id and the counts are always included.
+ *  only, small), 2 adds the items. `fields` limits the sections returned (`name`, `format`,
+ *  `duration`, `tracks`); the id and the counts are always included and always describe the
+ *  whole sequence. At depth 2, `range` lists only the items that overlap `[from, to)`, and
+ *  `limit` pages them in track order, then start order: `next_cursor` is the `cursor` of the
+ *  next page (absent on the last one). A long timeline is best read as the depth 1 overview,
+ *  then depth 2 pages of the part that matters.
  */
 export type TimelineGet = {
 	/**  The sequence. */
@@ -6895,6 +6909,12 @@ export type TimelineGet = {
 	depth?: number | null,
 	/**  Sections to include: any of `name`, `format`, `duration`, `tracks` (default all). */
 	fields?: string[] | null,
+	/**  Depth 2: list only the items that overlap `{from, to}` (flicks, "2.5s" or "f:60"). */
+	range?: GetRange | null,
+	/**  Depth 2: most items to list, `1..=1000` (default: all); see `next_cursor`. */
+	limit?: number | null,
+	/**  Depth 2 with `limit`: the previous page's `next_cursor`. */
+	cursor?: ItemId | null,
 };
 
 /**  Result of `timeline.get`. */
@@ -6916,6 +6936,8 @@ export type TimelineGetOutput = {
 	 *  out).
 	 */
 	tracks?: TrackSummary[] | null,
+	/**  More items follow: pass it as `cursor` for the next page (only with `limit`). */
+	next_cursor?: ItemId | null,
 };
 
 /**

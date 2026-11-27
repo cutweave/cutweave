@@ -11,6 +11,7 @@
 //! | `schema/patch-fixtures.json` | RFC 6902-style patches produced by real commands, for the TS patch applier |
 //! | `schema/schema-hash.txt`, `crates/cutweave-commands/src/schema_hash.rs` | sha256 of `commands.json` |
 //! | `docs/reference/commands.md` | human-readable command table |
+//! | `docs/reference/mcp-core-tools.md` | the core MCP tools, from `crates/cutweave-api/mcp_core.toml` and the registry (`mcp_gen`, WP-2I.01) |
 //! | `docs/reference/cli.md` | the `cutweave` command line, from the clap definition of `cutweave-cli` (WP-1K.01) |
 //! | `packages/protocol/src/generated/*.ts` | TypeScript types, `CommandMap`, `EventMap`, schema hash (`ts_gen`) |
 //!
@@ -382,6 +383,10 @@ pub fn generate() -> Result<Files, String> {
         .into_bytes(),
     );
     files.insert(REFERENCE.into(), reference_markdown(&registry).into_bytes());
+    files.insert(
+        crate::mcp_gen::REFERENCE.into(),
+        crate::mcp_gen::reference_markdown(build_registry()?)?.into_bytes(),
+    );
     files.insert(
         CLI_REFERENCE.into(),
         cutweave_cli::reference_markdown().into_bytes(),

@@ -332,3 +332,189 @@ pub fn text_of(result: &CallToolResult) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+// ----- core tool examples (WP-2I.01) ---------------------------------------------------------
+
+/// The arguments of a core tool's example (`mcp_core.toml`), with each id placeholder written
+/// out as 32 hex digits.
+pub fn example_args(tool: &cutweave_api::mcp::core::CoreTool) -> Value {
+    let text = tool
+        .example
+        .replace(cutweave_api::mcp::core::ID_PLACEHOLDER, &"0".repeat(32));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", tool.name))
+}
+
+fn type_matches(name: &str, value: &Value) -> bool {
+    match name {
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "string" => value.is_string(),
+        "boolean" => value.is_boolean(),
+        "null" => value.is_null(),
+        "integer" => value.is_i64() || value.is_u64(),
+        "number" => value.is_number(),
+        other => panic!("unknown JSON Schema type `{other}`"),
+    }
+}
+
+/// The patterns of the registry's schemas, matched by hand (no regex crate in the tests): ids,
+/// times, colors and actors. A pattern this does not know fails the test that meets it.
+fn pattern_matches(pattern: &str, text: &str) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let seconds = |s: &str| {
+        let s = s.strip_prefix('-').unwrap_or(s);
+        match s.split_once('.') {
+            Some((whole, fraction)) => digits(whole) && digits(fraction),
+            None => digits(s),
+        }
+    };
+    if let Some(prefix) = pattern
+        .strip_prefix('^')
+        .and_then(|p| p.strip_suffix("_[0-9a-f]{32}$"))
+    {
+        return text
+            .strip_prefix(prefix)
+            .and_then(|t| t.strip_prefix('_'))
+            .is_some_and(|hex| {
+                hex.len() == 32 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+            });
+    }
+    if pattern.starts_with("^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$") {
+        let timecode = || {
+            let parts: Vec<&str> = text.split([':', ';']).collect();
+            parts.len() == 4 && parts.iter().all(|p| digits(p))
+        };
+        return text.strip_suffix('s').is_some_and(seconds)
+            || digits(text.strip_prefix('-').unwrap_or(text))
+            || (pattern.contains("f:")
+                && (text.strip_prefix("f:").is_some_and(digits) || timecode()));
+    }
+    if pattern.starts_with("^#(") {
+        return text.strip_prefix('#').is_some_and(|hex| {
+            matches!(hex.len(), 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit())
+        });
+    }
+    if pattern.starts_with("^(\\*|user|system|agent:") {
+        return matches!(text, "*" | "user" | "system")
+            || text.strip_prefix("agent:").is_some_and(|l| !l.is_empty())
+            || text.strip_prefix("plugin:").is_some_and(|l| !l.is_empty());
+    }
+    panic!("a pattern the example check does not know: {pattern}");
+}
+
+/// Why `value` is not valid under `schema`, for the JSON Schema keywords the registry's params
+/// schemas use (they are self-contained: no `$ref`). `at` is the JSON Pointer of `value`.
+pub fn schema_error(schema: &Value, value: &Value, at: &str) -> Option<String> {
+    let Some(map) = schema.as_object() else {
+        return (schema == &Value::Bool(false)).then(|| format!("{at}: nothing is allowed here"));
+    };
+    let fail = |what: String| Some(format!("{at}: {what}"));
+    match map.get("type") {
+        Some(Value::String(t)) if !type_matches(t, value) => return fail(format!("not {t}")),
+        Some(Value::Array(types))
+            if !types
+                .iter()
+                .any(|t| type_matches(t.as_str().unwrap(), value)) =>
+        {
+            return fail(format!("none of {types:?}"));
+        }
+        _ => {}
+    }
+    if let Some(constant) = map.get("const")
+        && constant != value
+    {
+        return fail(format!("not {constant}"));
+    }
+    if let Some(Value::Array(allowed)) = map.get("enum")
+        && !allowed.contains(value)
+    {
+        return fail(format!("not one of {allowed:?}"));
+    }
+    for (keyword, exactly_one) in [("anyOf", false), ("oneOf", true)] {
+        if let Some(Value::Array(alternatives)) = map.get(keyword) {
+            let errors: Vec<Option<String>> = alternatives
+                .iter()
+                .map(|a| schema_error(a, value, at))
+                .collect();
+            let matching = errors.iter().filter(|e| e.is_none()).count();
+            if matching == 0 || (exactly_one && matching != 1) {
+                return fail(format!(
+                    "{matching} alternatives of {keyword} match: {errors:?}"
+                ));
+            }
+        }
+    }
+    if let Some(number) = value.as_f64() {
+        if map
+            .get("minimum")
+            .and_then(Value::as_f64)
+            .is_some_and(|m| number < m)
+        {
+            return fail("below the minimum".into());
+        }
+        if map
+            .get("maximum")
+            .and_then(Value::as_f64)
+            .is_some_and(|m| number > m)
+        {
+            return fail("above the maximum".into());
+        }
+    }
+    if let (Some(pattern), Some(text)) =
+        (map.get("pattern").and_then(Value::as_str), value.as_str())
+        && !pattern_matches(pattern, text)
+    {
+        return fail(format!("does not match {pattern}"));
+    }
+    if let Some(list) = value.as_array() {
+        let count = list.len() as u64;
+        if map
+            .get("minItems")
+            .and_then(Value::as_u64)
+            .is_some_and(|m| count < m)
+            || map
+                .get("maxItems")
+                .and_then(Value::as_u64)
+                .is_some_and(|m| count > m)
+        {
+            return fail(format!("{count} elements"));
+        }
+        if let Some(items) = map.get("items") {
+            for (i, element) in list.iter().enumerate() {
+                if let Some(error) = schema_error(items, element, &format!("{at}/{i}")) {
+                    return Some(error);
+                }
+            }
+        }
+    }
+    if let Some(object) = value.as_object() {
+        let properties = map.get("properties").and_then(Value::as_object);
+        if let Some(Value::Array(required)) = map.get("required") {
+            for name in required.iter().filter_map(Value::as_str) {
+                if !object.contains_key(name) {
+                    return fail(format!("`{name}` is missing"));
+                }
+            }
+        }
+        for (name, member) in object {
+            let here = format!("{at}/{name}");
+            match properties.and_then(|p| p.get(name)) {
+                Some(property) => {
+                    if let Some(error) = schema_error(property, member, &here) {
+                        return Some(error);
+                    }
+                }
+                None => match map.get("additionalProperties") {
+                    Some(Value::Bool(false)) => return Some(format!("{here}: unknown")),
+                    Some(extra) => {
+                        if let Some(error) = schema_error(extra, member, &here) {
+                            return Some(error);
+                        }
+                    }
+                    None => {}
+                },
+            }
+        }
+    }
+    None
+}

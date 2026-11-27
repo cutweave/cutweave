@@ -27,6 +27,9 @@ specta-serde = { workspace = true }
 # `cargo xtask gen-bench-project` and the result/budget types of `bench` and `bench-check`
 # (WP-2J.01); the crate's own dependencies are ones xtask already has through cutweave-engine.
 cutweave-bench = { path = "../crates/cutweave-bench" }
+# `docs/reference/mcp-core-tools.md` (WP-2I.01): the core tool table and the tool catalog.
+# Already in the graph through cutweave-engine.
+cutweave-api = { path = "../crates/cutweave-api" }
 cutweave-cli = { path = "../crates/cutweave-cli" }
 cutweave-commands = { path = "../crates/cutweave-commands" }
 cutweave-engine = { path = "../crates/cutweave-engine" }

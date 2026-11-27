@@ -1,0 +1,235 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The core MCP tools (WP-2I.01; arch §14, ADR-0009): the tools the standard profile lists
+# next to the 4 generic ones, and what each listing says. This file is the checked-in gate of
+# the tool list: a command marked `mcp = "core"` that is missing here (or the reverse) fails
+# `cargo nextest run -p cutweave-api`, and so does a list beyond `[budget]`.
+#
+# - `name`: the tool. It is the command name with `.` replaced by `_`; an entry whose name is
+#   not that needs an ADR (arch §14).
+# - `command`: the registered command or query the tool runs. The tool is only that call:
+#   the input schema, the result and the errors are the command's.
+# - `description`: what an agent reads in `tools/list`, without the example. Plain, present
+#   tense, what it changes and what comes back. No parameter reference: parameter docs are in
+#   `cutweave_describe_command` (listed schemas carry validation only, to fit the budget).
+# - `example`: one valid arguments object. `…` stands for the 32 hex digits of an id. The
+#   listed description is `<description> E.g. <example>` and is at most 300 characters.
+#
+# `[[pending]]` names tools of the plan that are not listed yet, and what brings them.
+#
+# Generated from this file: docs/reference/mcp-core-tools.md (`cargo xtask gen`).
+
+[budget]
+# Arch §14, R36: the standard profile lists at most this many tools (the 4 generic tools
+# included) in at most this many tokens (`ceil(bytes / 4)` of the compact `tools/list` result).
+max_tools = 36
+max_tokens = 8000
+
+[[tool]]
+name = "audio_set"
+command = "audio.set"
+description = "Set a clip's fades, volume (dB) or pan; `set.kind` picks which."
+example = '{"item":"itm_…","set":{"kind":"fade","in":"0.5s","out":"1s"}}'
+
+[[tool]]
+name = "clip_set_speed"
+command = "clip.set_speed"
+description = "Change a clip's playback speed, 0.1x to 100x; its length changes unless keep is \"duration\". Linked partners follow."
+example = '{"item":"itm_…","speed":"2x"}'
+
+[[tool]]
+name = "clip_split"
+command = "clip.split"
+description = "Split a clip and its linked partners at a timeline time inside it; returns the left and right ids."
+example = '{"item":"itm_…","at":"2.5s"}'
+
+[[tool]]
+name = "clip_trim"
+command = "clip.trim"
+description = "Move a clip's start or end edge to a time (`to`) or by an amount (`delta`). Linked partners follow; the main track closes up."
+example = '{"item":"itm_…","edge":"end","delta":"-0.5s"}'
+
+[[tool]]
+name = "edit_checkpoint"
+command = "edit.checkpoint"
+description = "Save a restore point of the document before risky edits; cheap. Returns its id."
+example = '{"name":"before-recut"}'
+
+[[tool]]
+name = "edit_redo"
+command = "edit.redo"
+description = "Redo your last undone change (`steps` for more)."
+example = '{}'
+
+[[tool]]
+name = "edit_restore"
+command = "edit.restore"
+description = "Bring the document back to a checkpoint (id or name) as one undoable change; refuses to revert other actors' edits unless force is true."
+example = '{"checkpoint":"before-recut"}'
+
+[[tool]]
+name = "edit_undo"
+command = "edit.undo"
+description = "Undo your last change (`steps` for more); other actors' later edits are kept."
+example = '{"steps":2}'
+
+[[tool]]
+name = "export_start"
+command = "export.start"
+description = "Export a sequence to a video file as a background job; returns job_id for job_wait. Presets: export.list_presets."
+example = '{"path":"C:/out/cut.mp4","preset":"youtube-1080p"}'
+
+[[tool]]
+name = "item_delete"
+command = "item.delete"
+description = "Delete items and their linked partners; the main track closes up, other tracks keep the gap."
+example = '{"items":["itm_…"]}'
+
+[[tool]]
+name = "item_move"
+command = "item.move"
+description = "Move items to a time (`start`) or by `delta`, and/or to another track (`to_track`). Linked partners follow."
+example = '{"item":"itm_…","start":"6s"}'
+
+[[tool]]
+name = "item_set_props"
+command = "item.set_props"
+description = "Set some of an item's properties: name, enabled, opacity, audio gain and pan, transform, crop, flip, blend mode. The rest stay."
+example = '{"item":"itm_…","props":{"opacity":0.5,"transform":{"scale":{"x":1.2,"y":1.2}}}}'
+
+[[tool]]
+name = "job_status"
+command = "job.status"
+description = "Get a background job's state, progress and error (media analysis, export)."
+example = '{"id":"job_…"}'
+
+[[tool]]
+name = "job_wait"
+command = "job.wait"
+description = "Wait for a background job to finish, at most timeout_ms (max 60000); returns its state. Call again while it is running."
+example = '{"job_id":"job_…","timeout_ms":30000}'
+
+[[tool]]
+name = "keyframe_set"
+command = "keyframe.set"
+description = "Animate one property of an item: add or replace keys at sequence times (`at`) or item times (`t`), with an easing to the next key."
+example = '{"item":"itm_…","prop":"opacity","keys":[{"at":"6s","value":0,"easing":"ease_out"},{"at":"8s","value":1}]}'
+
+[[tool]]
+name = "media_import"
+command = "media.import"
+description = "Import media files by absolute path. Returns media_ids at once; analysis runs as jobs (job_ids) that job_wait waits for."
+example = '{"paths":["C:/footage/a.mp4"]}'
+
+[[tool]]
+name = "media_list"
+command = "media.list"
+description = "List the project's media with ids, kinds and durations; filter, sort and page."
+example = '{"filter":{"kinds":["video"],"used":false},"limit":20}'
+
+[[tool]]
+name = "project_info"
+command = "project.info"
+description = "Get the project's name, default format and its sequences with their ids. Start here."
+example = '{}'
+
+[[tool]]
+name = "project_open"
+command = "project.open"
+description = "Open a project folder or .cutweave file; the current project closes. Fails if that would lose unsaved changes."
+example = '{"path":"C:/projects/trip"}'
+
+[[tool]]
+name = "render_frame"
+command = "render.frame"
+description = "See the frame at a time: returns an image (JPEG, 768 px by default) and the items on screen. Not usable inside cutweave_execute."
+example = '{"t":"2.5s"}'
+
+[[tool]]
+name = "sequence_create"
+command = "sequence.create"
+description = "Add a sequence from an aspect preset (\"16:9\", \"9:16\", \"1:1\", ...) or an explicit format; returns its id and tracks."
+example = '{"name":"Short","preset":"9:16"}'
+
+[[tool]]
+name = "sequence_set_format"
+command = "sequence.set_format"
+description = "Change a sequence's size, frame rate, sample rate or background; `reframe` says how items adapt to a new size."
+example = '{"sequence":"seq_…","width":1080,"height":1920}'
+
+[[tool]]
+name = "timeline_add_marker"
+command = "timeline.add_marker"
+description = "Add a marker at a time of a sequence, or on one of its items (`item`; then `t` is from the item's start). `duration` makes it a range."
+example = '{"sequence":"seq_…","t":"12s","label":"Cut here"}'
+
+[[tool]]
+name = "timeline_get"
+command = "timeline.get"
+description = "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`."
+example = '{"sequence":"seq_…","depth":2,"limit":50}'
+
+[[tool]]
+name = "timeline_insert"
+command = "timeline.insert"
+description = "Place a media clip on a track at a time; video with sound also gets a linked audio clip. Returns the new clip ids."
+example = '{"sequence":"seq_…","track":"trk_…","media":"med_…","at":"0s"}'
+
+[[tool]]
+name = "track_add"
+command = "track.add"
+description = "Add an empty track to a sequence; returns its id."
+example = '{"sequence":"seq_…","kind":"video"}'
+
+[[tool]]
+name = "view_get"
+command = "view.get"
+description = "Read what the user sees in the app: playhead, selection, zoom, active sequence, source in/out marks."
+example = '{}'
+
+[[tool]]
+name = "view_set"
+command = "view.set"
+description = "Show the user something in the app: move the playhead, select items, zoom or switch sequence. Changes only the view; not undoable."
+example = '{"patch":{"playhead":"12s","selection":[{"kind":"item","id":"itm_…"}]}}'
+
+# ----- not listed yet ------------------------------------------------------------------------
+
+[[pending]]
+name = "render_contact_sheet"
+arrives = "WP-2I.02"
+
+[[pending]]
+name = "media_filmstrip"
+arrives = "WP-2I.02"
+
+[[pending]]
+name = "audio_waveform"
+arrives = "WP-2I.02"
+
+# Text, caption, effect, transition, composition and AI tools arrive in P3-P5 with their
+# commands (WBS WP-2I.01); the names are the plan's, not a contract yet.
+
+[[pending]]
+name = "text_add"
+arrives = "P3-P5"
+
+[[pending]]
+name = "caption_generate"
+arrives = "P3-P5"
+
+[[pending]]
+name = "effect_add"
+arrives = "P3-P5"
+
+[[pending]]
+name = "transition_add"
+arrives = "P3-P5"
+
+[[pending]]
+name = "composition_create"
+arrives = "P3-P5"
+
+[[pending]]
+name = "ai_*"
+arrives = "P3-P5"
