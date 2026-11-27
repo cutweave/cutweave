@@ -3,7 +3,6 @@
 //! `/rpc`), a JSON-RPC WebSocket client ([`WsClient`]) and a real engine process started through
 //! the launch protocol ([`ChildEngine`]).
 
-use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -106,8 +105,8 @@ pub struct WsClient {
     rt: Runtime,
     ws: Socket,
     next_id: u64,
-    /// Revisions of the `doc.patched` notifications not yet waited for, oldest first.
-    patched: VecDeque<u64>,
+    /// The newest revision a `doc.patched` notification announced.
+    patched: u64,
 }
 
 impl WsClient {
@@ -132,7 +131,7 @@ impl WsClient {
             rt,
             ws,
             next_id: 1,
-            patched: VecDeque::new(),
+            patched: 0,
         })
     }
 
@@ -166,7 +165,7 @@ impl WsClient {
         if msg["method"] == "doc.patched"
             && let Some(rev) = msg["params"]["rev"].as_u64()
         {
-            self.patched.push_back(rev);
+            self.patched = self.patched.max(rev);
         }
     }
 
@@ -222,15 +221,11 @@ impl WsClient {
 
     /// Waits until the `doc.patched` for revision `rev` (or a later one) arrived.
     pub fn wait_patched(&mut self, rev: u64) -> Result<(), BenchError> {
-        loop {
-            while let Some(seen) = self.patched.pop_front() {
-                if seen >= rev {
-                    return Ok(());
-                }
-            }
+        while self.patched < rev {
             let msg = self.next()?;
             self.note(&msg);
         }
+        Ok(())
     }
 
     /// One full round trip of a mutating command: the request, its response and the

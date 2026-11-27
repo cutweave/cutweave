@@ -314,6 +314,11 @@ impl Runner {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn doc(&self) -> &Project {
+        &self.doc
+    }
+
     pub(crate) fn into_doc(self) -> Project {
         self.doc
     }

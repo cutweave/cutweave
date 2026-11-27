@@ -87,7 +87,8 @@ impl Workload {
     fn set_props(&mut self) -> Step {
         let i = self.pick(self.video.len());
         let id = self.video[i].id.clone();
-        let v = self.fresh(format!("crop:{id}"), 400);
+        // Never 0: that is the value an untouched item has, and writing it changes nothing.
+        let v = 1 + self.fresh(format!("crop:{id}"), 399);
         Step {
             command: "item.set_props",
             #[allow(clippy::cast_precision_loss)]
@@ -149,6 +150,48 @@ impl Workload {
             80..90 => self.mute(),
             90..100 => self.marker(),
             _ => self.set_props(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::fixture::{FixtureSpec, Runner, generate};
+
+    /// A command that changes nothing causes no `doc.patched`, and the round-trip probe would
+    /// wait for one.
+    #[test]
+    fn every_step_succeeds_and_changes_the_document() {
+        let fixture = generate(&FixtureSpec::smoke()).expect("fixture");
+        let mut workload = Workload::new(&fixture.manifest, 7);
+        let mut runner = Runner::new(fixture.project.clone(), 99).expect("runner");
+        let mut seen = std::collections::BTreeSet::new();
+        for n in 0..1500 {
+            let step = workload.next_step();
+            let before = runner.doc().clone();
+            runner
+                .run(step.command, step.params.clone())
+                .unwrap_or_else(|e| panic!("step {n} {step:?}: {e}"));
+            assert!(
+                runner.doc() != &before,
+                "step {n} changed nothing: {step:?}"
+            );
+            seen.insert(step.command);
+        }
+        assert_eq!(seen.len(), 5, "{seen:?}");
+    }
+
+    #[test]
+    fn the_same_seed_gives_the_same_steps() {
+        let fixture = generate(&FixtureSpec::smoke()).expect("fixture");
+        let (mut a, mut b) = (
+            Workload::new(&fixture.manifest, 3),
+            Workload::new(&fixture.manifest, 3),
+        );
+        for _ in 0..200 {
+            assert_eq!(a.next_step(), b.next_step());
         }
     }
 }
