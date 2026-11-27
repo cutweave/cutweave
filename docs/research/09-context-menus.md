@@ -271,7 +271,8 @@ Status marks: [E] a registered command exists (name given); [WP-x] planned there
 | --- | | |
 | Rename | F2 | [WP-2F.07] (display names; folders WP-2F.08) |
 | Move to… | | [WP-2F.08] `media.move` |
-| Add tag… / Add to collection | | [WP-2F.06] |
+| Add tag… / Add to collection ▸ (New collection…, the manual collections) | | [WP-2F.06b, WP-2F.06c] `media.add_tags`, `media.add_to_collection` |
+| Remove from collection (only while a manual collection is open) | | [WP-2F.06c] `media.remove_from_collection` |
 | --- | | |
 | Relink… (offline cards only) | | [WP-2F.03] `media.relink` |
 | Regenerate proxies | | [WP-2F.03] |
@@ -283,6 +284,7 @@ Kind rules: audio cards omit "Overwrite on video track"; image cards add "Durati
 
 **Bin background** (`bin.background`): Import… (Ctrl+I) [E] `media.import`; New folder (Ctrl+Shift+N) [WP-2F.08]; Paste (a media path list) [M] drop; Select all (Ctrl+A) [WP-2F.08]; Sort by and View as (submenus mirroring the dropdowns) [E] existing view state; Show hover scrub toggle [UI].
 **Folder tile** (`bin.folder`): Open, Rename, Move to…, New folder inside, Delete… [WP-2F.08]. **Breadcrumb segment**: Open [WP-2F.08].
+**Collection row of the bin's sidebar** (`bin.collection`, added by WP-2F.06c): Open, Rename (F2), Update from current filters (smart collections only) `media.set_collection_filter`, Delete collection… (Delete) `media.delete_collection`. The bin background also has New collection… and, while a search or a filter is on, Save as smart collection… (`media.create_collection`).
 **Filter chip** (`bin.chip`): Remove filter, Clear all filters [UI] (WP-1M.12 state). **Search box**: text field menu.
 **Category tab** (`assets.tab`): Close panel is not offered here; none planned. Right-click on a tab is a normal tab context (no menu) except "Show in separate panel" [M], deferred.
 **Empty bin**: same as bin background.

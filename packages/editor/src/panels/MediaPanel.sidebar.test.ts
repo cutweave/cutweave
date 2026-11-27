@@ -421,7 +421,7 @@ describe("the collections", () => {
     );
     // A clip that gets the tag joins it.
     const p = project();
-    (p.media as Record<string, { tags: string[] }>).med_3.tags = ["keep"];
+    (p.media as unknown as { med_3: { tags: string[] } }).med_3.tags = ["keep"];
     load(p);
     await vi.waitFor(() =>
       expect(cardNames()).toEqual(["broll-a.mp4", "clip1.mp4", "clip3.mp4", "inside.mp4"]),

@@ -1510,7 +1510,7 @@ describe("collections (WP-2F.06c)", () => {
   };
 
   const engine = (result: unknown = {}) => {
-    const engineCall = vi.fn(async () => result);
+    const engineCall = vi.fn(async (_name: string, _args?: unknown) => result);
     engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
     return engineCall;
   };
