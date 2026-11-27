@@ -1022,6 +1022,10 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "$ref": "#/$defs/ProbeInfo",
           "description": "Probe results."
         },
+        "proxy_mode": {
+          "$ref": "#/$defs/ProxyMode",
+          "description": "Whether it gets a proxy (ADR-0027): as the project's policy decides, always or never.\n`auto` is left out of the file, so documents written before the field read the same."
+        },
         "sequence": {
           "description": "The referenced sequence (`sequence_ref` only).",
           "pattern": "^seq_[0-9a-f]{32}$",
@@ -1224,6 +1228,10 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "$ref": "#/$defs/SequenceFormat",
           "description": "Format of new sequences."
         },
+        "proxy_policy": {
+          "$ref": "#/$defs/ProxyPolicy",
+          "description": "Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so\ndocuments written before the field read the same."
+        },
         "still_duration": {
           "anyOf": [
             {
@@ -1251,6 +1259,46 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "default_format"
       ],
       "type": "object"
+    },
+    "ProxyMode": {
+      "description": "Whether one asset gets a proxy (ADR-0027), next to the project's policy.",
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "As the project's policy decides. The default.",
+          "type": "string"
+        },
+        {
+          "const": "force",
+          "description": "One is made whatever the policy.",
+          "type": "string"
+        },
+        {
+          "const": "off",
+          "description": "None is made, and the preview does not use one that exists.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProxyPolicy": {
+      "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project.",
+      "oneOf": [
+        {
+          "const": "off",
+          "description": "Never automatically (`media.generate_proxy` still makes one).",
+          "type": "string"
+        },
+        {
+          "const": "auto",
+          "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+          "type": "string"
+        },
+        {
+          "const": "all",
+          "description": "For every video file.",
+          "type": "string"
+        }
+      ]
     },
     "Sequence": {
       "description": "A timeline (arch §4.2). A project may hold several (e.g. a long cut and its shorts); the v1\nUI shows one.",

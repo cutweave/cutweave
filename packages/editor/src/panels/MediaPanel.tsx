@@ -71,6 +71,7 @@ import { insertAtPlayhead } from "../media/insert.ts";
 import { isMovingPicture } from "../media/kinds.ts";
 import { layoutStore } from "../media/layoutStore.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
+import { type ProxyBadgeKind, useProxyBadge } from "../media/proxies.ts";
 import { requestDeleteSelection } from "../media/requestDelete.ts";
 import { useThumbnailSource } from "../media/thumbnails.ts";
 import { useCardScrub } from "../media/useCardScrub.ts";
@@ -202,6 +203,31 @@ interface DropHandlers {
   onDrop(e: DragEvent<HTMLElement>): void;
 }
 
+/** The proxy badge of a card (WP-2F.03b): its words, its tone and what the tooltip explains. */
+const PROXY_LABEL = {
+  ready: "mediaBin.proxy.ready",
+  queued: "mediaBin.proxy.queued",
+  failed: "mediaBin.proxy.failed.badge",
+  evicted: "mediaBin.proxy.evicted",
+  incomplete: "mediaBin.proxy.incomplete",
+} as const satisfies Record<Exclude<ProxyBadgeKind, "generating">, string>;
+const PROXY_TIP = {
+  ready: "mediaBin.proxy.tip.ready",
+  generating: "mediaBin.proxy.tip.generating",
+  queued: "mediaBin.proxy.tip.queued",
+  failed: "mediaBin.proxy.tip.failed",
+  evicted: "mediaBin.proxy.tip.evicted",
+  incomplete: "mediaBin.proxy.tip.incomplete",
+} as const satisfies Record<ProxyBadgeKind, string>;
+const PROXY_TONE = {
+  ready: "success",
+  generating: "neutral",
+  queued: "neutral",
+  failed: "warning",
+  evicted: "neutral",
+  incomplete: "neutral",
+} as const satisfies Record<ProxyBadgeKind, "success" | "warning" | "neutral">;
+
 interface CardViewProps extends TileHandlers {
   card: MediaCard;
   selected: boolean;
@@ -258,6 +284,7 @@ function CardView({
   }));
   const scrub = useCardScrub(card);
   const offline = useIsOffline(card.id);
+  const proxy = useProxyBadge(card.id);
   const canPlay = playable(card);
   const playingHere = usePlaybackStore((s) => s.source?.media === card.id && s.playing);
   const shownInPreview = useSourceViewStore((s) => s.host === "preview");
@@ -373,6 +400,24 @@ function CardView({
             )}
           </span>
         ) : null}
+        {proxy === null ? null : (
+          <span
+            className="cw-media__status"
+            data-testid="proxy-badge"
+            data-proxy={proxy.kind}
+            title={
+              proxy.kind === "failed" && proxy.detail !== null
+                ? t("mediaBin.proxy.tip.failedBecause", { message: proxy.detail })
+                : t(PROXY_TIP[proxy.kind])
+            }
+          >
+            <StatusChip tone={PROXY_TONE[proxy.kind]}>
+              {proxy.kind === "generating"
+                ? t("mediaBin.proxy.generating", { percent: proxy.percent ?? 0 })
+                : t(PROXY_LABEL[proxy.kind])}
+            </StatusChip>
+          </span>
+        )}
       </span>
     </div>
   );

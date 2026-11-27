@@ -28,6 +28,49 @@ pub enum MediaKind {
     SequenceRef,
 }
 
+/// Whether one asset gets a proxy (ADR-0027), next to the project's policy.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyMode {
+    /// As the project's policy decides. The default.
+    #[default]
+    Auto,
+    /// One is made whatever the policy.
+    Force,
+    /// None is made, and the preview does not use one that exists.
+    Off,
+}
+
+impl ProxyMode {
+    /// Whether it is the default, which is left out of the file.
+    #[must_use]
+    pub fn is_auto(&self) -> bool {
+        *self == ProxyMode::Auto
+    }
+
+    /// Lowercase name for messages.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            ProxyMode::Auto => "auto",
+            ProxyMode::Force => "force",
+            ProxyMode::Off => "off",
+        }
+    }
+}
+
 impl MediaKind {
     /// Whether the media is a file on disk (and so has paths and a content hash).
     #[must_use]
@@ -79,6 +122,10 @@ pub struct MediaAsset {
     /// `path_abs` and `path_rel` name the first file of the run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_sequence: Option<ImageSequence>,
+    /// Whether it gets a proxy (ADR-0027): as the project's policy decides, always or never.
+    /// `auto` is left out of the file, so documents written before the field read the same.
+    #[serde(default, skip_serializing_if = "ProxyMode::is_auto")]
+    pub proxy_mode: ProxyMode,
     /// Probe results.
     pub probe: ProbeInfo,
     /// Plugin data (arch §4.3).
@@ -382,6 +429,7 @@ impl MediaAsset {
             content_hash: None,
             sequence: None,
             image_sequence: None,
+            proxy_mode: ProxyMode::Auto,
             probe,
             custom: Custom::new(),
             extra: Extra::new(),
@@ -401,6 +449,7 @@ impl MediaAsset {
             content_hash: None,
             sequence: Some(sequence),
             image_sequence: None,
+            proxy_mode: ProxyMode::Auto,
             probe: ProbeInfo::default(),
             custom: Custom::new(),
             extra: Extra::new(),

@@ -278,18 +278,29 @@ export function startEngineRuntime(
 
   /**
    * Tells the engine this computer's cache and hardware preferences (`media.set_decode_policy`,
-   * `media.set_cache_config`; UI-only commands, WP-1D.08). The cache folder is not sent: main
-   * passes it as `--cache-dir` when it starts the engine.
+   * `media.set_cache_config`; UI-only commands, WP-1D.08) and how it makes proxies
+   * (`media.set_proxy_config`, WP-2F.03b; first, so no proxy starts at another size). The cache
+   * folder is not sent: main passes it as `--cache-dir` when it starts the engine.
    */
   async function sendMachineSettings(): Promise<void> {
     const values = stores.prefs?.getState().values;
     if (values === undefined) return;
+    try {
+      await rpc.call("media.set_proxy_config", {
+        size: values["media.proxy_size"],
+        jobs: values["performance.proxy_jobs"],
+      });
+    } catch (error) {
+      // An engine that makes no proxies (no media backend) has nothing to set.
+      if (!(error instanceof RpcError && error.code === "unsupported")) onError(error);
+    }
     try {
       await rpc.call("media.set_decode_policy", { hw: values["performance.hw_decode"] });
       await rpc.call("media.set_cache_config", {
         limits: {
           thumbnails: values["cache.thumbnails_limit"],
           waveforms: values["cache.waveforms_limit"],
+          proxies: values["cache.proxies_limit"],
         },
         frame_cache_bytes: values["performance.frame_memory"],
       });
@@ -379,7 +390,10 @@ export function startEngineRuntime(
           state.values["performance.frame_memory"] !==
             previous.values["performance.frame_memory"] ||
           state.values["cache.thumbnails_limit"] !== previous.values["cache.thumbnails_limit"] ||
-          state.values["cache.waveforms_limit"] !== previous.values["cache.waveforms_limit"];
+          state.values["cache.waveforms_limit"] !== previous.values["cache.waveforms_limit"] ||
+          state.values["cache.proxies_limit"] !== previous.values["cache.proxies_limit"] ||
+          state.values["media.proxy_size"] !== previous.values["media.proxy_size"] ||
+          state.values["performance.proxy_jobs"] !== previous.values["performance.proxy_jobs"];
         if (machineChanged && connection.state === "ready") void sendMachineSettings();
       }),
     );

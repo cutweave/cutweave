@@ -18343,13 +18343,27 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "proxy_jobs": {
+            "description": "How many proxy jobs run at once (one while an export runs).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proxy_size": {
+            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "folder",
           "kinds",
           "decode_hw",
-          "frame_cache_bytes"
+          "frame_cache_bytes",
+          "proxy_size",
+          "proxy_jobs"
         ],
         "title": "MediaCacheStatusOutput",
         "type": "object"
@@ -18957,7 +18971,7 @@
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -19250,7 +19264,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Makes proxies of video assets now, whatever the policy: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
+        "description": "Makes proxies of video assets now, whatever the policy and their mode: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
         "properties": {
           "media": {
             "description": "The video assets (1..=256, no repeats).",
@@ -19288,7 +19302,7 @@
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -19461,8 +19475,16 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.\n\nA path may also be a folder (WP-2F.09): the engine imports the files it can read inside it\n(up to 16 levels down, no links, no hidden files, at most 2,000 files per call; more fails\nwith `Invalid`), counts the rest in `skipped`, and with `keep_structure` (default true)\ncreates a bin folder for each directory that holds new media, named after it, inside\n`folder`. One undo removes the media and those folders; files already in the project stay\nwhere they are.",
+        "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.\n\nA path may also be a folder (WP-2F.09): the engine imports the files it can read inside it\n(up to 16 levels down, no links, no hidden files, at most 2,000 files per call; more fails\nwith `Invalid`), counts the rest in `skipped`, and with `keep_structure` (default true)\ncreates a bin folder for each directory that holds new media, named after it, inside\n`folder`. One undo removes the media and those folders; files already in the project stay\nwhere they are.\n\nWith `copy_to_project` (WP-2F.04c) each new file is first copied into the project's\n`media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from\nan imported folder keeps its place in that folder's tree) and the asset points at the copy,\nso the project keeps working when the original moves. The copy is compared with the\noriginal before it is used. A file already inside the project folder is not copied, and\nneither is one whose content the project already has (it is returned as a duplicate). The\ncall fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it\nhas no folder) or when the files do not fit on its drive; nothing is copied then. A file\nthat cannot be copied is listed in `failed`. Undoing the import removes the assets; the\ncopied files stay on disk (undo never deletes a file).",
         "properties": {
+          "copy_to_project": {
+            "default": null,
+            "description": "Copy each new file into the project's `media/` folder first (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "folder": {
             "default": null,
             "description": "Bin folder (default: top level).",
@@ -19707,6 +19729,493 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Import media files: probe and register them now, return media ids and analysis job ids",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video or image-sequence asset (`source: {\"media\": id}`) at time `at` as a PNG\npicture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "The time of the frame: flicks, \"2.5s\", \"f:60\" or a timecode."
+          },
+          "folder": {
+            "default": null,
+            "description": "Bin folder (default: top level).",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "default": null,
+            "description": "The name the bin shows (default: the source's name and the timecode).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video or image sequence on its own).",
+            "oneOf": [
+              {
+                "const": "sequence",
+                "description": "The frame the Preview shows: the sequence the editor shows, composited.",
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The frame the Source viewer shows for this video or image-sequence asset, at its own\nsize.",
+                "properties": {
+                  "media": {
+                    "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                    "pattern": "^med_[0-9a-f]{32}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "media"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "at"
+        ],
+        "title": "MediaImportFrame",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_import_frame",
+      "name": "media.import_frame",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.import_frame`.",
+        "properties": {
+          "duplicate": {
+            "description": "`true` when the same picture was already in the project and nothing was added.",
+            "type": "boolean"
+          },
+          "height": {
+            "description": "Picture height in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job_ids": {
+            "description": "Background analysis jobs queued for the new asset (wait with `job.wait`).",
+            "items": {
+              "description": "A job id: `^job_[0-9a-f]{32}$`.",
+              "pattern": "^job_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "media_id": {
+            "description": "The picture's asset; the existing one when the same picture was already in the project.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name the bin shows for it.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the PNG the asset points at.",
+            "type": "string"
+          },
+          "time": {
+            "description": "The time that was rendered: of the sequence, or of the source.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "width": {
+            "description": "Picture width in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id",
+          "path",
+          "name",
+          "width",
+          "height",
+          "time",
+          "duplicate",
+          "job_ids"
+        ],
+        "title": "MediaImportFrameOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Save the frame the Preview or a video asset shows at a time as a picture in the bin",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Imports pictures as stills and places them one after the other on a video track, each\n`per_image` long (default: the project's still duration), as one undo step. Pictures whose\ncontent is already in the project reuse that asset. Files that cannot be read or are not\nstill pictures are listed in `failed` and left out; with no picture at all the call fails\nwith `Invalid`. `order` is `given` (default), `name` or `name_numeric`. The pictures go to\n`track` (default: the main video track, else the first unlocked video track) of `sequence`\n(optional when the project has one), starting at `at` (default: the end of that track). On\nthe magnetic main track what is after `at` moves later; on another track the range must be\nfree. Agents and headless callers may only import from the project folder and user-approved\nfolders.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where the first picture starts (default: the end of the track)."
+          },
+          "files": {
+            "description": "Absolute paths of the pictures (1..=256, no repeats).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "description": "The order the pictures of a slideshow are placed in.",
+                "oneOf": [
+                  {
+                    "const": "given",
+                    "description": "As listed in `files`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "name",
+                    "description": "By file name, ignoring case.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "name_numeric",
+                    "description": "By file name, ignoring case, numbers compared by value (`img2` before `img10`).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`given` (default), `name` or `name_numeric`."
+          },
+          "per_image": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How long each picture stays, `> 0` (default: the project's still duration)."
+          },
+          "sequence": {
+            "default": null,
+            "description": "The sequence; optional when the project has one.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track": {
+            "default": null,
+            "description": "A video track (default: the main video track, else the first unlocked one).",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "MediaImportImagesAsSlideshow",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_import_images_as_slideshow",
+      "name": "media.import_images_as_slideshow",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.import_images_as_slideshow`.",
+        "properties": {
+          "at": {
+            "description": "Where the first picture starts (snapped to the frame grid).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "clips": {
+            "description": "The new clips, in slideshow order.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "end": {
+            "description": "Where the last picture ends.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "failed": {
+            "description": "The files that were left out: unreadable, or not a still picture.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A file that was not imported (no asset was created for it).",
+              "properties": {
+                "code": {
+                  "description": "Machine-readable reason.",
+                  "oneOf": [
+                    {
+                      "const": "not_found",
+                      "description": "There is no readable file at the path.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unsupported",
+                      "description": "The file holds no playable audio or video.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "timed_out",
+                      "description": "Probing took longer than the per-file timeout.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "io",
+                      "description": "Reading the file failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "invalid",
+                      "description": "The probe result cannot be registered (for example a zero duration).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "error": {
+                  "description": "Human-readable reason.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The path as requested.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "code",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "job_ids": {
+            "description": "Background analysis jobs queued for the new assets (wait with `job.wait`).",
+            "items": {
+              "description": "A job id: `^job_[0-9a-f]{32}$`.",
+              "pattern": "^job_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "media": {
+            "description": "One entry per placed picture, in slideshow order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One imported file.",
+              "properties": {
+                "duplicate": {
+                  "description": "`true` when the content was already in the project and nothing was added.",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "What the asset is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset; an existing one if the same content was imported before.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The path as requested.",
+                  "type": "string"
+                },
+                "proxy": {
+                  "description": "Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is\nalready in the cache.",
+                  "oneOf": [
+                    {
+                      "const": "none",
+                      "description": "None is made (the policy does not want one, or the file cannot have one).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queued",
+                      "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ready",
+                      "description": "One is already in the cache (the same content was imported before).",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "media_id",
+                "kind",
+                "duplicate",
+                "proxy"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "media_ids": {
+            "description": "The assets of `media`, in the same order (a duplicate names the existing asset).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "per_image": {
+            "description": "How long each picture stays (a whole number of frames).",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The sequence the pictures went into.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "track": {
+            "description": "The track they are on.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "at",
+          "per_image",
+          "end",
+          "clips",
+          "media",
+          "media_ids",
+          "failed",
+          "job_ids"
+        ],
+        "title": "MediaSlideshowOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Import pictures as stills and place them one after the other on a track",
       "undoable": false,
       "view": false
     },
@@ -20138,7 +20647,7 @@
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -21882,13 +22391,27 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "proxy_jobs": {
+            "description": "How many proxy jobs run at once (one while an export runs).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proxy_size": {
+            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "folder",
           "kinds",
           "decode_hw",
-          "frame_cache_bytes"
+          "frame_cache_bytes",
+          "proxy_size",
+          "proxy_jobs"
         ],
         "title": "MediaCacheStatusOutput",
         "type": "object"
@@ -22336,6 +22859,365 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Record where a media file is now (used by relink)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960\npixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size\napplies to proxies made from now on: generations of the old size stop, the open project's\nwanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache\nunused until its limit removes them. Not undoable, not journaled, never marks the project\ndirty; UI credential only (the desktop app applies the person's machine preferences).",
+        "properties": {
+          "jobs": {
+            "default": null,
+            "description": "Proxy jobs at once, 1 to 8. Left out: unchanged.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "size": {
+            "default": null,
+            "description": "The longest side of new proxies in pixels: 540, 720 or 960. Left out: unchanged.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaSetProxyConfig",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_config",
+      "name": "media.set_proxy_config",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "What `media.cache_status` and `media.set_cache_config` report.",
+        "properties": {
+          "decode_hw": {
+            "description": "The hardware decoding policy in force.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "A verified hardware decoder when the machine has one for the stream (the default).",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "Software decoding only.",
+                "type": "string"
+              }
+            ]
+          },
+          "folder": {
+            "description": "The folder the caches live in (`--cache-dir`, else the OS cache folder); `null` when\nthe engine has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_cache_bytes": {
+            "description": "Bytes of decoded frames the RAM frame cache may hold.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kinds": {
+            "description": "Each disk cache, in a fixed order (thumbnails, waveforms, proxies).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One disk cache's usage and limit.",
+              "properties": {
+                "bytes": {
+                  "description": "Bytes it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "entries": {
+                  "description": "Entries it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "description": "Which cache.",
+                  "oneOf": [
+                    {
+                      "const": "thumbnails",
+                      "description": "Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "waveforms",
+                      "description": "Waveform pyramids (one file per audio stream).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "proxies",
+                      "description": "Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing\nthem makes the preview use the originals; `media.generate_proxy` makes them again.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "limit_bytes": {
+                  "description": "Bytes it may hold before the least recently used entries are deleted.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "bytes",
+                "limit_bytes",
+                "entries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "proxy_jobs": {
+            "description": "How many proxy jobs run at once (one while an export runs).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proxy_size": {
+            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "folder",
+          "kinds",
+          "decode_hw",
+          "frame_cache_bytes",
+          "proxy_size",
+          "proxy_jobs"
+        ],
+        "title": "MediaCacheStatusOutput",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "Set the proxy size and how many proxy jobs run at once",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets whether video assets get a proxy, whatever the project's policy says: `force` makes\none, `off` makes none and the preview does not use one that exists (it stays in the cache),\n`auto` follows the policy again. The mode is saved in the project, one undo step for all\nthe assets named.",
+        "properties": {
+          "media": {
+            "description": "The video assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "description": "`auto` (follow the project's policy), `force` or `off`.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "As the project's policy decides. The default.",
+                "type": "string"
+              },
+              {
+                "const": "force",
+                "description": "One is made whatever the policy.",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "None is made, and the preview does not use one that exists.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "mode"
+        ],
+        "title": "MediaSetProxyMode",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_mode",
+      "name": "media.set_proxy_mode",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_proxy_mode`.",
+        "properties": {
+          "media": {
+            "description": "The assets, in request order.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "description": "Their mode now.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "As the project's policy decides. The default.",
+                "type": "string"
+              },
+              {
+                "const": "force",
+                "description": "One is made whatever the policy.",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "None is made, and the preview does not use one that exists.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "mode"
+        ],
+        "title": "ProxyModeSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set whether video assets get a proxy whatever the policy: auto, force or off",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Chooses which of the project's video gets proxies automatically: `off` (none), `auto`\n(video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than\n60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then\nqueues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).\nAn asset's own mode (`media.set_proxy_mode`) wins over the policy.",
+        "properties": {
+          "policy": {
+            "description": "`off`, `auto` or `all`.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "title": "MediaSetProxyPolicy",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_policy",
+      "name": "media.set_proxy_policy",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_proxy_policy`.",
+        "properties": {
+          "policy": {
+            "description": "The project's policy now.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          },
+          "previous": {
+            "description": "What it was before.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "policy",
+          "previous"
+        ],
+        "title": "ProxyPolicySet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Choose which of the project's video gets proxies automatically: off, auto or all",
       "undoable": true,
       "view": false
     },
@@ -23359,6 +24241,35 @@
           "name": {
             "description": "Project name (1..=200 characters).",
             "type": "string"
+          },
+          "proxy_policy": {
+            "anyOf": [
+              {
+                "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project.",
+                "oneOf": [
+                  {
+                    "const": "off",
+                    "description": "Never automatically (`media.generate_proxy` still makes one).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "auto",
+                    "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "all",
+                    "description": "For every video file.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting."
           },
           "still_duration": {
             "anyOf": [

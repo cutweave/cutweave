@@ -60,11 +60,21 @@ export function shownTimecode(): string {
   return formatTimecode(viewStore.getState().playhead, rate, true);
 }
 
+/** "Add frame to media bin" (WP-2F.05d): the frame on screen becomes a picture in the bin. */
+const addFrameRow = (group: string, order: number): MenuRow => ({
+  command: "preview.add_frame_to_bin",
+  group,
+  order,
+  when: "engine.live",
+  reason: "contextMenu.reason.noEngine",
+});
+
 export const PREVIEW_CANVAS: MenuSurfaceDef = {
   id: "preview.canvas",
   name: () => ({ key: "contextMenu.name.previewCanvas" }),
-  groups: ["play", "navigate", "view", "quality"],
+  groups: ["play", "navigate", "frame", "view", "quality"],
   rows: [
+    addFrameRow("frame", 0),
     playRow("play", 0),
     {
       command: "transport.to_start",
@@ -98,10 +108,11 @@ export const PREVIEW_CANVAS: MenuSurfaceDef = {
 export const SOURCE_VIEW: MenuSurfaceDef = {
   id: "source.view",
   name: () => ({ key: "contextMenu.name.sourceView" }),
-  groups: ["play", "navigate", "copy"],
+  groups: ["play", "navigate", "frame", "copy"],
   rows: [
     playRow("play", 0),
     { command: "source.back", group: "navigate", order: 0 },
+    addFrameRow("frame", 0),
     {
       id: "copy-timecode",
       command: "host.copy_text",

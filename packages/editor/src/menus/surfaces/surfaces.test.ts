@@ -23,6 +23,7 @@ import { binStore } from "../../media/binStore.ts";
 import { currentOpenFolder, folderUiStore } from "../../media/folderUi.ts";
 import { healthStore } from "../../media/health.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
+import { proxyStore } from "../../media/proxies.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { initialViewState, viewStore } from "../../state/viewStore.ts";
@@ -645,6 +646,54 @@ describe("the bin menus", () => {
     }
   });
 
+  it("regenerates and deletes proxies on video cards, as the catalog's proxy commands", async () => {
+    const proxy = (id: string, status: "ready" | "evicted") => ({
+      media_id: id as MediaId,
+      status,
+      wanted: true,
+      reason: null,
+      profile: "prores_proxy-960",
+      path: null,
+      bytes: null,
+      size: null,
+      job_id: null,
+      progress: null,
+      error: null,
+    });
+    // Sound has no proxies: the rows are not offered.
+    const sound = menuFor("bin.card", { ids: [MED_A] }).items.map((i) => i.label);
+    expect(sound).not.toContain("Regenerate proxies");
+    expect(sound).not.toContain("Delete proxies");
+    // A video the engine has not answered about yet: offered, not available.
+    expect(menuFor("bin.card", { ids: [MED_V] }).item("Regenerate proxies").disabled).toBe(true);
+    proxyStore.getState().set([proxy(MED_V, "ready"), proxy(MED_U, "evicted")]);
+    try {
+      expect(menuFor("bin.card", { ids: [MED_U] }).item("Delete proxies").disabledReason).toBe(
+        "There is no proxy to delete",
+      );
+      const engineCall = vi.fn(async (_name: string, _args: unknown) => ({
+        proxies: [],
+        policy: "auto",
+      }));
+      engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+      await menuFor("bin.card", { ids: [MED_V, MED_U] }).choose("Regenerate proxies");
+      await vi.waitFor(() =>
+        expect(engineCall).toHaveBeenCalledWith("media.generate_proxy", {
+          media: [MED_V, MED_U],
+        }),
+      );
+      expect(engineCall).toHaveBeenCalledWith("media.delete_proxy", { media: [MED_V] });
+      proxyStore.getState().set([proxy(MED_V, "ready"), proxy(MED_U, "evicted")]);
+      engineCall.mockClear();
+      await menuFor("bin.card", { ids: [MED_V, MED_U] }).choose("Delete proxies");
+      await vi.waitFor(() =>
+        expect(engineCall).toHaveBeenCalledWith("media.delete_proxy", { media: [MED_V] }),
+      );
+    } finally {
+      proxyStore.getState().set([]);
+    }
+  });
+
   it("appends after the last clip of the sequence", async () => {
     await menuFor("bin.card", { ids: [MED_V] }).choose("Append to timeline");
     expect(call).toHaveBeenCalledWith("timeline.insert", {
@@ -703,6 +752,32 @@ describe("the bin menus", () => {
 });
 
 describe("the other surfaces", () => {
+  it("offers Import as slideshow… in the bin and Add frame to media bin in the Preview (WP-2F.05d)", async () => {
+    const engineCall = vi.fn(async (_name: string, _args?: unknown) => ({
+      media_id: MED_V,
+      name: "Main 00:00:05:00",
+      duplicate: false,
+    }));
+    engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+    try {
+      expect(menuFor("bin.background").item("Import as slideshow…").disabled).toBeUndefined();
+      // The Preview's frame at the playhead: one catalog command, with arguments of its schema.
+      await menuFor("preview.canvas").choose("Add frame to media bin");
+      expect(engineCall).toHaveBeenCalledTimes(1);
+      expect(engineCall).toHaveBeenCalledWith("media.import_frame", {
+        source: "sequence",
+        at: 5 * F,
+      });
+      expect(schemaProblems("media.import_frame", engineCall.mock.calls[0]?.[1])).toEqual([]);
+      expect(toastStore.getState().notices.map((n) => n.title)).toEqual([
+        "Frame added to the media bin",
+      ]);
+      expect(menuFor("source.view").item("Add frame to media bin").disabled).toBeUndefined();
+    } finally {
+      engineStore.setState({ rpc: null, connection: "none" });
+    }
+  });
+
   it("collapses and expands every Inspector section", async () => {
     await menuFor("inspector.section", { name: "Clip" }).choose("Collapse all");
     expect(sectionsStore.getState().closed.size).toBeGreaterThan(3);

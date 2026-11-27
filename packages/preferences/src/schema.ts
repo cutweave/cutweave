@@ -49,6 +49,22 @@ const GIB = 1_073_741_824;
 export const THUMBNAIL_LIMITS = [512 * MIB, 1 * GIB, 2 * GIB, 5 * GIB, 10 * GIB, 25 * GIB] as const;
 /** "Waveforms" cache limits, in bytes: 128 MiB to 2 GiB. */
 export const WAVEFORM_LIMITS = [128 * MIB, 256 * MIB, 512 * MIB, 1 * GIB, 2 * GIB] as const;
+/** "Proxies" cache limits (WP-2F.03b), in bytes: 10 GiB to 500 GiB. */
+export const PROXY_LIMITS = [
+  10 * GIB,
+  25 * GIB,
+  50 * GIB,
+  100 * GIB,
+  250 * GIB,
+  500 * GIB,
+] as const;
+/** "Proxy jobs at once" (WP-2F.03b). */
+export const PROXY_JOB_CHOICES = [1, 2, 3, 4] as const;
+/** "Proxy size" (WP-2F.03b): the longest side of a proxy picture, in pixels. */
+export const PROXY_SIZES = [540, 720, 960] as const;
+/** "Proxies for new projects" (WP-2F.03b, ADR-0027): never, for video that is slow to scrub, always. */
+export const PROXY_POLICIES = ["off", "auto", "all"] as const;
+export type ProxyPolicyChoice = (typeof PROXY_POLICIES)[number];
 /** "Memory for decoded frames": 0 is Auto (the smaller of 1 GiB and a quarter of the RAM). */
 export const FRAME_MEMORY_CHOICES = [0, 512 * MIB, 1 * GIB, 2 * GIB, 4 * GIB] as const;
 /** "Hardware decoding". */
@@ -131,8 +147,11 @@ export interface PreferenceValues {
   "cache.folder": string;
   "cache.thumbnails_limit": (typeof THUMBNAIL_LIMITS)[number];
   "cache.waveforms_limit": (typeof WAVEFORM_LIMITS)[number];
+  "cache.proxies_limit": (typeof PROXY_LIMITS)[number];
   "performance.hw_decode": HwDecodeChoice;
   "performance.frame_memory": (typeof FRAME_MEMORY_CHOICES)[number];
+  /** How many proxies are made at the same time (one while an export runs). */
+  "performance.proxy_jobs": (typeof PROXY_JOB_CHOICES)[number];
   /** Notifications (WP-1J.05): a toast when an agent connects or disconnects. */
   "notify.agent_connected": boolean;
   /**
@@ -150,8 +169,14 @@ export interface PreferenceValues {
   "media.hover_scrub": boolean;
   /** Folders in an import keep their directories as bin folders (WP-2F.09). */
   "media.keep_structure": boolean;
+  /** Imports copy each new file into the project's `media/` folder first (WP-2F.04c). */
+  "media.copy_on_import": boolean;
   /** The frame rate of a new image sequence (WP-2F.05c); `"sequence"` is the sequence's own. */
   "media.image_sequence_fps": ImageSequenceFps;
+  /** The proxy policy a new project starts with (WP-2F.03b, ADR-0027). */
+  "media.proxy_policy": ProxyPolicyChoice;
+  /** The longest side of the proxies this computer makes, in pixels. */
+  "media.proxy_size": (typeof PROXY_SIZES)[number];
   /** The History panel's sort order (#171), the person's, not the project's. */
   "history.order": HistoryOrder;
   // Keyboard shortcuts (WP-2H.05)
@@ -263,6 +288,12 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     options: WAVEFORM_LIMITS,
     default: 512 * MIB,
   },
+  "cache.proxies_limit": {
+    type: "enum",
+    scope: "machine",
+    options: PROXY_LIMITS,
+    default: 50 * GIB,
+  },
   "performance.hw_decode": {
     type: "enum",
     scope: "machine",
@@ -274,6 +305,12 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     scope: "machine",
     options: FRAME_MEMORY_CHOICES,
     default: 0,
+  },
+  "performance.proxy_jobs": {
+    type: "enum",
+    scope: "machine",
+    options: PROXY_JOB_CHOICES,
+    default: 2,
   },
   // Notifications and Agents and MCP (WP-1J.05).
   "notify.agent_connected": { type: "boolean", scope: "app", default: true },
@@ -301,12 +338,17 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
   "media.keep_structure": { type: "boolean", scope: "app", default: true },
+  "media.copy_on_import": { type: "boolean", scope: "app", default: false },
   "media.image_sequence_fps": {
     type: "enum",
     scope: "app",
     options: IMAGE_SEQUENCE_FPS_CHOICES,
     default: "sequence",
   },
+  // Proxies (WP-2F.03b): the policy is the app's and copied into new projects; the size is
+  // this computer's.
+  "media.proxy_policy": { type: "enum", scope: "app", options: PROXY_POLICIES, default: "auto" },
+  "media.proxy_size": { type: "enum", scope: "machine", options: PROXY_SIZES, default: 960 },
   // Keyboard shortcuts (WP-2H.05)
   "history.order": { type: "enum", scope: "app", options: HISTORY_ORDERS, default: "oldest" },
   "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },

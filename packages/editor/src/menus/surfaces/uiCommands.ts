@@ -13,13 +13,20 @@ import { applyLayout, placeAssets, swapLayout } from "../../layout/actions.ts";
 import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
 import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";
-import { currentOpenFolder, folderUiStore, openFolder } from "../../media/folderUi.ts";
+import {
+  currentOpenFolder,
+  folderUiStore,
+  openFolder,
+  selectedTiles,
+} from "../../media/folderUi.ts";
 import { importMedia } from "../../media/import.ts";
 import { layoutStore, type MediaLayout } from "../../media/layoutStore.ts";
+import { deleteProxies, regenerateProxies } from "../../media/proxies.ts";
 import { openRelinkDialog } from "../../media/RelinkDialog.tsx";
 import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
 import { importPicked } from "../../media/sequence.ts";
+import { addShownFrameToBin, pickSlideshow } from "../../media/slideshowCommands.ts";
 import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
 import { projectController } from "../../session/useProject.ts";
@@ -71,13 +78,15 @@ async function pickAndImport(what: "files" | "folders" = "files"): Promise<void>
   if (paths.length === 0) return;
   const deps = { engine: engineStore, toasts: toastStore, t: tr() };
   const keepStructure = preferences.get("media.keep_structure");
+  const copyToProject = preferences.get("media.copy_on_import");
   if (what === "folders") {
-    await importMedia(deps, paths, currentOpenFolder(), { keepStructure });
+    await importMedia(deps, paths, currentOpenFolder(), { keepStructure, copyToProject });
     return;
   }
   // Picked files that are a numbered run of pictures are asked about first (WP-2F.05c).
   await importPicked(deps, paths, currentOpenFolder(), {
     keepStructure,
+    copyToProject,
     fps: preferences.get("media.image_sequence_fps"),
   });
 }
@@ -190,11 +199,50 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     host: true,
     run: () => pickAndImport("folders"),
   },
+  // The picker, then the app's dialog, then one `media.import_images_as_slideshow` (WP-2F.05d).
+  {
+    id: "bin.import_slideshow",
+    label: "contextMenu.command.mediaImportImagesAsSlideshow",
+    icon: "film",
+    host: true,
+    when: "engine.live",
+    run: () => pickSlideshow(),
+  },
+  // The frame on screen as a picture in the bin (WP-2F.05d): one `media.import_frame`.
+  {
+    id: "preview.add_frame_to_bin",
+    label: "contextMenu.command.mediaImportFrame",
+    icon: "image",
+    when: "engine.live",
+    run: async () => void (await addShownFrameToBin()),
+  },
   {
     id: "bin.relink",
     label: "contextMenu.item.relink",
     icon: "search",
     run: () => openRelinkDialog(),
+  },
+  // Proxies (WP-2F.03b): the catalog's `media.generate_proxy` and `media.delete_proxy` for the
+  // cards the menu was opened on (the palette: the selected cards).
+  {
+    id: "bin.regenerate_proxies",
+    label: "contextMenu.item.regenerateProxies",
+    icon: "refresh-cw",
+    when: "engine.live",
+    run: async (args) => {
+      const media = arg<{ media?: MediaId[] }>(args).media ?? selectedTiles().media;
+      await regenerateProxies({ engine: engineStore, toasts: toastStore, t: tr() }, media);
+    },
+  },
+  {
+    id: "bin.delete_proxies",
+    label: "contextMenu.item.deleteProxies",
+    icon: "trash-2",
+    when: "engine.live",
+    run: async (args) => {
+      const media = arg<{ media?: MediaId[] }>(args).media ?? selectedTiles().media;
+      await deleteProxies({ engine: engineStore, toasts: toastStore, t: tr() }, media);
+    },
   },
   {
     id: "bin.new_folder",

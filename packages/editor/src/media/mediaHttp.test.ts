@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { HttpThumbnailSource, POSTER_WIDTH, RESIGN_MARGIN_MS } from "./httpThumbnails.ts";
 import { MediaHttp, MediaHttpError, mediaPath } from "./mediaHttp.ts";
 import {
+  coverPart,
   type FilmstripManifest,
   httpMediaLoaders,
   loadersForWindow,
@@ -293,6 +294,37 @@ describe("timeline loaders", () => {
     expect(a).toMatchObject({ sx: 5 * 160, sy: 0, width: 160, height: 90 });
     expect(b).toMatchObject({ sx: (99 % 51) * 160, sy: 90 });
     expect(crop).toHaveBeenCalledTimes(2);
+  });
+
+  it("cut the middle of an upright picture to the slot's shape, not stretch it", async () => {
+    // A phone clip (#207): the engine's tiles are upright, 160×284, in a 71×40 slot.
+    const tall = { ...manifest, tile_h: 284, columns: 51 };
+    const { loaders, crop, sprite } = loaderSetup((url) =>
+      url.includes("/filmstrip")
+        ? new Response(new Blob([new Uint8Array([0xff, 0xd8])]), {
+            status: 200,
+            headers: { "x-cutweave-filmstrip": JSON.stringify(tall) },
+          })
+        : new Response("jpeg", { status: 200 }),
+    );
+    const signal = new AbortController().signal;
+    const a = await loaders.filmstripTile?.(tile(0, SEC), signal);
+    // The slot's shape at the tile's width: 160 × 90, from the middle of the 284 rows.
+    expect(a).toMatchObject({ sx: 5 * 160, sy: 97, width: 160, height: 90 });
+    // Its own frame (zoomed in): cropped the same way, and the whole picture released.
+    crop.mockClear();
+    const own = await loaders.filmstripTile?.(tile(SEC, SEC / 100), signal);
+    // The fake decoder answers an 8160×180 picture: the middle 320×180 has the slot's shape.
+    expect(own).toMatchObject({ sx: 3920, sy: 0, width: 320, height: 180 });
+    expect(crop).toHaveBeenCalledTimes(1);
+    expect(sprite.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("find the part of a picture that fills a slot", () => {
+    expect(coverPart(160, 90, 71, 40)).toEqual({ x: 0, y: 0, w: 160, h: 90 });
+    expect(coverPart(160, 284, 160, 90)).toEqual({ x: 0, y: 97, w: 160, h: 90 });
+    expect(coverPart(400, 90, 160, 90)).toEqual({ x: 120, y: 0, w: 160, h: 90 });
+    expect(coverPart(160, 90, 0, 40)).toEqual({ x: 0, y: 0, w: 160, h: 90 });
   });
 
   it("ask for the tile's own frame when zoomed in past the strip, with its signal", async () => {

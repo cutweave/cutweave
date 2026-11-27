@@ -83,6 +83,7 @@ fn the_cache_status_is_readable_and_changing_the_caches_is_forbidden() {
         r#"{"cmd":"media.set_cache_config","args":{"frame_cache_bytes":0}}"#,
         r#"{"cmd":"media.clear_cache","args":{"kinds":["thumbnails"]}}"#,
         r#"{"cmd":"media.set_decode_policy","args":{"hw":"off"}}"#,
+        r#"{"cmd":"media.set_proxy_config","args":{"jobs":1}}"#,
     ] {
         let out = cutweave(&["exec", request, "--headless", "--cache-dir", cache]);
         assert_eq!(out.status.code(), Some(1), "{request}: {out:?}");

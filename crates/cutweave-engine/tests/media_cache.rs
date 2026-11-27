@@ -297,6 +297,7 @@ fn an_agent_cannot_change_the_caches() {
         ("media.set_cache_config", json!({ "frame_cache_bytes": 0 })),
         ("media.clear_cache", json!({ "kinds": ["thumbnails"] })),
         ("media.set_decode_policy", json!({ "hw": "off" })),
+        ("media.set_proxy_config", json!({ "jobs": 1 })),
     ] {
         let err = call(&r.agent, name, params).unwrap_err();
         assert_eq!(err.code(), "forbidden", "{name}: {err:?}");

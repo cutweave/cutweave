@@ -36,6 +36,7 @@ pub mod dispatch;
 mod engine;
 pub mod events;
 pub mod export;
+mod frame_import;
 pub mod full;
 mod import;
 pub mod journal;
@@ -117,6 +118,9 @@ mod tests {
             "media.set_cache_config",
             "media.clear_cache",
             "media.set_decode_policy",
+            "media.set_proxy_config",
+            "media.set_proxy_policy",
+            "media.set_proxy_mode",
         ] {
             assert!(registry.get(name).is_some(), "{name} is not registered");
         }

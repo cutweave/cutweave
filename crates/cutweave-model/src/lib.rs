@@ -69,7 +69,7 @@ pub use item::{
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, ImageSequence, MAX_IMAGE_SEQUENCE_FRAMES,
-    MatrixCoefficients, MediaAsset, MediaKind, ProbeInfo, StreamInfo, StreamKind,
+    MatrixCoefficients, MediaAsset, MediaKind, ProbeInfo, ProxyMode, StreamInfo, StreamKind,
     TransferCharacteristics,
 };
 pub use migrate::{
@@ -80,7 +80,7 @@ pub use migrate::{
 pub use presets::{ASPECT_PRESETS, AspectPreset, FRAME_RATE_PRESETS, aspect_preset};
 pub use project::{
     DEFAULT_STILL_DURATION_SECS, ItemRef, MAX_STILL_DURATION_SECS, Project, ProjectMeta,
-    ProjectSettings,
+    ProjectSettings, ProxyPolicy,
 };
 pub use rate::{FrameRate, Rounding, SampleRate};
 pub use sequence::{

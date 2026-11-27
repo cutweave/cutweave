@@ -45,6 +45,121 @@ pub const IMPORT_PATHS: [&str; 6] = [
     "C:\\import\\voice.wav",
 ];
 
+/// The pictures [`fake_probe`] serves to `media.import_images_as_slideshow` (their names sort
+/// differently by name and by number).
+pub const SLIDE_PATHS: [&str; 4] = [
+    "/import/slides/img10.png",
+    "/import/slides/img2.png",
+    "/import/slides/Beach.png",
+    "C:\\import\\slides\\img1.png",
+];
+
+/// How many frames [`FakeFrames`] can store before it gives the last one again.
+const FRAME_SLOTS: u128 = 3;
+
+/// The id and the file of slot `n` of [`FakeFrames`]; [`fake_probe`] knows the files as
+/// pictures.
+fn frame_slot(n: u128) -> (MediaId, String) {
+    let id = MediaId::from_u128(0xF4A3_E000 + n);
+    (id, format!("/project/generated/frames/{id}.png"))
+}
+
+/// The frame store a harness gives `media.import_frame` (its engine has no renderer and no
+/// disk): it resolves the source and the time against `doc` the way the engine does, "writes"
+/// the next unused of a few fixed files, and records what was discarded.
+#[derive(Debug)]
+pub struct FakeFrames {
+    doc: Project,
+    discarded: std::sync::Mutex<Vec<String>>,
+}
+
+impl FakeFrames {
+    /// A store for the document `doc`.
+    #[must_use]
+    pub fn new(doc: Project) -> FakeFrames {
+        FakeFrames {
+            doc,
+            discarded: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The files that were discarded so far.
+    #[must_use]
+    pub fn discarded(&self) -> Vec<String> {
+        self.discarded
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl crate::media::FrameGrabber for FakeFrames {
+    fn grab(
+        &self,
+        source: crate::media::FrameOf,
+        at: cutweave_model::TimeInput,
+    ) -> Result<crate::media::GrabbedFrame, cutweave_commands::CmdError> {
+        use cutweave_commands::CmdError;
+        let (name, rate, size, length) = match source {
+            crate::media::FrameOf::Sequence => {
+                let sequence = self.doc.sequences.values().next().ok_or_else(|| {
+                    CmdError::invalid("/source", "the project has no sequence to take a frame of")
+                })?;
+                (
+                    sequence.name.clone(),
+                    sequence.format.frame_rate,
+                    (sequence.format.width, sequence.format.height),
+                    None,
+                )
+            }
+            crate::media::FrameOf::Media(id) => {
+                let asset =
+                    self.doc.media.get(&id).ok_or_else(|| {
+                        CmdError::not_found(cutweave_model::EntityKind::Media, id)
+                    })?;
+                if !crate::media::has_frames(asset.kind) {
+                    return Err(CmdError::invalid(
+                        "/source/media",
+                        format!("media {id} is not a video: it has no frame to take"),
+                    ));
+                }
+                (
+                    crate::media::asset_name(asset).into_owned(),
+                    asset.probe.fps.unwrap_or(FrameRate::FPS_30),
+                    (1920, 1080),
+                    asset.probe.duration,
+                )
+            }
+        };
+        let time = at
+            .resolve(Some(rate))
+            .map_err(|e| CmdError::invalid("/at", e.to_string()))?;
+        if time < cutweave_model::Time::ZERO
+            || length.is_some_and(|length| time.flicks() >= length.flicks())
+        {
+            return Err(CmdError::invalid("/at", "the time is outside the source"));
+        }
+        let slot = (0..FRAME_SLOTS)
+            .map(frame_slot)
+            .find(|(id, _)| !self.doc.media.contains_key(id))
+            .unwrap_or_else(|| frame_slot(FRAME_SLOTS - 1));
+        Ok(crate::media::GrabbedFrame {
+            media_id: slot.0,
+            path: slot.1,
+            width: size.0,
+            height: size.1,
+            time,
+            label: crate::media::frame_label(&name, time, rate),
+        })
+    }
+
+    fn discard(&self, frame: &crate::media::GrabbedFrame) {
+        self.discarded
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(frame.path.clone());
+    }
+}
 /// The pictures of the numbered run [`fake_probe`] serves to `media.import_sequence`
 /// (`shot_0004.png` is missing: a gap).
 pub const SEQUENCE_PATHS: [&str; 5] = [
@@ -77,11 +192,12 @@ pub const CHECKPOINT_NAMES: [&str; 3] = ["alpha", "beta", "gamma"];
 /// The label of the second actor (`agent:prop`) the strategies name in history scopes.
 pub const AGENT_LABEL: &str = "prop";
 
-/// The prober a harness gives `media.import`: it knows [`IMPORT_PATHS`] and fails
-/// [`BROKEN_IMPORT_PATH`].
+/// The prober a harness gives `media.import`: it knows [`IMPORT_PATHS`], the pictures of
+/// [`SLIDE_PATHS`] and the files of [`FakeFrames`], and fails [`BROKEN_IMPORT_PATH`].
 #[must_use]
 pub fn fake_probe() -> FakeProbe {
     let [interview, broll, music, logo, take, voice] = IMPORT_PATHS;
+    let frames: Vec<String> = (0..FRAME_SLOTS).map(|n| frame_slot(n).1).collect();
     SEQUENCE_PATHS
         .iter()
         .fold(FakeProbe::new(), |probe, picture| {
@@ -100,6 +216,13 @@ pub fn fake_probe() -> FakeProbe {
                 reason: "no audio or video streams".to_owned(),
             },
         )
+        .with(SLIDE_PATHS[0], FakeProbe::image(SLIDE_PATHS[0]))
+        .with(SLIDE_PATHS[1], FakeProbe::image(SLIDE_PATHS[1]))
+        .with(SLIDE_PATHS[2], FakeProbe::image(SLIDE_PATHS[2]))
+        .with(SLIDE_PATHS[3], FakeProbe::image(SLIDE_PATHS[3]))
+        .with(&frames[0], FakeProbe::image(&frames[0]))
+        .with(&frames[1], FakeProbe::image(&frames[1]))
+        .with(&frames[2], FakeProbe::image(&frames[2]))
 }
 
 /// A job manager for a harness (the `job.*` commands' engine context): IDs from
@@ -304,6 +427,22 @@ impl Pools {
     fn media_ids(&self) -> Vec<MediaId> {
         self.media.iter().map(|m| m.id).collect()
     }
+
+    /// The media that can have proxies (video and image sequences), else every asset: the
+    /// proxy commands mostly name these, and sometimes one they refuse.
+    fn proxy_ids(&self) -> Vec<MediaId> {
+        let video: Vec<MediaId> = self
+            .media
+            .iter()
+            .filter(|m| matches!(m.kind, MediaKind::Video | MediaKind::ImageSequence))
+            .map(|m| m.id)
+            .collect();
+        if video.is_empty() {
+            self.media_ids()
+        } else {
+            video
+        }
+    }
 }
 
 /// The keys of a clip's animated properties.
@@ -344,11 +483,15 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
         "media.register_tree" => (if no_media { 3 } else { 1 }, media_register_tree(p)),
         "media.import" => (if no_media { 4 } else { 2 }, media_import(p)),
+        "media.import_images_as_slideshow" => (2, media_slideshow(p)),
+        "media.import_frame" => (1, media_import_frame(p)),
         "media.import_sequence" => (1, media_import_sequence(p)),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
+        "media.set_proxy_policy" => (1, proxy_policy()),
+        "media.set_proxy_mode" => (1, proxy_mode(p)),
         "project.collect" | "project.collect_estimate" => (1, project_collect()),
         "project.archive" => (1, project_archive()),
         "media.set_location" => (1, media_set_location(p)),
@@ -615,9 +758,11 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!("f:1")),
         Just(json!("3600s")),
     ]);
-    let valid = (name(), option::of(format), still)
-        .prop_map(|(name, format, still)| {
-            json!({"name": name, "format": format, "still_duration": still})
+    let policy = option::of(select(vec!["off", "auto", "all"]));
+    let valid = (name(), option::of(format), still, policy)
+        .prop_map(|(name, format, still, policy)| {
+            json!({"name": name, "format": format, "still_duration": still,
+                   "proxy_policy": policy})
         })
         .boxed();
     let invalid = prop_oneof![
@@ -629,6 +774,7 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!({"name": "P", "format": {"sample_rate": 1234}})),
         Just(json!({"name": "P", "still_duration": "0s"})),
         Just(json!({"name": "P", "still_duration": "3601s"})),
+        Just(json!({"name": "P", "proxy_policy": "some"})),
     ]
     .boxed();
     mix(valid, invalid)
@@ -738,21 +884,129 @@ fn media_import(p: &Pools) -> BoxedStrategy<Value> {
         vec(select(IMPORT_PATHS.to_vec()), 1..=3),
         unreadable,
         option::weighted(0.3, one_of(p.folders.clone())),
+        // Absent and `false` both leave the files where they are.
+        option::weighted(0.2, Just(false)),
     )
-        .prop_map(|(paths, unreadable, folder)| {
+        .prop_map(|(paths, unreadable, folder, copy)| {
             let mut unique: Vec<&str> = Vec::new();
             for p in paths.into_iter().chain(unreadable) {
                 if !unique.contains(&p) {
                     unique.push(p);
                 }
             }
-            json!({"paths": unique, "folder": folder})
+            json!({"paths": unique, "folder": folder, "copy_to_project": copy})
         })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"paths": []})),
+        // The harness document is untitled: it has no folder to copy into (WP-2F.04c).
+        Just(json!({"paths": [IMPORT_PATHS[0]], "copy_to_project": true})),
         Just(json!({"paths": ["import/relative.mp4"]})),
         select(IMPORT_PATHS.to_vec()).prop_map(|p| json!({"paths": [p, p]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_slideshow(p: &Pools) -> BoxedStrategy<Value> {
+    let mut files = SLIDE_PATHS.to_vec();
+    // A still that `media.import` may have brought in already, a video (left out, in
+    // `failed`) and a file that cannot be read.
+    files.extend([IMPORT_PATHS[3], IMPORT_PATHS[0], BROKEN_IMPORT_PATH]);
+    let video: Vec<Trk> = p
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Video)
+        .cloned()
+        .collect();
+    let place = if video.is_empty() {
+        Just((Value::Null, Value::Null, Value::Null)).boxed()
+    } else {
+        (
+            select(video),
+            any::<bool>(),
+            option::weighted(0.5, 0..90_i64),
+            any::<(u8, u32)>(),
+        )
+            .prop_map(|(t, named, past_end, (form, jitter))| {
+                let at =
+                    past_end.map_or(Value::Null, |n| time_json(t.fpf, t.end + n, form, jitter));
+                if named {
+                    (json!(t.seq), json!(t.id), at)
+                } else {
+                    (Value::Null, Value::Null, Value::Null)
+                }
+            })
+            .boxed()
+    };
+    let valid = (
+        subsequence(files, 1..=4),
+        place,
+        option::weighted(0.5, prop_oneof![Just("f:1"), Just("2s"), Just("0.5s")]),
+        option::weighted(0.6, select(vec!["given", "name", "name_numeric"])),
+    )
+        .prop_map(|(files, (sequence, track, at), per_image, order)| {
+            json!({"files": files, "sequence": sequence, "track": track, "at": at,
+                   "per_image": per_image, "order": order})
+        })
+        .boxed();
+    let audio = p
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Audio)
+        .map_or(Value::Null, |t| json!(t.id));
+    let invalid = prop_oneof![
+        Just(json!({"files": []})),
+        Just(json!({"files": ["import/relative.png"]})),
+        Just(json!({"files": [SLIDE_PATHS[0], SLIDE_PATHS[0]]})),
+        Just(json!({"files": [BROKEN_IMPORT_PATH, IMPORT_PATHS[2]]})),
+        Just(json!({"files": [SLIDE_PATHS[0]], "per_image": "0s"})),
+        Just(json!({"files": [SLIDE_PATHS[1]], "order": "random"})),
+        Just(json!({"files": [SLIDE_PATHS[1]], "track": audio})),
+        fresh::<SequenceId>().prop_map(|s| json!({"files": [SLIDE_PATHS[2]], "sequence": s})),
+        fresh::<TrackId>().prop_map(|t| json!({"files": [SLIDE_PATHS[2]], "track": t})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_import_frame(p: &Pools) -> BoxedStrategy<Value> {
+    let videos: Vec<MediaId> = p
+        .media
+        .iter()
+        .filter(|m| crate::media::has_frames(m.kind))
+        .map(|m| m.id)
+        .collect();
+    let source = if videos.is_empty() {
+        Just(json!("sequence")).boxed()
+    } else {
+        prop_oneof![
+            2 => Just(json!("sequence")),
+            1 => select(videos).prop_map(|id| json!({"media": id})),
+        ]
+        .boxed()
+    };
+    let valid = (
+        source,
+        prop_oneof![Just(json!(0)), Just(json!("f:12")), Just(json!("1.5s"))],
+        option::weighted(0.4, name()),
+        option::weighted(0.3, one_of(p.folders.clone())),
+    )
+        .prop_map(|(source, at, name, folder)| {
+            json!({"source": source, "at": at, "name": name, "folder": folder})
+        })
+        .boxed();
+    let stills = p
+        .media
+        .iter()
+        .find(|m| !crate::media::has_frames(m.kind))
+        .map_or(json!("clip"), |m| json!({"media": m.id}));
+    let invalid = prop_oneof![
+        Just(json!({"source": "sequence", "at": "-1s"})),
+        Just(json!({"source": "preview", "at": 0})),
+        Just(json!({"source": stills, "at": 0})),
+        bad_name().prop_map(|name| json!({"source": "sequence", "at": 0, "name": name})),
+        fresh::<MediaId>().prop_map(|id| json!({"source": {"media": id}, "at": 0})),
     ]
     .boxed();
     mix(valid, invalid)
@@ -963,9 +1217,11 @@ fn media_remove(p: &Pools) -> BoxedStrategy<Value> {
 /// `{media: [ids]}` for the proxy commands (WP-2F.01): known or unknown assets, an empty or
 /// repeated list; `media.proxy_status` may leave the list out.
 fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
-    let valid = vec(one_of(p.media_ids()), 1..=3)
-        .prop_map(|ids| json!({ "media": ids }))
-        .boxed();
+    let valid = prop_oneof![
+        4 => one_of(p.proxy_ids()).prop_map(|id| json!({ "media": [id] })),
+        1 => vec(one_of(p.media_ids()), 1..=3).prop_map(|ids| json!({ "media": ids })),
+    ]
+    .boxed();
     let invalid = prop_oneof![
         Just(json!({ "media": [] })),
         one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id] })),
@@ -976,6 +1232,35 @@ fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
     } else {
         mix(valid, invalid)
     }
+}
+
+/// `media.set_proxy_policy` (ADR-0027): each policy, or a word that is none.
+fn proxy_policy() -> BoxedStrategy<Value> {
+    let valid = select(vec!["off", "auto", "all"])
+        .prop_map(|policy| json!({ "policy": policy }))
+        .boxed();
+    let invalid = prop_oneof![Just(json!({ "policy": "some" })), Just(json!({}))].boxed();
+    mix(valid, invalid)
+}
+
+/// `media.set_proxy_mode` (ADR-0027): a mode for known or unknown assets, an empty or repeated
+/// list.
+fn proxy_mode(p: &Pools) -> BoxedStrategy<Value> {
+    let mode = || select(vec!["auto", "force", "off"]);
+    let valid = prop_oneof![
+        4 => (one_of(p.proxy_ids()), mode())
+            .prop_map(|(id, mode)| json!({ "media": [id], "mode": mode })),
+        1 => (vec(one_of(p.media_ids()), 1..=3), mode())
+            .prop_map(|(ids, mode)| json!({ "media": ids, "mode": mode })),
+    ]
+    .boxed();
+    let invalid = prop_oneof![
+        mode().prop_map(|mode| json!({ "media": [], "mode": mode })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id], "mode": "off" })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id], "mode": "never" })),
+    ]
+    .boxed();
+    mix(valid, invalid)
 }
 
 /// `project.collect` and its estimate: a destination no test writes media into (the

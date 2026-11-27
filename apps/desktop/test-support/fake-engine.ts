@@ -461,12 +461,15 @@ function handle(client: Client, text: string): void {
     // The cache and hardware preferences the editor sends after every handshake (WP-1D.08).
     case "media.set_decode_policy":
     case "media.set_cache_config":
+    case "media.set_proxy_config":
     case "media.cache_status":
       ok({
         folder: null,
         kinds: [],
         decode_hw: "auto",
         frame_cache_bytes: 0,
+        proxy_size: 960,
+        proxy_jobs: 2,
         hw: "auto",
       });
       return;

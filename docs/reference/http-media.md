@@ -35,6 +35,7 @@ All routes live on the engine's server, `http://127.0.0.1:<port>`, behind the Ho
 
 The defaults of `/thumb` (`t=0&w=320`) and `/filmstrip` (`w=160&count=100`) are what the import analysis caches, so they cost no decode.
 
+- **Orientation:** thumbnails and filmstrip tiles are upright, turned by the media's display rotation (a phone clip shot upright, a photo's EXIF orientation), as the preview shows the picture. `w`, `h`, `tile_w` and `tile_h` are sizes of the upright picture: a 1920 × 1080 clip with a quarter turn gives tiles taller than wide.
 - **Thumbnails:** `t` is floored to the media's frame grid (its nominal rate), so a scrub never makes more entries than the clip has frames; a `t` before the stream gives the first frame, after it the last.
 - **Filmstrip manifest:** `{tile_w, tile_h, count, columns, rows, sprite_w, sprite_h, start, interval}`. Tile `i` sits at column `i % columns`, row `i / columns` (the sprite wraps at 8192 px) and shows the frame on screen at media time `start + i × interval` (flicks).
 - **Frames:** the image keeps the sequence's aspect and fits inside `w × h` (either may be absent; 768 px longest side when both are). `/media/frame?w=W` is `render.frame{max_size}` with the largest `max_size` whose image fits, so `/media/frame?t=2s&w=640` and `render.frame{t: "2s", max_size: 640}` return the same bytes for a landscape sequence. It decodes in software without the frame cache, exactly as `render.frame` and exports do, and reflects the live document; the `x-cutweave-rev` header names its revision.
@@ -110,6 +111,6 @@ JSON, like the server's other errors: `{"error": {"code", "message", "param"?}, 
 ## The editor
 
 - **Media bin cards** (`packages/editor/src/media/httpThumbnails.ts`): the cached poster (`t=0&w=320&hash=…`), signed in one batch per render and re-signed five minutes before it expires; a video asks once it is indexed, sound keeps the icon tile.
-- **Timeline** (`packages/editor/src/media/timelineLoaders.ts`): filmstrip tiles are cut from the cached strip (`w=160&count=100`, one request per asset); zoomed in past the strip's spacing, a tile asks `/thumb` for its own frame. Waveforms load the coarsest level that keeps the zoom's resolution. Requests carry the bearer token in a header and are aborted when their tile scrolls out of view.
+- **Timeline** (`packages/editor/src/media/timelineLoaders.ts`): filmstrip tiles are cut from the cached strip (`w=160&count=100`, one request per asset); zoomed in past the strip's spacing, a tile asks `/thumb` for its own frame. A tile is the centred part of the picture with the slot's shape, so an upright clip is cropped, not stretched. Waveforms load the coarsest level that keeps the zoom's resolution. Requests carry the bearer token in a header and are aborted when their tile scrolls out of view.
 - **JPEG preview fallback** (`packages/editor/src/preview/jpegPreview.ts`): `/media/frame?seq=&t=&w=&h=&fmt=jpeg` with the bearer token, at most 15 a second.
 - Installed only when the engine reports `media.capabilities{available: true}`; a finished `thumbnails` or `waveform` job makes the timeline ask again (`packages/editor/src/media/mediaWiring.ts`).

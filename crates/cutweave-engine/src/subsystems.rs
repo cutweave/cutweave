@@ -291,7 +291,8 @@ pub trait Subsystems: Send + Sync {
 
     /// The media caches and decoding policy the cache commands act on (`media.cache_status`
     /// and the UI-only `media.set_cache_config`, `media.clear_cache`,
-    /// `media.set_decode_policy`; WP-1D.08); `None`: this engine has none.
+    /// `media.set_decode_policy`, `media.set_proxy_config`; WP-1D.08, WP-2F.03b); `None`: this
+    /// engine has none.
     fn cache_control(&self) -> Option<Arc<dyn crate::media_cache::CacheControl>> {
         None
     }

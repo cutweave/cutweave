@@ -2002,6 +2002,16 @@ export type FormatSpec = {
 	sample_rate: SampleRate | null,
 };
 
+/**  Which picture `media.import_frame` saves. */
+export type FrameOf = 
+/**  The frame the Preview shows: the sequence the editor shows, composited. */
+"sequence" | 
+/**
+ *  The frame the Source viewer shows for this video or image-sequence asset, at its own
+ *  size.
+ */
+{ media: MediaId };
+
 /**
  *  A video frame rate as an exact rational `num/den` frames per second (`30000/1001` is
  *  29.97 fps), always in lowest terms.
@@ -3665,6 +3675,11 @@ export type MediaAsset = {
 	 *  `path_abs` and `path_rel` name the first file of the run.
 	 */
 	image_sequence?: ImageSequence | null,
+	/**
+	 *  Whether it gets a proxy (ADR-0027): as the project's policy decides, always or never.
+	 *  `auto` is left out of the file, so documents written before the field read the same.
+	 */
+	proxy_mode?: ProxyMode,
 	/**  Probe results. */
 	probe: ProbeInfo,
 	/**  Plugin data (arch §4.3). */
@@ -3691,6 +3706,10 @@ export type MediaCacheStatusOutput = {
 	decode_hw: DecodeHw,
 	/**  Bytes of decoded frames the RAM frame cache may hold. */
 	frame_cache_bytes: number,
+	/**  The longest side, in pixels, of the proxies made from now on (540, 720 or 960). */
+	proxy_size: number,
+	/**  How many proxy jobs run at once (one while an export runs). */
+	proxy_jobs: number,
 };
 
 /**
@@ -3871,7 +3890,7 @@ export type MediaFolderRenamed = {
 };
 
 /**
- *  Makes proxies of video assets now, whatever the policy: one background job each (two run
+ *  Makes proxies of video assets now, whatever the policy and their mode: one background job each (two run
  *  at a time, one while an export runs), resumed from its finished parts if an earlier one was
  *  interrupted. Assets whose proxy is ready or being made are left alone. Returns their status;
  *  follow it with `media.proxy_status` or `job.wait`.
@@ -3904,6 +3923,17 @@ export type MediaId = string & { readonly __brand: "MediaId" };
  *  creates a bin folder for each directory that holds new media, named after it, inside
  *  `folder`. One undo removes the media and those folders; files already in the project stay
  *  where they are.
+ * 
+ *  With `copy_to_project` (WP-2F.04c) each new file is first copied into the project's
+ *  `media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from
+ *  an imported folder keeps its place in that folder's tree) and the asset points at the copy,
+ *  so the project keeps working when the original moves. The copy is compared with the
+ *  original before it is used. A file already inside the project folder is not copied, and
+ *  neither is one whose content the project already has (it is returned as a duplicate). The
+ *  call fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it
+ *  has no folder) or when the files do not fit on its drive; nothing is copied then. A file
+ *  that cannot be copied is listed in `failed`. Undoing the import removes the assets; the
+ *  copied files stay on disk (undo never deletes a file).
  */
 export type MediaImport = {
 	/**  Absolute paths of files or folders (1..=256, no repeats). */
@@ -3915,6 +3945,76 @@ export type MediaImport = {
 	 *  puts every file straight into `folder`.
 	 */
 	keep_structure?: boolean | null,
+	/**  Copy each new file into the project's `media/` folder first (default false). */
+	copy_to_project?: boolean | null,
+};
+
+/**
+ *  Saves the frame the Preview shows (`source: "sequence"`: the sequence the editor shows) or
+ *  the frame of a video or image-sequence asset (`source: {"media": id}`) at time `at` as a PNG
+ *  picture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`
+ *  at that time. The file goes into the project's `generated/frames/` folder, named after the
+ *  new asset; `name` is the name the bin shows (default: the source's name and the timecode)
+ *  and `folder` the bin folder. One undo step removes the asset; the file stays. Fails with
+ *  `Invalid` while the project has never been saved (it has no folder yet: save it first),
+ *  and with `Unsupported` on an engine without a renderer.
+ */
+export type MediaImportFrame = {
+	/**  `"sequence"` (the Preview) or `{"media": id}` (a video or image sequence on its own). */
+	source: FrameOf,
+	/**  The time of the frame: flicks, "2.5s", "f:60" or a timecode. */
+	at: TimeInput,
+	/**  The name the bin shows (default: the source's name and the timecode). */
+	name?: string | null,
+	/**  Bin folder (default: top level). */
+	folder?: FolderId | null,
+};
+
+/**  Result of `media.import_frame`. */
+export type MediaImportFrameOutput = {
+	/**  The picture's asset; the existing one when the same picture was already in the project. */
+	media_id: MediaId,
+	/**  Absolute path of the PNG the asset points at. */
+	path: string,
+	/**  The name the bin shows for it. */
+	name: string,
+	/**  Picture width in px. */
+	width: number,
+	/**  Picture height in px. */
+	height: number,
+	/**  The time that was rendered: of the sequence, or of the source. */
+	time: Time,
+	/**  `true` when the same picture was already in the project and nothing was added. */
+	duplicate: boolean,
+	/**  Background analysis jobs queued for the new asset (wait with `job.wait`). */
+	job_ids: JobId[],
+};
+
+/**
+ *  Imports pictures as stills and places them one after the other on a video track, each
+ *  `per_image` long (default: the project's still duration), as one undo step. Pictures whose
+ *  content is already in the project reuse that asset. Files that cannot be read or are not
+ *  still pictures are listed in `failed` and left out; with no picture at all the call fails
+ *  with `Invalid`. `order` is `given` (default), `name` or `name_numeric`. The pictures go to
+ *  `track` (default: the main video track, else the first unlocked video track) of `sequence`
+ *  (optional when the project has one), starting at `at` (default: the end of that track). On
+ *  the magnetic main track what is after `at` moves later; on another track the range must be
+ *  free. Agents and headless callers may only import from the project folder and user-approved
+ *  folders.
+ */
+export type MediaImportImagesAsSlideshow = {
+	/**  Absolute paths of the pictures (1..=256, no repeats). */
+	files: string[],
+	/**  How long each picture stays, `> 0` (default: the project's still duration). */
+	per_image?: TimeInput | null,
+	/**  `given` (default), `name` or `name_numeric`. */
+	order?: SlideshowOrder | null,
+	/**  The sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  A video track (default: the main video track, else the first unlocked one). */
+	track?: TrackId | null,
+	/**  Where the first picture starts (default: the end of the track). */
+	at?: TimeInput | null,
 };
 
 /**  Result of `media.import`. */
@@ -4310,6 +4410,70 @@ export type MediaSetLocation = {
 	content_hash?: string | null,
 	/**  What probing the file found, when its content differs from the asset's. */
 	probe?: ProbeInfo | null,
+};
+
+/**
+ *  Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960
+ *  pixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size
+ *  applies to proxies made from now on: generations of the old size stop, the open project's
+ *  wanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache
+ *  unused until its limit removes them. Not undoable, not journaled, never marks the project
+ *  dirty; UI credential only (the desktop app applies the person's machine preferences).
+ */
+export type MediaSetProxyConfig = {
+	/**  The longest side of new proxies in pixels: 540, 720 or 960. Left out: unchanged. */
+	size?: number | null,
+	/**  Proxy jobs at once, 1 to 8. Left out: unchanged. */
+	jobs?: number | null,
+};
+
+/**
+ *  Sets whether video assets get a proxy, whatever the project's policy says: `force` makes
+ *  one, `off` makes none and the preview does not use one that exists (it stays in the cache),
+ *  `auto` follows the policy again. The mode is saved in the project, one undo step for all
+ *  the assets named.
+ */
+export type MediaSetProxyMode = {
+	/**  The video assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  `auto` (follow the project's policy), `force` or `off`. */
+	mode: ProxyMode,
+};
+
+/**
+ *  Chooses which of the project's video gets proxies automatically: `off` (none), `auto`
+ *  (video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than
+ *  60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then
+ *  queues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).
+ *  An asset's own mode (`media.set_proxy_mode`) wins over the policy.
+ */
+export type MediaSetProxyPolicy = {
+	/**  `off`, `auto` or `all`. */
+	policy: ProxyPolicy,
+};
+
+/**  Result of `media.import_images_as_slideshow`. */
+export type MediaSlideshowOutput = {
+	/**  The sequence the pictures went into. */
+	sequence: SequenceId,
+	/**  The track they are on. */
+	track: TrackId,
+	/**  Where the first picture starts (snapped to the frame grid). */
+	at: Time,
+	/**  How long each picture stays (a whole number of frames). */
+	per_image: Duration,
+	/**  Where the last picture ends. */
+	end: Time,
+	/**  The new clips, in slideshow order. */
+	clips: ItemId[],
+	/**  One entry per placed picture, in slideshow order. */
+	media: ImportedMedia[],
+	/**  The assets of `media`, in the same order (a duplicate names the existing asset). */
+	media_ids: MediaId[],
+	/**  The files that were left out: unreadable, or not a still picture. */
+	failed: ImportFailure[],
+	/**  Background analysis jobs queued for the new assets (wait with `job.wait`). */
+	job_ids: JobId[],
 };
 
 /**  How to order the list; without one, by ID ascending. */
@@ -4908,6 +5072,11 @@ export type ProjectNew = {
 	 *  five seconds. The editor passes the person's "Still image duration" setting.
 	 */
 	still_duration?: TimeInput | null,
+	/**
+	 *  Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);
+	 *  absent: `auto`. The editor passes the person's "Proxies for new projects" setting.
+	 */
+	proxy_policy?: ProxyPolicy | null,
 };
 
 /**  Result of `project.new`. */
@@ -5127,6 +5296,11 @@ export type ProjectSettings = {
 	 *  already exist.
 	 */
 	still_duration?: Duration | null,
+	/**
+	 *  Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so
+	 *  documents written before the field read the same.
+	 */
+	proxy_policy?: ProxyPolicy,
 } & { [key in string]: unknown };
 
 /**  What the engine holds: the `project.*` commands return it and `project.opened` carries it. */
@@ -5227,14 +5401,45 @@ export type ProxyInfo = {
 	error: string | null,
 };
 
-/**  When proxies are made automatically. */
+/**  Whether one asset gets a proxy (ADR-0027), next to the project's policy. */
+export type ProxyMode = 
+/**  As the project's policy decides. The default. */
+"auto" | 
+/**  One is made whatever the policy. */
+"force" | 
+/**  None is made, and the preview does not use one that exists. */
+"off";
+
+/**  Result of `media.set_proxy_mode`. */
+export type ProxyModeSet = {
+	/**  The assets, in request order. */
+	media: MediaId[],
+	/**  Their mode now. */
+	mode: ProxyMode,
+};
+
+/**
+ *  When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache
+ *  state of each computer; the policy is the editor's intent and travels with the project.
+ */
 export type ProxyPolicy = 
 /**  Never automatically (`media.generate_proxy` still makes one). */
 "off" | 
-/**  For video that is slow to scrub ([`auto_reason`]); the default. */
+/**
+ *  For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster
+ *  than 60 fps, or 10-bit HEVC. The default.
+ */
 "auto" | 
 /**  For every video file. */
 "all";
+
+/**  Result of `media.set_proxy_policy`. */
+export type ProxyPolicySet = {
+	/**  The project's policy now. */
+	policy: ProxyPolicy,
+	/**  What it was before. */
+	previous: ProxyPolicy,
+};
 
 /**  Where an asset's proxy is. */
 export type ProxyStatus = 
@@ -5855,6 +6060,15 @@ export type SetKey = {
 	/**  The key lies outside the item's `[0, duration)`. */
 	outside: boolean,
 };
+
+/**  The order the pictures of a slideshow are placed in. */
+export type SlideshowOrder = 
+/**  As listed in `files`. */
+"given" | 
+/**  By file name, ignoring case. */
+"name" | 
+/**  By file name, ignoring case, numbers compared by value (`img2` before `img10`). */
+"name_numeric";
 
 /**
  *  A constant playback speed: `num/den` times normal, from 1/10 to 100, in lowest terms.
