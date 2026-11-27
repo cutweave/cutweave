@@ -31,6 +31,7 @@ import { TrackSection } from "../inspector/TrackSection.tsx";
 import { VideoSections } from "../inspector/VideoSections.tsx";
 import { isMovingPicture } from "../media/kinds.ts";
 import { ContextSurface } from "../menus/host.tsx";
+import { prefsStore, usePref } from "../prefs/prefsStore.ts";
 import { openProjectSettings } from "../project/projectSettings.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId, selectSequenceSummary } from "../state/selectors.ts";
@@ -38,6 +39,7 @@ import { toastStore } from "../state/toastStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { parseTimeInput, type TimeInputError } from "../time/timeInput.ts";
 import { translator } from "../timeline/errors.ts";
+import { fieldTime } from "../timeline/prefs.ts";
 import { EmptyState } from "./EmptyState.tsx";
 
 const TIME_ERROR: Record<TimeInputError, TKey> = {
@@ -131,7 +133,16 @@ function TimeRow({ field, clips, editor, disabled }: RowProps<TimeField>) {
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<TimeInputError | null>(null);
   const flicks = only === undefined ? null : field.read(only.item);
-  const shown = only === undefined || flicks === null ? "" : formatTimecode(flicks, only.fps);
+  // Settings > Timeline > Show time as: a timecode, `f:48` or `2s` (each reads back as typed).
+  const timeDisplay = usePref("timeline.time_display");
+  const dropFrame = usePref("timeline.drop_frame");
+  const shown =
+    only === undefined || flicks === null
+      ? ""
+      : fieldTime(flicks, only.fps, {
+          "timeline.time_display": timeDisplay,
+          "timeline.drop_frame": dropFrame,
+        });
   const commit = (): void => {
     if (only === undefined || draft === null) return;
     const parsed = parseTimeInput(draft, only.fps);
@@ -271,7 +282,9 @@ function rowText(field: FieldDef, clips: readonly SelectedClip[]): string {
   const only = clips.length === 1 ? clips[0] : undefined;
   if (field.control === "time") {
     const flicks = only === undefined ? null : field.read(only.item);
-    return only === undefined || flicks === null ? "" : formatTimecode(flicks, only.fps);
+    return only === undefined || flicks === null
+      ? ""
+      : fieldTime(flicks, only.fps, prefsStore.getState().values);
   }
   const current = readField(clips, field.read as (item: SelectedClip["item"]) => string | number);
   if (current.mixed) return "";

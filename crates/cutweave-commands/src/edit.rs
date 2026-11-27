@@ -12,6 +12,7 @@
 //! | `edit.locks{}` | lists open transactions and the items each soft-locks (read-only) |
 //! | `edit.undo{actor?}` / `edit.redo{actor?}` | undo / redo the caller's (or `actor`'s, `*` = anyone's) latest entry, under the per-actor safety rule |
 //! | `edit.history{limit?, cursor?, actor?}` | lists the log newest first, paginated, plus every actor's stacks (read-only) |
+//! | `edit.set_history_limit{steps}` | sets the undo steps kept per actor and drops the oldest beyond it (UI only; WP-2A.13) |
 //! | `edit.checkpoint{name?, note?}` | captures the committed document (O(1)); journaled |
 //! | `edit.restore{checkpoint, force?}` | restores a checkpoint as one undoable change |
 //! | `edit.list_checkpoints{}` | lists checkpoints (read-only) |
@@ -33,8 +34,9 @@
 
 use crate::{
     Actor, Annotations, CheckpointInfo, CmdError, CommandSpec, Described, DocState, EngineCommand,
-    EntryKind, HistoryMoved, HistoryPage, HistoryScope, LockList, MAX_HISTORY_PAGE, McpExposure,
-    Registrable, Registry, RegistryError, Restored, Rev, Scope, TxId, TxKind, command, wire,
+    EntryKind, HistoryMoved, HistoryPage, HistoryScope, LockList, MAX_HISTORY_PAGE, MAX_UNDO_DEPTH,
+    McpExposure, Registrable, Registry, RegistryError, Restored, Rev, Scope, TxId, TxKind, command,
+    wire,
 };
 
 /// Longest transaction label, in characters.
@@ -50,6 +52,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<Undo>()?
         .register::<Redo>()?
         .register::<GetHistory>()?
+        .register::<SetHistoryLimit>()?
         .register::<Checkpoint>()?
         .register::<Restore>()?
         .register::<ListCheckpoints>()?
@@ -413,6 +416,48 @@ impl EngineCommand for GetHistory {
             ));
         }
         state.history_page(limit, self.cursor.as_deref(), self.actor.as_ref())
+    }
+}
+
+/// Result of `edit.set_history_limit`.
+#[wire]
+pub struct HistoryLimitSet {
+    /// The undo steps now kept per person or agent (`project.info`'s `history_limit`).
+    pub steps: u32,
+}
+
+/// Sets how many undo steps are kept per person or agent (1 to 10000; 1000 until it is set).
+/// A lower limit drops each actor's oldest steps at once: they stay in `edit.history` but can
+/// no longer be undone. Not undoable, not journaled and never marks the project dirty: it is
+/// the app applying the person's preference (Settings > Editing) to its own engine, so it is
+/// UI credential only (ADR-0016) and agents get `forbidden`. `project.info` reports the limit.
+#[command(
+    name = "edit.set_history_limit",
+    summary = "Set how many undo steps are kept per person or agent",
+    engine,
+    scope = "ui",
+    undoable = false,
+    journaled = false,
+    mcp = "catalog",
+    annotations(destructive = true, idempotent = true)
+)]
+pub struct SetHistoryLimit {
+    /// Undo steps to keep for each person or agent (1 to 10000).
+    pub steps: u32,
+}
+
+impl EngineCommand for SetHistoryLimit {
+    type Context = DocState;
+    type Output = HistoryLimitSet;
+
+    fn run(&self, state: &mut DocState) -> Result<HistoryLimitSet, CmdError> {
+        let max = u32::try_from(MAX_UNDO_DEPTH).unwrap_or(u32::MAX);
+        if !(1..=max).contains(&self.steps) {
+            return Err(CmdError::invalid("/steps", format!("1 to {max}")));
+        }
+        Ok(HistoryLimitSet {
+            steps: state.set_history_limit(self.steps),
+        })
     }
 }
 

@@ -4,4 +4,4 @@
 
 /// Lowercase hex sha256 of the bytes of `schema/commands.json`. The engine reports it in
 /// `rpc.hello`; clients compare it with the one generated into `@cutweave/protocol`.
-pub const SCHEMA_HASH: &str = "4a2559f778bd6a6067b9fbfddbd17336b682f1449882e719d3809e43907fac98";
+pub const SCHEMA_HASH: &str = "ee598ebe379ef72e8bd622e65951916eee3ea08817a331e5cbec81392986865c";

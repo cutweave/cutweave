@@ -51,6 +51,8 @@ import { describeRefusal, FAILED_TITLE, heldByOther, type Translate } from "./er
 import { EngineQueue, GestureTransactions, toRpcError } from "./gestureTx.ts";
 import { inOutArgs, markerArgs } from "./inOut.ts";
 import type { LocksState } from "./locks.ts";
+import { callWithNewTrackHeight, createdTracks, setNewTrackHeights } from "./newTracks.ts";
+import type { MachinePrefs } from "./prefs.ts";
 import { RttProbe } from "./rttProbe.ts";
 
 /** What the host needs from the live `TimelineView`. */
@@ -139,8 +141,15 @@ export interface TimelineHostDeps {
   readonly snap?: SnapPort;
   /** The transport's latest-wins `view.seek`; without it the view's playhead moves alone. */
   readonly seek?: (t: number) => void;
-  /** Editing and Timeline preferences the machine reads (WP-2A.13 adds them). */
-  readonly prefs?: () => Partial<Pick<MachineEnv, "snapThresholdPx" | "snapKinds" | "dropOnClip">>;
+  /**
+   * Editing and Timeline preferences the machine reads (WP-2A.13); `syncPrefs()` after one
+   * changed.
+   */
+  readonly prefs?: () => Partial<MachinePrefs>;
+  /** "Keep video and audio linked": a placed video brings its sound (default: it does). */
+  readonly linkAv?: () => boolean;
+  /** "Height of new tracks" in pixels for `track.set_height`; `null`: the engine's default. */
+  readonly newTrackHeight?: () => number | null;
 }
 
 /** The labels of gesture undo steps. */
@@ -260,6 +269,11 @@ export class TimelineHost {
       label: (edit) => deps.t(HISTORY[edit]),
       answer: (event) => this.send(event),
       refused: (edit, error) => this.#notify(GESTURE_FAILED[edit], error),
+      beforeCommit: async (_edit, output, tx) => {
+        const rpc = this.#rpc();
+        const height = deps.newTrackHeight?.() ?? null;
+        if (rpc !== null) await setNewTrackHeights(rpc, tx, createdTracks(output), height);
+      },
       committed: (edit, output) => this.#committed(edit, output),
       probe: this.probe,
     });
@@ -336,6 +350,11 @@ export class TimelineHost {
     this.#canvas = canvas;
     this.#lanes = lanes;
     if (geometry !== null) this.#syncEnv();
+  }
+
+  /** A preference the machine reads changed (Settings > Editing, Settings > Timeline). */
+  syncPrefs(): void {
+    this.#syncEnv();
   }
 
   /** Whether a press or a gesture is under way (the ruler's marker drag stays out of its way). */
@@ -698,7 +717,17 @@ export class TimelineHost {
   addTrack(kind: "video" | "audio"): void {
     const sequence = this.#sequence();
     if (sequence === null) return;
-    this.#oneShot("track.add", { sequence, kind });
+    // "Height of new tracks": the track and its height are one undo step.
+    void this.#queue.run(async () => {
+      const rpc = this.#rpc();
+      if (rpc === null) return;
+      const height = this.#deps.newTrackHeight?.() ?? null;
+      try {
+        await callWithNewTrackHeight(rpc, "track.add", { sequence, kind }, height);
+      } catch (error) {
+        this.#notify(COMMAND_FAILED["track.add"] ?? FAILED_TITLE.move, error);
+      }
+    });
   }
 
   // ---- zoom -----------------------------------------------------------------------------------
@@ -801,6 +830,11 @@ export class TimelineHost {
     return this.#geometry?.itemRect?.(itemId) ?? null;
   }
 
+  /** The time range the lanes show now, or null without a view. */
+  visibleRange(): { t0: number; t1: number } | null {
+    return this.#geometry?.visibleRange() ?? null;
+  }
+
   /** The canvas x of time `t`, or null without a view. */
   timeToX(t: number): number | null {
     return this.#geometry?.timeToX(t) ?? null;
@@ -874,13 +908,26 @@ export class TimelineHost {
     }
   }
 
-  /** A still dropped from the bin keeps the length its card's "Duration…" chose (WP-2F.05). */
+  /**
+   * A still dropped from the bin keeps the length its card's "Duration…" chose (WP-2F.05), and
+   * with "Keep video and audio linked" off a video comes without its sound (WP-2A.13).
+   */
   #withStillLength(command: MachineCommand): MachineCommand {
-    if (command.name !== "timeline.insert" || command.args.duration != null) return command;
-    const length = insertDurationFor(this.#deps.doc.getState().project, command.args.media);
-    return length === undefined
-      ? command
-      : { name: command.name, args: { ...command.args, duration: length } };
+    if (command.name !== "timeline.insert") return command;
+    const unlinked = this.#deps.linkAv?.() === false && command.args.link == null;
+    const length =
+      command.args.duration != null
+        ? undefined
+        : insertDurationFor(this.#deps.doc.getState().project, command.args.media);
+    if (length === undefined && !unlinked) return command;
+    return {
+      name: command.name,
+      args: {
+        ...command.args,
+        ...(length !== undefined && { duration: length }),
+        ...(unlinked && { link: false }),
+      },
+    };
   }
 
   /** A one-shot machine command (split, delete, ripple delete, nudge): its own undo step. */

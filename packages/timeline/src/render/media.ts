@@ -81,9 +81,16 @@ function forEachTile(
 
 /**
  * Draws the filmstrip tiles of `bucket`'s items into the body area `[areaY, areaY + areaH)`.
- * Placeholders for tiles not loaded yet go into one batched shade.
+ * Placeholders for tiles not loaded yet go into one batched shade. `firstOnly` (the Timeline
+ * preference "Video clip thumbnails: first frame") draws one tile, at the clip's start.
  */
-export function drawTiles(s: RenderState, bucket: IndexList, areaY: number, areaH: number): void {
+export function drawTiles(
+  s: RenderState,
+  bucket: IndexList,
+  areaY: number,
+  areaH: number,
+  firstOnly = false,
+): void {
   const { ctx, f, k, rx0, rx1 } = s;
   const { layout, vp, theme: th, caches } = f;
   const bk = zoomBucket(vp.pxPerSec);
@@ -124,6 +131,21 @@ export function drawTiles(s: RenderState, bucket: IndexList, areaY: number, area
     }
     const frozenTile = Math.floor(slice.sourceIn / dur);
     const tw = frozen ? dur * k : (dur / sp) * k;
+    if (firstOnly) {
+      // One tile at the clip's left edge: the frame the clip starts on.
+      const d0 = Math.max(x, v0);
+      const d1 = Math.min(x + tw, v1);
+      if (d1 <= d0) continue;
+      const j = frozen
+        ? frozenTile
+        : Math.floor((rev ? Math.max(slice.sourceIn, end - 1) : slice.sourceIn) / dur);
+      if (!tile(s, slice.mediaId, media, size, bk, j, dur, tilePx, x, tw, d0, d1, areaY, areaH)) {
+        ctx.rect(d0, areaY, d1 - d0, areaH);
+        s.stats.placeholders++;
+        placeholders = true;
+      }
+      continue;
+    }
     for (let n = j0; n <= j1 && n - j0 < MAX_TILES_PER_ITEM; n++) {
       const at = frozen
         ? n * dur

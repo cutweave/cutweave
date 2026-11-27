@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 
 use cutweave_commands::{
     Actor, ActorOptions, Clock, CmdError, CommitRecord, ConflictReason, DocActor, DocConfig,
-    DocEvent, DocHandle, DocReset, RecvError, Registry, Rev, WallTime, wire,
+    DocEvent, DocHandle, DocReset, HistoryLimits, RecvError, Registry, Rev, WallTime, wire,
 };
 use cutweave_jobs::JobManager;
 use cutweave_model::Project;
@@ -149,6 +149,9 @@ pub(crate) struct Deps {
     /// The editor's autosave preference (`project.set_autosave`); wins over the project's
     /// `settings.autosave` for every session this engine builds (arch §17).
     pub(crate) autosave_pref: Mutex<Option<AutosavePreference>>,
+    /// The undo steps kept per actor the editor asked for (`edit.set_history_limit`,
+    /// WP-2A.13): every document this engine opens starts with it.
+    pub(crate) history_limit: Mutex<Option<u32>>,
     pub(crate) events: EventBus,
     pub(crate) subsystems: Arc<dyn Subsystems>,
     pub(crate) jobs: JobManager,
@@ -809,7 +812,14 @@ fn doc_config(deps: &Deps, tracker: Option<&IdTracker>, doc: Project) -> DocConf
         Some(t) => t.config(Arc::clone(&deps.registry), doc),
         None => DocConfig::new(Arc::clone(&deps.registry), doc),
     };
-    config.with_clock(Arc::clone(&deps.clock))
+    let config = config.with_clock(Arc::clone(&deps.clock));
+    match *lock(&deps.history_limit) {
+        Some(steps) => config.with_history_limits(HistoryLimits {
+            max_undo_depth: usize::try_from(steps).unwrap_or(usize::MAX),
+            ..HistoryLimits::default()
+        }),
+        None => config,
+    }
 }
 
 /// Starts the journal of `store` after a recovery decision, then the doc actor over

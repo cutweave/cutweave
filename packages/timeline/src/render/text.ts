@@ -2,7 +2,13 @@
 // Strings the draw loop shows every frame, made once and reused: a frame that only pans or plays
 // asks for labels it already made, so it allocates no strings (WP-2A.09: no per-frame allocation).
 import type { TimeFormat } from "../model.ts";
-import { type FrameRate, flicksToFrame, formatFrameTimecode } from "../time.ts";
+import {
+  type FrameRate,
+  flicksToFrame,
+  formatFrameTimecode,
+  formatSeconds,
+  frameToFlicks,
+} from "../time.ts";
 
 /** Most time labels kept; past it the cache starts over (a long pan at a fine zoom). */
 const MAX_TIME_LABELS = 2048;
@@ -33,7 +39,12 @@ export class TimeLabels {
     let s = this.byFrame.get(frame);
     if (s === undefined) {
       if (this.byFrame.size >= MAX_TIME_LABELS) this.byFrame.clear();
-      s = format === "frames" ? String(frame) : formatFrameTimecode(frame, fps, dropFrame);
+      s =
+        format === "frames"
+          ? String(frame)
+          : format === "seconds"
+            ? formatSeconds(frameToFlicks(frame, fps))
+            : formatFrameTimecode(frame, fps, dropFrame);
       this.byFrame.set(frame, s);
     }
     return s;

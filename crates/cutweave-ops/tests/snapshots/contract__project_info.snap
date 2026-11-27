@@ -370,6 +370,12 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string"
           },
           "description": "The folders agents may name in a path right now (import media from, open projects in,\nsave into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)\nand the project folders. Filled by the engine; empty outside one."
+        },
+        "history_limit": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Undo steps kept per person or agent (`edit.undo` reaches no further back). The person\nsets it in Settings > Editing; 1000 until then. Filled by the engine."
         }
       },
       "required": [
@@ -380,7 +386,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "settings",
         "media_count",
         "sequences",
-        "allowed_roots"
+        "allowed_roots",
+        "history_limit"
       ],
       "description": "Result of `project.info`.",
       "title": "ProjectInfoOutput"
@@ -738,6 +745,12 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "type": "string"
         },
         "description": "The folders agents may name in a path right now (import media from, open projects in,\nsave into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)\nand the project folders. Filled by the engine; empty outside one."
+      },
+      "history_limit": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Undo steps kept per person or agent (`edit.undo` reaches no further back). The person\nsets it in Settings > Editing; 1000 until then. Filled by the engine."
       }
     },
     "required": [
@@ -748,7 +761,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "settings",
       "media_count",
       "sequences",
-      "allowed_roots"
+      "allowed_roots",
+      "history_limit"
     ],
     "description": "Result of `project.info`.",
     "title": "ProjectInfoOutput"

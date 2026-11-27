@@ -8,12 +8,15 @@ import type { ItemId, MediaId, RpcClient, SelectionRef, TrackId } from "@cutweav
 import { snapToFrame } from "@cutweave/timeline";
 import type { StoreApi } from "zustand";
 import type { EngineStoreState } from "../engine/engineStore.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import type { DocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { ViewStore } from "../state/viewStore.ts";
 import { describeRefusal, FAILED_TITLE, type Translate } from "../timeline/errors.ts";
 import { toRpcError } from "../timeline/gesture.ts";
+import { callWithNewTrackHeight } from "../timeline/newTracks.ts";
+import { newTrackHeight } from "../timeline/prefs.ts";
 import { insertDurationFor } from "./insertDuration.ts";
 
 /**
@@ -46,14 +49,22 @@ export async function insertMedia(
   if (rpc === null || sequence === null) return false;
   const duration = insertDurationFor(project, media);
   try {
-    const out = await rpc.call(INSERT, {
+    // Settings > Timeline > Height of new tracks, and Settings > Editing > Keep video and audio
+    // linked (WP-2A.13).
+    const height = newTrackHeight(
+      preferences.get("timeline.track_height"),
+      globalThis.document?.documentElement ?? null,
+    );
+    const args = {
       sequence,
       track: track as TrackId,
       media: media as MediaId,
       at,
       ...(duration === undefined ? {} : { duration }),
+      ...(preferences.get("editing.link_av") ? {} : { link: false }),
       overlap: "new_track",
-    });
+    };
+    const out = (await callWithNewTrackHeight(rpc, INSERT, args, height)) as { clips: string[] };
     const first = out.clips[0];
     if (first !== undefined) {
       deps.view.getState().setSelection([{ kind: "item", id: first as ItemId } as SelectionRef]);

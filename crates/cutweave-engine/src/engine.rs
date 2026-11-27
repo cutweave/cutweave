@@ -972,6 +972,25 @@ impl Core {
         })
     }
 
+    /// The undo steps kept per actor the editor asked for (`edit.set_history_limit`), if any.
+    pub(crate) fn history_limit(&self) -> Option<u32> {
+        *self
+            .deps
+            .history_limit
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Keeps the limit `edit.set_history_limit` just set on the open document, for every
+    /// document this engine opens later.
+    pub(crate) fn remember_history_limit(&self, steps: u32) {
+        *self
+            .deps
+            .history_limit
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(steps);
+    }
+
     pub(crate) fn set_autosave(&self, pref: AutosavePreference) -> Result<(), CmdError> {
         *self
             .deps
@@ -1301,6 +1320,7 @@ impl Engine {
             journal_sync: config.journal_sync,
             autosave: config.autosave,
             autosave_pref: Mutex::new(None),
+            history_limit: Mutex::new(None),
             events: EventBus::new(config.event_capacity),
             subsystems,
             jobs,

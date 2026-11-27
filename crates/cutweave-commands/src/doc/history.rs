@@ -75,6 +75,8 @@ pub const DEFAULT_HISTORY_ENTRIES: usize = 10_000;
 pub const DEFAULT_HISTORY_BYTES: usize = 64 << 20;
 /// Default undo depth per actor.
 pub const DEFAULT_UNDO_DEPTH: usize = 1_000;
+/// Deepest undo stack `edit.set_history_limit` accepts.
+pub const MAX_UNDO_DEPTH: usize = 10_000;
 /// Default page size of `edit.history`.
 pub const DEFAULT_HISTORY_PAGE: usize = 50;
 /// Largest page of `edit.history`.
@@ -595,6 +597,35 @@ impl History {
             bytes: 0,
             evicted: 0,
         }
+    }
+
+    /// The deepest undo stack an actor keeps.
+    pub(crate) fn undo_depth(&self) -> usize {
+        self.limits.max_undo_depth
+    }
+
+    /// Sets the deepest undo stack per actor (at least 1) and drops each actor's oldest steps
+    /// beyond it: they stay in the log but can no longer be undone. One `Trimmed` event per
+    /// actor that lost steps.
+    pub(crate) fn set_undo_depth(&mut self, depth: usize, rev: Rev) -> Vec<HistoryChanged> {
+        let depth = depth.max(1);
+        self.limits.max_undo_depth = depth;
+        let mut dropped: Vec<u64> = Vec::new();
+        let mut touched: Vec<Actor> = Vec::new();
+        for (actor, stacks) in &mut self.stacks {
+            let excess = stacks.undo.len().saturating_sub(depth);
+            if excess > 0 {
+                dropped.extend(stacks.undo.drain(..excess));
+                touched.push(actor.clone());
+            }
+        }
+        for seq in dropped {
+            self.set_slot(seq, Slot::None);
+        }
+        touched
+            .iter()
+            .map(|actor| self.event(HistoryChange::Trimmed, None, rev, actor))
+            .collect()
     }
 
     /// The sequence number the next record gets.

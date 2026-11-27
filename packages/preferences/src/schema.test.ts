@@ -63,6 +63,57 @@ describe("validatePreference", () => {
   });
 });
 
+describe("Editing and Timeline (WP-2A.13)", () => {
+  it("starts at the catalog's defaults", () => {
+    const d = defaultPreferences();
+    expect(d["editing.link_av"]).toBe(true);
+    expect(d["editing.drop_mode"]).toBe("overwrite");
+    expect(d["editing.nudge"]).toBe(1);
+    expect(d["editing.undo_steps"]).toBe(1000);
+    expect(d["timeline.snap"]).toBe(true);
+    expect(d["timeline.snap_targets"]).toEqual(["playhead", "edges", "markers", "beats"]);
+    expect(d["timeline.snap_distance"]).toBe(8);
+    expect(d["timeline.follow"]).toBe("page");
+    expect(d["timeline.thumbnails"]).toBe("filmstrip");
+    expect(d["timeline.waveforms"]).toBe(true);
+    expect(d["timeline.track_height"]).toBe("medium");
+    expect(d["timeline.wheel"]).toBe("scroll");
+    expect(d["timeline.time_display"]).toBe("timecode");
+    expect(d["timeline.drop_frame"]).toBe(true);
+  });
+
+  it("keeps the snap targets a set of the known ones, in the catalog's order", () => {
+    expect(validatePreference("timeline.snap_targets", [])).toEqual({ ok: true, value: [] });
+    expect(validatePreference("timeline.snap_targets", ["beats", "playhead"])).toEqual({
+      ok: true,
+      value: ["playhead", "beats"],
+    });
+    expect(validatePreference("timeline.snap_targets", ["edges", "edges"]).ok).toBe(false);
+    expect(validatePreference("timeline.snap_targets", ["grid"]).ok).toBe(false);
+    expect(validatePreference("timeline.snap_targets", "edges").ok).toBe(false);
+    // A default is a copy: changing one never changes the schema's.
+    const a = defaultPreferences()["timeline.snap_targets"];
+    expect(a).not.toBe(defaultPreferences()["timeline.snap_targets"]);
+  });
+
+  it("bounds the numbers", () => {
+    expect(validatePreference("editing.undo_steps", 2).ok).toBe(true);
+    expect(validatePreference("editing.undo_steps", 0).ok).toBe(false);
+    expect(validatePreference("editing.undo_steps", 10_001).ok).toBe(false);
+    expect(validatePreference("editing.nudge", 101).ok).toBe(false);
+    expect(validatePreference("timeline.snap_distance", 1).ok).toBe(false);
+    expect(validatePreference("timeline.snap_distance", 32).ok).toBe(true);
+    expect(validatePreference("timeline.follow", "jump").ok).toBe(false);
+  });
+
+  it("writes a changed set to the file and reads it back", () => {
+    const values = { ...defaultPreferences(), "timeline.snap_targets": ["edges"] as const };
+    const text = serializePreferences(values);
+    expect(JSON.parse(text).app["timeline.snap_targets"]).toEqual(["edges"]);
+    expect(loadPreferences(text).values["timeline.snap_targets"]).toEqual(["edges"]);
+  });
+});
+
 describe("export presets and file names (WP-2G.04)", () => {
   it("defaults to the last preset used and the project's name", () => {
     const values = defaultPreferences();

@@ -29,11 +29,11 @@ import {
   pickFiles,
   profileDir,
   removeDir,
+  revealTime,
   rulerY,
   sec,
   snapshot,
   timecode,
-  timelineGeometry,
   type Workspace,
   workspace,
   xAt,
@@ -94,7 +94,8 @@ async function projectWithClip(
 
 /** Clicks the ruler at `seconds`, and waits for the timecode to say so. */
 async function goTo(page: Page, seconds: number): Promise<void> {
-  const g = await timelineGeometry(page);
+  // The timeline follows the playhead while playing (WP-2A.13), so the place may be out of view.
+  const g = await revealTime(page, seconds);
   await page.mouse.click(xAt(g, sec(seconds)), rulerY(g));
   await expect.poll(() => timecodeFrames(page)).toBe(seconds * 30);
 }
