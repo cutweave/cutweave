@@ -183,6 +183,28 @@ describe("TransportBar", () => {
     });
   });
 
+  it("the loop button is the preference playback.loop, both ways (WP-2H.10)", async () => {
+    connect();
+    renderBar();
+    const loop = () => screen.getByRole("button", { name: "Loop playback" });
+    expect(preferences.get("playback.loop")).toBe(false);
+    expect(loop().getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      fireEvent.click(loop());
+      await Promise.resolve();
+    });
+    expect(preferences.get("playback.loop")).toBe(true);
+    expect(loop().getAttribute("aria-pressed")).toBe("true");
+    // Changed elsewhere (Settings > Playback): the button follows.
+    await act(async () => {
+      await preferences.set("playback.loop", false);
+    });
+    expect(loop().getAttribute("aria-pressed")).toBe("false");
+    // It is the person's preference: there with no engine, and never a command of its own.
+    expect((loop() as HTMLButtonElement).disabled).toBe(false);
+    expect(mock.requests.filter((r) => r.method === "view.set_loop")).toEqual([]);
+  });
+
   it("mute and volume set master_gain; the quality indicator shows the frame's quality", async () => {
     mock.handle("view.set", () => ({}));
     connect();

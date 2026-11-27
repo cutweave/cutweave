@@ -78,7 +78,8 @@ describe("ViewSync", () => {
     expect(s.zoom).toBe(240);
     expect(s.scroll).toEqual({ x: 5, y: 7 });
     expect(s.selection).toEqual([{ kind: "item", id: "itm_1" }]);
-    expect(s.previewQuality).toBe("half");
+    // The project's preview quality is not restored: it is a preference now (WP-2H.10).
+    expect("previewQuality" in s).toBe(false);
     timers.advance(10_000);
     await settle();
     expect(sets()).toHaveLength(0);
@@ -99,14 +100,13 @@ describe("ViewSync", () => {
     expect(sets()[0]?.params).toEqual({ patch: { playhead: 200 } });
   });
 
-  it("mirrors zoom, scroll, selection, quality and the panel layout", async () => {
+  it("mirrors zoom, scroll, selection and the panel layout", async () => {
     const { store, sync, timers, sets } = setup();
     await sync.restore();
     const s = store.getState();
     s.setZoom(120);
     s.setScroll(3, 4);
     s.setSelection([{ kind: "track", id: "trk_1" as never }]);
-    s.setPreviewQuality("quarter");
     s.switchWorkspace("long-form");
     timers.advance(VIEW_SYNC_DEBOUNCE_MS);
     await settle();
@@ -116,8 +116,8 @@ describe("ViewSync", () => {
       zoom: 120,
       scroll: { x: 3, y: 4 },
       selection: [{ kind: "track", id: "trk_1" }],
-      preview_quality: "quarter",
     });
+    expect("preview_quality" in patch).toBe(false);
     expect(panelLayoutFrom(patch.panel_layout)).toMatchObject({
       workspaceId: "long-form",
       aspect: "16:9",
@@ -196,13 +196,11 @@ describe("diffView and panel layout", () => {
       zoom: s.zoom,
       scroll: s.scroll,
       selection: s.selection,
-      previewQuality: s.previewQuality,
       panel: { workspaceId: s.workspaceId, aspect: s.aspect, layouts: s.layouts },
     };
     expect(Object.keys(diffView(null, now) ?? {}).sort()).toEqual([
       "panel_layout",
       "playhead",
-      "preview_quality",
       "scroll",
       "selection",
     ]);

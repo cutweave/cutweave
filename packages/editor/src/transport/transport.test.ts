@@ -33,16 +33,19 @@ function setup() {
   doc.getState().resync({ rev: 1, committed_rev: 1, project: sampleProject() });
   const unsupported = vi.fn();
   const errors: unknown[] = [];
+  // `playback.return_to_start` as the transport reads it (off, the default).
+  const prefs = { returnToStart: false };
   const transport = new TransportController({
     engine,
     playback,
     view,
     doc,
+    returnToStart: () => prefs.returnToStart,
     onUnsupported: unsupported,
     onError: (e) => errors.push(e),
   });
   const sent = () => mock.requests.map((r) => [r.method, r.params]);
-  return { mock, engine, playback, view, doc, transport, unsupported, errors, sent };
+  return { mock, engine, playback, view, doc, transport, unsupported, errors, sent, prefs };
 }
 
 describe("nextShuttleRate", () => {
@@ -321,5 +324,106 @@ describe("TransportController: the source target (WP-1M.15, ADR-0022)", () => {
     sourceViewStore.getState().setHost("inspector");
     playbackStore.getState().applyState(state({ source: null }));
     expect(sourceViewStore.getState().host).toBe("preview");
+  });
+});
+
+describe("TransportController: go back to where playback started (WP-2H.10)", () => {
+  const playing = (t: number, over: object = {}) =>
+    state({ state: "playing", playing: true, rate: 1, t, ...over });
+
+  /** A transport that follows `playback.state`, paused at 1 s, with the usual engine answers. */
+  function started(returnToStart: boolean) {
+    const s = setup();
+    s.prefs.returnToStart = returnToStart;
+    s.transport.attach();
+    s.playback.getState().applyState(state({ t: FLICKS }));
+    s.mock.handle("view.play", () => playing(FLICKS));
+    s.mock.handle("view.pause", () => state({ t: 3 * FLICKS }));
+    s.mock.handle("view.seek", (p) => state({ t: (p as { t: number }).t }));
+    s.mock.handle("view.step", () => state({ t: 2 * FLICKS }));
+    return s;
+  }
+
+  it("off (the default): a pause stays where playback stopped", async () => {
+    const s = started(false);
+    await s.transport.play();
+    await s.transport.pause();
+    expect(s.sent()).toEqual([
+      ["view.play", {}],
+      ["view.pause", {}],
+    ]);
+    expect(s.view.getState().playhead).toBe(3 * FLICKS);
+  });
+
+  it("on: a pause seeks back to the position playback started from", async () => {
+    const s = started(true);
+    await s.transport.togglePlay();
+    s.playback.getState().applyState(playing(2 * FLICKS));
+    await s.transport.togglePlay();
+    await vi.waitFor(() => expect(s.sent().at(-1)).toEqual(["view.seek", { t: FLICKS }]));
+    await vi.waitFor(() => expect(s.playback.getState().holdPlayhead).toBe(false));
+    expect(s.view.getState().playhead).toBe(FLICKS);
+    expect(s.playback.getState()).toMatchObject({ playing: false, playhead: FLICKS });
+  });
+
+  it("follows the preference when it changes, with no restart", async () => {
+    const s = started(false);
+    await s.transport.play();
+    s.prefs.returnToStart = true;
+    await s.transport.pause();
+    await vi.waitFor(() => expect(s.sent().at(-1)).toEqual(["view.seek", { t: FLICKS }]));
+  });
+
+  it("K returns too; a seek made while playing is where it returns to", async () => {
+    const s = started(true);
+    s.mock.handle("view.set_rate", () => playing(FLICKS));
+    s.mock.handle("view.seek", (p) => playing((p as { t: number }).t));
+    await s.transport.shuttle("L");
+    await s.transport.seek(2 * FLICKS);
+    s.mock.handle("view.seek", (p) => state({ t: (p as { t: number }).t }));
+    await s.transport.shuttle("K");
+    await vi.waitFor(() => expect(s.sent().at(-1)).toEqual(["view.seek", { t: 2 * FLICKS }]));
+  });
+
+  it("playback that reaches the end returns; started at the end, it returns to the start", async () => {
+    const s = started(true);
+    await s.transport.play();
+    // The engine stops by itself at the end of the content (5 s in the sample project).
+    s.playback.getState().applyState(state({ t: 5 * FLICKS }));
+    await vi.waitFor(() => expect(s.sent().at(-1)).toEqual(["view.seek", { t: FLICKS }]));
+    await vi.waitFor(() => expect(s.playback.getState().holdPlayhead).toBe(false));
+    // Play at the end starts again from 0 (`view.play`): that is where it began.
+    s.playback.getState().applyState(state({ t: 5 * FLICKS }));
+    s.mock.handle("view.play", () => playing(0));
+    await s.transport.play();
+    await s.transport.pause();
+    await vi.waitFor(() => expect(s.sent().at(-1)).toEqual(["view.seek", { t: 0 }]));
+  });
+
+  it("a step, or a pause someone else made (an agent), stays where it is", async () => {
+    const s = started(true);
+    await s.transport.play();
+    await s.transport.step(1);
+    expect(s.sent().at(-1)).toEqual(["view.step", { frames: 1 }]);
+    expect(s.view.getState().playhead).toBe(2 * FLICKS);
+    await s.transport.play();
+    s.playback.getState().applyState(state({ t: 3 * FLICKS }));
+    expect(s.sent().filter(([method]) => method === "view.seek")).toEqual([]);
+    expect(s.view.getState().playhead).toBe(3 * FLICKS);
+  });
+
+  it("a source returns in its own time and leaves the timeline's playhead alone", async () => {
+    const media = "med_a" as MediaId;
+    const source = { media, duration: 4 * FLICKS, fps: { num: 30, den: 1 } };
+    const s = started(true);
+    s.playback.getState().applyState(state({ source, t: FLICKS / 2 }));
+    s.mock.handle("view.play", () => playing(FLICKS / 2, { source }));
+    s.mock.handle("view.pause", () => state({ source, t: 2 * FLICKS }));
+    s.mock.handle("view.seek", (p) => state({ source, t: (p as { t: number }).t }));
+    await s.transport.play();
+    await s.transport.pause();
+    await vi.waitFor(() => expect(s.sent().at(-1)).toEqual(["view.seek", { t: FLICKS / 2 }]));
+    expect(s.playback.getState().sourcePlayhead).toBe(FLICKS / 2);
+    expect(s.view.getState().playhead).toBe(FLICKS);
   });
 });

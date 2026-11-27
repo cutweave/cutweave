@@ -114,14 +114,16 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 
 ### Playback
 
+The quality, proxies and loop rows are also the transport bar's controls (its quality menu, proxy toggle and loop button): one preference each. `playback.scrub_audio` is not in the dialog yet: the engine plays no sound while scrubbing so far, and the row joins the page with the audio work that adds it.
+
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| `playback.quality_playing` | Preview quality while playing: auto, full, half, quarter | Auto | App | Engine (quality ladder) | — | WP-2H.10 |
-| `playback.quality_paused` | Preview quality when paused: full or auto | Full | App | Engine | — | WP-2H.10 |
+| `playback.quality_playing` | Preview quality while playing: Auto (the quality ladder: full size, smaller only when frames are late), or Full, Half or Quarter held whatever the frame times. Also the menu of the transport bar's quality indicator and the Preview's Quality menu | Auto | App | Engine (`view.set_preview_quality{playing}`, sent after each handshake and on change) | — | WP-2H.10 |
+| `playback.quality_paused` | Preview quality when paused: Full (the frame refines to full size) or Same as playing (it stays at the size playback uses) | Full | App | Engine (`view.set_preview_quality{paused}`) | — | WP-2H.10 |
 | `playback.proxies` | Use proxies in the preview when they are ready | On | App | Engine (`view.set_preview_quality{use_proxies}`, sent after each handshake and on change) | Read (`playback.state.use_proxies`) | The key and the transport bar's toggle: WP-2F.02; this row: WP-2H.10 |
-| `playback.scrub_audio` | Play audio while scrubbing | On | App | Engine | — | WP-2H.10 |
-| `playback.loop` | Loop playback | Off | App | Engine | — | WP-2H.10 |
-| `playback.return_to_start` | When playback stops, go back to where it started | Off | App | Renderer | — | WP-2H.10 |
+| `playback.scrub_audio` | Play audio while scrubbing | On | App | Engine | — | Not built: needs scrub audio in the audio engine (a follow-up to WP-2H.10) |
+| `playback.loop` | Loop playback: at the end, playback starts again from the beginning (reverse playback still stops at the start). Also the transport bar's loop button | Off | App | Engine (`view.set_loop`, sent after each handshake and on change) | — | WP-2H.10 |
+| `playback.return_to_start` | When playback stops (a pause, or playing into the end), go back to where it started. A step, and a pause an agent makes, stay where they are | Off | App | Renderer (the transport) | — | WP-2H.10 |
 
 ### Audio
 

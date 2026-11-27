@@ -28,7 +28,8 @@ use crate::transport::cancel::EpochGate;
 use crate::transport::host::HostClock;
 use crate::transport::source::SequenceTiming;
 use crate::transport::state::{
-    FrameQuality, PlaybackState, Rate, Shuttle, Snapshot, SnapshotCell, TransportMode, shuttle,
+    FrameQuality, PausedQuality, PlaybackState, PlayingQuality, Rate, Shuttle, Snapshot,
+    SnapshotCell, TransportMode, shuttle,
 };
 use crate::transport::target::{PlaybackTarget, SourceInfo, SourceResolver};
 
@@ -110,6 +111,14 @@ pub(crate) struct Shared {
     /// Whether the preview uses proxies (`view.set_preview_quality`): read by the render
     /// thread for every frame it asks for.
     pub use_proxies: AtomicBool,
+    /// The quality while playing (`view.set_preview_quality{playing}`, a
+    /// [`PlayingQuality`] as its number): read by the render thread for every frame.
+    pub quality_playing: AtomicU8,
+    /// Whether a stopped frame stays at the playing quality (`paused: auto`) instead of
+    /// refining to full size.
+    pub quality_paused_auto: AtomicBool,
+    /// Whether forward playback starts again from 0 at the end (`view.set_loop`).
+    pub looping: AtomicBool,
     pub render_thread: OnceLock<Thread>,
     pub status_thread: OnceLock<Thread>,
     /// Finds the media `view.set_source` names.
@@ -169,6 +178,13 @@ impl Shared {
             dropped: u32::try_from(self.stats.dropped.load(Ordering::Relaxed)).unwrap_or(u32::MAX),
             use_proxies: self.use_proxies.load(Ordering::Relaxed),
             proxy: self.stats.last_proxy.load(Ordering::Relaxed),
+            playing_quality: PlayingQuality::from_u8(self.quality_playing.load(Ordering::Relaxed)),
+            paused_quality: if self.quality_paused_auto.load(Ordering::Relaxed) {
+                PausedQuality::Auto
+            } else {
+                PausedQuality::Full
+            },
+            looping: self.looping.load(Ordering::Relaxed),
             source: snap.source(),
         }
     }
@@ -219,6 +235,9 @@ impl Transport {
                 stats: Stats::new(),
                 preview_request: AtomicU64::new(0),
                 use_proxies: AtomicBool::new(true),
+                quality_playing: AtomicU8::new(PlayingQuality::Auto.to_u8()),
+                quality_paused_auto: AtomicBool::new(false),
+                looping: AtomicBool::new(false),
                 render_thread: OnceLock::new(),
                 status_thread: OnceLock::new(),
                 sources,
@@ -431,6 +450,65 @@ impl Transport {
         self.shared.use_proxies.load(Ordering::Relaxed)
     }
 
+    /// Chooses the preview's quality while playing and when stopped
+    /// (`view.set_preview_quality{playing, paused}`, WP-2H.10); `None` keeps a choice. A change
+    /// re-renders the current frame and applies to every frame after it; playback continues
+    /// without a seek.
+    pub fn set_preview_quality(
+        &self,
+        playing: Option<PlayingQuality>,
+        paused: Option<PausedQuality>,
+    ) -> PlaybackState {
+        let mut c = self.lock();
+        let mut changed = false;
+        if let Some(playing) = playing {
+            let v = playing.to_u8();
+            changed |= self.shared.quality_playing.swap(v, Ordering::Relaxed) != v;
+        }
+        if let Some(paused) = paused {
+            let auto = paused == PausedQuality::Auto;
+            changed |= self
+                .shared
+                .quality_paused_auto
+                .swap(auto, Ordering::Relaxed)
+                != auto;
+        }
+        if changed {
+            self.refresh_in(&mut c)
+        } else {
+            self.unchanged(&c)
+        }
+    }
+
+    /// The preview's quality while playing and when stopped.
+    #[must_use]
+    pub fn preview_quality(&self) -> (PlayingQuality, PausedQuality) {
+        let playing = PlayingQuality::from_u8(self.shared.quality_playing.load(Ordering::Relaxed));
+        let paused = if self.shared.quality_paused_auto.load(Ordering::Relaxed) {
+            PausedQuality::Auto
+        } else {
+            PausedQuality::Full
+        };
+        (playing, paused)
+    }
+
+    /// Turns loop playback on or off (`view.set_loop`, WP-2H.10): on, forward playback that
+    /// reaches the end of the content starts again from 0 and plays on (at 1× the sound
+    /// with it); reverse playback still stops at the start. Nothing is rendered again.
+    pub fn set_looping(&self, on: bool) -> PlaybackState {
+        let c = self.lock();
+        self.shared.looping.store(on, Ordering::Relaxed);
+        // The status pump looks again: playback already at the end wraps now.
+        self.shared.wake();
+        self.unchanged(&c)
+    }
+
+    /// Whether playback loops.
+    #[must_use]
+    pub fn looping(&self) -> bool {
+        self.shared.looping.load(Ordering::Relaxed)
+    }
+
     /// Changes the sequence's frame grid or extent (the document changed). While the sequence
     /// plays it refreshes and the playhead is clamped to the new content; while a source plays
     /// the new timing waits for the sequence's return (the source is not interrupted).
@@ -587,7 +665,8 @@ impl Transport {
     }
 
     /// Stops a playback that reached the end (forward) or the start (reverse), unless a newer
-    /// request than `epoch` exists. Returns whether it stopped. Called by the status pump.
+    /// request than `epoch` exists; with loop playback on, forward playback starts again from
+    /// 0 instead. Returns whether it stopped or wrapped. Called by the status pump.
     pub(crate) fn stop_at_boundary(&self, epoch: u64) -> bool {
         let mut c = self.lock();
         let cur = c.snap;
@@ -598,6 +677,18 @@ impl Transport {
         let pos = cur.position(&self.shared.clock.read(), now);
         if !cur.at_boundary(pos) {
             return false;
+        }
+        if cur.rate_milli > 0 && cur.end > 0 && self.shared.looping.load(Ordering::Relaxed) {
+            // Loop: like a seek to the start while playing (1× re-primes the audio there).
+            let mut next = cur;
+            next.anchor = 0;
+            next.anchor_ns = now;
+            if cur.rate().is_some_and(Rate::follows_audio) {
+                next.audio_gen = self.shared.clock.generation();
+                c.audio.seek(Time::ZERO);
+            }
+            self.publish(&mut c, next);
+            return true;
         }
         self.pause_in(&mut c);
         true

@@ -4,13 +4,8 @@
 // menu is a catalog command (`clip.split`, `track.set`...) named by the row itself, so the CLI and
 // MCP have the same call. A row that touches the OS is `host: true` and listed in
 // `host-actions-exempt.json`.
-import type {
-  CollectionId,
-  FolderId,
-  MediaId,
-  PreviewQuality,
-  SelectionRef,
-} from "@cutweave/protocol";
+import type { PlayingQualityChoice } from "@cutweave/preferences";
+import type { CollectionId, FolderId, MediaId, SelectionRef } from "@cutweave/protocol";
 import { engineStore } from "../../engine/engineStore.ts";
 import { exportController } from "../../export/useExport.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -511,10 +506,14 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     run: () => viewStore.getState().setSafeAreas(!viewStore.getState().safeAreas),
   },
   {
-    id: "view.set_preview_quality",
+    id: "view.set_playing_quality",
     label: "contextMenu.item.quality",
+    // The preference `playback.quality_playing` (WP-2H.10); the runtime sends it to the engine.
     run: (args) =>
-      viewStore.getState().setPreviewQuality(arg<{ quality: PreviewQuality }>(args).quality),
+      preferences.set(
+        "playback.quality_playing",
+        arg<{ quality: PlayingQualityChoice }>(args).quality,
+      ),
   },
   {
     id: "source.back",

@@ -1793,3 +1793,271 @@ fn headless_playback_on_the_null_output_publishes_into_the_ring() {
     drop(output);
     drop(handle);
 }
+
+// ----- loop playback and the preview quality the person chose (WP-2H.10) ----------------------
+
+/// One call of a transport command with an access.
+fn view_call(
+    transport: &Transport,
+    name: &str,
+    params: serde_json::Value,
+    access: Access,
+) -> Result<serde_json::Value, CmdError> {
+    let mut registry = Registry::new();
+    register(&mut registry).unwrap();
+    registry.invoke_engine_json(name, params, &mut transport.clone(), access)
+}
+
+#[test]
+fn loop_playback_wraps_at_the_end_until_it_is_turned_off() {
+    let mut h = Harness::new(Setup {
+        secs: 2,
+        ..Setup::default()
+    });
+    assert!(!h.transport.looping(), "off until told otherwise");
+    let s = view_call(
+        &h.transport,
+        "view.set_loop",
+        json!({ "on": true }),
+        Access::UI,
+    )
+    .unwrap();
+    assert_eq!(s["playing"], json!(false));
+    assert!(h.transport.looping());
+
+    // Two seconds of content, played for five from 1 s: it comes round twice and plays on.
+    h.transport.seek(Time::from_flicks(FRAME_30 * 30).unwrap());
+    h.run_ms(200);
+    let cut = h.last_seq();
+    h.transport.play();
+    h.run_ms(5_000);
+    let state = h.transport.state();
+    assert!(state.playing, "{state:?}");
+    assert!((state.rate - 1.0).abs() < f64::EPSILON);
+    let records = h.records_after(cut);
+    assert_never_stale(&records);
+    let frames: Vec<i64> = records.iter().map(|r| r.frame).collect();
+    let wraps: Vec<(i64, i64)> = frames
+        .windows(2)
+        .filter(|w| w[1] < w[0])
+        .map(|w| (w[0], w[1]))
+        .collect();
+    assert_eq!(wraps.len(), 2, "{frames:?}");
+    for (last, first) in &wraps {
+        assert_eq!(
+            *last, 59,
+            "the last frame shows before the wrap: {frames:?}"
+        );
+        assert!(*first <= 1, "playback goes on from the start: {frames:?}");
+    }
+    // Between the wraps every frame, in order.
+    assert!(
+        frames.windows(2).all(|w| w[1] < w[0] || w[1] == w[0] + 1),
+        "{frames:?}"
+    );
+    assert!(state.t < Time::from_flicks(FRAME_30 * 60).unwrap());
+
+    // Off: this pass is the last one, and playback stops at the end.
+    view_call(
+        &h.transport,
+        "view.set_loop",
+        json!({ "on": false }),
+        Access::UI,
+    )
+    .unwrap();
+    h.run_until_stopped(2_100);
+    let state = h.transport.state();
+    assert!(!state.playing);
+    assert_eq!(state.t, Time::from_flicks(FRAME_30 * 60).unwrap());
+
+    // Reverse playback stops at the start, loop or not.
+    h.transport.set_looping(true);
+    h.transport.seek(Time::from_flicks(FRAME_30 * 10).unwrap());
+    h.transport.set_rate(Rate::from_f64(-1.0).unwrap());
+    h.run_until_stopped(1_000);
+    assert_eq!(h.transport.state().t, Time::ZERO);
+
+    // The person's preference: the app's, not an agent's; a view command like the others.
+    let err = view_call(
+        &h.transport,
+        "view.set_loop",
+        json!({ "on": false }),
+        Access::STANDARD,
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "forbidden", "{err}");
+    assert!(h.transport.looping());
+    let mut registry = Registry::new();
+    register(&mut registry).unwrap();
+    let meta = &registry.get("view.set_loop").unwrap().meta;
+    assert!(meta.view && !meta.undoable);
+    assert_eq!(meta.mcp, cutweave_commands::McpExposure::Hidden);
+}
+
+#[test]
+fn a_chosen_playing_quality_holds_its_rung_and_auto_adapts_again() {
+    // Full frames take 50 ms (late at 30 fps), half frames 5 ms, quarter frames 1 ms.
+    // (A render takes virtual time, so these runs last longer than their count says.)
+    let mut h = Harness::new(Setup {
+        secs: 20,
+        cost_ns: [50 * MS, 5 * MS, MS],
+        ..Setup::default()
+    });
+    let set = |h: &Harness, params: serde_json::Value| {
+        view_call(&h.transport, "view.set_preview_quality", params, Access::UI).unwrap()
+    };
+    assert_eq!(
+        h.transport.preview_quality(),
+        (PlayingQuality::Auto, PausedQuality::Full)
+    );
+    h.settle();
+
+    // Half: every playback frame is half size, from the first one, and the state says so.
+    set(&h, json!({ "playing": "half" }));
+    let cut = h.last_seq();
+    h.transport.play();
+    h.run_ms(500);
+    let playing = h.records_after(cut);
+    assert!(playing.len() >= 10, "{}", playing.len());
+    assert!(playing.iter().all(|r| r.quality.scale == Scale::Half));
+    assert_eq!(h.transport.state().quality, FrameQuality::Half);
+    let hints = h.hints.lock().unwrap().clone();
+    assert!(hints.iter().all(|hint| hint.quality.scale == Scale::Half));
+
+    // Changed while playing: the next frames, with no seek and no stop.
+    let before = h.transport.state();
+    let cut = h.last_seq();
+    let s = set(&h, json!({ "playing": "quarter" }));
+    assert_eq!(s["playing"], json!(true));
+    h.run_ms(300);
+    let after = h.transport.state();
+    assert!(after.playing && after.t > before.t);
+    assert!(
+        h.records_after(cut)
+            .iter()
+            .all(|r| r.quality.scale == Scale::Quarter)
+    );
+
+    // Full is held even though every frame is late: frames drop, the rung does not. (The
+    // loop is never idle then, so this runs to the end of the content.)
+    let cut = h.last_seq();
+    let dropped = h.transport.state().dropped;
+    set(&h, json!({ "playing": "full" }));
+    h.run_until_stopped(20_000);
+    let full = h.records_after(cut);
+    assert!(full.len() >= 100, "{}", full.len());
+    // The last one is the stopped frame; every one is full size.
+    assert!(full.iter().all(|r| r.quality.scale == Scale::Full));
+    assert!(h.transport.state().dropped > dropped);
+
+    // Auto again: the ladder, which kept measuring, steps down to hold the frame rate.
+    set(&h, json!({ "playing": "auto" }));
+    h.transport.seek(Time::ZERO);
+    h.run_ms(200);
+    let cut = h.last_seq();
+    h.transport.play();
+    h.run_ms(300);
+    assert!(h.transport.state().playing);
+    let auto = h.records_after(cut);
+    assert!(auto.len() >= 5, "{}", auto.len());
+    assert!(auto.iter().all(|r| r.quality.scale == Scale::Quarter));
+    assert_never_stale(&h.records());
+
+    // The same choice again, or none, changes nothing.
+    let epoch = h.transport.epoch();
+    set(&h, json!({ "playing": "auto" }));
+    set(&h, json!({}));
+    assert_eq!(h.transport.epoch(), epoch);
+
+    // Not an agent's to set, and only the rungs there are.
+    let err = view_call(
+        &h.transport,
+        "view.set_preview_quality",
+        json!({ "playing": "full" }),
+        Access::STANDARD,
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "forbidden", "{err}");
+    let err = view_call(
+        &h.transport,
+        "view.set_preview_quality",
+        json!({ "playing": "eighth" }),
+        Access::UI,
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "invalid", "{err}");
+}
+
+#[test]
+fn the_paused_frame_is_full_or_stays_at_the_playing_quality() {
+    let mut h = Harness::new(Setup::default());
+    let set = |h: &Harness, params: serde_json::Value| {
+        view_call(&h.transport, "view.set_preview_quality", params, Access::UI).unwrap()
+    };
+    set(&h, json!({ "playing": "half" }));
+    h.transport.play();
+    h.run_ms(300);
+
+    // Full (the default): pausing refines the frame to full size.
+    h.transport.pause();
+    h.run_ms(50);
+    let paused = h.records().last().unwrap().clone();
+    assert_eq!(paused.quality.scale, Scale::Full);
+    assert!(!paused.lowres);
+    assert_eq!(h.transport.state().state, TransportMode::Stopped);
+
+    // Auto: the frame on screen is rendered again at the playing quality, and a pause after
+    // playback keeps the frame playback showed.
+    let cut = h.last_seq();
+    set(&h, json!({ "paused": "auto" }));
+    h.run_ms(50);
+    let again = h.records_after(cut);
+    assert_eq!(again.len(), 1, "{again:?}");
+    assert_eq!(again[0].frame, paused.frame);
+    assert_eq!(again[0].quality.scale, Scale::Half);
+    h.transport.play();
+    h.run_ms(300);
+    let cut = h.last_seq();
+    h.transport.pause();
+    h.run_ms(200);
+    let after_pause = h.records_after(cut);
+    assert!(
+        after_pause.iter().all(|r| r.quality.scale == Scale::Half),
+        "{after_pause:?}"
+    );
+    assert_eq!(h.transport.state().quality, FrameQuality::Half);
+    assert_eq!(h.transport.state().state, TransportMode::Stopped);
+
+    // A scrub shows the quick quarter frame, then settles at half.
+    let cut = h.last_seq();
+    h.transport.seek(Time::from_flicks(FRAME_30 * 100).unwrap());
+    h.run_ms(300);
+    let scrub = h.records_after(cut);
+    assert_eq!(scrub.len(), 2, "{scrub:?}");
+    assert!(scrub[0].lowres && scrub[0].quality.scale == Scale::Quarter);
+    assert!(!scrub[1].lowres && scrub[1].quality.scale == Scale::Half);
+    assert_eq!(h.transport.state().state, TransportMode::Stopped);
+    // Playing at quarter, a scrub's quick frame is already the frame to stay on.
+    set(&h, json!({ "playing": "quarter" }));
+    h.run_ms(50);
+    let cut = h.last_seq();
+    h.transport.seek(Time::from_flicks(FRAME_30 * 50).unwrap());
+    h.run_ms(300);
+    let scrub = h.records_after(cut);
+    assert_eq!(scrub.len(), 1, "{scrub:?}");
+    assert!(!scrub[0].lowres && scrub[0].quality.scale == Scale::Quarter);
+    assert_eq!(h.transport.state().state, TransportMode::Stopped);
+
+    // Full again: the frame on screen refines.
+    let cut = h.last_seq();
+    set(&h, json!({ "paused": "full" }));
+    h.run_ms(50);
+    let refined = h.records_after(cut);
+    assert_eq!(refined.len(), 1);
+    assert_eq!(refined[0].quality.scale, Scale::Full);
+    assert_eq!(
+        h.transport.preview_quality(),
+        (PlayingQuality::Quarter, PausedQuality::Full)
+    );
+    assert_never_stale(&h.records());
+}

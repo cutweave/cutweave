@@ -4,6 +4,7 @@
 import { useEffect } from "react";
 import { engineStore } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { prefsStore } from "../prefs/prefsStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { playbackStore } from "../state/playbackStore.ts";
 import { toastStore } from "../state/toastStore.ts";
@@ -20,6 +21,8 @@ export function transportController(): TransportController {
     playback: playbackStore,
     view: viewStore,
     doc: docStore,
+    // Settings > Playback (WP-2H.10): read at each stop, so a change applies at once.
+    returnToStart: () => prefsStore.getState().values["playback.return_to_start"],
     onUnsupported: () =>
       toastStore.getState().push({
         tone: "info",

@@ -234,6 +234,7 @@ export function startEngineRuntime(
       await sendHistoryLimit();
       await sendMachineSettings();
       await sendPreviewQuality();
+      await sendLoop();
     }
     // The preview frame ring of this engine launch (WP-1M.04); `null` when it publishes none.
     stores.engine.setState({ previewRing: parseRingAnnouncement(hello.shm) });
@@ -301,9 +302,10 @@ export function startEngineRuntime(
 
   /**
    * Tells the engine whether the preview uses proxies (`view.set_preview_quality`, WP-2F.02;
-   * the transport bar's toggle, preference `playback.proxies`). The answer is the playback
-   * state, which says what the frame on screen shows now. An engine without a transport has
-   * nothing to set.
+   * the transport bar's toggle, preference `playback.proxies`) and its quality while playing
+   * and when paused (WP-2H.10: `playback.quality_playing`, `playback.quality_paused`). The
+   * answer is the playback state, which says what the frame on screen shows now. An engine
+   * without a transport has nothing to set.
    */
   async function sendPreviewQuality(): Promise<void> {
     const values = stores.prefs?.getState().values;
@@ -316,10 +318,31 @@ export function startEngineRuntime(
     try {
       const state = await call("view.set_preview_quality", {
         use_proxies: values["playback.proxies"],
+        playing: values["playback.quality_playing"],
+        paused: values["playback.quality_paused"],
       });
       stores.playback.getState().applyState(state);
     } catch (error) {
       // No transport (an engine without playback, or no document yet): nothing to set.
+      const quiet =
+        error instanceof RpcError && (error.code === "not_found" || error.code === "unsupported");
+      if (!quiet) onError(error);
+    }
+  }
+
+  /** Tells the engine whether playback loops (`view.set_loop`, WP-2H.10; `playback.loop`). */
+  async function sendLoop(): Promise<void> {
+    const values = stores.prefs?.getState().values;
+    if (values === undefined) return;
+    const call = rpc.call.bind(rpc) as unknown as (
+      method: string,
+      params: Record<string, unknown>,
+    ) => Promise<unknown>;
+    try {
+      const state = await call("view.set_loop", { on: values["playback.loop"] });
+      stores.playback.getState().applyState(state);
+    } catch (error) {
+      // No transport (an engine without playback): nothing to set.
       const quiet =
         error instanceof RpcError && (error.code === "not_found" || error.code === "unsupported");
       if (!quiet) onError(error);
@@ -453,11 +476,17 @@ export function startEngineRuntime(
           state.values["media.proxy_size"] !== previous.values["media.proxy_size"] ||
           state.values["performance.proxy_jobs"] !== previous.values["performance.proxy_jobs"];
         if (machineChanged && connection.state === "ready") void sendMachineSettings();
+        const qualityChanged =
+          state.values["playback.proxies"] !== previous.values["playback.proxies"] ||
+          state.values["playback.quality_playing"] !==
+            previous.values["playback.quality_playing"] ||
+          state.values["playback.quality_paused"] !== previous.values["playback.quality_paused"];
+        if (qualityChanged && connection.state === "ready") void sendPreviewQuality();
         if (
-          state.values["playback.proxies"] !== previous.values["playback.proxies"] &&
+          state.values["playback.loop"] !== previous.values["playback.loop"] &&
           connection.state === "ready"
         ) {
-          void sendPreviewQuality();
+          void sendLoop();
         }
       }),
     );

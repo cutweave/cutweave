@@ -422,9 +422,14 @@ fn the_toggle_turns_the_previews_proxies_off_and_a_new_or_deleted_proxy_swaps_at
     call(
         &r.ui,
         "view.set_preview_quality",
-        json!({ "use_proxies": false }),
+        json!({ "use_proxies": false, "playing": "half", "paused": "auto" }),
     )
     .unwrap();
+    // So are the preview quality and loop playback (WP-2H.10), which an agent cannot set.
+    let looping = call(&r.ui, "view.set_loop", json!({ "on": true })).unwrap();
+    assert_eq!(looping["looping"], json!(true), "{looping}");
+    let refused = call(&r.agent, "view.set_loop", json!({ "on": false })).unwrap_err();
+    assert_eq!(refused.code(), "forbidden", "{refused}");
     let closed = call(&r.ui, "project.close", json!({ "save": false })).unwrap();
     assert_eq!(
         closed["project"]["rev"],
@@ -435,6 +440,9 @@ fn the_toggle_turns_the_previews_proxies_off_and_a_new_or_deleted_proxy_swaps_at
         call(&r.ui, "view.set_preview_quality", json!({})).ok()
     });
     assert_eq!(state["use_proxies"], json!(false), "{state}");
+    assert_eq!(state["playing_quality"], json!("half"), "{state}");
+    assert_eq!(state["paused_quality"], json!("auto"), "{state}");
+    assert_eq!(state["looping"], json!(true), "{state}");
     drop((r.ui, r.agent));
     r.engine.shutdown();
 }

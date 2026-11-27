@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Mirrors the persisted part of `viewStore` to the engine (`view.set`, debounced) and restores
-// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout, preview
-// quality. `view.*` commands never touch the document and are not undoable.
+// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout. The preview
+// quality is a preference, not part of it (WP-2H.10). `view.*` commands never touch the document
+// and are not undoable.
 
 import type { RpcClient, SelectionRef, UiState, ViewPatch } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
@@ -43,7 +44,6 @@ function mirrored(state: ViewStore): Mirrored {
     zoom: state.zoom,
     scroll: state.scroll,
     selection: state.selection,
-    previewQuality: state.previewQuality,
     panel: { workspaceId: state.workspaceId, aspect: state.aspect, layouts: state.layouts },
   };
 }
@@ -61,9 +61,6 @@ export function diffView(sent: Mirrored | null, now: Mirrored): ViewPatch | null
   }
   if (sent === null || !sameSelection(sent.selection, now.selection)) {
     patch.selection = [...now.selection];
-  }
-  if (sent === null || sent.previewQuality !== now.previewQuality) {
-    patch.preview_quality = now.previewQuality;
   }
   if (
     sent === null ||
@@ -163,7 +160,6 @@ export class ViewSync {
           state.zoom !== previous.zoom ||
           state.scroll !== previous.scroll ||
           state.selection !== previous.selection ||
-          state.previewQuality !== previous.previewQuality ||
           state.workspaceId !== previous.workspaceId ||
           state.aspect !== previous.aspect ||
           state.layouts !== previous.layouts

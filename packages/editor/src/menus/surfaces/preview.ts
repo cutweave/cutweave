@@ -6,7 +6,8 @@
 // The grid, center cross and zoom choices are the preview bar's Guides menu (WP-2H.06).
 // TODO(WP-2A.14): the Source view's
 // Insert, Overwrite and marks.
-import type { PreviewQuality } from "@cutweave/protocol";
+import { PLAYING_QUALITIES, type PlayingQualityChoice } from "@cutweave/preferences";
+import type { TKey } from "../../i18n/index.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { flipArgs, placeArgs } from "../../preview/overlays/placement.ts";
 import { docStore } from "../../state/docStore.ts";
@@ -30,28 +31,30 @@ const playRow = (group: string, order: number): MenuRow => ({
   reason: "contextMenu.reason.noEngine",
 });
 
-const QUALITIES: readonly PreviewQuality[] = ["full", "half", "quarter"];
+const QUALITY_LABELS: Readonly<Record<PlayingQualityChoice, TKey>> = {
+  auto: "transport.quality.auto",
+  full: "transport.quality.full",
+  half: "transport.quality.half",
+  quarter: "transport.quality.quarter",
+};
 
-const qualityRow = (quality: PreviewQuality, order: number, group = "quality"): MenuRow => ({
+/**
+ * One choice of the preview's quality while playing: the preference `playback.quality_playing`
+ * (WP-2H.10), the same value as its row in Settings > Playback.
+ */
+const qualityRow = (quality: PlayingQualityChoice, order: number, group = "quality"): MenuRow => ({
   id: `quality-${quality}`,
-  command: "view.set_preview_quality",
+  command: "view.set_playing_quality",
   group,
   order,
   radio: true,
-  label: {
-    key:
-      quality === "full"
-        ? "transport.quality.full"
-        : quality === "half"
-          ? "transport.quality.half"
-          : "transport.quality.quarter",
-  },
-  checked: () => viewStore.getState().previewQuality === quality,
+  label: { key: QUALITY_LABELS[quality] },
+  checked: () => prefsStore.getState().values["playback.quality_playing"] === quality,
   args: () => ({ quality }),
 });
 
 const qualityRows = (group?: string): MenuRow[] =>
-  QUALITIES.map((quality, order) => qualityRow(quality, order, group));
+  PLAYING_QUALITIES.map((quality, order) => qualityRow(quality, order, group));
 
 /** The timecode the transport shows now: the source's own while one plays, else the timeline's. */
 export function shownTimecode(): string {
