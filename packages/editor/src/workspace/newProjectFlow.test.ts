@@ -110,4 +110,41 @@ describe("a new project takes the still image duration from Settings (WP-2F.05b)
     expect(await newProject()).toBe(true);
     expect(sent.map((p) => p.proxy_policy)).toEqual(["off", "all"]);
   });
+
+  it("passes the format saved with Use as defaults for new projects to project.new (#221)", async () => {
+    const sent: { format?: unknown; settings?: unknown }[] = [];
+    engine.answer("project.new", (params: unknown) => {
+      sent.push(params as { settings?: unknown });
+      return { project: status() };
+    });
+    // Not set: the engine's own format applies.
+    expect(await newProject()).toBe(true);
+    prefsStore.setState({
+      values: {
+        ...defaultPreferences(),
+        "editing.sequence_format": "1080x1920 30000/1001 44100 rec709 #101010",
+      },
+    });
+    expect(await newProject()).toBe(true);
+    // A value that is not a format is as good as not set.
+    prefsStore.setState({
+      values: { ...defaultPreferences(), "editing.sequence_format": "99999x1 30/1 48000 x #000000" },
+    });
+    expect(await newProject()).toBe(true);
+    expect(sent.map((p) => p.settings)).toEqual([
+      undefined,
+      {
+        default_format: {
+          width: 1080,
+          height: 1920,
+          frame_rate: { num: 30000, den: 1001 },
+          sample_rate: 44100,
+          color_space: "rec709",
+          background: "#101010",
+        },
+      },
+      undefined,
+    ]);
+    expect(sent.every((p) => !("format" in p))).toBe(true);
+  });
 });

@@ -12,6 +12,7 @@ import {
   STILL_DURATION_MAX,
 } from "@cutweave/preferences";
 import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
+import { formatWords, parseFormatPreference } from "../project/newSequenceFormat.ts";
 import { type ChoiceOption, registerSettingsPage, type SettingsPageDef } from "./registry.ts";
 import { registerShortcutsPage } from "./shortcuts.tsx";
 
@@ -162,6 +163,28 @@ const editingPage: SettingsPageDef = {
         min: 1,
         max: STILL_DURATION_MAX,
         unit: "settings.rows.stillDuration.unit",
+      },
+    },
+    // The format new projects start with (#221): File > Project settings… > "Use as defaults
+    // for new projects" sets it; this row says what it is and puts Cutweave's own back.
+    {
+      id: "editing.sequence_format",
+      key: "editing.sequence_format",
+      label: "settings.rows.sequenceFormat.label",
+      description: "settings.rows.sequenceFormat.description",
+      keywords: "settings.rows.sequenceFormat.keywords",
+      noRowReset: true,
+      control: {
+        kind: "action",
+        label: "settings.rows.sequenceFormat.button",
+        run: (ctx) => ctx.client.reset(["editing.sequence_format"]),
+        disabled: (ctx) => ctx.values["editing.sequence_format"] === "",
+        status: (ctx) => {
+          const format = parseFormatPreference(ctx.values["editing.sequence_format"]);
+          return format === null
+            ? ctx.t("settings.rows.sequenceFormat.none")
+            : formatWords(format, ctx.t);
+        },
       },
     },
   ],

@@ -164,6 +164,12 @@ export interface PreferenceValues {
   // Editing (WP-2F.05b, ADR-0035)
   /** Seconds a still image gets in new projects when it is placed without a length. */
   "editing.still_duration": number;
+  /**
+   * The format new projects start with (#221), written by File > Project settings… > "Use as
+   * defaults for new projects": `1080x1920 30000/1001 44100 rec709 #000000` (see
+   * {@link SEQUENCE_FORMAT_LINE}). `""` is "not set": the engine's own format applies.
+   */
+  "editing.sequence_format": string;
   // Media and import (WP-1M.14)
   /** Show a video's frames while the pointer moves across its card in the bin. */
   "media.hover_scrub": boolean;
@@ -242,6 +248,13 @@ const MAX_RECORD_VALUE = 64;
 const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/;
 /** A file name pattern: no folder separator and nothing else a file name cannot hold. */
 const FILE_NAME_PATTERN = /^[^\\/:*?"<>|]+$/;
+
+/**
+ * A sequence format on one line: width x height, frame rate as num/den, audio sample rate in
+ * Hz, color space, background (`#rrggbb` or `#rrggbbaa`). The groups are in that order.
+ */
+export const SEQUENCE_FORMAT_LINE =
+  /^(\d{1,5})x(\d{1,5}) (\d{1,6})\/(\d{1,6}) (\d{4,6}) ([a-z][a-z0-9_-]{0,31}) (#[0-9a-f]{6}(?:[0-9a-f]{2})?)$/;
 
 export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "general.startup": { type: "enum", scope: "app", options: STARTUP_CHOICES, default: "empty" },
@@ -334,6 +347,14 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     min: 1,
     max: STILL_DURATION_MAX,
     default: 5,
+  },
+  // The format of new projects (#221): set from File > Project settings….
+  "editing.sequence_format": {
+    type: "text",
+    scope: "app",
+    default: "",
+    max: 64,
+    pattern: SEQUENCE_FORMAT_LINE,
   },
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
