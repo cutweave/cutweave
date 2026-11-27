@@ -19,7 +19,7 @@ import { EMPTY_KEY_SELECTION, laneGroups } from "./keyframes.ts";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const FOLDER = join(ROOT, "testdata", "bench-projects", "P-5K");
 const DOCUMENT = existsSync(FOLDER)
-  ? readdirSync(FOLDER).find((name) => name.endsWith(".cutweave"))
+  ? readdirSync(FOLDER).find((name) => name.endsWith(".cutweave") && name !== ".cutweave")
   : undefined;
 
 /** Token stand-ins: nothing is drawn, only the sizes matter. */
