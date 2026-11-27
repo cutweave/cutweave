@@ -1,6 +1,6 @@
 # ADR-0037: Let the caller say whether a new sequence's main track is magnetic
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-27)
 - **Date:** 2026-11-27
 - **Deciders:** Product owner
 - **Supersedes:** none
@@ -37,7 +37,7 @@ Option 3 changes behaviour for every client at once and is rejected. Option 2 is
 
 ## Decision
 
-Not decided here.
+Accepted by the product owner on 2026-11-27: the preference stays (new sequences made in the app start with a magnetic main track, default on), through option 1, an optional `main_magnetic` parameter on `project.new` and `sequence.create`; absent keeps today's behaviour (off). Built under issue #240.
 
 **Decided by:** the product owner, on two questions:
 
@@ -46,7 +46,7 @@ Not decided here.
 
 **Pass criteria for the follow-up work package** (either option): a unit test that a sequence created with the value on has a magnetic `V1` and with it off has none, as one history entry; the parity test covers the new parameter (option 1); flow F25 gains "turn the preference off, create a project: the main track is not magnetic"; every timeline flow that assumes a free main track on a new project either turns the preference off first or is rewritten for the magnetic track.
 
-**Until then:** there is no preference key and no row in Settings > Timeline; the catalog lists the row as waiting on this ADR. `project.new` and `sequence.create` are unchanged.
+**Until #240 lands:** there is no preference key and no row in Settings > Timeline; the catalog lists the row as waiting on this ADR. `project.new` and `sequence.create` are unchanged.
 
 ## Consequences
 
