@@ -161,6 +161,10 @@ export interface PreferenceValues {
   "performance.proxy_jobs": (typeof PROXY_JOB_CHOICES)[number];
   /** Notifications (WP-1J.05): a toast when an agent connects or disconnects. */
   "notify.agent_connected": boolean;
+  /** Notifications (WP-2G.04b): an OS notification when an export ends in the background. */
+  "notify.export_done": boolean;
+  /** Notifications (WP-2G.04b): a short sound when an export ends. */
+  "notify.sound": boolean;
   /**
    * Agents and MCP (WP-1J.05): folders agents may use besides the open project's, as main
    * stored them (resolved, absolute). This computer's: never exported or imported, and only
@@ -348,6 +352,8 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   },
   // Notifications and Agents and MCP (WP-1J.05).
   "notify.agent_connected": { type: "boolean", scope: "app", default: true },
+  "notify.export_done": { type: "boolean", scope: "app", default: true },
+  "notify.sound": { type: "boolean", scope: "app", default: false },
   "agents.allowed_folders": {
     type: "paths",
     scope: "machine",

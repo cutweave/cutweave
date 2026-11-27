@@ -29,6 +29,8 @@ const handlers = (): InvokeHandlers => ({
   "dialog:pickMediaFolders": vi.fn(() => null),
   "dialog:chooseExportFile": vi.fn(() => null),
   "shell:showItemInFolder": vi.fn(),
+  "shell:openFile": vi.fn(async () => undefined),
+  "notify:exportFinished": vi.fn(() => false),
   "shell:openExternal": vi.fn(async () => undefined),
   "app:about": () => ({
     name: "Cutweave",
@@ -266,6 +268,33 @@ describe("ipc registry", () => {
     );
     call("dialog:chooseExportFile", okEvent, "C:/p/film.mp4");
     expect(h["dialog:chooseExportFile"]).toHaveBeenCalledWith("C:/p/film.mp4");
+    // The preset's file type (WP-2G.04b): a container the engine writes, nothing else.
+    call("dialog:chooseExportFile", okEvent, "C:/p/film.mov", "mov");
+    expect(h["dialog:chooseExportFile"]).toHaveBeenLastCalledWith("C:/p/film.mov", "mov");
+    expect(() => call("dialog:chooseExportFile", okEvent, "a.exe", "exe")).toThrow(
+      IpcValidationError,
+    );
+
+    expect(() => call("shell:openFile", okEvent)).toThrow(IpcValidationError);
+    expect(() => call("shell:openFile", okEvent, 7)).toThrow(IpcValidationError);
+    expect(() => call("shell:openFile", okEvent, "a\0b.mp4")).toThrow(/NUL/);
+    call("shell:openFile", okEvent, "C:/p/film.mp4");
+    expect(h["shell:openFile"]).toHaveBeenCalledWith("C:/p/film.mp4");
+
+    const notice = { title: "Export complete", body: "film.mp4" };
+    expect(() => call("notify:exportFinished", okEvent)).toThrow(IpcValidationError);
+    expect(() => call("notify:exportFinished", okEvent, "done")).toThrow(IpcValidationError);
+    expect(() => call("notify:exportFinished", okEvent, { ...notice, title: "" })).toThrow(
+      IpcValidationError,
+    );
+    expect(() =>
+      call("notify:exportFinished", okEvent, { ...notice, body: "x".repeat(401) }),
+    ).toThrow(IpcValidationError);
+    expect(() => call("notify:exportFinished", okEvent, { ...notice, icon: "C:/x.png" })).toThrow(
+      IpcValidationError,
+    );
+    call("notify:exportFinished", okEvent, notice);
+    expect(h["notify:exportFinished"]).toHaveBeenCalledWith(notice);
   });
 
   it("takes no arguments on the title bar's app and window actions (WP-1M.09)", () => {

@@ -144,7 +144,10 @@ describe("presetFromDraft", () => {
 
   it("leaves a platform preset's platform out and keeps its limits", () => {
     const saved = presetFromDraft(
-      draft({ base: { ...preset("instagram-reels"), safe_area: "instagram-reels" }, quality: null }),
+      draft({
+        base: { ...preset("instagram-reels"), safe_area: "instagram-reels" },
+        quality: null,
+      }),
     );
     expect(saved.platform).toBeUndefined();
     expect(saved.safe_area).toBeUndefined();

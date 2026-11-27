@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import {
-  type ExportPresetSpec,
-  type JobInfo,
-  type Project,
-  RpcError,
-} from "@cutweave/protocol";
+import { type ExportPresetSpec, type JobInfo, type Project, RpcError } from "@cutweave/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createEngineStore } from "../engine/engineStore.ts";
 import { PreferencesClient } from "../prefs/prefsStore.ts";
@@ -492,9 +487,7 @@ describe("ExportController: presets of the person's", () => {
 
   it("says why the engine refused a preset, and at which field", async () => {
     const { controller, call } = setup();
-    call.mockRejectedValue(
-      new RpcError("invalid", "the name must be 1..=80 characters", "/name"),
-    );
+    call.mockRejectedValue(new RpcError("invalid", "the name must be 1..=80 characters", "/name"));
     expect(await controller.savePreset(mine)).toEqual({
       ok: false,
       message: "the name must be 1..=80 characters",

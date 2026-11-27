@@ -593,7 +593,7 @@ describe("ExportDialog: presets of your own (WP-2G.04b)", () => {
         "The preset was not saved: at most 200 user presets; delete one first",
       ),
     ).toBeTruthy();
-    expect((lastCall("export.save_preset")?.preset as ExportPresetSpec).id).toBe("my-review");
+    expect(lastCall("export.save_preset")?.preset).toMatchObject({ id: "my-review" });
     // Don't save: the row closes and nothing else changed.
     await user.click(within(dialog).getByRole("button", { name: "Don’t save the preset" }));
     expect(within(dialog).queryByLabelText("Preset name")).toBeNull();

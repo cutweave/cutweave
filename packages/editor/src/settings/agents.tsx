@@ -373,6 +373,23 @@ const notifications: SettingsPageDef = {
       keywords: "settings.rows.agentNotices.keywords",
       control: { kind: "switch" },
     },
+    // Exports (WP-2G.04b): main shows the OS notification, the editor plays the sound.
+    {
+      id: "notify.export_done",
+      key: "notify.export_done",
+      label: "settings.rows.exportDone.label",
+      description: "settings.rows.exportDone.description",
+      keywords: "settings.rows.exportDone.keywords",
+      control: { kind: "switch" },
+    },
+    {
+      id: "notify.sound",
+      key: "notify.sound",
+      label: "settings.rows.exportSound.label",
+      description: "settings.rows.exportSound.description",
+      keywords: "settings.rows.exportSound.keywords",
+      control: { kind: "switch" },
+    },
   ],
 };
 

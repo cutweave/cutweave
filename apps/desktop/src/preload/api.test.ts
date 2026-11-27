@@ -32,6 +32,7 @@ describe("createCutweaveApi", () => {
       "engine",
       "files",
       "menu",
+      "notify",
       "prefs",
       "preview",
       "recent",
@@ -77,6 +78,18 @@ describe("createCutweaveApi", () => {
     const { ipc } = fakeIpc();
     await createCutweaveApi(ipc, null).dialog.chooseExportFile("C:/p/film.mp4");
     expect(ipc.invoke).toHaveBeenCalledWith("dialog:chooseExportFile", "C:/p/film.mp4");
+    await createCutweaveApi(ipc, null).dialog.chooseExportFile("C:/p/film.mov", "mov");
+    expect(ipc.invoke).toHaveBeenLastCalledWith("dialog:chooseExportFile", "C:/p/film.mov", "mov");
+  });
+
+  it("opens an exported file and announces a finished export over fixed channels", async () => {
+    const { ipc } = fakeIpc();
+    const api = createCutweaveApi(ipc, null);
+    await api.shell.openFile("C:/p/film.mp4");
+    expect(ipc.invoke).toHaveBeenLastCalledWith("shell:openFile", "C:/p/film.mp4");
+    const notice = { title: "Export complete", body: "film.mp4" };
+    await api.notify.exportFinished(notice);
+    expect(ipc.invoke).toHaveBeenLastCalledWith("notify:exportFinished", notice);
   });
 
   it("resolves a dropped File to its path through Electron, and to nothing otherwise", () => {

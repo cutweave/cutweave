@@ -142,6 +142,22 @@ export type PrefsImportResult =
 export const APP_FOLDERS = ["settings", "logs"] as const;
 export type AppFolder = (typeof APP_FOLDERS)[number];
 
+/**
+ * The file types an export writes (the engine's containers, WP-2G.04b): the save dialog offers
+ * the preset's, and "Open file" opens only files of these types.
+ */
+export const EXPORT_CONTAINERS = ["mp4", "mov", "gif", "wav", "mp3", "m4a", "flac", "ogg"] as const;
+export type ExportContainer = (typeof EXPORT_CONTAINERS)[number];
+
+/** What the OS notification of a finished export says: plain text, written by the editor. */
+export interface ExportNotice {
+  readonly title: string;
+  readonly body: string;
+}
+/** The longest title and body of an {@link ExportNotice}. */
+export const MAX_NOTICE_TITLE = 120;
+export const MAX_NOTICE_BODY = 400;
+
 /** The agent hosts Settings > Agents and MCP has a copyable setup for (WP-1J.05). */
 export const AGENT_CLIENTS = ["claude-code", "claude-desktop", "cursor", "codex", "stdio"] as const;
 export type AgentClient = (typeof AGENT_CLIENTS)[number];
@@ -412,10 +428,11 @@ export interface CutweaveApi {
      */
     pickMediaFolders(): Promise<string[] | null>;
     /**
-     * Native "save as" for the exported video (WP-1M.08), starting at `defaultPath` (a full path
-     * or a file name). Resolves to the chosen absolute `.mp4` path, or null when cancelled.
+     * Native "save as" for the exported file (WP-1M.08), starting at `defaultPath` (a full path
+     * or a file name) and offering the file type of `container` (MP4 when left out, WP-2G.04b).
+     * Resolves to the chosen absolute path with that type's extension, or null when cancelled.
      */
-    chooseExportFile(defaultPath: string): Promise<string | null>;
+    chooseExportFile(defaultPath: string, container?: ExportContainer): Promise<string | null>;
   };
   readonly files: {
     /**
@@ -493,10 +510,24 @@ export interface CutweaveApi {
     /** Puts this client's setup on the clipboard (main builds it); resolves to the text. */
     copySetup(client: AgentClient): Promise<string>;
   };
+  readonly notify: {
+    /**
+     * An export finished: main shows an OS notification when the person asked for one
+     * (Settings > Notifications, `notify.export_done`) and Cutweave is in the background.
+     * Resolves to whether it was shown. Clicking it brings the window back.
+     */
+    exportFinished(notice: ExportNotice): Promise<boolean>;
+  };
   readonly shell: {
     /** "Open settings folder" and "Open logs folder": shows one of the app's own folders. */
     openAppFolder(which: AppFolder): Promise<void>;
     showItemInFolder(path: string): Promise<void>;
+    /**
+     * Opens an exported file with the OS's app for it ("Open file" on a finished export,
+     * WP-2G.04b). Main opens only absolute paths of an export file type (`EXPORT_CONTAINERS`);
+     * rejects when the path is not one or the OS could not open it.
+     */
+    openFile(path: string): Promise<void>;
     /**
      * Open an `https:` link in the OS browser. Main re-validates the URL (https only, no
      * credentials); the app itself never navigates away from `app://cutweave`.

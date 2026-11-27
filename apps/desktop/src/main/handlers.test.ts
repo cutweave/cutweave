@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it, vi } from "vitest";
+import { EXPORT_CONTAINERS } from "../shared/api.ts";
 import {
   createHandlers,
   DevOnlyError,
+  exportFileFilters,
   MAX_MEDIA_PATHS,
   MAX_SETTINGS_FILE_BYTES,
   MEDIA_FILE_FILTERS,
   validExportPath,
   validMediaPaths,
+  validOpenFilePath,
   validSettingsExportPath,
 } from "./handlers.ts";
 
@@ -22,9 +25,11 @@ describe("createHandlers", () => {
     chooseMediaFiles: vi.fn(async (): Promise<readonly string[] | null> => ["/m/a.mp4"]),
     chooseMediaFolders: vi.fn(async (): Promise<readonly string[] | null> => ["/m/Shoot"]),
     chooseExportFile: vi.fn(
-      async (_defaultPath: string): Promise<string | null> => "/out/film.mp4",
+      async (_defaultPath: string, _container: string): Promise<string | null> => "/out/film.mp4",
     ),
     showItemInFolder: vi.fn(),
+    openFile: vi.fn(async (_path: string): Promise<string> => ""),
+    notifyExportFinished: vi.fn((_notice: { title: string; body: string }) => true),
     openExternal: vi.fn(async () => {}),
     about: () => ({
       name: "Cutweave",
@@ -234,7 +239,7 @@ describe("createHandlers", () => {
   it("answers the export picker with one absolute .mp4 path, or null when cancelled", async () => {
     const h = createHandlers({ ...base, engineCredentials: () => null });
     expect(await h["dialog:chooseExportFile"]("/p/film.mp4")).toBe("/out/film.mp4");
-    expect(base.chooseExportFile).toHaveBeenCalledWith("/p/film.mp4");
+    expect(base.chooseExportFile).toHaveBeenCalledWith("/p/film.mp4", "mp4");
     base.chooseExportFile.mockResolvedValueOnce("/out/film");
     expect(await h["dialog:chooseExportFile"]("film.mp4")).toBe("/out/film.mp4");
     base.chooseExportFile.mockResolvedValueOnce(null);
@@ -295,6 +300,43 @@ describe("createHandlers", () => {
     expect(base.prefs.set).toHaveBeenCalledWith("appearance.theme", "light");
     expect(base.prefs.reset).toHaveBeenCalledWith(["saving.autosave"]);
     expect(base.openAppFolder).toHaveBeenCalledWith("settings");
+  });
+
+  it("offers the preset's file type in the export save dialog and keeps its extension", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    base.chooseExportFile.mockResolvedValueOnce("/out/film");
+    expect(await h["dialog:chooseExportFile"]("/p/film.mov", "mov")).toBe("/out/film.mov");
+    expect(base.chooseExportFile).toHaveBeenLastCalledWith("/p/film.mov", "mov");
+    base.chooseExportFile.mockResolvedValueOnce("/out/Film.MOV");
+    expect(await h["dialog:chooseExportFile"]("/p/film.mov", "mov")).toBe("/out/Film.MOV");
+    expect(exportFileFilters("mov")).toEqual([{ name: "QuickTime movie", extensions: ["mov"] }]);
+    expect(exportFileFilters("mp4")).toEqual([{ name: "MP4 video", extensions: ["mp4"] }]);
+    for (const container of EXPORT_CONTAINERS) {
+      expect(exportFileFilters(container)[0]?.extensions).toEqual([container]);
+      expect(validExportPath("/out/a", container)).toBe(`/out/a.${container}`);
+    }
+  });
+
+  it("opens only exported files, and says when the OS could not", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    await h["shell:openFile"]("/out/film.mp4");
+    expect(base.openFile).toHaveBeenCalledWith("/out/film.mp4");
+    base.openFile.mockClear();
+    for (const bad of ["/out/run.exe", "/out/film", "film.mp4", "/out/script.mp4.bat", ""]) {
+      await expect(h["shell:openFile"](bad), bad).rejects.toThrow(/not an export/);
+    }
+    expect(base.openFile).not.toHaveBeenCalled();
+    expect(validOpenFilePath("/out/Film.MOV")).toBe("/out/Film.MOV");
+    expect(validOpenFilePath(7)).toBeNull();
+    base.openFile.mockResolvedValueOnce("No application is associated with this file");
+    await expect(h["shell:openFile"]("/out/film.mp4")).rejects.toThrow(/No application/);
+  });
+
+  it("hands a finished export's notice to main's notifier", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    const notice = { title: "Export complete", body: "film.mp4" };
+    expect(await h["notify:exportFinished"](notice)).toBe(true);
+    expect(base.notifyExportFinished).toHaveBeenCalledWith(notice);
   });
 
   it("caps the picked files at the engine's limit of one call", () => {

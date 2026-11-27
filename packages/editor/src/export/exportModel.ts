@@ -242,7 +242,11 @@ export function clockText(seconds: number): string {
 }
 
 /** The x264 quality each choice means (the engine's mapping of `quality`). */
-export const QUALITY_CRF: Readonly<Record<ExportQuality, number>> = { low: 28, medium: 23, high: 20 };
+export const QUALITY_CRF: Readonly<Record<ExportQuality, number>> = {
+  low: 28,
+  medium: 23,
+  high: 20,
+};
 
 /** The quality choice nearest a preset's CRF: 20 and below High, to 23 Medium, else Low. */
 export function qualityOfCrf(crf: number): ExportQuality {
