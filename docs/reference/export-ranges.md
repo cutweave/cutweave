@@ -56,3 +56,18 @@ its quality, plus 192 kbit/s audio, plus 5 % for the container) and compared wit
 of its drive; the files of one call on the same drive count together. Too little room is `Invalid`
 at `/path`, saying what is needed and what is free. The estimate is an upper-end guess for
 typical footage. When the system cannot report the free space the check is skipped.
+
+## Missing media (`allow_offline`)
+
+An export that would play a media file that is not on this computer (moved, renamed, deleted, a
+drive that is not connected) is refused before anything is queued: `Invalid` at `/media/<id>`,
+the id of the first such asset (its key in the project's `media` map, not a field of the
+params), with a message that says how many files are missing and names them. Only the enabled
+clips that overlap the exported range count (on a video track that is not hidden or an audio
+track that is not muted); media in the bin that the range does not play never refuses an export.
+Relink the files (`media.relink_folder`, `media.relink`) and export again, or pass
+`allow_offline: true`: those clips then show the "media offline" slate (red diagonal bands and
+the words MEDIA OFFLINE, at the clip's place and size) and are silent, and the job's closing
+message says how many frames have offline media. The same picture stands in for the clip in the
+preview and in `render.frame`. A queued export that did not allow it fails when its turn comes
+if a file has gone missing meanwhile. Nothing about the slate is saved in the project.
