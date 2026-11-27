@@ -13,6 +13,12 @@ publish = false
 [[bin]]
 name = "cutweave-bench"
 path = "src/main.rs"
+bench = false
+
+# Only `benches/suite.rs` is a benchmark: the criterion flags of
+# `cargo bench -p cutweave-bench -- --save-baseline p2` must not reach the libtest harness.
+[lib]
+bench = false
 
 [features]
 # Real media in the measured engine process (decoders, thumbnails): needs the FFmpeg bundle

@@ -143,6 +143,8 @@ fn main() {
     if !benching || flag("CUTWEAVE_BENCH_PROBES").is_some_and(|v| v == "0") {
         return;
     }
+    // The criterion benches edited the projects: the probes start from fresh ones.
+    let workspace = Workspace::prepare(&scale, &scratch, benching).expect("fixtures");
     let exe = Path::new(env!("CARGO_BIN_EXE_cutweave-bench"));
     let outcome = run_all(&workspace, &scale, exe).expect("probes");
     let finished = cli::finish(&workspace_root(), &scale, &outcome, None).expect("result");

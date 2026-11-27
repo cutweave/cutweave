@@ -128,6 +128,7 @@ cutweave/
 │  ├─ cutweave-api/              # JSON-RPC over WS, MCP (rmcp), HTTP media endpoints, auth, SHM ring
 │  ├─ cutweave-engine/           # composition root: wires everything, session lifecycle
 │  ├─ cutweave-cli/              # `cutweave` binary (engine | mcp | exec | query | render | worker | plugin)
+│  ├─ cutweave-bench/            # seeded benchmark projects (P-400, P-5K, P-short) and the engine benchmark suite (§19)
 │  └─ cutweave-bridge/           # napi-rs addon for Electron preload (SHM reader, perf counters)
 ├─ apps/
 │  └─ desktop/                # Electron main + preload, packaging (electron-builder)
@@ -144,7 +145,7 @@ cutweave/
 ├─ agent-kit/                 # skills/ (SKILL.md), packs/ (presets, prompt packs), evals/ (task suites)
 ├─ schema/                    # GENERATED commands.json / queries.json (snapshot-gated)
 ├─ testdata/                  # media corpus manifest (fetched, not committed), golden frames (LFS)
-├─ bench/                     # benchmark projects + budgets config (§19)
+├─ bench/                     # budgets config and result format (§19); benchmark projects are generated into testdata/bench-projects/
 ├─ spikes/                    # Phase 0 throwaway prototypes (never depended on)
 ├─ xtask/                     # cargo xtask: codegen, golden, corpus, release helpers
 ├─ scripts/                   # ffmpeg-fetch, wbs-to-issues, notices, etc.
