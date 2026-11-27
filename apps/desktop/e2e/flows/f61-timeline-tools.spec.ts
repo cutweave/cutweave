@@ -56,14 +56,18 @@ async function menuViolations(page: Page): Promise<string[]> {
   await page.evaluate(source);
   return page.evaluate(async () => {
     interface AxeResult {
-      violations: { id: string; nodes: { html: string }[] }[];
+      violations: { id: string; nodes: { html: string; failureSummary?: string }[] }[];
     }
     const axe = (globalThis as unknown as { axe: { run(context: Element): Promise<AxeResult> } })
       .axe;
     const menu = document.querySelector('[role="menu"]');
     if (menu === null) return ["no menu is open"];
+    // The menu fades in: its colours are the ones the person reads once it has.
+    await Promise.all(menu.getAnimations({ subtree: true }).map((a) => a.finished));
     const results = await axe.run(menu);
-    return results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html ?? ""}`);
+    return results.violations.map(
+      (v) => `${v.id}: ${v.nodes[0]?.html ?? ""} ${v.nodes[0]?.failureSummary ?? ""}`,
+    );
   });
 }
 
