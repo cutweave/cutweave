@@ -384,6 +384,52 @@ fn trimming_leaves_unused_media_out_of_the_archive() {
     );
 }
 
+/// ADR-0036: an archive carries tags, ratings, notes and collections; with `trim_unused` the
+/// assets left out also leave the archived project's manual collections.
+#[test]
+fn an_archive_keeps_tags_and_collections_minus_trimmed_assets() {
+    let mut f = fixture("tags");
+    let ids: Vec<cutweave_model::MediaId> = f.h.doc().media.keys().copied().collect();
+    let unused = *ids.last().unwrap();
+    f.h.ok(
+        "media.add_tags",
+        json!({"media": ids, "tags": ["handover"]}),
+    );
+    f.h.ok("media.set_rating", json!({"media": [ids[0]], "rating": 5}));
+    f.h.ok(
+        "media.set_note",
+        json!({"media": ids[1], "note": "Client pick"}),
+    );
+    let created = f.h.ok(
+        "media.create_collection",
+        json!({"name": "Selects", "kind": {"type": "manual", "media": ids}}),
+    );
+    let selects: cutweave_model::CollectionId = common::id(&created["collection_id"]);
+    let host = Host::new(None);
+    let dest = f.t.path("Handover");
+    let options = CollectOptions {
+        dest: s(&dest),
+        mode: None,
+        trim_unused: Some(true),
+        include_generated: Some(false),
+    };
+    let plan = plan_collect(&f.h.doc(), Some(&f.root()), &options);
+    run_archive_folder(&plan, &*host, &Progress::all()).unwrap();
+    plan.doc.validate().unwrap();
+    assert!(!plan.doc.media.contains_key(&unused));
+    assert_eq!(
+        plan.doc.collections[&selects].manual_members(),
+        &ids[..ids.len() - 1]
+    );
+    assert!(plan.doc.media.values().all(|m| m.tags == ["handover"]));
+    assert_eq!(plan.doc.media[&ids[0]].rating, Some(5));
+    assert_eq!(plan.doc.media[&ids[1]].note.as_deref(), Some("Client pick"));
+
+    // Untrimmed: the archived project is the open one's collections, member for member.
+    let plan = f.folder_plan(&f.t.path("Whole"));
+    assert_eq!(plan.doc.collections, f.h.doc().collections);
+}
+
 // ----- the zip ------------------------------------------------------------------------------
 
 #[test]

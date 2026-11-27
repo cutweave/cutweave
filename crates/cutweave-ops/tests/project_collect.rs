@@ -303,6 +303,75 @@ fn trimming_leaves_unused_media_out_of_the_copy_only() {
     plan.doc.validate().unwrap();
 }
 
+/// ADR-0036: the copy keeps tags, ratings, notes and collections; a trimmed asset leaves the
+/// copy's manual collections (and only the copy's).
+#[test]
+fn the_copy_keeps_tags_ratings_notes_and_collections_minus_trimmed_assets() {
+    let mut f = fixture("tags");
+    let (a, b, unused) = (f.a, f.b, f.unused);
+    f.h.ok(
+        "media.add_tags",
+        json!({"media": [a, unused], "tags": ["Café", "keep"]}),
+    );
+    f.h.ok(
+        "media.set_rating",
+        json!({"media": [a, unused], "rating": 4}),
+    );
+    f.h.ok("media.set_note", json!({"media": b, "note": "Second take"}));
+    let created = f.h.ok(
+        "media.create_collection",
+        json!({"name": "Selects", "kind": {"type": "manual", "media": [unused, a, b]}}),
+    );
+    let selects: cutweave_model::CollectionId = common::id(&created["collection_id"]);
+    f.h.ok(
+        "media.create_collection",
+        json!({"name": "Kept", "kind": {"type": "smart", "filter": {"tags": ["keep"]}}}),
+    );
+    let doc = f.h.doc();
+
+    // Without trimming, everything is carried as it is.
+    let plan = plan_collect(&doc, Some(&f.root()), &options(&f.t.path("Out")));
+    plan.doc.validate().unwrap();
+    assert_eq!(plan.doc.collections, doc.collections);
+    for (id, asset) in &doc.media {
+        let copy = &plan.doc.media[id];
+        assert_eq!(
+            (&copy.tags, copy.rating, &copy.note),
+            (&asset.tags, asset.rating, &asset.note)
+        );
+    }
+    assert_eq!(plan.doc.media[&a].tags, ["Café", "keep"]);
+    assert_eq!(plan.doc.media[&b].note.as_deref(), Some("Second take"));
+
+    // With trimming, the unused asset is gone from the copy and from its manual collection.
+    let mut o = options(&f.t.path("Trimmed"));
+    o.trim_unused = Some(true);
+    let plan = plan_collect(&doc, Some(&f.root()), &o);
+    plan.doc.validate().unwrap();
+    assert!(!plan.doc.media.contains_key(&unused));
+    assert_eq!(plan.doc.collections[&selects].manual_members(), [a, b]);
+    assert_eq!(plan.doc.collections.len(), 2, "the smart collection stays");
+    assert_eq!(plan.doc.media[&a].rating, Some(4));
+    // The open project is untouched.
+    assert_eq!(
+        f.h.doc().collections[&selects].manual_members(),
+        [unused, a, b]
+    );
+
+    // The copy opens like any project and lists its collection without the trimmed asset.
+    let text = cutweave_model::to_document_string(&plan.doc).unwrap();
+    let cutweave_model::OpenOutcome::Editable { project, .. } =
+        cutweave_model::open_str(&text).unwrap()
+    else {
+        panic!("the copy must open for editing");
+    };
+    let copy = H::with_doc(project);
+    let listed = copy
+        .query("media.list", json!({"filter": {"collection": selects}}))
+        .unwrap();
+    assert_eq!(listed["matched"], 2);
+}
+
 // ----- the copy -----------------------------------------------------------------------------
 
 fn part_files(dir: &Path) -> Vec<PathBuf> {

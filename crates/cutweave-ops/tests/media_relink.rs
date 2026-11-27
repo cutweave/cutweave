@@ -144,6 +144,64 @@ fn relink_points_the_asset_at_the_moved_file() {
     assert_eq!(h.commits(), commits + 1);
 }
 
+/// ADR-0036: relinking changes where an asset's file is, never its tags, rating, note or the
+/// collections it is on.
+#[test]
+fn relinking_keeps_tags_rating_note_and_collections() {
+    let mut h = H::empty();
+    let m = h.add_video("/old/a.mp4", 10, true);
+    let other = h.add_video("/old/b.mp4", 10, true);
+    h.ok(
+        "media.add_tags",
+        json!({"media": [m, other], "tags": ["Café", "keep"]}),
+    );
+    h.ok("media.set_rating", json!({"media": [m], "rating": 5}));
+    h.ok("media.set_note", json!({"media": m, "note": "Best take"}));
+    h.ok(
+        "media.create_collection",
+        json!({"name": "Selects", "kind": {"type": "manual", "media": [other, m]}}),
+    );
+    let before = h.doc();
+    let kept = |h: &H, id: MediaId| {
+        let now = &h.doc().media[&id];
+        let was = &before.media[&id];
+        assert_eq!(
+            (&now.tags, now.rating, &now.note),
+            (&was.tags, was.rating, &was.note)
+        );
+        assert_eq!(h.doc().collections, before.collections);
+    };
+
+    engine(
+        &h,
+        "media.relink",
+        FakeProbe::new().with("/new/a.mp4", moved("/old/a.mp4", 10)),
+        MemoryFiles::new().with_file("/new/a.mp4"),
+        json!({"media": m, "path": "/new/a.mp4"}),
+    )
+    .unwrap();
+    assert_eq!(path_of(&h, m), "/new/a.mp4");
+    kept(&h, m);
+
+    h.ok(
+        "media.set_location",
+        json!({"media": other, "path": "/new/b.mp4"}),
+    );
+    assert_eq!(path_of(&h, other), "/new/b.mp4");
+    kept(&h, other);
+
+    engine(
+        &h,
+        "media.relink_folder",
+        FakeProbe::new().with("/third/a.mp4", moved("/old/a.mp4", 10)),
+        MemoryFiles::new().with_file("/third/a.mp4"),
+        json!({"folder": "/third", "media": [m]}),
+    )
+    .unwrap();
+    kept(&h, m);
+    assert_eq!(h.doc().media[&m].tags, ["Café", "keep"]);
+}
+
 #[test]
 fn relink_accepts_other_content_of_the_same_kind_that_is_long_enough() {
     let mut h = H::empty();

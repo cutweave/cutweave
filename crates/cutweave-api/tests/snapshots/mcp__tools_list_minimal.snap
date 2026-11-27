@@ -102,7 +102,7 @@ expression: catalog.tools_json()
                   "string",
                   "null"
                 ],
-                "description": "Terms that must all occur in the name, ignoring case and accents."
+                "description": "Terms that must all occur in the name, tags or note, ignoring case and accents."
               },
               "kinds": {
                 "type": [
@@ -169,6 +169,31 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "description": "With subfolders (default: true without folder)."
+              },
+              "tags": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "min_rating": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Rated at least this (1-5).",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "collection": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^col_[0-9a-f]{32}$"
               }
             }
           },
@@ -200,6 +225,21 @@ expression: catalog.tools_json()
             "required": [
               "by"
             ]
+          },
+          "include": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "oneOf": [
+                {
+                  "const": "note",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Extra fields per asset: `note`."
           }
         },
         "$defs": {

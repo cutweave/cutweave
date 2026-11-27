@@ -40,7 +40,7 @@ use cutweave_commands::{
     Registrable, Registry, RegistryError, Scope, command, wire,
 };
 use cutweave_jobs::{JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
-use cutweave_model::{ImageSequence, MediaAsset, MediaId, MediaKind, Project};
+use cutweave_model::{CollectionKind, ImageSequence, MediaAsset, MediaId, MediaKind, Project};
 
 use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT, asset_name, used_media};
 use crate::util::check_abs_path;
@@ -335,6 +335,9 @@ impl Planner<'_> {
 /// An image sequence (ADR-0035) is planned picture by picture: every number of the run that
 /// had a file at import, all into one folder under their own names. Each of those files names
 /// the asset in [`PlannedFile::media`]; the copy's asset points at the first.
+///
+/// The copy keeps every asset's tags, rating and note and every collection (ADR-0036); with
+/// `trim_unused`, the assets left out also leave the copy's manual collections.
 #[must_use]
 pub fn plan_collect(
     doc: &Project,
@@ -418,6 +421,9 @@ pub fn plan_collect(
             copy.path_rel = None;
         }
     }
+    if out.media.len() != doc.media.len() {
+        drop_trimmed_members(&mut out);
+    }
     let generated = options
         .include_generated
         .unwrap_or(true)
@@ -429,6 +435,32 @@ pub fn plan_collect(
         files: plan.files,
         doc: out,
         generated,
+    }
+}
+
+/// Takes the members that name no asset of `copy` out of its manual collections: the assets
+/// `trim_unused` left out (ADR-0036).
+fn drop_trimmed_members(copy: &mut Project) {
+    let stale: Vec<_> = copy
+        .collections
+        .values()
+        .filter(|c| {
+            c.manual_members()
+                .iter()
+                .any(|m| !copy.media.contains_key(m))
+        })
+        .map(|c| c.id)
+        .collect();
+    for id in stale {
+        let kept: Vec<MediaId> = copy.collections[&id]
+            .manual_members()
+            .iter()
+            .copied()
+            .filter(|m| copy.media.contains_key(m))
+            .collect();
+        if let Some(collection) = copy.collections.get_mut(&id) {
+            collection.kind = CollectionKind::Manual { media: kept };
+        }
     }
 }
 
