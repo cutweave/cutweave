@@ -22326,6 +22326,169 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Bundles the project for storage or a handover: the project document, every media file it\nuses (under `media/`), its `generated/` folder, and a file list `archive.json` with the size\nand SHA-256 of every file. `format: \"folder\"` writes a project folder at `dest`;\n`format: \"zip\"` writes one `.zip` file at `dest` (the name must end in `.zip`) that holds\nthat folder, uncompressed, with Zip64 for large files. Proxies and caches are left out. The\nopen project and its files are not changed. Returns a background job; the archive is\ncomplete when the job succeeds: the zip gets its name only after it was read back and\ncompared with the file list, so a cancelled or failed run leaves no `.zip`. A folder\narchive that was cancelled continues when called again with the same folder. Fails with\n`Invalid` at `/dest` when the files do not fit on the drive, the folder already holds a\nproject or the `.zip` already exists, and at `/media` when a media file is missing (relink\nit first). `project.collect_estimate` with the same folder says what would be bundled.\nAgents and headless callers may only archive into folders the user approved.",
+        "properties": {
+          "dest": {
+            "description": "Absolute path of the archive: for `folder` a new or empty folder (or the folder of an\ninterrupted archive of this project), for `zip` a `.zip` file that does not exist yet.",
+            "type": "string"
+          },
+          "format": {
+            "description": "`folder` (a project folder with `archive.json`) or `zip` (one `.zip` holding it).",
+            "oneOf": [
+              {
+                "const": "folder",
+                "description": "A folder: the collected project plus `archive.json`.",
+                "type": "string"
+              },
+              {
+                "const": "zip",
+                "description": "One `.zip` file holding that folder (stored entries, Zip64 when needed).",
+                "type": "string"
+              }
+            ]
+          },
+          "include_generated": {
+            "default": null,
+            "description": "Also bundle the project's `generated/` folder (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trim_unused": {
+            "default": null,
+            "description": "Leave out the media no timeline uses (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dest",
+          "format"
+        ],
+        "title": "ProjectArchive",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_archive",
+      "name": "project.archive",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.archive`.",
+        "properties": {
+          "estimate": {
+            "additionalProperties": false,
+            "description": "What it bundles; `dest` is the folder or the `.zip` file.",
+            "properties": {
+              "bytes": {
+                "description": "Their size in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "dest": {
+                "description": "The folder the copy goes into.",
+                "type": "string"
+              },
+              "enough_space": {
+                "description": "Whether the files fit (true when the free space cannot be told).",
+                "type": "boolean"
+              },
+              "files": {
+                "description": "The media files to copy.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "free_bytes": {
+                "description": "Free bytes on the destination drive, when it can be told.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "missing": {
+                "description": "Media whose file is missing: relink them first (`media.relink_folder`).",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A media file a collect cannot read.",
+                  "properties": {
+                    "media_id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "The name the bin shows.",
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Where the project says its file is.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "media_id",
+                    "name",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "trimmed": {
+                "description": "Media left out because no timeline uses them (`trim_unused`).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dest",
+              "files",
+              "bytes",
+              "free_bytes",
+              "enough_space",
+              "missing",
+              "trimmed"
+            ],
+            "type": "object"
+          },
+          "job_id": {
+            "description": "The archive job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "estimate"
+        ],
+        "title": "ProjectArchiveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Bundle the project, its media and a checked file list into a folder or a zip (a job)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
