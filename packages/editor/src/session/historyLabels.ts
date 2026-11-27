@@ -61,6 +61,8 @@ const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
   [`${"timeline"}.delete_gap`]: "history.deleteGap",
   [`${"timeline"}.add_marker`]: "history.markerAdd",
   [`${"timeline"}.move_marker`]: "history.markerMove",
+  [`${"timeline"}.update_marker`]: "history.markerUpdate",
+  "item.set_label_color": "history.labelColor",
   [`${"timeline"}.remove_marker`]: "history.markerRemove",
   [`${"timeline"}.set_in_out`]: "history.inOutSet",
   [`${"timeline"}.clear_in_out`]: "history.inOutClear",

@@ -131,6 +131,17 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
     icon: "bookmark",
     undoable: true,
   },
+  // Issue #222: the marker's Convert to chapter, and the clip's Color label.
+  {
+    name: "timeline.update_marker",
+    label: "contextMenu.command.timelineUpdateMarker",
+    undoable: true,
+  },
+  {
+    name: "item.set_label_color",
+    label: "contextMenu.command.itemSetLabelColor",
+    undoable: true,
+  },
   {
     name: "timeline.remove_marker",
     label: "contextMenu.command.timelineRemoveMarker",

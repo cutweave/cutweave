@@ -1,0 +1,240 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "timeline.update_marker",
+    "summary": "Change a marker's label, color, length or kind",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^mrk_[0-9a-f]{32}$",
+          "description": "The marker (on a sequence or on an item)."
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Text shown with the marker, at most 200 characters.",
+          "default": null
+        },
+        "color": {
+          "description": "Display color, `#rrggbb`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "default": null
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Length of a range marker (snapped to whole frames); 0 for a point marker.",
+          "default": null
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "user",
+                  "description": "Placed by a person or an agent."
+                },
+                {
+                  "type": "string",
+                  "const": "beat",
+                  "description": "A beat found by analysis (snaps like a marker, spec §6)."
+                },
+                {
+                  "type": "string",
+                  "const": "chapter",
+                  "description": "A chapter start (exported to chaptered formats)."
+                }
+              ],
+              "description": "What a marker means."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`user`, `beat` or `chapter`.",
+          "default": null
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "Changes a marker's label, color, length or kind; fields left out stay. `duration` 0 makes\nit a point marker. Its time stays (`timeline.move_marker` moves it).",
+      "title": "TimelineUpdateMarker"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "marker": {
+          "type": "string",
+          "pattern": "^mrk_[0-9a-f]{32}$",
+          "description": "The marker."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The fields whose value changed, of `label`, `color`, `duration`, `kind`."
+        }
+      },
+      "required": [
+        "marker",
+        "changed"
+      ],
+      "description": "Result of `timeline.update_marker`.",
+      "title": "TimelineUpdateMarkerOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^mrk_[0-9a-f]{32}$",
+        "description": "The marker (on a sequence or on an item)."
+      },
+      "label": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Text shown with the marker, at most 200 characters.",
+        "default": null
+      },
+      "color": {
+        "description": "Display color, `#rrggbb`.",
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+        "default": null
+      },
+      "duration": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Length of a range marker (snapped to whole frames); 0 for a point marker.",
+        "default": null
+      },
+      "kind": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "user",
+                "description": "Placed by a person or an agent."
+              },
+              {
+                "type": "string",
+                "const": "beat",
+                "description": "A beat found by analysis (snaps like a marker, spec §6)."
+              },
+              {
+                "type": "string",
+                "const": "chapter",
+                "description": "A chapter start (exported to chaptered formats)."
+              }
+            ],
+            "description": "What a marker means."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "`user`, `beat` or `chapter`.",
+        "default": null
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "description": "Changes a marker's label, color, length or kind; fields left out stay. `duration` 0 makes\nit a point marker. Its time stays (`timeline.move_marker` moves it).",
+    "title": "TimelineUpdateMarker"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "marker": {
+        "type": "string",
+        "pattern": "^mrk_[0-9a-f]{32}$",
+        "description": "The marker."
+      },
+      "changed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The fields whose value changed, of `label`, `color`, `duration`, `kind`."
+      }
+    },
+    "required": [
+      "marker",
+      "changed"
+    ],
+    "description": "Result of `timeline.update_marker`.",
+    "title": "TimelineUpdateMarkerOutput"
+  }
+}

@@ -50,6 +50,7 @@ Cutweave is an open-source video editor for creators and the AI agents that work
     - `clip-effects` / `clip-effects-body`: effects, filters, adjustments.
   - **How they're applied:** the strong color draws the 3px header strip, the border and the track icon. The body sits behind thumbnails, waveforms and the `text-primary` label.
   - **Never color alone:** every clip also shows its type icon.
+- **Colour labels.** `label-red`, `label-orange`, `label-lime`, `label-green`, `label-teal`, `label-blue`, `label-purple` and `label-pink` are the colours a person can give a clip (its header strip) or a marker (its pin). They mean only what the person decides. Their values are saved in the project, so each is the same in both themes. Never use them for interface state, and never use marigold or agent blue as a label.
 - **Status.** `success`, `warning` and `danger` are text and icon colors on `surface-1` and `surface-2`. They always come with an icon and a word, never color alone. Destructive buttons fill with `danger` and use `on-danger` text.
 - **Over video.** Safe areas, grids and transform handles draw in `overlay-guide` with a 1px `overlay-guide-shadow` outline, so they read on any footage.
 - **Themes.** Dark is the default and the reference. Light is fully supported through the same tokens, and a high-contrast theme (7:1) will be added as a separate theme. Never write a literal color in a component; if a token is missing, add it here first.

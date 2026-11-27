@@ -334,6 +334,12 @@ pub struct Clip {
     #[schemars(with = "std::collections::BTreeMap<crate::MarkerId, crate::Marker>")]
     #[specta(type = std::collections::BTreeMap<crate::MarkerId, crate::Marker>)]
     pub markers: Markers,
+    /// The color label (arch §4.2 `color_label`, issue #222): a display color that marks the
+    /// item on the timeline, set with `item.set_label_color`. It changes nothing in the picture
+    /// or the sound. Absent: no label; left out of the file while absent, so documents written
+    /// before the field read the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_label: Option<crate::Color>,
     /// The media this clip plays.
     pub media: MediaId,
     /// Source position (from the start of the media) of the first frame (of the last frame
@@ -376,6 +382,7 @@ impl Clip {
             linked_group: None,
             attached_to: None,
             markers: Markers::new(),
+            color_label: None,
             media,
             source_in: Time::ZERO,
             speed: Speed::ONE,
@@ -535,6 +542,14 @@ impl Item {
         }
     }
 
+    /// The color label, if the item has one.
+    #[must_use]
+    pub fn color_label(&self) -> Option<crate::Color> {
+        match self {
+            Item::Clip(c) => c.color_label,
+        }
+    }
+
     /// The media the item plays, if it plays one.
     #[must_use]
     pub fn media(&self) -> Option<MediaId> {
@@ -584,6 +599,13 @@ impl Item {
     pub fn set_attached_to(&mut self, parent: Option<ItemId>) {
         match self {
             Item::Clip(c) => c.attached_to = parent,
+        }
+    }
+
+    /// Sets or clears the color label.
+    pub fn set_color_label(&mut self, color: Option<crate::Color>) {
+        match self {
+            Item::Clip(c) => c.color_label = color,
         }
     }
 
@@ -663,6 +685,24 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("missing field `enabled`"), "{err}");
+    }
+
+    #[test]
+    fn color_label_is_left_out_while_absent_and_round_trips() {
+        let mut item = Item::from(clip());
+        let bare = serde_json::to_value(&item).unwrap();
+        assert!(bare.get("color_label").is_none(), "absent: not in the file");
+        assert_eq!(item.color_label(), None);
+        item.set_color_label(Some(crate::Color::rgb(0x33, 0x66, 0x99)));
+        let value = serde_json::to_value(&item).unwrap();
+        assert_eq!(value["color_label"], json!("#336699"));
+        let back: Item = serde_json::from_value(value).unwrap();
+        assert_eq!(back, item);
+        // A document written before the field reads as "no label".
+        assert_eq!(
+            serde_json::from_value::<Item>(bare).unwrap().color_label(),
+            None
+        );
     }
 
     #[test]

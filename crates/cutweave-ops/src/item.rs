@@ -31,6 +31,7 @@
 //! * **Edit reports.** Every edit returns `report`: exactly what changed.
 
 pub mod edit;
+mod label;
 pub mod layout;
 pub mod link;
 mod reset;
@@ -45,6 +46,7 @@ use cutweave_model::{
     TimeInput, Track, TrackId, Vec2, VisualProps,
 };
 
+pub use label::{ItemSetLabelColor, ItemSetLabelColorOutput};
 pub use layout::{
     ItemApplyLayout, ItemApplyLayoutOutput, ItemLayouts, ItemLayoutsOutput, LayoutFill,
 };
@@ -83,6 +85,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ItemGroupSelect>()?
         .register::<ItemSetProps>()?
         .register::<ItemResetProps>()?
+        .register::<ItemSetLabelColor>()?
         .register::<ItemApplyLayout>()?
         .register::<ItemLayouts>()?
         .register::<ItemGet>()?;

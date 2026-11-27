@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (162 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (164 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -62,6 +62,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | item | `item.link` | Link aligned items into one group (they edit together) | command, undoable | catalog |
 | item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
 | item | `item.reset_props` | Reset an item's properties (a group, some properties, or all) to their defaults | command, undoable, idempotent | catalog |
+| item | `item.set_label_color` | Set or clear the color label of items | command, undoable, idempotent | catalog |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial) | command, undoable, idempotent | core |
 | item | `item.unlink` | Take items out of their linked groups | command, undoable, idempotent | catalog |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
@@ -157,6 +158,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | timeline | `timeline.remove_marker` | Remove a marker | command, undoable, destructive | catalog |
 | timeline | `timeline.ripple_delete` | Delete items on one track and close the space they leave (partners follow) | command, undoable, destructive | catalog |
 | timeline | `timeline.set_in_out` | Set the sequence's in and out points | command, undoable, idempotent | catalog |
+| timeline | `timeline.update_marker` | Change a marker's label, color, length or kind | command, undoable, idempotent | catalog |
 | track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |
 | track | `track.list` | List a sequence's tracks (flags, height, item counts) top to bottom | query | catalog |
 | track | `track.remove` | Remove a track and the items on it (fails if the track is locked) | command, undoable, destructive | catalog |

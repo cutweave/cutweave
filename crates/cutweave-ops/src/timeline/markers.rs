@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Markers and the in/out range (WP-2A.02; timeline spec §1.5 and INV-34; ADR-0023):
-//! `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`,
+//! `timeline.add_marker`, `timeline.move_marker`, `timeline.update_marker` (issue #222),
+//! `timeline.remove_marker`,
 //! `timeline.set_in_out`, `timeline.clear_in_out` and the `timeline.list_markers` query.
 //!
 //! A marker belongs to a sequence (sequence time) or to an item (item-relative time, so it
@@ -18,7 +19,7 @@ use cutweave_model::{
     SequenceId, Time, TimeInput,
 };
 
-use crate::util::{resolve_frame_duration, resolve_frame_time};
+use crate::util::{resolve_frame_duration, resolve_frame_time, resolve_time};
 
 /// Longest accepted marker label, in characters.
 pub const MAX_LABEL_CHARS: usize = 200;
@@ -28,6 +29,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<TimelineAddMarker>()?
         .register::<TimelineMoveMarker>()?
+        .register::<TimelineUpdateMarker>()?
         .register::<TimelineRemoveMarker>()?
         .register::<TimelineSetInOut>()?
         .register::<TimelineClearInOut>()?
@@ -285,6 +287,124 @@ impl Command for TimelineMoveMarker {
             marker: self.marker,
             t,
             previous,
+        })
+    }
+}
+
+// ----- timeline.update_marker ----------------------------------------------------------------
+
+/// Result of `timeline.update_marker`.
+#[wire]
+pub struct TimelineUpdateMarkerOutput {
+    /// The marker.
+    pub marker: MarkerId,
+    /// The fields whose value changed, of `label`, `color`, `duration`, `kind`.
+    pub changed: Vec<String>,
+}
+
+/// Changes a marker's label, color, length or kind; fields left out stay. `duration` 0 makes
+/// it a point marker. Its time stays (`timeline.move_marker` moves it).
+#[command(
+    name = "timeline.update_marker",
+    summary = "Change a marker's label, color, length or kind",
+    undoable,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct TimelineUpdateMarker {
+    /// The marker (on a sequence or on an item).
+    pub id: MarkerId,
+    /// Text shown with the marker, at most 200 characters.
+    pub label: Option<String>,
+    /// Display color, `#rrggbb`.
+    pub color: Option<Color>,
+    /// Length of a range marker (snapped to whole frames); 0 for a point marker.
+    pub duration: Option<TimeInput>,
+    /// `user`, `beat` or `chapter`.
+    pub kind: Option<MarkerKind>,
+}
+
+impl TimelineUpdateMarker {
+    /// The marker's owner, the marker as it will be and the names of the fields that change.
+    fn plan(&self, doc: &Project) -> Result<(Owner, SequenceId, Marker, Vec<String>), CmdError> {
+        if self.label.is_none()
+            && self.color.is_none()
+            && self.duration.is_none()
+            && self.kind.is_none()
+        {
+            return Err(CmdError::invalid(
+                "",
+                "give at least one of `label`, `color`, `duration` or `kind`",
+            ));
+        }
+        let (sequence, owner, marker) = find_marker(doc, self.id)?;
+        let mut next = marker.clone();
+        if let Some(label) = &self.label {
+            next.label = check_label("/label", label)?;
+        }
+        if let Some(color) = self.color {
+            next.color = color;
+        }
+        if let Some(input) = self.duration {
+            let rate = sequence.format.frame_rate;
+            let zero = resolve_time("/duration", input, rate)? == Time::ZERO;
+            next.duration = if zero {
+                None
+            } else {
+                Some(resolve_frame_duration("/duration", input, rate)?)
+            };
+            if let Some(d) = next.duration
+                && (next.t + d).is_err()
+            {
+                return Err(CmdError::invalid(
+                    "/duration",
+                    "the marker would end past the largest representable time",
+                ));
+            }
+        }
+        if let Some(kind) = self.kind {
+            next.kind = kind;
+        }
+        let mut changed = Vec::new();
+        for (name, differs) in [
+            ("label", next.label != marker.label),
+            ("color", next.color != marker.color),
+            ("duration", next.duration != marker.duration),
+            ("kind", next.kind != marker.kind),
+        ] {
+            if differs {
+                changed.push(name.to_owned());
+            }
+        }
+        Ok((owner, sequence.id, next, changed))
+    }
+}
+
+impl Command for TimelineUpdateMarker {
+    type Output = TimelineUpdateMarkerOutput;
+
+    fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
+        self.plan(ctx.doc()).map(drop)
+    }
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<TimelineUpdateMarkerOutput, CmdError> {
+        let (owner, sequence, next, changed) = self.plan(tx.doc())?;
+        if !changed.is_empty() {
+            let id = self.id;
+            match owner {
+                Owner::Sequence => tx.update_sequence(sequence, |s| {
+                    s.markers.insert(id, next);
+                    Ok(())
+                })?,
+                Owner::Item(item) => tx.update_item(item, |i| {
+                    i.markers_mut().insert(id, next);
+                    Ok(())
+                })?,
+            }
+        }
+        Ok(TimelineUpdateMarkerOutput {
+            marker: self.id,
+            changed,
         })
     }
 }

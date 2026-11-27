@@ -87,6 +87,11 @@ export interface TimelineItem {
   /** Duration, flicks (>= 0). */
   readonly duration: number;
   readonly label: string;
+  /**
+   * The colour label from the document (`#rrggbb[aa]`, the engine's `color_label`): the clip's
+   * header strip is drawn in it. Absent: the strip has the colour of the clip's kind.
+   */
+  readonly colorLabel?: string;
   /** Linked group (a video and its audio): members follow each other's edits, never snap to each other. */
   readonly linkedGroup?: string;
   /** Media bounds for trims. Omitted: only the timeline start and the neighbours bound a trim. */

@@ -197,6 +197,46 @@ pub mod dark {
         srgb: [44, 53, 20, 255],
         linear: [0.02518686, 0.035601314, 0.00699541, 1.0],
     };
+    /// `label-red`: #e5534b
+    pub const LABEL_RED: Color = Color {
+        srgb: [229, 83, 75, 255],
+        linear: [0.7835378, 0.08650046, 0.070360094, 1.0],
+    };
+    /// `label-orange`: #e8833a
+    pub const LABEL_ORANGE: Color = Color {
+        srgb: [232, 131, 58, 255],
+        linear: [0.80695224, 0.22696587, 0.04231141, 1.0],
+    };
+    /// `label-lime`: #a3b83a
+    pub const LABEL_LIME: Color = Color {
+        srgb: [163, 184, 58, 255],
+        linear: [0.3662526, 0.47932017, 0.04231141, 1.0],
+    };
+    /// `label-green`: #3fae6e
+    pub const LABEL_GREEN: Color = Color {
+        srgb: [63, 174, 110, 255],
+        linear: [0.049706567, 0.42326766, 0.15592647, 1.0],
+    };
+    /// `label-teal`: #2aa7a0
+    pub const LABEL_TEAL: Color = Color {
+        srgb: [42, 167, 160, 255],
+        linear: [0.023153367, 0.38642943, 0.3515326, 1.0],
+    };
+    /// `label-blue`: #4a8fe0
+    pub const LABEL_BLUE: Color = Color {
+        srgb: [74, 143, 224, 255],
+        linear: [0.06847817, 0.2746773, 0.7454042, 1.0],
+    };
+    /// `label-purple`: #9a6fe0
+    pub const LABEL_PURPLE: Color = Color {
+        srgb: [154, 111, 224, 255],
+        linear: [0.3231432, 0.15896083, 0.7454042, 1.0],
+    };
+    /// `label-pink`: #e06aa0
+    pub const LABEL_PINK: Color = Color {
+        srgb: [224, 106, 160, 255],
+        linear: [0.7454042, 0.14412847, 0.3515326, 1.0],
+    };
     /// `success`: #58c08b
     pub const SUCCESS: Color = Color {
         srgb: [88, 192, 139, 255],
@@ -278,6 +318,14 @@ pub mod dark {
         ("clip-captions-body", CLIP_CAPTIONS_BODY),
         ("clip-effects", CLIP_EFFECTS),
         ("clip-effects-body", CLIP_EFFECTS_BODY),
+        ("label-red", LABEL_RED),
+        ("label-orange", LABEL_ORANGE),
+        ("label-lime", LABEL_LIME),
+        ("label-green", LABEL_GREEN),
+        ("label-teal", LABEL_TEAL),
+        ("label-blue", LABEL_BLUE),
+        ("label-purple", LABEL_PURPLE),
+        ("label-pink", LABEL_PINK),
         ("success", SUCCESS),
         ("warning", WARNING),
         ("danger", DANGER),
@@ -483,6 +531,46 @@ pub mod light {
         srgb: [232, 240, 207, 255],
         linear: [0.80695224, 0.8713671, 0.6239604, 1.0],
     };
+    /// `label-red`: #e5534b
+    pub const LABEL_RED: Color = Color {
+        srgb: [229, 83, 75, 255],
+        linear: [0.7835378, 0.08650046, 0.070360094, 1.0],
+    };
+    /// `label-orange`: #e8833a
+    pub const LABEL_ORANGE: Color = Color {
+        srgb: [232, 131, 58, 255],
+        linear: [0.80695224, 0.22696587, 0.04231141, 1.0],
+    };
+    /// `label-lime`: #a3b83a
+    pub const LABEL_LIME: Color = Color {
+        srgb: [163, 184, 58, 255],
+        linear: [0.3662526, 0.47932017, 0.04231141, 1.0],
+    };
+    /// `label-green`: #3fae6e
+    pub const LABEL_GREEN: Color = Color {
+        srgb: [63, 174, 110, 255],
+        linear: [0.049706567, 0.42326766, 0.15592647, 1.0],
+    };
+    /// `label-teal`: #2aa7a0
+    pub const LABEL_TEAL: Color = Color {
+        srgb: [42, 167, 160, 255],
+        linear: [0.023153367, 0.38642943, 0.3515326, 1.0],
+    };
+    /// `label-blue`: #4a8fe0
+    pub const LABEL_BLUE: Color = Color {
+        srgb: [74, 143, 224, 255],
+        linear: [0.06847817, 0.2746773, 0.7454042, 1.0],
+    };
+    /// `label-purple`: #9a6fe0
+    pub const LABEL_PURPLE: Color = Color {
+        srgb: [154, 111, 224, 255],
+        linear: [0.3231432, 0.15896083, 0.7454042, 1.0],
+    };
+    /// `label-pink`: #e06aa0
+    pub const LABEL_PINK: Color = Color {
+        srgb: [224, 106, 160, 255],
+        linear: [0.7454042, 0.14412847, 0.3515326, 1.0],
+    };
     /// `success`: #1f7f4a
     pub const SUCCESS: Color = Color {
         srgb: [31, 127, 74, 255],
@@ -564,6 +652,14 @@ pub mod light {
         ("clip-captions-body", CLIP_CAPTIONS_BODY),
         ("clip-effects", CLIP_EFFECTS),
         ("clip-effects-body", CLIP_EFFECTS_BODY),
+        ("label-red", LABEL_RED),
+        ("label-orange", LABEL_ORANGE),
+        ("label-lime", LABEL_LIME),
+        ("label-green", LABEL_GREEN),
+        ("label-teal", LABEL_TEAL),
+        ("label-blue", LABEL_BLUE),
+        ("label-purple", LABEL_PURPLE),
+        ("label-pink", LABEL_PINK),
         ("success", SUCCESS),
         ("warning", WARNING),
         ("danger", DANGER),

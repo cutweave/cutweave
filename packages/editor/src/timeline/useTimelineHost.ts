@@ -3,7 +3,11 @@
 // with the callbacks the panel hands to `TimelineCanvas` and the elements around it: pointer
 // events, keys (keydown and keyup, so held modifiers reach the machine), the clipboard events,
 // a bin card dragged over the lanes, and a lost window.
-import type { TimelinePointerEvent, TimelineView } from "@cutweave/timeline";
+import {
+  FLICKS_PER_SECOND,
+  type TimelinePointerEvent,
+  type TimelineView,
+} from "@cutweave/timeline";
 import { type DragEvent, useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -11,11 +15,13 @@ import { engineStore } from "../engine/engineStore.ts";
 import { timelineKeyOf } from "../keymap/timeline.ts";
 import { dragStore } from "../media/dragStore.ts";
 import { requestForCanvasEvent } from "../menus/canvas.ts";
+import { menuDialogStore } from "../menus/dialogs.ts";
 import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
 import { registerTimelineCanvas } from "../menus/timelineSurface.ts";
 import { isHTMLElement } from "../shell/realm.ts";
 import { forEveryWindow, framesOf } from "../shell/windows.ts";
 import { docStore } from "../state/docStore.ts";
+import { selectTimelineModel } from "../state/selectors.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
@@ -36,6 +42,7 @@ import { describeRefusal, FAILED_TITLE, type TimelineEdit, translator } from "./
 import { toRpcError } from "./gestureTx.ts";
 import { type LaneBox, TimelineHost, type TimelineUi, withCode } from "./host.ts";
 import { locksStore } from "./locks.ts";
+import { MarkerDrag, onRuler } from "./markerDrag.ts";
 
 export interface TimelineBinding {
   readonly host: TimelineHost;
@@ -122,6 +129,32 @@ export function useTimelineHost(): TimelineBinding {
     [],
   );
 
+  const view = useRef<TimelineView | null>(null);
+
+  // A marker dragged along the ruler (issue #222): its own gesture, beside the machine's.
+  const markerDrag = useMemo(
+    () =>
+      new MarkerDrag({
+        rpc: () => engineStore.getState().rpc,
+        label: () => translate.current("timeline.history.marker"),
+        markerAt: (x, y) => view.current?.markerAt(x, y) ?? null,
+        model: () => selectTimelineModel(docStore.getState().project),
+        flicksPerPx: () => FLICKS_PER_SECOND / (view.current?.getViewState().pxPerSec ?? 100),
+        snap: (model, raw, suspended) => host.snapTime(model, raw, suspended),
+        guides: (snapGuides) => host.ui.setState({ snapGuides }),
+        seek: (t) => void transportController().seek(t),
+        refused: (error) =>
+          toastStore.getState().push({
+            tone: "warning",
+            title: translate.current("timeline.failed.marker"),
+            message: withCode(describeRefusal(error, translate.current), error.code),
+          }),
+        busy: () => host.busy,
+        frames: framesOf(() => surface.current),
+      }),
+    [host],
+  );
+
   // Commands outside the panel (the palette's Split at playhead) reach it through this.
   useEffect(() => setActiveTimelineHost(host), [host]);
 
@@ -130,16 +163,20 @@ export function useTimelineHost(): TimelineBinding {
   // The host follows the stores while the panel is mounted; unmounting rolls back a gesture.
   useEffect(() => {
     host.start();
-    const blur = (): void => host.cancel();
+    const blur = (): void => {
+      markerDrag.cancel();
+      host.cancel();
+    };
     const off = forEveryWindow((win) => {
       win.addEventListener("blur", blur);
       return () => win.removeEventListener("blur", blur);
     });
     return () => {
       off();
+      markerDrag.cancel();
       host.stop();
     };
-  }, [host]);
+  }, [host, markerDrag]);
 
   // A card drag that ends without a drop here (Esc, dropped elsewhere) rolls its placement back.
   useEffect(
@@ -151,7 +188,6 @@ export function useTimelineHost(): TimelineBinding {
   );
 
   const ui = useStore(host.ui);
-  const view = useRef<TimelineView | null>(null);
 
   const onPointer = useCallback(
     (e: TimelinePointerEvent) => {
@@ -176,9 +212,20 @@ export function useTimelineHost(): TimelineBinding {
       }
       // Keys go where the pointer acted: focus the canvas on a press.
       if (e.type === "down") (e.original.target as HTMLElement | null)?.focus?.();
+      // A double-click on a marker opens its Edit… dialog (issue #222).
+      if (e.type === "dblclick" && onRuler(e)) {
+        const marker = view.current?.markerAt(e.x, e.y) ?? null;
+        if (marker !== null) {
+          markerDrag.cancel();
+          menuDialogStore.getState().open({ kind: "edit-marker", marker: marker.id });
+          return;
+        }
+      }
+      // A press on a marker's pin is the marker's: a click goes to it, a drag moves it.
+      if (markerDrag.handle(e)) return;
       host.handlePointer(e);
     },
-    [host],
+    [host, markerDrag],
   );
 
   const onView = useCallback(
@@ -250,6 +297,11 @@ export function useTimelineHost(): TimelineBinding {
       };
       const onKeyDown = (e: KeyboardEvent): void => {
         if (e.defaultPrevented || isTextEntry(e.target)) return;
+        // Esc while a marker is dragged puts it back.
+        if (e.key === "Escape" && markerDrag.cancel()) {
+          e.preventDefault();
+          return;
+        }
         // The keys are the keymap's `timeline` context (Settings > Keyboard shortcuts).
         const key = timelineKeyOf(e);
         if (key.kind === "editor") {
@@ -283,7 +335,7 @@ export function useTimelineHost(): TimelineBinding {
         el.removeEventListener("paste", onPaste);
       };
     },
-    [host, t],
+    [host, markerDrag, t],
   );
 
   const drop = useMemo<TimelineBinding["drop"]>(() => {

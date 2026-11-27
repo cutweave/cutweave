@@ -518,6 +518,13 @@ export type Clip = {
 	attached_to: ItemId | null,
 	/**  Markers in item-relative time; they move with the item. */
 	markers: { [key in MarkerId]: Marker },
+	/**
+	 *  The color label (arch §4.2 `color_label`, issue #222): a display color that marks the
+	 *  item on the timeline, set with `item.set_label_color`. It changes nothing in the picture
+	 *  or the sound. Absent: no label; left out of the file while absent, so documents written
+	 *  before the field read the same.
+	 */
+	color_label?: Color | null,
 	/**  The media this clip plays. */
 	media: MediaId,
 	/**
@@ -3088,6 +3095,23 @@ export type ItemResetPropsOutput = {
 };
 
 /**
+ *  Sets the color label of items, or clears it when `color` is left out. Only the listed
+ *  items change (name linked partners to label them too). `Locked` on a locked track.
+ */
+export type ItemSetLabelColor = {
+	/**  The items. */
+	items: ItemId[],
+	/**  `#rrggbb`; leave out (or null) to clear the label. */
+	color?: Color | null,
+};
+
+/**  Result of `item.set_label_color`. */
+export type ItemSetLabelColorOutput = {
+	/**  The items whose label changed, in the order given. */
+	items: ItemId[],
+};
+
+/**
  *  Set item properties (partial). An animated property is keyed at `at` (sequence time,
  *  required then). Example: `{item, props:{opacity:0.5, crop:{left:0.25}}}`.
  * 
@@ -3153,6 +3177,8 @@ export type ItemSummary = {
 	linked_group: GroupId | null,
 	/**  Whether the item is rendered and heard. */
 	enabled: boolean,
+	/**  The color label, `#rrggbb`, when it has one (`item.set_label_color`). */
+	color_label?: Color | null,
 };
 
 /**
@@ -6983,6 +7009,31 @@ export type TimelineSetInOutOutput = {
 	start: Time,
 	/**  The out point, snapped to the frame grid. */
 	end: Time,
+};
+
+/**
+ *  Changes a marker's label, color, length or kind; fields left out stay. `duration` 0 makes
+ *  it a point marker. Its time stays (`timeline.move_marker` moves it).
+ */
+export type TimelineUpdateMarker = {
+	/**  The marker (on a sequence or on an item). */
+	id: MarkerId,
+	/**  Text shown with the marker, at most 200 characters. */
+	label?: string | null,
+	/**  Display color, `#rrggbb`. */
+	color?: Color | null,
+	/**  Length of a range marker (snapped to whole frames); 0 for a point marker. */
+	duration?: TimeInput | null,
+	/**  `user`, `beat` or `chapter`. */
+	kind?: MarkerKind | null,
+};
+
+/**  Result of `timeline.update_marker`. */
+export type TimelineUpdateMarkerOutput = {
+	/**  The marker. */
+	marker: MarkerId,
+	/**  The fields whose value changed, of `label`, `color`, `duration`, `kind`. */
+	changed: string[],
 };
 
 /**  An item whose `enabled` flag changed. */
