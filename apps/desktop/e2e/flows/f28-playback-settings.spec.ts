@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// F28 Playback preferences (docs/user-flows.md, WP-2H.10): Settings > Playback has "Go back to
-// where playback started". Off, the default: Space plays and pauses, and the playhead stays where
-// playback stopped. On: pausing puts the playhead back where Space was pressed, and so does
-// playback that runs into the end of the timeline. After a relaunch the switch is still on and a
-// new project behaves the same.
+// F28 Playback preferences (docs/user-flows.md, WP-2H.10): Settings > Playback.
 //
-// The loop, preview quality, proxies and scrub audio steps of this flow join it with the work
-// that gives the engine each behaviour (docs/reference/settings.md, Playback).
+// - "Go back to where playback started". Off, the default: Space plays and pauses, and the
+//   playhead stays where playback stopped. On: pausing puts the playhead back where Space was
+//   pressed, and so does playback that runs into the end of the timeline.
+// - "Loop playback": playback passes the end and plays on from the start; the transport bar's
+//   loop button is the same value, and turns it off again.
+// - "Preview quality while playing": Half in Settings, then Quarter from the menu of the
+//   transport's quality indicator; the indicator says so while playing, and Full when paused.
+// - "Use proxies in the preview": the transport bar's toggle follows the setting.
+// - After a relaunch every value is as it was left, and a new project plays with them.
 //
 // Playback needs the full engine: built with FFmpeg (`just e2e-flows` does when the bundle is set
 // up) and the fetched corpus (`just corpus`); without either the flow skips and says why.
-import type { ElectronApplication, Page } from "@playwright/test";
+import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
@@ -38,6 +41,20 @@ import {
 
 const CLIP = "sintel_trailer_480p.mp4";
 const SWITCH = "Go back to where playback started";
+const LOOP = "Loop playback";
+const PROXIES = "Use proxies in the preview";
+
+const playButton = (page: Page) => page.getByRole("button", { name: "Play", exact: true });
+const pauseButton = (page: Page) => page.getByRole("button", { name: "Pause", exact: true });
+/** The transport bar's loop button and proxy toggle (the settings rows are switches). */
+const loopButton = (page: Page) => page.getByRole("button", { name: LOOP, exact: true });
+const proxyButton = (page: Page) => page.getByRole("button", { name: PROXIES, exact: true });
+/** The transport bar's quality indicator, by what it says. */
+const quality = (page: Page, name: "Full" | "Half" | "Quarter") =>
+  page.getByLabel(`Preview quality: ${name}`, { exact: true });
+/** Settings > Playback > Preview quality while playing. */
+const playingQuality = (settings: Locator) =>
+  settings.getByRole("radiogroup", { name: "Preview quality while playing" });
 
 /** `HH:MM:SS:FF` → frames at 30 fps (the new project's rate). */
 function frames(text: string | null): number {
@@ -96,8 +113,8 @@ async function playAndPause(page: Page, fromFrames: number): Promise<void> {
 test.describe("F28 playback preferences", () => {
   test.skip(!hasRealEngine, "cutweave-engine-serve is not built");
 
-  test("go back to where playback started: off, on, at the end, and after a relaunch", async () => {
-    test.setTimeout(240_000);
+  test("go back to the start, loop, the quality while playing, proxies, and a relaunch", async () => {
+    test.setTimeout(360_000);
     const info = test.info();
     const corpus = corpusDir();
     test.skip(corpus === null, "the corpus is not fetched (just corpus)");
@@ -153,20 +170,96 @@ test.describe("F28 playback preferences", () => {
         await settings.getByRole("searchbox", { name: "Search settings" }).fill("rewind");
         await expect(settings.getByRole("switch", { name: SWITCH })).toBeChecked();
         await closeSettings(settings);
+
+        // Loop playback, turned on in Settings: the transport's loop button shows it.
+        await expect(loopButton(page)).toHaveAttribute("aria-pressed", "false");
+        settings = await openSettingsPage(page, app, "Playback");
+        await settings.getByRole("switch", { name: LOOP }).click();
+        await expect(settings.getByRole("switch", { name: LOOP })).toBeChecked();
+        await closeSettings(settings);
+        await expect(loopButton(page)).toHaveAttribute("aria-pressed", "true");
+        // From 45 frames before the end, playback passes the end and plays on from the start.
+        await expect.poll(() => timecodeFrames(page)).toBe(last - 45);
+        await press(page, "Space");
+        await expect(pauseButton(page)).toBeVisible();
+        await expect.poll(() => timecodeFrames(page), { timeout: 30_000 }).toBeLessThan(last - 100);
+        await expect(pauseButton(page)).toBeVisible();
+        await expect.poll(() => timecodeFrames(page), { timeout: 20_000 }).toBeGreaterThan(5);
+        // Pausing still goes back to where Space was pressed.
+        await press(page, "Space");
+        await expect(playButton(page)).toBeVisible();
+        await expect.poll(() => timecodeFrames(page)).toBe(last - 45);
+        // The transport's button turns the same setting off: playback stops at the end again.
+        await loopButton(page).click();
+        await expect(loopButton(page)).toHaveAttribute("aria-pressed", "false");
+        settings = await openSettingsPage(page, app, "Playback");
+        await expect(settings.getByRole("switch", { name: LOOP })).not.toBeChecked();
+
+        // Preview quality while playing: Auto by default; Half.
+        await expect(playingQuality(settings).getByRole("radio", { name: "Auto" })).toBeChecked();
+        await playingQuality(settings).getByRole("radio", { name: "Half" }).click();
+        await expect(playingQuality(settings).getByRole("radio", { name: "Half" })).toBeChecked();
+        await closeSettings(settings);
+        await goTo(page, 1);
+        await expect(quality(page, "Full")).toBeVisible();
+        await press(page, "Space");
+        await expect(pauseButton(page)).toBeVisible();
+        await expect(quality(page, "Half")).toBeVisible({ timeout: 20_000 });
+        await expect.poll(() => timecodeFrames(page), { timeout: 20_000 }).toBeGreaterThan(45);
+        await expect(quality(page, "Half")).toBeVisible();
+        await snapshot(page, info, "playing at half");
+        // Paused, the frame refines to full size (the default when paused).
+        await press(page, "Space");
+        await expect(playButton(page)).toBeVisible();
+        await expect(quality(page, "Full")).toBeVisible({ timeout: 20_000 });
+
+        // The indicator's own menu chooses the same value: Quarter.
+        await quality(page, "Full").click({ button: "right" });
+        await expect(page.getByRole("menuitemradio", { name: "Half" })).toBeChecked();
+        await page.getByRole("menuitemradio", { name: "Quarter" }).click();
+        await press(page, "Space");
+        await expect(pauseButton(page)).toBeVisible();
+        await expect(quality(page, "Quarter")).toBeVisible({ timeout: 20_000 });
+        await press(page, "Space");
+        await expect(playButton(page)).toBeVisible();
+        settings = await openSettingsPage(page, app, "Playback");
+        await expect(
+          playingQuality(settings).getByRole("radio", { name: "Quarter" }),
+        ).toBeChecked();
+
+        // Proxies: the setting and the transport bar's toggle are one value.
+        await expect(proxyButton(page)).toHaveAttribute("aria-pressed", "true");
+        await settings.getByRole("switch", { name: PROXIES }).click();
+        await expect(settings.getByRole("switch", { name: PROXIES })).not.toBeChecked();
+        await closeSettings(settings);
+        await expect(proxyButton(page)).toHaveAttribute("aria-pressed", "false");
       } finally {
         await first.close();
       }
 
-      // Relaunch: the switch is still on, and a new project's playback returns.
+      // Relaunch: every value is as it was left, and a new project plays with them.
       const second = await launchFlowApp(work, home, { realMedia: true });
       try {
         const { app, page } = second;
         const settings = await openSettingsPage(page, app, "Playback");
         await expect(settings.getByRole("switch", { name: SWITCH })).toBeChecked();
+        await expect(settings.getByRole("switch", { name: LOOP })).not.toBeChecked();
+        await expect(settings.getByRole("switch", { name: PROXIES })).not.toBeChecked();
+        await expect(
+          playingQuality(settings).getByRole("radio", { name: "Quarter" }),
+        ).toBeChecked();
         await closeSettings(settings);
+        await expect(loopButton(page)).toHaveAttribute("aria-pressed", "false");
+        await expect(proxyButton(page)).toHaveAttribute("aria-pressed", "false");
         await projectWithClip(app, page, "Again", work, corpus ?? "");
         await goTo(page, 2);
-        await playAndPause(page, 60);
+        await press(page, "Space");
+        await expect(pauseButton(page)).toBeVisible();
+        // The engine of this launch was told the quality again.
+        await expect(quality(page, "Quarter")).toBeVisible({ timeout: 20_000 });
+        await expect.poll(() => timecodeFrames(page), { timeout: 20_000 }).toBeGreaterThan(75);
+        await press(page, "Space");
+        await expect(playButton(page)).toBeVisible();
         await expect(timecode(page)).toHaveText("00:00:02:00");
       } finally {
         await second.close();
