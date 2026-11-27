@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { MediaAsset, ProxyStatus } from "@cutweave/protocol";
 import { formatTimecode } from "@cutweave/timeline";
-import { InspectorRow, NumberScrubber, Slider, TextField } from "@cutweave/ui";
+import { Button, InspectorRow, NumberScrubber, Slider, TextField } from "@cutweave/ui";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -31,6 +31,7 @@ import { TrackSection } from "../inspector/TrackSection.tsx";
 import { VideoSections } from "../inspector/VideoSections.tsx";
 import { isMovingPicture } from "../media/kinds.ts";
 import { ContextSurface } from "../menus/host.tsx";
+import { openProjectSettings } from "../project/projectSettings.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId, selectSequenceSummary } from "../state/selectors.ts";
 import { toastStore } from "../state/toastStore.ts";
@@ -508,6 +509,15 @@ function ProjectInspector({ editor }: { readonly editor: InspectorEditor }) {
               {formatTimecode(summary.duration, summary.frameRate)}
             </span>
           </InspectorRow>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="sliders-horizontal"
+            onClick={() => openProjectSettings()}
+            data-testid="inspector-project-settings"
+          >
+            {t("inspector.projectSettings")}
+          </Button>
         </Section>
       )}
     </div>

@@ -28,8 +28,11 @@ use cutweave_commands::{
     QueryCtx, Registrable, Registry, RegistryError, Scope, Tx, command, wire,
 };
 use cutweave_jobs::JobId;
+use cutweave_model::SettingsPatch;
 use cutweave_model::{EntityKind, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind};
 pub use cutweave_model::{ProxyMode, ProxyPolicy};
+
+use crate::project::settings;
 
 /// Most assets one proxy command names.
 pub const MAX_PROXY_MEDIA: usize = 256;
@@ -433,7 +436,8 @@ pub struct ProxyPolicySet {
 /// (video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than
 /// 60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then
 /// queues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).
-/// An asset's own mode (`media.set_proxy_mode`) wins over the policy.
+/// An asset's own mode (`media.set_proxy_mode`) wins over the policy. A named shortcut of
+/// `project.set_settings{patch: {proxy_policy}}`: the same patch through the same checks.
 #[command(
     name = "media.set_proxy_policy",
     summary = "Choose which of the project's video gets proxies automatically: off, auto or all",
@@ -455,12 +459,13 @@ impl Command for MediaSetProxyPolicy {
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<ProxyPolicySet, CmdError> {
         let previous = tx.doc().settings.proxy_policy;
-        tx.update_settings(|s| {
-            s.proxy_policy = self.policy;
-            Ok(())
-        })?;
+        let patch = SettingsPatch::of(
+            settings::PROXY_POLICY,
+            serde_json::Value::String(self.policy.name().to_owned()),
+        );
+        let now = settings::apply_patch(tx, &patch, "/policy")?;
         Ok(ProxyPolicySet {
-            policy: self.policy,
+            policy: now.proxy_policy,
             previous,
         })
     }

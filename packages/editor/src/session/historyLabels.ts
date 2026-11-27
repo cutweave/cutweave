@@ -33,6 +33,7 @@ const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
   "media.remove": "history.remove",
   "project.new": "history.new",
   "project.rename": "history.rename",
+  "project.set_settings": "history.projectSettings",
   "track.add": "history.trackAdd",
   "track.remove": "history.trackRemove",
   "track.set": "history.trackSet",

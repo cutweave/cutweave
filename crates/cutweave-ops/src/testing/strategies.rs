@@ -483,6 +483,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
     Some(match name {
         "project.new" => (if empty { 12 } else { 1 }, project_new()),
         "project.rename" => (1, project_rename()),
+        "project.set_settings" => (1, project_set_settings()),
         "project.info"
         | "edit.locks"
         | "edit.list_checkpoints"
@@ -808,6 +809,82 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!({"name": "P", "still_duration": "0s"})),
         Just(json!({"name": "P", "still_duration": "3601s"})),
         Just(json!({"name": "P", "proxy_policy": "some"})),
+        Just(json!({"name": "P", "settings": {"nope": 1}})),
+        Just(json!({"name": "P", "settings": {"still_duration": 0}})),
+        Just(json!({"name": "P", "proxy_policy": "off", "settings": {"proxy_policy": "all"}})),
+    ]
+    .boxed();
+    let with_settings = (name(), settings_patch())
+        .prop_map(|(name, settings)| json!({"name": name, "settings": settings}))
+        .boxed();
+    mix(prop_oneof![3 => valid, 1 => with_settings].boxed(), invalid)
+}
+
+/// A valid patch of the project's settings (WP-2H.08): any subset of the keys, `null` for the
+/// optional ones.
+fn settings_patch() -> BoxedStrategy<Value> {
+    let still = option::of(prop_oneof![
+        Just(json!(705_600_000_i64)),
+        Just(json!(2_116_800_000_i64)),
+        Just(Value::Null),
+    ]);
+    let policy = option::of(prop_oneof![
+        select(vec!["off", "auto", "all"]).prop_map(|p| json!(p)),
+        Just(Value::Null),
+    ]);
+    let format = option::of(
+        (
+            option::of(16..=3840_u32),
+            option::of(select(FrameRate::COMMON.to_vec())),
+            option::of(select(vec!["#000000", "#10203040"])),
+        )
+            .prop_map(|(width, frame_rate, background)| {
+                let mut format = serde_json::Map::new();
+                if let Some(width) = width {
+                    format.insert("width".into(), json!(width));
+                }
+                if let Some(rate) = frame_rate {
+                    format.insert("frame_rate".into(), json!(rate));
+                }
+                if let Some(background) = background {
+                    format.insert("background".into(), json!(background));
+                }
+                Value::Object(format)
+            }),
+    );
+    (still, policy, format)
+        .prop_map(|(still, policy, format)| {
+            let mut patch = serde_json::Map::new();
+            if let Some(still) = still {
+                patch.insert("still_duration".into(), still);
+            }
+            if let Some(policy) = policy {
+                patch.insert("proxy_policy".into(), policy);
+            }
+            if let Some(format) = format {
+                patch.insert("default_format".into(), format);
+            }
+            Value::Object(patch)
+        })
+        .boxed()
+}
+
+/// `project.set_settings` (WP-2H.08): a patch of any keys; an unknown key, a value of the
+/// wrong type or out of range, no patch.
+fn project_set_settings() -> BoxedStrategy<Value> {
+    let valid = settings_patch()
+        .prop_map(|patch| json!({ "patch": patch }))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"patch": {"nope": true}})),
+        Just(json!({"patch": {"default_format": {"widht": 4}}})),
+        Just(json!({"patch": {"proxy_policy": "some"}})),
+        Just(json!({"patch": {"still_duration": 0}})),
+        Just(json!({"patch": {"still_duration": 2_540_866_560_000_i64}})),
+        Just(json!({"patch": {"default_format": {"width": 0}}})),
+        Just(json!({"patch": {"default_format": null}})),
+        Just(json!({"patch": 3})),
+        Just(json!({})),
     ]
     .boxed();
     mix(valid, invalid)
