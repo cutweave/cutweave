@@ -343,6 +343,57 @@ export type AutosaveFailed = {
 };
 
 /**
+ *  What fills a sequence's canvas behind all tracks, over its `background` color (WP-2B.02).
+ *  It is static: a background has no keyframes.
+ */
+export type BackgroundFill = 
+/**
+ *  A blurred copy of a picture of the sequence, scaled to cover the canvas. Where no such
+ *  picture shows, the color does.
+ */
+{ kind: "blur"; 
+/**  Which picture is blurred. */
+source?: BlurSource; 
+/**
+ *  The blur's standard deviation as a fraction of the canvas height, `0..=1`, so
+ *  preview and export blur alike at any size.
+ */
+radius: number | null; 
+/**  How much of the blurred picture's light is taken away, `0..=1` (0: none, 1: black). */
+dim?: number | null } | 
+/**  A still image of the project. An image that no longer exists draws nothing. */
+{ kind: "image"; 
+/**  The image asset. */
+media: MediaId; 
+/**  How the image is sized to the canvas. */
+fit?: BackgroundFit } | 
+/**
+ *  Nothing: the canvas starts fully transparent and the color is not drawn. Only exports
+ *  that keep alpha show it; the others see black.
+ */
+{ kind: "transparent" };
+
+/**  How a [`BackgroundFill::Image`] is sized to the canvas. */
+export type BackgroundFit = 
+/**  Fills the canvas, cropping what does not fit. */
+"cover" | 
+/**  The whole image inside the canvas; the color shows around it. */
+"contain" | 
+/**  Stretched to the canvas, changing its shape. */
+"stretch";
+
+/**  The kinds of background. */
+export type BackgroundKind = 
+/**  The plain color. */
+"color" | 
+/**  A blurred copy of the picture, covering the canvas. */
+"blur" | 
+/**  A still image of the project. */
+"image" | 
+/**  Nothing: a transparent canvas, for exports that keep alpha. */
+"transparent";
+
+/**
  *  Opens a transaction owned by this connection (one at a time). Run commands in it by naming
  *  it in the request envelope (`_meta.tx`). A `batch` stays invisible until committed; a
  *  `gesture` (dragging, scrubbing) and a `proposal` (copilot turn) update the document live
@@ -375,6 +426,16 @@ export type BlendMode =
 "add" | 
 /**  A gentle overlay. */
 "soft_light";
+
+/**  The picture a [`BackgroundFill::Blur`] blurs. */
+export type BlurSource = 
+/**  The lowest picture showing at that time. */
+"below" | 
+/**
+ *  The picture on the main track (the magnetic track; without one, the lowest video
+ *  track).
+ */
+"main_track";
 
 /**  A kind of disk cache. */
 export type CacheKind = 
@@ -6386,6 +6447,11 @@ export type SequenceFormat = {
 	color_space: ColorSpace,
 	/**  Canvas color behind all tracks. */
 	background: Color,
+	/**
+	 *  What fills the canvas over that color, behind all tracks (WP-2B.02). Absent: the color
+	 *  alone. Left out of the file while absent, so documents without one read as before.
+	 */
+	background_fill?: BackgroundFill | null,
 } & { [key in string]: unknown };
 
 /**
@@ -6428,6 +6494,40 @@ export type SequenceRenameOutput = {
 	sequence: SequenceId,
 	/**  The name now in effect (trimmed). */
 	name: string,
+};
+
+/**
+ *  Sets what a sequence draws behind its tracks. `color`: the plain color. `blur`: the picture
+ *  below (or the main track's) scaled to cover the canvas and blurred; `radius` is a fraction of
+ *  the canvas height, so preview and export match. `image`: a still of the project, sized by
+ *  `fit`. `transparent`: nothing, for exports that keep alpha. A field left out keeps its value
+ *  when the kind stays the same, else takes its default; a field of another kind is refused.
+ */
+export type SequenceSetBackground = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The kind of background. */
+	kind: BackgroundKind,
+	/**  `color`, `blur`, `image`: the canvas color, `#rrggbb` (under the blur or image too). */
+	color?: Color | null,
+	/**  `blur`: which picture, `below` (the lowest one showing; default) or `main_track`. */
+	source?: BlurSource | null,
+	/**  `blur`: the blur's size as a fraction of the canvas height, `0..=1` (default 0.05). */
+	radius?: number | null,
+	/**  `blur`: how much of the light is taken away, `0..=1` (default 0.25). */
+	dim?: number | null,
+	/**  `image`: the still image asset. */
+	media?: MediaId | null,
+	/**  `image`: `cover` (default), `contain` or `stretch`. */
+	fit?: BackgroundFit | null,
+};
+
+/**  What `sequence.set_background` returns. */
+export type SequenceSetBackgroundOutput = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Its format now. */
+	format: SequenceFormat,
 };
 
 /**

@@ -123,6 +123,116 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "description": "Canvas color behind all tracks.",
               "type": "string",
               "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            },
+            "background_fill": {
+              "anyOf": [
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "blur"
+                        },
+                        "source": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "const": "below",
+                              "description": "The lowest picture showing at that time."
+                            },
+                            {
+                              "type": "string",
+                              "const": "main_track",
+                              "description": "The picture on the main track (the magnetic track; without one, the lowest video\ntrack)."
+                            }
+                          ],
+                          "description": "Which picture is blurred.",
+                          "default": "below"
+                        },
+                        "radius": {
+                          "type": "number",
+                          "format": "double",
+                          "description": "The blur's standard deviation as a fraction of the canvas height, `0..=1`, so\npreview and export blur alike at any size."
+                        },
+                        "dim": {
+                          "type": "number",
+                          "format": "double",
+                          "description": "How much of the blurred picture's light is taken away, `0..=1` (0: none, 1: black).",
+                          "default": 0.0
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "source",
+                        "radius",
+                        "dim"
+                      ],
+                      "description": "A blurred copy of a picture of the sequence, scaled to cover the canvas. Where no such\npicture shows, the color does."
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "image"
+                        },
+                        "media": {
+                          "type": "string",
+                          "pattern": "^med_[0-9a-f]{32}$",
+                          "description": "The image asset."
+                        },
+                        "fit": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "const": "cover",
+                              "description": "Fills the canvas, cropping what does not fit."
+                            },
+                            {
+                              "type": "string",
+                              "const": "contain",
+                              "description": "The whole image inside the canvas; the color shows around it."
+                            },
+                            {
+                              "type": "string",
+                              "const": "stretch",
+                              "description": "Stretched to the canvas, changing its shape."
+                            }
+                          ],
+                          "description": "How the image is sized to the canvas.",
+                          "default": "cover"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "media",
+                        "fit"
+                      ],
+                      "description": "A still image of the project. An image that no longer exists draws nothing."
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "transparent"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "description": "Nothing: the canvas starts fully transparent and the color is not drawn. Only exports\nthat keep alpha show it; the others see black."
+                    }
+                  ],
+                  "description": "What fills a sequence's canvas behind all tracks, over its `background` color (WP-2B.02).\nIt is static: a background has no keyframes."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What fills the canvas over that color, behind all tracks (WP-2B.02). Absent: the color\nalone. Left out of the file while absent, so documents without one read as before."
             }
           },
           "required": [
@@ -251,6 +361,116 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "description": "Canvas color behind all tracks.",
             "type": "string",
             "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          },
+          "background_fill": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "blur"
+                      },
+                      "source": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "const": "below",
+                            "description": "The lowest picture showing at that time."
+                          },
+                          {
+                            "type": "string",
+                            "const": "main_track",
+                            "description": "The picture on the main track (the magnetic track; without one, the lowest video\ntrack)."
+                          }
+                        ],
+                        "description": "Which picture is blurred.",
+                        "default": "below"
+                      },
+                      "radius": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "The blur's standard deviation as a fraction of the canvas height, `0..=1`, so\npreview and export blur alike at any size."
+                      },
+                      "dim": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "How much of the blurred picture's light is taken away, `0..=1` (0: none, 1: black).",
+                        "default": 0.0
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "source",
+                      "radius",
+                      "dim"
+                    ],
+                    "description": "A blurred copy of a picture of the sequence, scaled to cover the canvas. Where no such\npicture shows, the color does."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "image"
+                      },
+                      "media": {
+                        "type": "string",
+                        "pattern": "^med_[0-9a-f]{32}$",
+                        "description": "The image asset."
+                      },
+                      "fit": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "const": "cover",
+                            "description": "Fills the canvas, cropping what does not fit."
+                          },
+                          {
+                            "type": "string",
+                            "const": "contain",
+                            "description": "The whole image inside the canvas; the color shows around it."
+                          },
+                          {
+                            "type": "string",
+                            "const": "stretch",
+                            "description": "Stretched to the canvas, changing its shape."
+                          }
+                        ],
+                        "description": "How the image is sized to the canvas.",
+                        "default": "cover"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "media",
+                      "fit"
+                    ],
+                    "description": "A still image of the project. An image that no longer exists draws nothing."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "transparent"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "description": "Nothing: the canvas starts fully transparent and the color is not drawn. Only exports\nthat keep alpha show it; the others see black."
+                  }
+                ],
+                "description": "What fills a sequence's canvas behind all tracks, over its `background` color (WP-2B.02).\nIt is static: a background has no keyframes."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What fills the canvas over that color, behind all tracks (WP-2B.02). Absent: the color\nalone. Left out of the file while absent, so documents without one read as before."
           }
         },
         "required": [

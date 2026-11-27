@@ -343,4 +343,61 @@ describe("the Sequence section", () => {
     view();
     expect(screen.queryByTestId("sequence-inspector")).toBeNull();
   });
+
+  /** The sample project with `fill` as the background fill of its sequence (WP-2B.02). */
+  const withFill = (fill: object): Project => {
+    const project = sampleProject();
+    const format = (project.sequences as unknown as Record<string, { format: object }>).seq_1;
+    if (format === undefined) throw new Error("the sample project has seq_1");
+    format.format = { ...format.format, background_fill: fill };
+    return project;
+  };
+  const chosen = (label: string): string | null | undefined =>
+    (screen.getByLabelText(label) as HTMLSelectElement).selectedOptions[0]?.textContent;
+  const options = (label: string): Array<string | null> =>
+    [...(screen.getByLabelText(label) as HTMLSelectElement).options].map((o) => o.textContent);
+
+  it("fills the background with a blurred picture, as one command", async () => {
+    nothing();
+    view();
+    // No fill: the color only, and no blur controls. An image is not offered here.
+    expect(chosen("Fill")).toBe("Color only");
+    expect(options("Fill")).toEqual(["Color only", "Blurred picture", "Transparent"]);
+    expect(screen.queryByRole("slider", { name: "Blur" })).toBeNull();
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText("Fill"), "Blurred picture");
+    await waitFor(() => expect(calls("sequence.set_background")).toHaveLength(1));
+    expect(calls("sequence.set_background")[0]).toEqual({ sequence: "seq_1", kind: "blur" });
+    expect(calls("edit.begin_tx")).toEqual([
+      { kind: "batch", label: "Change sequence background fill" },
+    ]);
+  });
+
+  it("shows Blur and Dim for a blurred background and sets each alone", async () => {
+    select(withFill({ kind: "blur", source: "below", radius: 0.05, dim: 0.25 }), sec(2));
+    view();
+    const blur = screen.getByRole("slider", { name: "Blur" });
+    const dim = screen.getByRole("slider", { name: "Dim" });
+    expect(blur.getAttribute("aria-valuetext")).toBe("5%");
+    expect(dim.getAttribute("aria-valuetext")).toBe("25%");
+    const user = userEvent.setup();
+    dim.focus();
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() => expect(calls("sequence.set_background")).toHaveLength(1));
+    const [input] = calls("sequence.set_background") as Array<{ kind: string; dim: number }>;
+    expect(input?.kind).toBe("blur");
+    expect(input?.dim).toBeCloseTo(0.26, 6);
+    expect(input).not.toHaveProperty("radius");
+    expect(calls("edit.begin_tx")).toEqual([
+      { kind: "batch", label: "Change sequence background dim" },
+    ]);
+  });
+
+  it("lists an image fill only while the sequence has one", () => {
+    select(withFill({ kind: "image", media: "med_1", fit: "cover" }), sec(2));
+    view();
+    expect(chosen("Fill")).toBe("Image");
+    expect(options("Fill")).toEqual(["Color only", "Blurred picture", "Image", "Transparent"]);
+    expect(screen.queryByRole("slider", { name: "Blur" })).toBeNull();
+  });
 });

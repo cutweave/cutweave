@@ -11,6 +11,11 @@
 //! - `composite/3_layers_uploads`: animated sources, so every frame uploads and decodes three
 //!   1080p NV12 pictures (cycling through 8 pre-generated ones).
 //!
+//! - `background@…/portrait_color` and `portrait_blur` (WP-2B.02): one 1080p clip on a
+//!   1080 × 1920 sequence over the plain colour, then over a blurred copy of the picture (5% of
+//!   the height). Their difference is the cost of the blur: the small-canvas draw, the two
+//!   Gaussian passes and the upsample (budget < 1.5 ms on the iGPU, gated in 2J).
+//!
 //! Each iteration is one frame: evaluate (`TimelineIndex::evaluate_into`) → `build_into` →
 //! GPU execution → blocking readback, so the time is an upper bound of the GPU time per frame
 //! (the budget is ≤ 8 ms on the iGPU for the 16.7 ms frame of 1080p60). The adapter is
@@ -24,7 +29,7 @@ use std::time::{Duration as StdDuration, Instant};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use cutweave_model::{
-    Animatable, BlendMode, Clip, ColorPrimaries, ColorRange, ColorTags, Duration, Extra,
+    Animatable, BackgroundFill, BlendMode, BlurSource, Clip, ColorPrimaries, ColorRange, ColorTags, Duration, Extra,
     FLICKS_PER_SECOND, FrameRate, Interp, ItemId, Keyframe, Keyframes, MatrixCoefficients,
     MediaAsset, MediaId, MediaKind, ProbeInfo, Project, SampleRate, Sequence, SequenceFormat,
     SequenceId, StreamInfo, StreamKind, Time, Track, TrackId, TrackKind, TransferCharacteristics,
@@ -150,13 +155,18 @@ struct Player {
     graph: RenderGraph,
     scratch: BuildScratch,
     source: SyntheticSource,
+    target: Target,
     frame: i64,
 }
 
 impl Player {
     fn new(blend: BlendMode, animated: bool) -> Player {
         let (project, seq) = project(blend);
-        let index = TimelineIndex::new(&project, seq).unwrap();
+        Player::of(&project, seq, animated, Target::rgba8(W, H))
+    }
+
+    fn of(project: &Project, seq: SequenceId, animated: bool, target: Target) -> Player {
+        let index = TimelineIndex::new(project, seq).unwrap();
         let scene = index.evaluate(Time::ZERO);
         Player {
             index,
@@ -164,6 +174,7 @@ impl Player {
             graph: RenderGraph::new(Target::rgba8(1, 1)),
             scratch: BuildScratch::default(),
             source: sources(animated),
+            target,
             frame: 0,
         }
     }
@@ -184,7 +195,7 @@ impl Player {
             &mut self.graph,
             &mut self.scratch,
             &self.scene,
-            Target::rgba8(W, H),
+            self.target,
             &self.source,
             &GraphOptions::default(),
         )
@@ -221,5 +232,59 @@ fn bench(cr: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench);
+/// One 1080p clip on a 1080 × 1920 sequence with `fill` behind it.
+fn portrait(fill: Option<BackgroundFill>) -> (Project, SequenceId) {
+    let seq = SequenceId::from_u128(1);
+    let mut format = SequenceFormat::new(H, W, FrameRate::FPS_60, SampleRate::HZ_48_000);
+    format.background_fill = fill;
+    let mut project = Project::new("background bench");
+    let mut sequence = Sequence::new(seq, "Main", format);
+    let id = MediaId::from_u128(11);
+    project.media.insert(id, media(id));
+    let track = TrackId::from_u128(20);
+    sequence.insert_track(0, Track::new(track, TrackKind::Video, "V1"));
+    let clip = Clip::new(
+        ItemId::from_u128(30),
+        id,
+        Time::ZERO,
+        Duration::from_secs(10).unwrap(),
+    );
+    sequence
+        .track_mut(&track)
+        .unwrap()
+        .items
+        .insert(clip.into());
+    project.sequences.insert(seq, sequence);
+    (project, seq)
+}
+
+fn bench_background(cr: &mut Criterion) {
+    let choice = AdapterChoice::from_env_or(AdapterChoice::Integrated);
+    let ctx = GpuContext::new(&choice)
+        .or_else(|_| GpuContext::new(&AdapterChoice::Auto))
+        .expect("a GPU adapter");
+    let key = ctx.info().key.clone();
+    let mut c = Compositor::new(ctx, CompositorOptions::default()).expect("compositor");
+    let mut g = cr.benchmark_group(format!("background@{key}"));
+    g.sample_size(30);
+    g.measurement_time(StdDuration::from_secs(8));
+    let blur = BackgroundFill::Blur {
+        source: BlurSource::Below,
+        radius: 0.05,
+        dim: 0.25,
+    };
+    for (name, fill) in [("portrait_color", None), ("portrait_blur", Some(blur))] {
+        let (project, seq) = portrait(fill);
+        let mut player = Player::of(&project, seq, false, Target::rgba8(H, W));
+        for _ in 0..2 * CYCLE {
+            player.frame(&mut c);
+        }
+        g.bench_function(name, |b| {
+            b.iter_custom(|iters| (0..iters).map(|_| player.frame(&mut c)).sum());
+        });
+    }
+    g.finish();
+}
+
+criterion_group!(benches, bench, bench_background);
 criterion_main!(benches);

@@ -91,6 +91,7 @@ const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
   [`${"sequence"}.rename`]: "history.sequenceRename",
   [`${"sequence"}.delete`]: "history.sequenceDelete",
   [`${"sequence"}.set_format`]: "history.sequenceFormat",
+  [`${"sequence"}.set_background`]: "history.sequenceBackground",
 };
 
 /** Product names an agent label is capitalized to; any other label is shown as it is. */

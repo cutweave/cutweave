@@ -1542,17 +1542,29 @@
       "height": "Height",
       "frameRate": "Frame rate",
       "background": "Background",
+      "fill": "Fill",
+      "blur": "Blur",
+      "dim": "Dim",
       "reframe": "Reframe clips",
       "rateValue": "{{fps}} fps",
       "widthName": "width",
       "heightName": "height",
       "frameRateName": "frame rate",
       "backgroundName": "background",
+      "fillName": "background fill",
+      "blurName": "background blur",
+      "dimName": "background dim",
       "reframes": {
         "fit": "Fit",
         "fill": "Fill",
         "keepScale": "Keep scale",
         "none": "None"
+      },
+      "fills": {
+        "color": "Color only",
+        "blur": "Blurred picture",
+        "image": "Image",
+        "transparent": "Transparent"
       }
     },
     "track": {
@@ -1632,6 +1644,7 @@
     "sequenceRename": "Rename sequence",
     "sequenceDelete": "Delete sequence",
     "sequenceFormat": "Change sequence format",
+    "sequenceBackground": "Change sequence background",
     "panel": {
       "label": "Project history",
       "filterLabel": "Show changes by",
