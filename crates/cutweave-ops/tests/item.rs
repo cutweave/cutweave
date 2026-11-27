@@ -489,3 +489,67 @@ fn get_fields_limit_the_sections_and_unknown_ones_are_invalid() {
         "not_found",
     );
 }
+
+// ----- item.set_label_color (issue #222) -----------------------------------------------------
+
+#[test]
+fn set_label_color_sets_and_clears_the_colour_of_each_item() {
+    let (mut h, _, _, v, a) = setup();
+    let out = h.ok(
+        "item.set_label_color",
+        json!({"items": [v, a, v], "color": "#336699"}),
+    );
+    assert_eq!(
+        out["items"],
+        json!([v, a]),
+        "each item once, in the order given"
+    );
+    assert_eq!(clip_of(&h, v).color_label.unwrap().to_string(), "#336699");
+    assert_eq!(clip_of(&h, a).color_label.unwrap().to_string(), "#336699");
+    // Only the listed item changes; a linked partner keeps its own.
+    h.ok(
+        "item.set_label_color",
+        json!({"items": [v], "color": "#aa0000"}),
+    );
+    assert_eq!(clip_of(&h, v).color_label.unwrap().to_string(), "#aa0000");
+    assert_eq!(clip_of(&h, a).color_label.unwrap().to_string(), "#336699");
+    // No colour clears the label, and the field leaves the document.
+    let out = h.ok("item.set_label_color", json!({"items": [v, a]}));
+    assert_eq!(out["items"], json!([v, a]));
+    assert_eq!(clip_of(&h, v).color_label, None);
+    let again = h.ok("item.set_label_color", json!({"items": [v], "color": null}));
+    assert_eq!(again["items"], json!([]), "nothing to change");
+    let value = serde_json::to_value(clip_of(&h, v)).unwrap();
+    assert!(value.get("color_label").is_none());
+}
+
+#[test]
+fn set_label_color_rejects_bad_params_and_locked_tracks() {
+    let (mut h, p, _, v, _) = setup();
+    assert_invalid(
+        h.run("item.set_label_color", json!({"items": []})),
+        "/items",
+    );
+    assert_invalid(
+        h.run(
+            "item.set_label_color",
+            json!({"items": [v], "color": "red"}),
+        ),
+        "/color",
+    );
+    assert_code(
+        h.run(
+            "item.set_label_color",
+            json!({"items": [ItemId::from_u128(99)], "color": "#336699"}),
+        ),
+        "not_found",
+    );
+    h.ok("track.set", json!({"track": p.video, "locked": true}));
+    assert_code(
+        h.run(
+            "item.set_label_color",
+            json!({"items": [v], "color": "#336699"}),
+        ),
+        "locked",
+    );
+}

@@ -5640,6 +5640,14 @@
                               ],
                               "type": "object"
                             },
+                            "color_label": {
+                              "description": "The colour label (arch §4.2 `color_label`, issue #222): a display colour that marks the\nitem on the timeline, set with `item.set_label_color`. It changes nothing in the picture\nor the sound. Absent: no label; left out of the file while absent, so documents written\nbefore the field read the same.",
+                              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
                             "custom": {
                               "additionalProperties": true,
                               "description": "Plugin data (arch §4.3).",

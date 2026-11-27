@@ -420,3 +420,100 @@ fn list_markers_sorts_by_time() {
     assert!(out.get("item").is_none());
     assert!(out.get("in_out").is_none());
 }
+
+// ----- timeline.update_marker (issue #222) -------------------------------------------------------
+
+#[test]
+fn update_marker_changes_only_the_given_fields() {
+    let (mut h, p, _) = setup();
+    let m: MarkerId = id(&h.ok(
+        "timeline.add_marker",
+        json!({"sequence": p.sequence, "t": "f:30", "label": "Intro"}),
+    )["marker"]);
+    let out = h.ok(
+        "timeline.update_marker",
+        json!({"id": m, "label": "  Opening  ", "color": "#336699"}),
+    );
+    assert_eq!(out["marker"], json!(m));
+    assert_eq!(out["changed"], json!(["label", "color"]));
+    let stored = h.doc().sequences[&p.sequence].markers[&m].clone();
+    assert_eq!(stored.label, "Opening");
+    assert_eq!(stored.color.to_string(), "#336699");
+    assert_eq!(stored.kind, cutweave_model::MarkerKind::User);
+    assert_eq!(stored.duration, None);
+    assert_eq!(stored.t.flicks(), 30 * FRAME, "the time stays");
+
+    // Convert to chapter, and make it a range; then back to a point.
+    let out = h.ok(
+        "timeline.update_marker",
+        json!({"id": m, "kind": "chapter", "duration": "f:15"}),
+    );
+    assert_eq!(out["changed"], json!(["duration", "kind"]));
+    let stored = h.doc().sequences[&p.sequence].markers[&m].clone();
+    assert_eq!(stored.kind, cutweave_model::MarkerKind::Chapter);
+    assert_eq!(stored.duration.unwrap().flicks(), 15 * FRAME);
+    assert_eq!(stored.label, "Opening");
+    h.ok("timeline.update_marker", json!({"id": m, "duration": 0}));
+    assert_eq!(h.doc().sequences[&p.sequence].markers[&m].duration, None);
+
+    // The same values again change nothing.
+    let commits = h.commits();
+    let out = h.ok(
+        "timeline.update_marker",
+        json!({"id": m, "label": "Opening", "kind": "chapter"}),
+    );
+    assert_eq!(out["changed"], json!([]));
+    assert_eq!(h.commits(), commits + 1);
+}
+
+#[test]
+fn update_marker_rejects_bad_params_with_their_paths() {
+    let (mut h, p, _) = setup();
+    let m: MarkerId = id(&h.ok(
+        "timeline.add_marker",
+        json!({"sequence": p.sequence, "t": "f:30"}),
+    )["marker"]);
+    assert_invalid(h.run("timeline.update_marker", json!({"id": m})), "");
+    assert_invalid(
+        h.run(
+            "timeline.update_marker",
+            json!({"id": m, "label": "x".repeat(201)}),
+        ),
+        "/label",
+    );
+    assert_invalid(
+        h.run(
+            "timeline.update_marker",
+            json!({"id": m, "duration": "-1.0s"}),
+        ),
+        "/duration",
+    );
+    assert_code(
+        h.run(
+            "timeline.update_marker",
+            json!({"id": MarkerId::from_u128(99), "label": "x"}),
+        ),
+        "not_found",
+    );
+}
+
+#[test]
+fn update_marker_on_an_item_respects_the_track_lock() {
+    let (mut h, p, video) = setup();
+    let a = clip(&mut h, p, video, 0, 60);
+    let m: MarkerId = id(&h.ok(
+        "timeline.add_marker",
+        json!({"sequence": p.sequence, "item": a, "t": "f:5"}),
+    )["marker"]);
+    h.ok("timeline.update_marker", json!({"id": m, "label": "Hit"}));
+    assert_eq!(clip_markers(&h, a)[&m].label, "Hit");
+    h.ok("track.set", json!({"track": p.video, "locked": true}));
+    assert_code(
+        h.run("timeline.update_marker", json!({"id": m, "label": "No"})),
+        "locked",
+    );
+}
+
+fn clip_markers(h: &H, item: ItemId) -> cutweave_model::Markers {
+    h.doc().find_item(&item).unwrap().item.markers().clone()
+}

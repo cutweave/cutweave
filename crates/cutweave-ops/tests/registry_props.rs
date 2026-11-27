@@ -96,8 +96,9 @@ const REGRESSIONS: &str = concat!(
 /// stream; at 48 the export queue and lock commands dropped coverage to 93%, and at 128 the
 /// three import commands of ADR-0035 dropped it to 94.3%. Commands whose
 /// preconditions are rare (keyframes to move, a proxy to delete) want strategies that set
-/// them up rather than more cases (issue #184).
-const COVERAGE_CASES: u32 = 160;
+/// them up rather than more cases (issue #184). Raised from 160 with the two commands of
+/// issue #222 (`timeline.update_marker`, `item.set_label_color`).
+const COVERAGE_CASES: u32 = 176;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 

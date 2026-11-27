@@ -364,6 +364,15 @@ const CONTRACT: &[Row] = &[
         true,
     ),
     (
+        "timeline.update_marker",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
         "timeline.remove_marker",
         EntryKind::Command,
         McpExposure::Catalog,
@@ -685,6 +694,15 @@ const CONTRACT: &[Row] = &[
     ),
     (
         "item.reset_props",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.set_label_color",
         EntryKind::Command,
         McpExposure::Catalog,
         false,
@@ -1047,6 +1065,8 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("keyframe.move"), ["item", "keys"]);
     assert_eq!(required("keyframe.eval"), ["item", "prop"]);
     assert_eq!(required("item.reset_props"), Vec::<String>::new());
+    assert_eq!(required("item.set_label_color"), ["items"]);
+    assert_eq!(required("timeline.update_marker"), ["id"]);
     assert_eq!(required("item.apply_layout"), ["items", "layout"]);
     assert_eq!(required("item.layouts"), Vec::<String>::new());
     assert_eq!(required("item.get"), ["item"]);
