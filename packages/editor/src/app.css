@@ -2203,3 +2203,12 @@ body {
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
+
+/* The easing of a keyframe (WP-2C.05): a small dialog, never taller than 60% of the window. */
+.cw-dialog.cw-kfcurve {
+  max-height: 60vh;
+}
+.cw-kfcurve .cw-curve__plot {
+  width: min(100%, 34vh);
+  margin: 0 auto;
+}

@@ -15,10 +15,10 @@ import type { ItemId, RpcClient, SelectionRef, SequenceId, TrackId } from "@cutw
 import {
   type Cursor,
   createSnapPort,
-  FLICKS_PER_SECOND,
   createTimelineMachine,
   type DropPreview,
   type DroppedMedia,
+  FLICKS_PER_SECOND,
   type FrameScheduler,
   type GestureEdit,
   type HitResult,
@@ -61,8 +61,8 @@ import {
   type KeyAddress,
   keySelectionStore,
   keysAt,
-  movedKeys,
   moveArgs,
+  movedKeys,
   nudgeKeys,
   orderedKeys,
   pruneKeys,
@@ -777,6 +777,27 @@ export class TimelineHost {
     return true;
   }
 
+  /**
+   * A right-click on a key: it becomes the key selection unless it already is part of it, and
+   * its clip is selected (the Inspector shows it).
+   */
+  contextKey(hit: HitResult): void {
+    if (hit.zone !== "keyframe" || hit.itemId === null || hit.keyframeTime === null) return;
+    const clip = findClip(this.#deps.doc.getState().project, hit.itemId);
+    if (clip === null) return;
+    const t = hit.keyframeTime - clip.start;
+    const keys = hit.prop === null ? keysAt(clip, t) : [{ prop: hit.prop, t }];
+    const selection = keySelectionStore.getState();
+    const kept =
+      selection.item === hit.itemId &&
+      keys.every((key) => selection.keys.some((k) => sameKey(k, key)));
+    if (!kept) selectKeys(hit.itemId, keys);
+    const view = this.#deps.view.getState();
+    if (!this.#itemSelection(view.selection).includes(hit.itemId)) {
+      view.setSelection([itemRef(hit.itemId)]);
+    }
+  }
+
   /** Adds a key of `prop` on the clip at sequence time `at` (on its frame). */
   addKeyAt(item: string, prop: string, at: number): void {
     this.#keyEdit("add", (call) => addKey(call, item, prop, Math.max(0, Math.round(at))));
@@ -875,12 +896,7 @@ export class TimelineHost {
    * the other selected keys when it is one of them, moved to `time`. A query: the keys are read
    * once when the drag begins, and what it does to the selection happens after the step.
    */
-  #keyCommand(
-    item: string,
-    at: number,
-    time: number,
-    prop: string | null,
-  ): MachineCommand | null {
+  #keyCommand(item: string, at: number, time: number, prop: string | null): MachineCommand | null {
     let drag = this.#keyDrag;
     const dragging = this.#machine.state.mode.name === "keyframe_dragging";
     if (drag === null || !dragging || drag.item !== item || drag.at !== at || drag.prop !== prop) {

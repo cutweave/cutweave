@@ -660,9 +660,9 @@ function pressTarget(st: Step, hit: HitResult): PressTarget {
     st.deps.keyframes !== undefined &&
     hit.keyframeTime !== null
   ) {
-    return partial
-      ? blocked
-      : { kind: "keyframe", item: id, keyframeTime: hit.keyframeTime, prop: hit.prop };
+    // A key belongs to its clip alone: a linked partner has nothing to follow, so a partly
+    // selected group does not stop the drag.
+    return { kind: "keyframe", item: id, keyframeTime: hit.keyframeTime, prop: hit.prop };
   }
   const edge = hit.zone === "left-edge" ? "start" : hit.zone === "right-edge" ? "end" : null;
   const unlink = keys.alt || partial;

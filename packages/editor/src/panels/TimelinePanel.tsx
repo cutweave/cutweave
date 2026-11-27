@@ -17,11 +17,11 @@ import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { InUseMarks } from "../timeline/InUseMarks.tsx";
-import { useKeyframeLanes } from "../timeline/useKeyframeLanes.ts";
 import { timelineDisplay } from "../timeline/prefs.ts";
 import { DropGhost, TrackHeaderControls } from "../timeline/TimelineOverlays.tsx";
 import { TimelineToolbar } from "../timeline/TimelineToolbar.tsx";
 import { TrackRenameInput } from "../timeline/TrackRenameInput.tsx";
+import { useKeyframeLanes } from "../timeline/useKeyframeLanes.ts";
 import { type TimelineBinding, useTimelineHost } from "../timeline/useTimelineHost.ts";
 import { transportController } from "../transport/useTransport.ts";
 

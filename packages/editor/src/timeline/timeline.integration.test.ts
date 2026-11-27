@@ -36,6 +36,7 @@ import { createToastStore } from "../state/toastStore.ts";
 import { createViewStore } from "../state/viewStore.ts";
 import { translator } from "./errors.ts";
 import { TimelineHost } from "./host.ts";
+import { findClip, keySelectionStore, laneGroups, storedKeys } from "./keyframes.ts";
 import { createLocksStore, LocksFeed } from "./locks.ts";
 import { type MachinePrefs, machinePrefs } from "./prefs.ts";
 import { quantile } from "./rttProbe.ts";
@@ -1065,5 +1066,197 @@ describe("timeline interactions against the real engine", () => {
 
   live("nothing failed in the background", async () => {
     expect(errors).toEqual([]);
+  });
+});
+
+// ---- keyframe lanes (WP-2C.05) ----------------------------------------------------------------
+
+/** What `TimelinePanel` does: the open lanes follow the document, the view and the selection. */
+function syncLanes(): void {
+  const project = stores.doc.getState().project;
+  view.setKeyframeLanes(
+    laneGroups(
+      project,
+      (model().items.length > 0 ? project && Object.keys(project.sequences)[0] : null) as never,
+      stores.view.getState().keyframeLanes,
+      keySelectionStore.getState(),
+      (prop) => prop,
+    ),
+  );
+}
+
+/** Item times (seconds) of the clip's opacity keys, as the engine's document has them. */
+const opacityKeys = (clip: string): number[] => {
+  const found = findClip(stores.doc.getState().project, clip);
+  return (found === null ? null : storedKeys(found, "opacity"))?.map((k) => k.t / F) ?? [];
+};
+
+describe("keyframe lanes against the real engine (WP-2C.05)", () => {
+  /** Canvas y of the first lane row under the clips of the video track (track-md, row 24). */
+  const laneRowY = (track: string) => {
+    const i = model().tracks.findIndex((t) => t.id === track);
+    return RULER + i * LANE + 4 + 48 + 12;
+  };
+
+  /** A 4 s clip at 1 s with opacity keys at 1 s, 2 s and 3 s (item time), its lanes open. */
+  async function withKeys(): Promise<Seeded> {
+    const s = await seed();
+    await rpc.call("keyframe.set", {
+      item: s.clip as never,
+      prop: "opacity",
+      keys: [
+        { t: sec(1), value: 0 },
+        { t: sec(2), value: 1 },
+        { t: sec(3), value: 0.5 },
+      ] as never,
+    });
+    await until(() => opacityKeys(s.clip).length === 3 && settledDoc());
+    stores.view.getState().setSelection([{ kind: "item", id: s.clip as never }]);
+    host.toggleKeyframeLanes();
+    syncLanes();
+    return s;
+  }
+
+  beforeAll(() => {
+    stores.doc.subscribe(syncLanes);
+    stores.view.subscribe(syncLanes);
+    keySelectionStore.subscribe(syncLanes);
+  });
+
+  beforeEach(() => {
+    stores.view.getState().setKeyframeLanes([]);
+    keySelectionStore.setState({ item: null, keys: [], offset: 0 });
+  });
+
+  live(
+    "the lanes toggle opens the selected clip's lanes; a click on a key selects it",
+    async () => {
+      const s = await withKeys();
+      expect(stores.view.getState().keyframeLanes).toEqual([s.clip]);
+      expect(host.lanesOpen()).toBe(true);
+      // The key at item time 2 s is at 3 s on the timeline.
+      const hit = view.hitTest(xOf(sec(3)), laneRowY(s.video));
+      expect(hit).toMatchObject({ zone: "keyframe", itemId: s.clip, prop: "opacity" });
+      click(xOf(sec(3)), laneRowY(s.video));
+      expect(keySelectionStore.getState()).toMatchObject({
+        item: s.clip,
+        keys: [{ prop: "opacity", t: sec(2) }],
+      });
+      // Closing the lanes lets go of the keys; nothing in the document changed.
+      const before = await historyLength();
+      host.toggleKeyframeLanes();
+      expect(stores.view.getState().keyframeLanes).toEqual([]);
+      expect(keySelectionStore.getState().item).toBeNull();
+      expect(await historyLength()).toBe(before);
+    },
+  );
+
+  live("dragging a key moves it by whole frames as one undo step; undo restores it", async () => {
+    const s = await withKeys();
+    const before = await historyLength();
+    const y = laneRowY(s.video);
+    await drag(xOf(sec(3)), xOf(sec(3)) + 50, y);
+    await until(() => opacityKeys(s.clip).includes(2.5) && settledDoc());
+    expect(opacityKeys(s.clip)).toEqual([1, 2.5, 3]);
+    expect(await historyLength()).toBe(before + 1);
+    expect(await lastLabel()).toBe("Move keyframe");
+    expect(await openTransactions()).toBe(0);
+    // The moved key stays selected, where it is now.
+    await until(() => keySelectionStore.getState().keys[0]?.t === sec(2.5));
+    expect(keySelectionStore.getState().offset).toBe(0);
+
+    await rpc.call("edit.undo", {});
+    await until(() => opacityKeys(s.clip).includes(2) && settledDoc());
+    expect(opacityKeys(s.clip)).toEqual([1, 2, 3]);
+    expect(toasts.getState().notices).toEqual([]);
+  });
+
+  live("a dragged key snaps to the playhead", async () => {
+    const s = await withKeys();
+    stores.view.getState().setPlayhead(sec(3.4));
+    await until(() => host.state.env.playhead === sec(3.4));
+    // 5 px short of the playhead: inside the 8 px snap distance.
+    await drag(xOf(sec(3)), xOf(sec(3.4)) - 5, laneRowY(s.video));
+    await until(() => opacityKeys(s.clip).includes(2.4) && settledDoc());
+    expect(opacityKeys(s.clip)).toEqual([1, 2.4, 3]);
+  });
+
+  live("Shift+click adds a key to the selection and a drag moves them together", async () => {
+    const s = await withKeys();
+    const y = laneRowY(s.video);
+    const before = await historyLength();
+    click(xOf(sec(2)), y);
+    click(xOf(sec(3)), y, { shiftKey: true });
+    expect(keySelectionStore.getState().keys).toHaveLength(2);
+    // The clip stays selected: Shift on a key is not Shift on its clip.
+    expect(stores.view.getState().selection.map((r) => r.id)).toContain(s.clip);
+    await drag(xOf(sec(3)), xOf(sec(3)) + 50, y);
+    await until(() => opacityKeys(s.clip).includes(1.5) && settledDoc());
+    expect(opacityKeys(s.clip)).toEqual([1.5, 2.5, 3]);
+    expect(await historyLength()).toBe(before + 1);
+  });
+
+  live(
+    "Delete removes the selected key and the nudge keys move it, one undo step each",
+    async () => {
+      const s = await withKeys();
+      const y = laneRowY(s.video);
+      const before = await historyLength();
+      const frame = model().fps.den / model().fps.num;
+      click(xOf(sec(3)), y);
+      expect(key(".", "nudge_right")).toBe(true);
+      await host.settled();
+      await until(() => opacityKeys(s.clip).some((t) => Math.abs(t - (2 + frame)) < 1e-9));
+      expect(await historyLength()).toBe(before + 1);
+      expect(itemById(s.clip)?.start).toBe(sec(1)); // the clip did not move
+      expect(key("Delete", "delete")).toBe(true);
+      await host.settled();
+      await until(() => opacityKeys(s.clip).length === 2 && settledDoc());
+      expect(opacityKeys(s.clip)).toEqual([1, 3]);
+      expect(itemById(s.clip)).toBeDefined(); // the clip was not deleted
+      expect(await historyLength()).toBe(before + 2);
+      expect(keySelectionStore.getState().item).toBeNull();
+    },
+  );
+
+  live("a double-click on a lane adds a key there with the value it has there", async () => {
+    const s = await withKeys();
+    const before = await historyLength();
+    pointer("dblclick", xOf(sec(2.5)), laneRowY(s.video));
+    await host.settled();
+    await until(() => opacityKeys(s.clip).length === 4 && settledDoc());
+    expect(opacityKeys(s.clip)).toEqual([1, 1.5, 2, 3]);
+    const clip = findClip(stores.doc.getState().project, s.clip);
+    const added = (
+      storedKeys(clip as never, "opacity") as unknown as { t: number; value: number }[]
+    ).find((k) => k.t === sec(1.5));
+    expect(added?.value).toBeCloseTo(0.5, 6); // halfway from 0 to 1, linear
+    expect(await historyLength()).toBe(before + 1);
+    expect(keySelectionStore.getState().keys).toEqual([{ prop: "opacity", t: sec(1.5) }]);
+  });
+
+  live("the keyboard steps from key to key, moving the playhead", async () => {
+    const s = await withKeys();
+    host.toggleKeyframeLanes(); // closed: stepping opens them again
+    expect(host.runHostKey("timeline.keyframe_next")).toBe(true);
+    expect(stores.view.getState().keyframeLanes).toEqual([s.clip]);
+    expect(keySelectionStore.getState().keys).toEqual([{ prop: "opacity", t: sec(1) }]);
+    expect(stores.view.getState().playhead).toBe(sec(2));
+    expect(host.runHostKey("timeline.keyframe_next")).toBe(true);
+    expect(stores.view.getState().playhead).toBe(sec(3));
+    expect(host.runHostKey("timeline.keyframe_previous")).toBe(true);
+    expect(stores.view.getState().playhead).toBe(sec(2));
+    expect(host.runHostKey("timeline.keyframe_previous")).toBe(false);
+  });
+
+  live("a locked track refuses the drag and says so", async () => {
+    const s = await withKeys();
+    await rpc.call("track.set", { track: s.video, locked: true });
+    await until(() => model().tracks.find((t) => t.id === s.video)?.locked === true);
+    const before = await historyLength();
+    await drag(xOf(sec(3)), xOf(sec(3)) + 50, laneRowY(s.video));
+    expect(opacityKeys(s.clip)).toEqual([1, 2, 3]);
+    expect(await historyLength()).toBe(before);
+    expect(await openTransactions()).toBe(0);
   });
 });
