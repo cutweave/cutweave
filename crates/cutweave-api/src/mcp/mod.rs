@@ -49,10 +49,12 @@ pub mod dispatch;
 pub mod execute;
 pub mod frame;
 pub mod handler;
+pub mod instructions;
 pub mod notify;
 pub mod proxy;
 pub mod resources;
 pub mod results;
+pub mod search;
 pub mod stdio;
 pub mod switch;
 
@@ -65,7 +67,7 @@ use rmcp::transport::streamable_http_server::{
 
 pub use catalog::{Budget, Catalog, ListSize, MINIMAL_BUDGET, Profile, STANDARD_BUDGET};
 pub use dispatch::{Dispatch, DispatchCall, DispatchConn, DispatchReply};
-pub use handler::{CutweaveMcp, INSTRUCTIONS};
+pub use handler::CutweaveMcp;
 pub use notify::Notifier;
 
 /// Options of the `/mcp` mount.

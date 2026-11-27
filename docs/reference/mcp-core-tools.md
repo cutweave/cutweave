@@ -4,9 +4,17 @@
 
 The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §14). Generated from the core tool table, `crates/cutweave-api/mcp_core.toml`, and the command registry.
 
-- **Listed:** 32 tools (28 core and the 4 generic ones), 30775 bytes, about 7694 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
-- **`/mcp/minimal`** (minimal): 10 tools, about 1805 tokens of 3000.
-- **`/mcp/full`** (full): 32 tools, about 7694 tokens of 8000.
+- **Listed:** 32 tools (28 core and the 4 generic ones), 30965 bytes, about 7742 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
+- **`/mcp/minimal`** (minimal): 10 tools, about 1853 tokens of 3000.
+- **`/mcp/full`** (full): 32 tools, about 7742 tokens of 8000.
+- **Server instructions:** 3344 characters of at most 4096: a map 
+         of the command namespaces, how to find, describe and run a command, batches, the 
+         revision and undo. Built from the registry and the `[[namespace]]` lines of the core 
+         tool table.
+- **Loaded at the start:** `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` carry `_meta` `"anthropic/alwaysLoad": true`, which 
+         asks a client that defers tool definitions (Claude Code's tool search) to load them 
+         at the start. They are what an agent needs before it can search; other clients 
+         ignore the key. Marked **always** below.
 - **Names:** a tool is named after its command with `.` replaced by `_` (`clip.split` is `clip_split`). A core tool is only that command: the same input schema, result and errors as over JSON-RPC and the CLI.
 - **Descriptions:** the text below followed by `E.g.` and the example, at most 300 characters. In an example `…` stands for the 32 hex digits of an id.
 - **Parameters:** a listed input schema validates exactly like the command's, but carries no parameter descriptions (they do not fit the budget). `cutweave_describe_command` returns them, with the output schema.
@@ -33,13 +41,13 @@ The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §
 | `keyframe_set` | `keyframe.set` | idempotent | Animate one property of an item: add or replace keys at sequence times (`at`) or item times (`t`), with an easing to the next key. | `{"item":"itm_…","prop":"opacity","keys":[{"at":"6s","value":0,"easing":"ease_out"},{"at":"8s","value":1}]}` |
 | `media_import` | `media.import` | idempotent | Import media files by absolute path. Returns media_ids at once; analysis runs as jobs (job_ids) that job_wait waits for. | `{"paths":["C:/footage/a.mp4"]}` |
 | `media_list` | `media.list` | read-only, idempotent | List the project's media with ids, kinds and durations; filter, sort and page. | `{"filter":{"kinds":["video"],"used":false},"limit":20}` |
-| `project_info` | `project.info` | read-only, idempotent | Get the project's name, default format and its sequences with their ids. Start here. | `{}` |
+| `project_info` | `project.info` | read-only, idempotent, **always** | Get the project's name, default format and its sequences with their ids. Start here. | `{}` |
 | `project_open` | `project.open` | destructive | Open a project folder or .cutweave file; the current project closes. Fails if that would lose unsaved changes. | `{"path":"C:/projects/trip"}` |
 | `render_frame` | `render.frame` | read-only, idempotent | See the frame at a time: returns an image (JPEG, 768 px by default) and the items on screen. Not usable inside cutweave_execute. | `{"t":"2.5s"}` |
 | `sequence_create` | `sequence.create` | - | Add a sequence from an aspect preset ("16:9", "9:16", "1:1", ...) or an explicit format; returns its id and tracks. | `{"name":"Short","preset":"9:16"}` |
 | `sequence_set_format` | `sequence.set_format` | destructive, idempotent | Change a sequence's size, frame rate, sample rate or background; `reframe` says how items adapt to a new size. | `{"sequence":"seq_…","width":1080,"height":1920}` |
 | `timeline_add_marker` | `timeline.add_marker` | - | Add a marker at a time of a sequence, or on one of its items (`item`; then `t` is from the item's start). `duration` makes it a range. | `{"sequence":"seq_…","t":"12s","label":"Cut here"}` |
-| `timeline_get` | `timeline.get` | read-only, idempotent | Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`. | `{"sequence":"seq_…","depth":2,"limit":50}` |
+| `timeline_get` | `timeline.get` | read-only, idempotent, **always** | Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`. | `{"sequence":"seq_…","depth":2,"limit":50}` |
 | `timeline_insert` | `timeline.insert` | - | Place a media clip on a track at a time; video with sound also gets a linked audio clip. Returns the new clip ids. | `{"sequence":"seq_…","track":"trk_…","media":"med_…","at":"0s"}` |
 | `track_add` | `track.add` | - | Add an empty track to a sequence; returns its id. | `{"sequence":"seq_…","kind":"video"}` |
 | `view_get` | `view.get` | idempotent | Read what the user sees in the app: playhead, selection, zoom, active sequence, source in/out marks. | `{}` |
@@ -51,9 +59,9 @@ They reach every command and query that is not hidden, listed or not.
 
 | Tool | Does |
 |---|---|
-| `cutweave_search_commands` | Finds commands and queries by keyword and says how to call each |
-| `cutweave_describe_command` | Returns one command's docs, annotations and full input and output schemas |
-| `cutweave_execute` | Runs one or more commands as one all-or-nothing transaction and one undo step |
+| `cutweave_search_commands` (**always**) | Finds commands and queries by keyword or by the words a user would say (the `[keywords]` of the core tool table) and says how to call each |
+| `cutweave_describe_command` (**always**) | Returns one command's docs, annotations and full input and output schemas |
+| `cutweave_execute` (**always**) | Runs one or more commands as one all-or-nothing transaction and one undo step |
 | `cutweave_query` | Runs a read-only query by name |
 
 ## Not listed yet

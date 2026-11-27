@@ -6,7 +6,8 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use cutweave_api::mcp::core::{CoreTable, MAX_DESCRIPTION_CHARS};
+use cutweave_api::mcp::core::{CoreTable, MAX_DESCRIPTION_CHARS, META_ALWAYS_LOAD};
+use cutweave_api::mcp::instructions::MAX_INSTRUCTIONS_CHARS;
 use cutweave_api::mcp::{Catalog, Profile, catalog};
 use cutweave_commands::Registry;
 
@@ -63,7 +64,8 @@ pub fn reference_markdown(registry: Registry) -> Result<String, String> {
          Generated from the core tool table, `crates/cutweave-api/mcp_core.toml`, and the \
          command registry.\n\n",
     );
-    let size = Catalog::new(Arc::clone(&registry), Profile::Standard).size();
+    let standard = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    let size = standard.size();
     let _ = writeln!(
         out,
         "- **Listed:** {} tools ({} core and the {} generic ones), {} bytes, about {} tokens \
@@ -89,6 +91,21 @@ pub fn reference_markdown(registry: Registry) -> Result<String, String> {
             budget.max_tokens
         );
     }
+    let _ = writeln!(
+        out,
+        "- **Server instructions:** {} characters of at most {MAX_INSTRUCTIONS_CHARS}: a map \n         of the command namespaces, how to find, describe and run a command, batches, the \n         revision and undo. Built from the registry and the `[[namespace]]` lines of the core \n         tool table.",
+        standard.instructions().chars().count()
+    );
+    let _ = writeln!(
+        out,
+        "- **Loaded at the start:** {} carry `_meta` `\"{META_ALWAYS_LOAD}\": true`, which \n         asks a client that defers tool definitions (Claude Code's tool search) to load them \n         at the start. They are what an agent needs before it can search; other clients \n         ignore the key. Marked **always** below.",
+        table
+            .always_loaded()
+            .iter()
+            .map(|name| format!("`{name}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     out.push_str(
         "- **Names:** a tool is named after its command with `.` replaced by `_` \
          (`clip.split` is `clip_split`). A core tool is only that command: the same input \
@@ -118,7 +135,11 @@ pub fn reference_markdown(registry: Registry) -> Result<String, String> {
             "| `{}` | `{}` | {} | {} | `{}` |",
             tool.name,
             tool.command,
-            hints(&entry.meta),
+            if tool.always_load {
+                format!("{}, **always**", hints(&entry.meta))
+            } else {
+                hints(&entry.meta)
+            },
             cell(&tool.description),
             cell(&tool.example)
         );
@@ -127,9 +148,9 @@ pub fn reference_markdown(registry: Registry) -> Result<String, String> {
     out.push_str(
         "\n## Generic tools\n\nThey reach every command and query that is not hidden, \
          listed or not.\n\n| Tool | Does |\n|---|---|\n\
-         | `cutweave_search_commands` | Finds commands and queries by keyword and says how to call each |\n\
-         | `cutweave_describe_command` | Returns one command's docs, annotations and full input and output schemas |\n\
-         | `cutweave_execute` | Runs one or more commands as one all-or-nothing transaction and one undo step |\n\
+         | `cutweave_search_commands` (**always**) | Finds commands and queries by keyword or by the words a user would say (the `[keywords]` of the core tool table) and says how to call each |\n\
+         | `cutweave_describe_command` (**always**) | Returns one command's docs, annotations and full input and output schemas |\n\
+         | `cutweave_execute` (**always**) | Runs one or more commands as one all-or-nothing transaction and one undo step |\n\
          | `cutweave_query` | Runs a read-only query by name |\n",
     );
 

@@ -29,10 +29,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use cutweave_commands::{CommandMeta, Entry, EntryKind, McpExposure, Registry, Scope};
-use rmcp::model::{JsonObject, Tool, ToolAnnotations};
+use rmcp::model::{JsonObject, MetaObject, Tool, ToolAnnotations};
 use serde_json::{Value, json};
 
-use crate::mcp::core::{CoreTable, CoreTool};
+use crate::mcp::core::{CoreTable, CoreTool, META_ALWAYS_LOAD};
 
 /// `cutweave_search_commands{query, limit?}`.
 pub const SEARCH: &str = "cutweave_search_commands";
@@ -175,6 +175,7 @@ pub struct Catalog {
     registry: Arc<Registry>,
     tools: Vec<Tool>,
     targets: HashMap<String, Target>,
+    instructions: String,
 }
 
 impl std::fmt::Debug for Catalog {
@@ -204,14 +205,21 @@ impl Catalog {
             tools.push(tool);
         }
         for (tool, target) in generic_tools() {
+            let tool = with_hints(tool);
             targets.insert(tool.name.to_string(), target);
             tools.push(tool);
         }
+        let instructions = crate::mcp::instructions::instructions(&registry, |command| {
+            registry
+                .get(command)
+                .is_some_and(|e| listed(profile, &e.meta))
+        });
         Catalog {
             profile,
             registry,
             tools,
             targets,
+            instructions,
         }
     }
 
@@ -225,6 +233,13 @@ impl Catalog {
     #[must_use]
     pub fn registry(&self) -> &Registry {
         &self.registry
+    }
+
+    /// The server instructions of this endpoint
+    /// ([`instructions`](crate::mcp::instructions)): the same for every connection.
+    #[must_use]
+    pub fn instructions(&self) -> &str {
+        &self.instructions
     }
 
     /// The listed tools, in `tools/list` order.
@@ -331,13 +346,28 @@ fn tool_description(meta: &CommandMeta) -> String {
         .map_or_else(|| meta.summary.to_owned(), CoreTool::listing)
 }
 
+/// Adds what the core table says beyond the listing's text: the
+/// [always-load hint](META_ALWAYS_LOAD) (WP-2I.07) on a tool marked `always_load`. A tool
+/// without a mark gets no `_meta` at all.
+fn with_hints(tool: Tool) -> Tool {
+    if CoreTable::get().always_load(&tool.name) {
+        let mut meta = MetaObject::new();
+        meta.insert(META_ALWAYS_LOAD.to_owned(), json!(true));
+        tool.with_meta(meta)
+    } else {
+        tool
+    }
+}
+
 fn entry_tool(meta: &CommandMeta) -> Tool {
-    Tool::new(
-        meta.mcp_tool_name(),
-        tool_description(meta),
-        object(lean_schema(&meta.input_schema)),
+    with_hints(
+        Tool::new(
+            meta.mcp_tool_name(),
+            tool_description(meta),
+            object(lean_schema(&meta.input_schema)),
+        )
+        .with_annotations(annotations(meta)),
     )
-    .with_annotations(annotations(meta))
 }
 
 /// The listed form of a registry params schema: the same validation, without the keywords that
