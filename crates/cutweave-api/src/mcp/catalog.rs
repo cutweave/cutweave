@@ -748,14 +748,18 @@ fn trim(schema: &mut Value, docs: Docs) {
         let key = key.as_str();
         if SCHEMA_MAPS.contains(&key) {
             if let Value::Object(children) = value {
-                children.values_mut().for_each(|c| trim(c, docs));
+                for child in children.values_mut() {
+                    trim(child, docs);
+                }
             }
         } else if SCHEMA_VALUES.contains(&key) {
             trim(value, docs);
         } else if SCHEMA_LISTS.contains(&key)
             && let Value::Array(list) = value
         {
-            list.iter_mut().for_each(|c| trim(c, docs));
+            for child in list.iter_mut() {
+                trim(child, docs);
+            }
         }
     }
     flatten_const_enum(map);
