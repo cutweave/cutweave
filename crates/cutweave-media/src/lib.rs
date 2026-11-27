@@ -27,6 +27,8 @@
 //! proxies need: scaling while decoding ([`DecodeOpts::target_size`]), the intra-frame proxy
 //! codecs and PCM in MOV, and joining files ([`MediaBackend::concat`]). WP-2D.01b adds
 //! [`ReadBack`]: a long-GOP stream decoded forward once and served backwards (reverse playback).
+//! WP-2F.02 adds [`MediaResolver`]: the one place that decides whether a reader opens the
+//! original or its proxy, by [`MediaPurpose`].
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
@@ -45,6 +47,7 @@ mod log_filter;
 mod path;
 mod pool;
 mod readback;
+mod resolver;
 mod sequence;
 mod still;
 pub mod testing;
@@ -72,6 +75,10 @@ pub use index::{
 };
 pub use pool::{DecoderLease, DecoderPool};
 pub use readback::ReadBack;
+pub use resolver::{
+    MediaPurpose, MediaResolver, MediaSource, NoProxies, NoProxy, PreviewQuality, ProxyFile,
+    ProxyLookup, Rendition,
+};
 pub use sequence::{Segment, SegmentOpener, SequenceDecoder, SequenceSource, segments_of};
 pub use still::{StillOrientation, read_orientation, still_orientation};
 pub use testing::FakeBackend;
