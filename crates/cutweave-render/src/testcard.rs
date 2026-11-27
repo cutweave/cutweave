@@ -534,6 +534,7 @@ mod tests {
             color: ColorTags::default(),
             still: false,
             proxy: false,
+            drawn_long_edge: None,
         };
         let a = src.frame(&req).unwrap();
         let b = src.frame(&req).unwrap();
@@ -568,6 +569,7 @@ mod tests {
             color: ColorTags::default(),
             still: false,
             proxy: false,
+            drawn_long_edge: None,
         };
         assert_eq!(src.frame(&req).unwrap().width, 16);
         req.proxy = true;

@@ -376,6 +376,7 @@ fn layer_at(media: Option<&MediaAsset>, track: TrackId, clip: &Clip, t: Time) ->
             color: media.probe.color.clone(),
             still,
             proxy: false,
+            drawn_long_edge: None,
         },
         transform,
         opacity,

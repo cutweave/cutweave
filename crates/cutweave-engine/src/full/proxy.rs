@@ -952,6 +952,7 @@ mod tests {
             color: ColorTags::default(),
             still: false,
             proxy,
+            drawn_long_edge: None,
         };
         let size = |proxy: bool, t: Time| {
             let f = preview

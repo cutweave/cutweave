@@ -176,6 +176,7 @@ impl Fixture {
             color: self.asset.probe.color.clone(),
             still: false,
             proxy: false,
+            drawn_long_edge: None,
         }
     }
 

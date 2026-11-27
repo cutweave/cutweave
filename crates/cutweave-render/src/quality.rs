@@ -8,6 +8,11 @@
 //!   output size; decoding at reduced size is future work. Layout never depends on the rung:
 //!   geometry uses the probed source size, so every rung shows the same picture, only sharper
 //!   or softer.
+//!   The preview goes further ([`Quality::apply_for_output`], WP-2F.02): `use_proxies` is the
+//!   preview's toggle (`view.set_preview_quality`), set by the transport on every rung, and each
+//!   layer is told how large its picture is drawn, so a proxy is served only when it holds
+//!   those pixels: a full-resolution preview that needs more than the proxy has shows the
+//!   original.
 //! * [`Ladder`] orders the rungs best first. [`Ladder::standard`] is full → ½ → ¼ on originals,
 //!   or, when proxies exist, original → proxy at full → ½ → ¼ on proxies.
 //! * [`AutoQuality`] adapts during playback and refines when paused: it drops one rung after
@@ -29,7 +34,7 @@ use core::time::Duration;
 use cutweave_model::FrameRate;
 use serde::{Deserialize, Serialize};
 
-use crate::scene::SceneDescription;
+use crate::scene::{Layer, SceneDescription};
 
 /// Output resolution relative to the base size.
 #[derive(
@@ -105,8 +110,56 @@ impl Quality {
     pub fn apply(self, scene: &mut SceneDescription) {
         for layer in &mut scene.layers {
             layer.request.proxy = self.use_proxies;
+            layer.request.drawn_long_edge = None;
         }
     }
+
+    /// [`apply`](Self::apply) for a frame rendered `output` pixels large (the preview): also
+    /// tells each layer how large its picture is drawn
+    /// ([`FrameRequest::drawn_long_edge`](crate::FrameRequest::drawn_long_edge)), so the media
+    /// layer serves a proxy only when it holds those pixels (WP-2F.02's resolution rule; a
+    /// full-resolution preview that needs more gets the original).
+    pub fn apply_for_output(self, scene: &mut SceneDescription, output: (u32, u32)) {
+        let canvas = (scene.width, scene.height);
+        for layer in &mut scene.layers {
+            layer.request.proxy = self.use_proxies;
+            layer.request.drawn_long_edge = if self.use_proxies {
+                drawn_long_edge(layer, canvas, output)
+            } else {
+                None
+            };
+        }
+    }
+}
+
+/// The longest side, in output pixels, the whole upright picture of `layer` is drawn at when a
+/// `canvas`-sized scene is rendered `output` pixels large: the aspect-fit size times the
+/// layer's scale, in the output's pixels, rounded up; at most the original's own long side
+/// (nothing needs more pixels than the file has). Rotation about the anchor and crop do not
+/// change it. `None` without a probed size.
+fn drawn_long_edge(layer: &Layer, canvas: (u32, u32), output: (u32, u32)) -> Option<u32> {
+    let (w, h) = layer.request.source_size?;
+    if w == 0 || h == 0 || canvas.0 == 0 || canvas.1 == 0 {
+        return None;
+    }
+    // The upright picture (the display rotation swaps the sides).
+    let (sw, sh) = if layer.request.rotation % 180 == 90 {
+        (f64::from(h), f64::from(w))
+    } else {
+        (f64::from(w), f64::from(h))
+    };
+    let (cw, ch) = (f64::from(canvas.0), f64::from(canvas.1));
+    let fit = (cw / sw).min(ch / sh);
+    let drawn_w = sw * fit * layer.transform.scale.x.abs() * f64::from(output.0) / cw;
+    let drawn_h = sh * fit * layer.transform.scale.y.abs() * f64::from(output.1) / ch;
+    let drawn = drawn_w.max(drawn_h).ceil();
+    let original = w.max(h);
+    if !drawn.is_finite() || drawn >= f64::from(original) {
+        return Some(original);
+    }
+    // In range: `0 <= drawn < original <= u32::MAX`.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some(drawn as u32)
 }
 
 /// The rungs the policy moves between, best first.
@@ -542,6 +595,7 @@ mod tests {
                 color: ColorTags::default(),
                 still: false,
                 proxy: false,
+                drawn_long_edge: None,
             },
             transform: LayerTransform {
                 position: Vec2::ZERO,
@@ -569,5 +623,52 @@ mod tests {
         assert!(scene.layers.iter().all(|l| l.request.proxy));
         Quality::FULL.apply(&mut scene);
         assert!(scene.layers.iter().all(|l| !l.request.proxy));
+
+        // WP-2F.02: a frame rendered for an output tells each layer how large it is drawn.
+        let proxies = Quality::new(Scale::Full, true);
+        let drawn = |scene: &mut SceneDescription, output| {
+            proxies.apply_for_output(scene, output);
+            assert!(scene.layers.iter().all(|l| l.request.proxy));
+            scene.layers[0].request.drawn_long_edge
+        };
+        // A 4K picture fitted into a 4K canvas.
+        scene.width = 3840;
+        scene.height = 2160;
+        scene.layers[0].request.source_size = Some((3840, 2160));
+        assert_eq!(drawn(&mut scene, (960, 540)), Some(960));
+        assert_eq!(drawn(&mut scene, (1920, 1080)), Some(1920));
+        assert_eq!(drawn(&mut scene, (961, 541)), Some(961));
+        // Never more than the original has.
+        assert_eq!(drawn(&mut scene, (7680, 4320)), Some(3840));
+        // Scaled down to half, or mirrored: the size it is drawn at.
+        scene.layers[0].transform.scale = Vec2::new(0.5, 0.5);
+        assert_eq!(drawn(&mut scene, (1920, 1080)), Some(960));
+        scene.layers[0].transform.scale = Vec2::new(-2.0, 2.0);
+        assert_eq!(drawn(&mut scene, (960, 540)), Some(1920));
+        scene.layers[0].transform.scale = Vec2::ONE;
+        // Turned a quarter: the upright picture is pillarboxed, 1215 x 2160 of the canvas.
+        scene.layers[0].request.rotation = 90;
+        assert_eq!(drawn(&mut scene, (3840, 2160)), Some(2160));
+        assert_eq!(drawn(&mut scene, (960, 540)), Some(540));
+        scene.layers[0].request.rotation = 0;
+        // A small picture fills the canvas but has only its own pixels.
+        scene.layers[0].request.source_size = Some((640, 360));
+        assert_eq!(drawn(&mut scene, (1920, 1080)), Some(640));
+        // No probed size: nothing to say.
+        scene.layers[0].request.source_size = None;
+        assert_eq!(drawn(&mut scene, (1920, 1080)), None);
+        // Originals only: no proxy, no size.
+        scene.layers[0].request.source_size = Some((3840, 2160));
+        Quality::FULL.apply_for_output(&mut scene, (960, 540));
+        assert!(
+            scene
+                .layers
+                .iter()
+                .all(|l| !l.request.proxy && l.request.drawn_long_edge.is_none())
+        );
+        // The plain marking clears a size set before.
+        proxies.apply_for_output(&mut scene, (960, 540));
+        proxies.apply(&mut scene);
+        assert!(scene.layers.iter().all(|l| l.request.drawn_long_edge.is_none()));
     }
 }
