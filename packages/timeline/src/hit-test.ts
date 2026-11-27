@@ -13,6 +13,7 @@ import {
   showsKeyframes,
   toggleRect,
 } from "./geometry.ts";
+import { type KeyframeLane, keyReach, nearestKey } from "./keyframes/lanes.ts";
 import type { TimelineLayout } from "./layout.ts";
 import type { Theme } from "./theme.ts";
 import { FLICKS_PER_SECOND } from "./time.ts";
@@ -25,8 +26,13 @@ export type HitZone =
   | "left-edge"
   /** Trim handle zone at a clip's end edge. */
   | "right-edge"
-  /** A keyframe diamond of a clip (`keyframeIndex`, `keyframeTime`). */
+  /**
+   * A keyframe: a diamond of a clip's own key row (`prop` null: every property's key at that
+   * time), or a mark in an open keyframe lane (`prop` set). `keyframeIndex`, `keyframeTime`.
+   */
   | "keyframe"
+  /** Empty space of an open keyframe lane (`itemId`, `prop`, `time`). */
+  | "keyframe-lane"
   /** The playhead flag in the ruler. */
   | "playhead"
   /** The ruler (scrub target). */
@@ -53,6 +59,8 @@ export interface HitResult {
   /** Set when `zone === "keyframe"`. */
   readonly keyframeIndex: number;
   readonly keyframeTime: number | null;
+  /** The property of the keyframe lane under the pointer (zones `keyframe`, `keyframe-lane`). */
+  readonly prop: string | null;
   /** Set when `zone === "header-toggle"`. */
   readonly toggle: HeaderToggle | null;
 }
@@ -79,6 +87,7 @@ function result(partial: Partial<HitResult> & Pick<HitResult, "zone" | "time">):
     itemIndex: -1,
     keyframeIndex: -1,
     keyframeTime: null,
+    prop: null,
     toggle: null,
     ...partial,
   };
@@ -139,6 +148,9 @@ export function hitTest(ctx: HitContext, x: number, y: number): HitResult {
   const clipTop = laneTop + layout.pad;
   const clipH = layout.clipHeight(ti);
   const emptyLane = result({ zone: "lane", time, trackId, trackIndex: ti });
+  if (y >= clipTop + clipH && (layout.laneExtra[ti] ?? 0) > 0) {
+    return laneHit(ctx, ti, x, y - (clipTop + clipH), time) ?? emptyLane;
+  }
   if (y < clipTop || y >= clipTop + clipH) return emptyLane;
 
   const k = vp.pxPerSec / FLICKS_PER_SECOND;
@@ -195,4 +207,45 @@ export function hitTest(ctx: HitContext, x: number, y: number): HitResult {
     return result({ zone: "body", ...base });
   }
   return emptyLane;
+}
+
+/** The open keyframe lane of track `ti` under `x`, `dy` px below the clips: a key, or the lane. */
+function laneHit(
+  ctx: HitContext,
+  ti: number,
+  x: number,
+  dy: number,
+  time: number,
+): HitResult | null {
+  const { layout, vp, theme } = ctx;
+  const open = layout.laneItems[ti];
+  if (open === undefined || layout.laneRow <= 0) return null;
+  const k = vp.pxPerSec / FLICKS_PER_SECOND;
+  const row = Math.floor(dy / layout.laneRow);
+  for (let n = open.length - 1; n >= 0; n--) {
+    const i = open[n] as number;
+    const x0 = vp.headerWidth + ((layout.start[i] ?? 0) - vp.scrollX) * k;
+    const x1 = vp.headerWidth + ((layout.end[i] ?? 0) - vp.scrollX) * k;
+    if (x < x0 || x >= x1) continue;
+    const lane: KeyframeLane | undefined = layout.lanesByItem.get(i)?.[row];
+    const item = layout.items[i];
+    if (lane === undefined || item === undefined) continue;
+    const base = {
+      time,
+      trackId: layout.model.tracks[ti]?.id ?? null,
+      trackIndex: ti,
+      itemId: item.id,
+      itemIndex: i,
+      prop: lane.prop,
+    };
+    const key = nearestKey(lane, time, keyReach(theme) / k);
+    if (key < 0) return result({ zone: "keyframe-lane", ...base });
+    return result({
+      zone: "keyframe",
+      ...base,
+      keyframeIndex: key,
+      keyframeTime: lane.times[key] ?? null,
+    });
+  }
+  return null;
 }

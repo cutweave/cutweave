@@ -12,6 +12,8 @@ import {
   showsKeyframes,
 } from "../geometry.ts";
 import type { IndexList } from "../interval-index.ts";
+import { KEY_COLLAPSE_PX } from "../keyframes/lanes.ts";
+import { drawKeyframeLanes } from "../keyframes/render.ts";
 import {
   FLAG_DISABLED,
   FLAG_PROPOSED,
@@ -101,6 +103,7 @@ export function drawTrack(
     if (showsKeyframes(ch, th)) drawKeyframes(s, ids, cy, ch);
   }
 
+  drawKeyframeLanes(s, ti, laneTop);
   if (trackFlags & TRACK_LOCKED) drawLocked(s, laneTop, laneH, laneColor);
   if (ids.length > 0) drawSelection(s, ti, laneTop + layout.pad, layout.clipHeight(ti));
 }
@@ -311,10 +314,14 @@ function drawKeyframes(s: RenderState, ids: IndexList, cy: number, ch: number): 
       if ((kfs[mid] ?? 0) < ta) lo = mid + 1;
       else hi = mid;
     }
+    let lastX = Number.NEGATIVE_INFINITY;
     for (let j = lo; j < kfs.length; j++) {
       const kt = kfs[j] as number;
       if (kt > tb) break;
       const x = vp.headerWidth + (kt - vp.scrollX) * k;
+      // Level of detail: keys closer than the collapse distance draw as one diamond.
+      if (x - lastX < KEY_COLLAPSE_PX) continue;
+      lastX = x;
       ctx.moveTo(x, rowY - r);
       ctx.lineTo(x + r, rowY);
       ctx.lineTo(x, rowY + r);
