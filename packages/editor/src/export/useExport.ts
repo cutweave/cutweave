@@ -13,7 +13,9 @@ import { jobStore } from "../state/jobStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { translator } from "../timeline/errors.ts";
 import { openPanel } from "../workspace/dockHost.ts";
+import { playExportChime } from "./exportChime.ts";
 import { ExportController, exportSource } from "./exportController.ts";
+import { ExportNotifier } from "./exportNotifier.ts";
 import { ExportQueue, queueStore } from "./exportQueue.ts";
 import { exportStore } from "./exportStore.ts";
 
@@ -24,6 +26,7 @@ const t = translator((key: string, vars?: object) => i18n.t(key as never, vars a
 
 let shared: ExportController | null = null;
 let sharedQueue: ExportQueue | null = null;
+let sharedNotifier: ExportNotifier | null = null;
 
 /** The app's export controller, created on first use over the global stores. */
 export function exportController(): ExportController {
@@ -57,12 +60,28 @@ export function exportQueue(): ExportQueue {
   return sharedQueue;
 }
 
+/** What announces a finished export (the OS notification and the sound), on the global stores. */
+export function exportNotifier(): ExportNotifier {
+  sharedNotifier ??= new ExportNotifier({
+    jobs: jobStore,
+    queue: queueStore,
+    state: exportStore,
+    t,
+    desktop: desktopFromWindow(),
+    prefs: preferences,
+    chime: playExportChime,
+  });
+  return sharedNotifier;
+}
+
 /** Forgets the shared controller and queue so the next use builds them again (tests). */
 export function resetExportController(): void {
   shared?.detach();
   shared = null;
   sharedQueue?.detach();
   sharedQueue = null;
+  sharedNotifier?.detach();
+  sharedNotifier = null;
 }
 
 /** Follows export jobs, the queue and the native Export… command for the life of the shell. */
@@ -70,9 +89,11 @@ export function useExportWiring(): void {
   useEffect(() => {
     const offController = exportController().attach();
     const offQueue = exportQueue().attach();
+    const offNotifier = exportNotifier().attach();
     return () => {
       offController();
       offQueue();
+      offNotifier();
     };
   }, []);
 }

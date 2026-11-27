@@ -454,7 +454,11 @@ describe("ExportController", () => {
       desktop: { dialog: { openProjectFolder: async () => null, chooseExportFile: choose } },
     });
     expect(await controller.chooseFile("")).toBe("C:\\out\\x.mp4");
-    expect(choose).toHaveBeenCalledWith("C:\\p\\Film.mp4");
+    expect(choose).toHaveBeenCalledWith("C:\\p\\Film.mp4", "mp4");
+    // The dialog offers the file type the preset writes (WP-2G.04b).
+    choose.mockResolvedValueOnce("C:\\out\\x.mov");
+    expect(await controller.chooseFile("C:\\p\\Film.mov", "mov")).toBe("C:\\out\\x.mov");
+    expect(choose).toHaveBeenLastCalledWith("C:\\p\\Film.mov", "mov");
   });
 });
 

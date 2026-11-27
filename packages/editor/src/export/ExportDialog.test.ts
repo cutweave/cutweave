@@ -140,6 +140,21 @@ function refuseOffline(text: string): void {
   });
 }
 
+/** Makes the engine refuse the next `export.start` or `export.enqueue`, and only that call. */
+function refuseStart(error: RpcError): void {
+  const answer = call.getMockImplementation() as
+    | ((name: string, input: Record<string, unknown>) => Promise<unknown>)
+    | undefined;
+  let refused = false;
+  call.mockImplementation(async (name: string, input: Record<string, unknown>) => {
+    if ((name === "export.start" || name === "export.enqueue") && !refused) {
+      refused = true;
+      throw error;
+    }
+    return answer?.(name, input);
+  });
+}
+
 describe("ExportDialog", () => {
   it("on a 9:16 sequence puts the portrait platform presets first; Reels shows its size and limit", async () => {
     useProject(exportProject(1080, 1920, 200), { width: 1080, height: 1920, seconds: 200 });
@@ -425,27 +440,24 @@ describe("ExportDialog", () => {
   it("keeps Replace when the file exists and media is missing", async () => {
     const user = userEvent.setup();
     const dialog = await openDialog();
-    call.mockRejectedValueOnce(new RpcError("invalid", "exists", "/overwrite"));
-    // Each step waits for the engine's answer and a render: up to 5 s each (the library's 1 s
-    // is too short when the machine is busy), still bounded.
-    const patient = { timeout: 5_000 };
+    // The refusals are the answers to the export itself. (Refusing "the next call" instead
+    // also catches the preset's resolve or the encoder list when one of them is still on its
+    // way, and then the export goes through: that made this test fail on a busy machine.)
+    refuseStart(new RpcError("invalid", "exists", "/overwrite"));
     await user.click(within(dialog).getByRole("button", { name: "Add to queue" }));
-    const replace = await screen.findByRole("dialog", { name: "Replace Film.mp4?" }, patient);
-    call.mockRejectedValueOnce(
+    const replace = await screen.findByRole("dialog", { name: "Replace Film.mp4?" });
+    refuseStart(
       new RpcError("invalid", "1 media file is missing: `beach.mp4`; relink", "/media/med_1"),
     );
     await user.click(within(replace).getByRole("button", { name: "Replace" }));
-    await screen.findByLabelText("Preset", undefined, patient);
-    const back = screen.getByRole("dialog", { name: "Export video" });
-    const notice = await within(back).findByTestId("export-offline", undefined, patient);
+    const back = await settings();
+    const notice = await within(back).findByTestId("export-offline");
     await user.click(within(notice).getByRole("button", { name: "Export anyway" }));
-    await waitFor(
-      () =>
-        expect(lastCall("export.enqueue")).toMatchObject({
-          allow_offline: true,
-          collision: "overwrite",
-        }),
-      patient,
+    await waitFor(() =>
+      expect(lastCall("export.enqueue")).toMatchObject({
+        allow_offline: true,
+        collision: "overwrite",
+      }),
     );
   });
 

@@ -2111,10 +2111,10 @@
       "cannotMove": "Only a waiting export moves, and not past the end",
       "notDone": "The file is written when the export is done",
       "noError": "This export has no error",
-      "notFinished": "Cancel the export first",
-      "noOpen": "Opening a file needs the desktop app"
+      "notFinished": "Cancel the export first"
     },
-    "open": "Open file"
+    "open": "Open file",
+    "openFailed": "The file did not open"
   },
   "agentUi": {
     "connectedTitle": "Agent connected",
@@ -2460,8 +2460,7 @@
       "convertToChapter": "Convert to chapter",
       "convertToMarker": "Convert to marker",
       "colorLabel": "Color label",
-      "colorLabelNone": "None",
-      "openFile": "Open file"
+      "colorLabelNone": "None"
     },
     "dialog": {
       "cancel": "Cancel",

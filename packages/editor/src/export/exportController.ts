@@ -264,13 +264,16 @@ export class ExportController {
     const pick = this.#deps.desktop?.dialog.chooseExportFile;
     if (pick === undefined) return null;
     try {
-      const picked = await pick(current === "" ? this.defaultPath("", container) : current);
+      // The OS dialog offers the file type the preset writes.
+      const picked = await pick(
+        current === "" ? this.defaultPath("", container) : current,
+        container,
+      );
       // Another folder in the dialog is "the last folder used"; the chosen one stays as set.
       const folder = picked === null ? null : dirName(picked);
       if (folder !== null && folder !== this.#pref("export.last_folder")) {
         void this.#deps.prefs?.set("export.last_folder", folder).catch(() => undefined);
       }
-      // The OS dialog offers MP4; a preset that writes another container keeps its own.
       return picked === null ? null : withExtension(picked, container);
     } catch {
       return null;
