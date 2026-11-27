@@ -62,6 +62,38 @@ function Button({
   );
 }
 
+/**
+ * The keyframe lanes toggle (WP-2C.05): pressed while the lanes of the selected clips are open,
+ * disabled while no selected clip has a keyframe. Its own component, reading one small value
+ * from the stores, so a document patch (every step of a drag) re-renders nothing here unless
+ * that value changed.
+ */
+function KeyframeLanesButton({
+  host,
+  live,
+}: {
+  readonly host: TimelineHost;
+  readonly live: boolean;
+}): ReactElement {
+  const { t } = useTranslation();
+  const read = (): "none" | "closed" | "open" =>
+    !live || !host.hasAnimatedSelection() ? "none" : host.lanesOpen() ? "open" : "closed";
+  // Either store can change the answer: the selection and the open lanes, or the document.
+  useViewStore(read);
+  useDocStore(read);
+  const state = read();
+  return (
+    <Button
+      icon="keyframe-diamond"
+      label={t(state === "none" ? "timeline.keyframeLanesNone" : "timeline.keyframeLanes")}
+      command="timeline.toggle_keyframe_lanes"
+      pressed={state === "open"}
+      disabled={state === "none"}
+      onClick={() => host.toggleKeyframeLanes()}
+    />
+  );
+}
+
 export function TimelineToolbar({
   host,
   ui,
@@ -75,11 +107,6 @@ export function TimelineToolbar({
   const { t } = useTranslation();
   const snapping = useViewStore((s) => s.snapping);
   const off = !live;
-  // The lanes toggle follows the selection, the open lanes and the document.
-  useViewStore((s) => s.selection);
-  useViewStore((s) => s.keyframeLanes);
-  useDocStore((s) => s.project);
-  const canOpenLanes = live && host.hasAnimatedSelection();
   return (
     <Toolbar aria-label={t("timeline.toolbarLabel")} className="cw-timeline__tools">
       {TOOL_BUTTONS.map((def) => (
@@ -138,14 +165,7 @@ export function TimelineToolbar({
         disabled={off}
         onClick={() => host.toggleLinkedSelection()}
       />
-      <Button
-        icon="keyframe-diamond"
-        label={t(canOpenLanes ? "timeline.keyframeLanes" : "timeline.keyframeLanesNone")}
-        command="timeline.toggle_keyframe_lanes"
-        pressed={canOpenLanes && host.lanesOpen()}
-        disabled={!canOpenLanes}
-        onClick={() => host.toggleKeyframeLanes()}
-      />
+      <KeyframeLanesButton host={host} live={live} />
       <ToolbarSeparator />
       <Button
         icon="zoom-out"

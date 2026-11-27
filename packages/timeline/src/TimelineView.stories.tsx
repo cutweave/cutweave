@@ -10,6 +10,7 @@ import {
   syntheticLoaders,
   withMarkers,
 } from "./fixtures.ts";
+import type { ItemLanes } from "./keyframes/lanes.ts";
 import type { TimelineItem, TimelineModel, TimelineTrack, ViewState } from "./model.ts";
 import { TimelineCanvas } from "./react.tsx";
 import { FLICKS_PER_SECOND as F } from "./time.ts";
@@ -208,6 +209,51 @@ export const Selected = {
           ],
           marquee: { x: 700, y: 150, w: 140, h: 70 },
         }}
+      />
+    </div>
+  ),
+};
+
+/**
+ * WP-2C.05: the lanes of two clips are open. One mark per key, shaped by its interpolation
+ * (diamond linear, square hold, circle bezier, triangle spring), a selected key in marigold, and
+ * a dense run of keys collapsed into bars.
+ */
+const lanes: readonly ItemLanes[] = [
+  {
+    itemId: "itm_1",
+    lanes: [
+      {
+        prop: "transform.position",
+        label: "Position",
+        times: [s(1), s(2), s(3.5), s(5)],
+        glyphs: [0, 1, 2, 3],
+        selected: [2],
+      },
+      {
+        prop: "opacity",
+        label: "Opacity",
+        times: Array.from({ length: 120 }, (_, i) => s(3 + i / 60)),
+        glyphs: new Array<number>(120).fill(0),
+      },
+    ],
+  },
+  {
+    itemId: "itm_2",
+    lanes: [{ prop: "opacity", label: "Opacity", times: [s(8), s(10.5)], glyphs: [2, 0] }],
+  },
+];
+
+export const KeyframeLanes = {
+  loaders: [loadFonts, loadMedia],
+  render: (_args: unknown, { loaded }: Loaded) => (
+    <div style={frame(360)}>
+      <TimelineCanvas
+        aria-label="Timeline"
+        model={small}
+        keyframeLanes={lanes}
+        {...(loaded.media && { loaders: loaded.media })}
+        viewState={{ ...baseView, playhead: 7 * F, selection: new Set(["itm_1"]) }}
       />
     </div>
   ),
