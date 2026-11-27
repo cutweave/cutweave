@@ -211,9 +211,9 @@ export function TransportBar() {
       onSelect: () => void transport.toEnd(),
     });
   }
-  const sound: MenuEntry[] = [];
+  const options: MenuEntry[] = [];
   if (inMore.has("loop")) {
-    sound.push({
+    options.push({
       id: "loop",
       label: t("transport.loop"),
       checked: loop,
@@ -221,7 +221,7 @@ export function TransportBar() {
     });
   }
   if (inMore.has("mute")) {
-    sound.push({
+    options.push({
       id: "mute",
       label: t("transport.mute"),
       checked: muted,
@@ -230,7 +230,7 @@ export function TransportBar() {
     });
   }
   if (inMore.has("volume")) {
-    sound.push({
+    options.push({
       kind: "submenu",
       id: "volume",
       label: t("transport.volume"),
@@ -280,7 +280,7 @@ export function TransportBar() {
   if (inMore.has("fullscreen")) {
     picture.push({ id: "fullscreen", label: t("transport.fullscreen"), disabled: true });
   }
-  const moreItems = [navigate, sound, picture]
+  const moreItems = [navigate, options, picture]
     .filter((group) => group.length > 0)
     .flatMap((group, index): MenuEntry[] =>
       index === 0 ? group : [{ kind: "separator", id: `sep-${index}` }, ...group],
