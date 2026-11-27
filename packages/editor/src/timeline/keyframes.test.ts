@@ -14,6 +14,9 @@ import {
   keySelectionStore,
   keysAt,
   laneGroups,
+  lanesLaidStore,
+  lanesRelaid,
+  lanesShapeOf,
   moveArgs,
   movedKeys,
   NO_GROUPS,
@@ -287,5 +290,28 @@ describe("no key work while every lane is closed (a clip drag's updates)", () =>
     expect(toggle(doc.project, selected, ["itm_a"])).toBe("open");
     expect(toggle(doc.project, ["itm_b"], ["itm_a"])).toBe("none");
     expect(toggle(null, selected, open)).toBe("none");
+  });
+});
+
+describe("what is laid over the canvas follows the lanes' shape only", () => {
+  it("the shape is empty with no lane open and the same while only keys move or get selected", () => {
+    expect(lanesShapeOf(NO_GROUPS)).toBe("");
+    const plain = laneGroups(PROJECT, SEQ, ["itm_a"], EMPTY_KEY_SELECTION, label);
+    const selected = laneGroups(
+      PROJECT,
+      SEQ,
+      ["itm_a"],
+      { item: "itm_a", keys: [{ prop: "opacity", t: 10 }], offset: 0 },
+      label,
+    );
+    expect(selected).not.toBe(plain);
+    expect(lanesShapeOf(selected)).toBe(lanesShapeOf(plain));
+    expect(lanesShapeOf(plain)).toBe("itm_a:2");
+  });
+
+  it("a new layout is announced once per call", () => {
+    const before = lanesLaidStore.getState();
+    lanesRelaid();
+    expect(lanesLaidStore.getState()).toBe(before + 1);
   });
 });
