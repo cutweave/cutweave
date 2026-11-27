@@ -74,12 +74,17 @@ fn rpc_answer(msg: &Value) -> Answer {
 /// The editor's connection: requests go out without waiting, answers are matched by id.
 pub struct Editor {
     ws: WsClient,
+    /// Answers read while waiting for another ticket.
+    early: std::collections::BTreeMap<u64, Answer>,
 }
 
 impl Editor {
     /// Connects to `engine`'s `/rpc`.
     pub fn connect(engine: &ChildEngine) -> Result<Editor, BenchError> {
-        Ok(Editor { ws: engine.ws()? })
+        Ok(Editor {
+            ws: engine.ws()?,
+            early: std::collections::BTreeMap::new(),
+        })
     }
 
     /// The params with the request envelope.
@@ -106,19 +111,20 @@ impl Editor {
         request_id: Option<&str>,
         tx: Option<&str>,
     ) -> Result<u64, BenchError> {
-        self.ws.send(
-            method,
-            &Editor::envelope(params.clone(), request_id, tx),
-        )
+        self.ws
+            .send(method, &Editor::envelope(params.clone(), request_id, tx))
     }
 
     /// Waits for the answer to `ticket`. An error: the connection ended first (the request
     /// was in flight when the engine died).
     pub fn answer(&mut self, ticket: u64, wait: Duration) -> Result<Answer, BenchError> {
         loop {
+            if let Some(answer) = self.early.remove(&ticket) {
+                return Ok(answer);
+            }
             let msg = self.ws.next_message(wait)?;
-            if msg["id"].as_u64() == Some(ticket) {
-                return Ok(rpc_answer(&msg));
+            if let Some(id) = msg["id"].as_u64() {
+                self.early.insert(id, rpc_answer(&msg));
             }
         }
     }
@@ -213,7 +219,12 @@ impl Agent {
     }
 
     /// Calls a tool and waits for its answer.
-    pub fn call(&self, command: &str, args: &Value, request_id: &str) -> Result<Answer, BenchError> {
+    pub fn call(
+        &self,
+        command: &str,
+        args: &Value,
+        request_id: &str,
+    ) -> Result<Answer, BenchError> {
         let pending = self.start(command, args, request_id);
         self.finish(pending, ANSWER_WAIT)
     }

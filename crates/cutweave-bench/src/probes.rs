@@ -368,6 +368,7 @@ fn child_spec(ws: &Workspace, scale: &Scale, exe: &Path, tag: &str) -> ChildSpec
         gui: scale.gui_engine,
         deterministic_ids: None,
         env: Vec::new(),
+        roots: Vec::new(),
     }
 }
 

@@ -300,6 +300,8 @@ pub struct ChildSpec {
     pub deterministic_ids: Option<u64>,
     /// Extra environment variables of the process.
     pub env: Vec<(String, String)>,
+    /// More folders its agents may use (`--allow-root`), besides `scratch`.
+    pub roots: Vec<PathBuf>,
 }
 
 impl ChildEngine {
@@ -330,6 +332,9 @@ impl ChildEngine {
             cmd.arg("--deterministic-ids").arg(seed.to_string());
         }
         cmd.envs(spec.env.iter().map(|(k, v)| (k, v)));
+        for root in &spec.roots {
+            cmd.arg("--allow-root").arg(root);
+        }
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
