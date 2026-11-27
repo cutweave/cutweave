@@ -2116,7 +2116,6 @@
       "outAtStart": "The out point cannot be at the very start",
       "trackAtTop": "Already the top track",
       "trackAtBottom": "Already the bottom track",
-      "noGapHere": "No gap between clips here",
       "mainTrackVideo": "Only a video track can be the main track"
     },
     "command": {
@@ -2341,7 +2340,9 @@
       "heightMedium": "Medium",
       "heightLarge": "Large",
       "moveTrackUp": "Move up",
-      "moveTrackDown": "Move down"
+      "moveTrackDown": "Move down",
+      "goToMarkerMenu": "Go to marker",
+      "markerAt": "{{name}} at {{time}}"
     },
     "dialog": {
       "cancel": "Cancel",

@@ -644,7 +644,7 @@ describe("the timeline's own edits (WP-2A.10)", () => {
     expect(lastCall()).toEqual({ name: "timeline.add_marker", args: { sequence: SEQ, t: 5 * F } });
   });
 
-  it("deletes a gap between clips, and says why elsewhere", async () => {
+  it("deletes a gap between clips, and shows no such row elsewhere", async () => {
     const p = project() as unknown as {
       sequences: Record<
         string,
@@ -658,9 +658,32 @@ describe("the timeline's own edits (WP-2A.10)", () => {
     await menuFor("timeline.lane", { place: { time: 11 * F, trackId: V1 } }).choose("Delete gap");
     expect(lastCall()).toEqual({ name: "timeline.delete_gap", args: { track: V1, at: 11 * F } });
     expect(
-      menuFor("timeline.lane", { place: { time: 40 * F, trackId: V1 } }).item("Delete gap")
-        .disabledReason,
-    ).toBe("No gap between clips here");
+      menuFor("timeline.lane", { place: { time: 40 * F, trackId: V1 } }).items.some(
+        (i) => i.label === "Delete gap",
+      ),
+    ).toBe(false);
+  });
+
+  it("goes to a marker from the ruler's Go to marker submenu, by time, only when there are some", async () => {
+    expect(
+      menuFor("timeline.ruler", { place: { time: 3 * F } }).items.some((i) =>
+        /at 00:/.test(i.label),
+      ),
+    ).toBe(false);
+    const p = project() as unknown as { sequences: Record<string, { markers?: object }> };
+    const seq = p.sequences[SEQ];
+    if (seq !== undefined) {
+      seq.markers = {
+        [hex("mrk", 2)]: { id: hex("mrk", 2), t: 8 * F, label: "Outro", kind: "user" },
+        [hex("mrk", 1)]: { id: hex("mrk", 1), t: 2 * F, label: "", kind: "user" },
+      };
+    }
+    docStore.setState({ project: p as unknown as Project });
+    const ruler = menuFor("timeline.ruler", { place: { time: 3 * F } });
+    const rows = ruler.items.filter((i) => / at 00:/.test(i.label)).map((i) => i.label);
+    expect(rows).toEqual(["- at 00:00:02:00", "Outro at 00:00:08:00"]);
+    await ruler.choose("Outro at 00:00:08:00");
+    expect(call).not.toHaveBeenCalled();
   });
 
   it("sets the in or the out point here, clears them, lifts and extracts the range", async () => {

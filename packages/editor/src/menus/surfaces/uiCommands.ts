@@ -668,12 +668,13 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     },
   },
   {
-    // A marker's Go to marker (WP-2A.10).
+    // A marker's Go to marker, and the ruler's Go to marker ▸ (WP-2A.10): its time, or the
+    // marker the menu is on.
     id: "timeline.go_to_marker",
     label: "contextMenu.item.goToMarker",
     icon: "arrow-right",
-    run: async (_args, ctx) => {
-      const time = ctx.target.place?.time;
+    run: async (args, ctx) => {
+      const time = arg<{ t?: number }>(args).t ?? ctx.target.place?.time;
       if (time !== undefined) await transportController().seek(time);
     },
   },

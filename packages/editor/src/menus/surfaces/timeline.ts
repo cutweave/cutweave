@@ -788,13 +788,13 @@ export const TIMELINE_LANE: MenuSurfaceDef = {
     },
     markerRow("add-marker-here", 0, "here", "marker"),
     {
-      // WP-2A.03: closes the gap under the pointer, when it is one between clips.
+      // WP-2A.03: closes the gap under the pointer; shown only on a gap between clips.
       command: "timeline.delete_gap",
       group: "gap",
       order: 0,
-      enabledIf: (ctx) => ctx.keys["track.locked"] !== true && gapAt(ctx.target),
-      reason: (ctx) =>
-        ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.noGapHere" as const),
+      visibleIf: (ctx) => gapAt(ctx.target),
+      when: "!track.locked",
+      reason: LOCKED,
       args: (ctx) => ({ track: ctx.target.place?.trackId, at: timeHere(ctx) }),
     },
     {
@@ -999,10 +999,46 @@ export const TIMELINE_RULER: MenuSurfaceDef = {
     inOutRow("set-out-here", 2, "out", "here", "marker"),
     ...rangeRows(),
     ...navigateRows(),
+    {
+      // Go to marker ▸: the sequence's markers in time order (none: the row is left out).
+      id: "go-to-marker",
+      group: "navigate",
+      order: 2,
+      submenu: { label: { key: "contextMenu.item.goToMarkerMenu" }, rows: [], more: markerRows },
+    },
     { command: "timeline.zoom_to_fit", group: "view", order: 0 },
     { command: "timeline.zoom_to_selection", group: "view", order: 1 },
   ],
 };
+
+/** At most this many markers in Go to marker ▸ (the menu stays about a screen tall). */
+const MARKER_ROWS = 12;
+
+/** One row per sequence marker, by time: its name (or "Marker") and its timecode. */
+function markerRows(): readonly MenuRow[] {
+  const found = activeSequence();
+  const rate = sequenceRate() ?? { num: 30, den: 1 };
+  return Object.values(found?.sequence.markers ?? {})
+    .sort((a, b) => a.t - b.t)
+    .slice(0, MARKER_ROWS)
+    .map(
+      (marker, index): MenuRow => ({
+        id: `go-to-${marker.id}`,
+        command: "timeline.go_to_marker",
+        group: "markers",
+        order: index,
+        noHint: true,
+        label: {
+          key: "contextMenu.item.markerAt",
+          vars: {
+            name: marker.label === "" ? "-" : marker.label,
+            time: formatTimecode(marker.t, rate, true),
+          },
+        },
+        args: () => ({ t: marker.t }),
+      }),
+    );
+}
 
 export const TIMELINE_PLAYHEAD: MenuSurfaceDef = {
   id: "timeline.playhead",
