@@ -2,7 +2,8 @@
 // Putting a bin asset on the timeline (WP-1M.03): one `timeline.insert` with `overlap: "new_track"`
 // so a drop or an Enter never fails on an occupied spot (arch §5.1: the engine decides; the
 // result comes back as `doc.patched`). Shared by the timeline drop (`TimelineController`) and the
-// media panel's keyboard path.
+// media panel's keyboard path. A picture whose card has a "Duration…" choice is inserted with
+// that length (`insertDuration.ts`).
 import type { ItemId, MediaId, RpcClient, SelectionRef, TrackId } from "@cutweave/protocol";
 import { snapToFrame } from "@cutweave/timeline";
 import type { StoreApi } from "zustand";
@@ -13,6 +14,7 @@ import type { ToastStore } from "../state/toastStore.ts";
 import type { ViewStore } from "../state/viewStore.ts";
 import { describeRefusal, FAILED_TITLE, type Translate } from "../timeline/errors.ts";
 import { toRpcError } from "../timeline/gesture.ts";
+import { insertDurationFor } from "./insertDuration.ts";
 
 /**
  * The command name as a template literal on purpose: the i18n catalog test reads a double-quoted
@@ -39,14 +41,17 @@ export async function insertMedia(
   at: number,
 ): Promise<boolean> {
   const rpc: RpcClient | null = deps.engine.getState().rpc;
-  const sequence = selectActiveSequenceId(deps.doc.getState().project);
+  const project = deps.doc.getState().project;
+  const sequence = selectActiveSequenceId(project);
   if (rpc === null || sequence === null) return false;
+  const duration = insertDurationFor(project, media);
   try {
     const out = await rpc.call(INSERT, {
       sequence,
       track: track as TrackId,
       media: media as MediaId,
       at,
+      ...(duration === undefined ? {} : { duration }),
       overlap: "new_track",
     });
     const first = out.clips[0];

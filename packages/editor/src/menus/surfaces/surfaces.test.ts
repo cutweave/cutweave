@@ -22,6 +22,7 @@ import { forgetAppliedLayouts } from "../../layout/actions.ts";
 import { binStore } from "../../media/binStore.ts";
 import { currentOpenFolder, folderUiStore } from "../../media/folderUi.ts";
 import { healthStore } from "../../media/health.ts";
+import { insertDurationStore } from "../../media/insertDuration.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { proxyStore } from "../../media/proxies.ts";
 import { docStore } from "../../state/docStore.ts";
@@ -53,6 +54,7 @@ const CL = hex("itm", 4);
 const MED_V = hex("med", 1);
 const MED_A = hex("med", 2);
 const MED_U = hex("med", 3);
+const MED_I = hex("med", 4);
 
 const clip = (id: string, media: string, start: number, extra: object = {}) => ({
   kind: "clip",
@@ -692,6 +694,100 @@ describe("the bin menus", () => {
     } finally {
       proxyStore.getState().set([]);
     }
+  });
+
+  it("offers Duration… on one image card, and the next insert of that card carries the length", async () => {
+    const base = project();
+    const withPicture = {
+      ...base,
+      media: { ...base.media, [MED_I]: asset(MED_I, "image", "photo.png", 0) },
+    } as unknown as Project;
+    docStore.setState({ project: withPicture });
+    try {
+      // Not on video or sound, and not for several pictures at once.
+      for (const id of [MED_V, MED_A]) {
+        expect(menuFor("bin.card", { ids: [id] }).items.map((i) => i.label)).not.toContain(
+          "Duration…",
+        );
+      }
+      // Without a choice the insert leaves the length to the engine (the project's duration).
+      await menuFor("bin.card", { ids: [MED_I] }).choose("Insert at playhead");
+      expect(call.mock.calls[0]?.[1]).not.toHaveProperty("duration");
+
+      await menuFor("bin.card", { ids: [MED_I], name: "photo.png" }).choose("Duration…");
+      expect(call).toHaveBeenCalledTimes(1);
+      expect(menuDialogStore.getState().dialog).toEqual({
+        kind: "insert-duration",
+        media: MED_I,
+        name: "photo.png",
+      });
+      // What the dialog does when the person agrees to 2.5 seconds.
+      insertDurationStore.getState().set(MED_I, 2.5 * F);
+      call.mockClear();
+      await menuFor("bin.card", { ids: [MED_I] }).choose("Insert at playhead");
+      expect(call).toHaveBeenCalledWith(
+        "timeline.insert",
+        expect.objectContaining({ media: MED_I, duration: 2.5 * F, overlap: "new_track" }),
+      );
+      expect(schemaProblems("timeline.insert", call.mock.calls[0]?.[1])).toEqual([]);
+      call.mockClear();
+      await menuFor("bin.card", { ids: [MED_I] }).choose("Append to timeline");
+      expect(call.mock.calls[0]?.[1]).toMatchObject({ duration: 2.5 * F });
+      // A choice is for that picture only.
+      call.mockClear();
+      await menuFor("bin.card", { ids: [MED_V] }).choose("Insert at playhead");
+      expect(call.mock.calls[0]?.[1]).not.toHaveProperty("duration");
+    } finally {
+      insertDurationStore.getState().reset();
+    }
+  });
+
+  it("sets an asset's own proxy mode from Proxy ▸ Auto, Always, Never, checked from the asset", async () => {
+    // Sound has no proxies: no submenu.
+    const sound = menuFor("bin.card", { ids: [MED_A] }).items.map((i) => i.label);
+    expect(sound).not.toContain("Always");
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    const proxy = m.menu.entries.find((e) => e.kind === "submenu" && e.label === "Proxy");
+    expect(proxy).toBeDefined();
+    // An asset without a mode follows the policy: Auto.
+    expect(["Auto", "Always", "Never"].map((label) => m.item(label).checked)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect(m.item("Always").choice).toBe("radio");
+    await m.choose("Always");
+    expect(call).toHaveBeenCalledWith("media.set_proxy_mode", { media: [MED_V], mode: "force" });
+    expect(schemaProblems("media.set_proxy_mode", call.mock.calls[0]?.[1])).toEqual([]);
+
+    // The mode as the document has it after the command.
+    const base = project();
+    const media = base.media as unknown as Record<string, Record<string, unknown>>;
+    docStore.setState({
+      project: {
+        ...base,
+        media: { ...media, [MED_V]: { ...media[MED_V], proxy_mode: "off" } },
+      } as unknown as Project,
+    });
+    const after = menuFor("bin.card", { ids: [MED_V] });
+    expect(["Auto", "Always", "Never"].map((label) => after.item(label).checked)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    // Several cards: one command for the videos among them; nothing is checked when they differ.
+    call.mockClear();
+    const many = menuFor("bin.card", { ids: [MED_V, MED_A, MED_U] });
+    expect(["Auto", "Always", "Never"].map((label) => many.item(label).checked)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    await many.choose("Auto");
+    expect(call).toHaveBeenCalledWith("media.set_proxy_mode", {
+      media: [MED_V, MED_U],
+      mode: "auto",
+    });
   });
 
   it("appends after the last clip of the sequence", async () => {

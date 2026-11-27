@@ -32,6 +32,8 @@ export type MenuDialog =
   | { readonly kind: "replace-clip"; readonly item: string }
   // Import as slideshow… (WP-2F.05d): seconds per picture and the order, for the files chosen.
   | { readonly kind: "slideshow"; readonly files: readonly string[] }
+  // Duration… on an image card (#215): the length the next insert of that picture uses.
+  | { readonly kind: "insert-duration"; readonly media: string; readonly name: string }
   // The folder picker of "Move to…" for the assets and folders chosen.
   | {
       readonly kind: "move-to";
