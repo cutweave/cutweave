@@ -282,6 +282,27 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
     "shortcuts.timeline.matchFrameHelp",
   ),
   cmd(
+    "timeline.toggle_keyframe_lanes",
+    "timeline",
+    "timeline",
+    "shortcuts.timeline.keyframeLanes",
+    "shortcuts.timeline.keyframeLanesHelp",
+  ),
+  cmd(
+    "timeline.keyframe_next",
+    "timeline",
+    "timeline",
+    "shortcuts.timeline.keyframeNext",
+    "shortcuts.timeline.keyframeNextHelp",
+  ),
+  cmd(
+    "timeline.keyframe_previous",
+    "timeline",
+    "timeline",
+    "shortcuts.timeline.keyframePrevious",
+    "shortcuts.timeline.keyframePreviousHelp",
+  ),
+  cmd(
     "timeline.tool.select",
     "timeline",
     "timeline",

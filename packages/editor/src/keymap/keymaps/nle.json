@@ -203,6 +203,18 @@
       "keys": ["F"]
     },
     {
+      "command": "timeline.toggle_keyframe_lanes",
+      "keys": ["Alt+K"]
+    },
+    {
+      "command": "timeline.keyframe_next",
+      "keys": ["Alt+ArrowRight"]
+    },
+    {
+      "command": "timeline.keyframe_previous",
+      "keys": ["Alt+ArrowLeft"]
+    },
+    {
       "command": "timeline.tool.select",
       "keys": ["V"]
     },

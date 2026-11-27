@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
 import { comboText, strokesOf } from "../keymap/store.ts";
 import { TIMELINE_COMMANDS } from "../keymap/timeline.ts";
+import { useDocStore } from "../state/docStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import type { TimelineHost, TimelineUi } from "./host.ts";
 
@@ -74,6 +75,11 @@ export function TimelineToolbar({
   const { t } = useTranslation();
   const snapping = useViewStore((s) => s.snapping);
   const off = !live;
+  // The lanes toggle follows the selection, the open lanes and the document.
+  useViewStore((s) => s.selection);
+  useViewStore((s) => s.keyframeLanes);
+  useDocStore((s) => s.project);
+  const canOpenLanes = live && host.hasAnimatedSelection();
   return (
     <Toolbar aria-label={t("timeline.toolbarLabel")} className="cw-timeline__tools">
       {TOOL_BUTTONS.map((def) => (
@@ -131,6 +137,14 @@ export function TimelineToolbar({
         pressed={ui.linkedSelection}
         disabled={off}
         onClick={() => host.toggleLinkedSelection()}
+      />
+      <Button
+        icon="keyframe-diamond"
+        label={t(canOpenLanes ? "timeline.keyframeLanes" : "timeline.keyframeLanesNone")}
+        command="timeline.toggle_keyframe_lanes"
+        pressed={canOpenLanes && host.lanesOpen()}
+        disabled={!canOpenLanes}
+        onClick={() => host.toggleKeyframeLanes()}
       />
       <ToolbarSeparator />
       <Button

@@ -17,6 +17,7 @@ import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { InUseMarks } from "../timeline/InUseMarks.tsx";
+import { useKeyframeLanes } from "../timeline/useKeyframeLanes.ts";
 import { timelineDisplay } from "../timeline/prefs.ts";
 import { DropGhost, TrackHeaderControls } from "../timeline/TimelineOverlays.tsx";
 import { TimelineToolbar } from "../timeline/TimelineToolbar.tsx";
@@ -49,6 +50,8 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
     [mediaLoaders, ownerWindow],
   );
   const model = useMemo(() => selectTimelineModel(project), [project]);
+  // The open keyframe lanes (WP-2C.05): view state, drawn from the document.
+  const keyframeLanes = useKeyframeLanes(project);
   // The sequence's in and out points shade the timeline (markers come with the model).
   const range = selectInOut(project);
   const playhead = useViewStore((s) => s.playhead);
@@ -97,6 +100,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
           className="cw-timeline__canvas"
           aria-label={t("timeline.canvasLabel")}
           model={model}
+          keyframeLanes={keyframeLanes}
           viewState={viewState}
           loaders={loaders}
           display={display}
