@@ -89,6 +89,9 @@ proptest.workspace = true
 # cutweave-render's and cutweave-cache's tests pin). No crate outside Cargo.lock.
 reqwest = { version = "=0.13.5", default-features = false, features = ["json"] }
 zune-jpeg = "=0.5.15"
+# WP-2F.04b archive test: extracts the zip `project.archive` wrote (the reader of the crate
+# cutweave-ops writes it with; no crate outside Cargo.lock).
+zip = { version = "9.5", default-features = false }
 
 # The free-space probe of the exports' disk check (WP-2G.03b, `export::disk`): the one FFI call
 # per OS. Same versions the graph already resolves to (cutweave-playback, cutweave-bridge).

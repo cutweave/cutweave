@@ -150,6 +150,13 @@ export type AgentConnection = {
 /**  A static value or keyed values (keyframes §3.1); the wire form for TypeScript. */
 export type Animatable<T> = T | Keyframes<T>;
 
+/**  What an archive is. */
+export type ArchiveFormat = 
+/**  A folder: the collected project plus `archive.json`. */
+"folder" | 
+/**  One `.zip` file holding that folder (stored entries, Zip64 when needed). */
+"zip";
+
 /**  A group of properties, as `item.reset_props` and the Inspector name them. */
 export type Attribute = 
 /**  Position, scale, rotation and anchor. */
@@ -4668,6 +4675,43 @@ export type Project = {
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
+
+/**
+ *  Bundles the project for storage or a handover: the project document, every media file it
+ *  uses (under `media/`), its `generated/` folder, and a file list `archive.json` with the size
+ *  and SHA-256 of every file. `format: "folder"` writes a project folder at `dest`;
+ *  `format: "zip"` writes one `.zip` file at `dest` (the name must end in `.zip`) that holds
+ *  that folder, uncompressed, with Zip64 for large files. Proxies and caches are left out. The
+ *  open project and its files are not changed. Returns a background job; the archive is
+ *  complete when the job succeeds: the zip gets its name only after it was read back and
+ *  compared with the file list, so a cancelled or failed run leaves no `.zip`. A folder
+ *  archive that was cancelled continues when called again with the same folder. Fails with
+ *  `Invalid` at `/dest` when the files do not fit on the drive, the folder already holds a
+ *  project or the `.zip` already exists, and at `/media` when a media file is missing (relink
+ *  it first). `project.collect_estimate` with the same folder says what would be bundled.
+ *  Agents and headless callers may only archive into folders the user approved.
+ */
+export type ProjectArchive = {
+	/**
+	 *  Absolute path of the archive: for `folder` a new or empty folder (or the folder of an
+	 *  interrupted archive of this project), for `zip` a `.zip` file that does not exist yet.
+	 */
+	dest: string,
+	/**  `folder` (a project folder with `archive.json`) or `zip` (one `.zip` holding it). */
+	format: ArchiveFormat,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused?: boolean | null,
+	/**  Also bundle the project's `generated/` folder (default true). */
+	include_generated?: boolean | null,
+};
+
+/**  Result of `project.archive`. */
+export type ProjectArchiveOutput = {
+	/**  The archive job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`. */
+	job_id: JobId,
+	/**  What it bundles; `dest` is the folder or the `.zip` file. */
+	estimate: CollectEstimate,
+};
 
 /**
  *  Closes the open project (releasing its lock) and starts an untitled document. With
