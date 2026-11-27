@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MediaAsset, ProxyStatus } from "@cutweave/protocol";
+import type { MediaAsset, MediaId, ProxyStatus } from "@cutweave/protocol";
 import { formatTimecode } from "@cutweave/timeline";
 import { Button, InspectorRow, NumberScrubber, Slider, TextField } from "@cutweave/ui";
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
@@ -27,6 +27,7 @@ import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { Section } from "../inspector/Section.tsx";
 import { SequenceSection } from "../inspector/SequenceSection.tsx";
 import { SpeedSection } from "../inspector/SpeedSection.tsx";
+import { useClipsWithoutTiming, useProjectWithoutItems } from "../inspector/stable.ts";
 import { TrackSection } from "../inspector/TrackSection.tsx";
 import { VideoSections } from "../inspector/VideoSections.tsx";
 import { isMovingPicture } from "../media/kinds.ts";
@@ -317,9 +318,10 @@ function FieldRow({ field, ...rest }: RowProps<FieldDef>) {
 /** Where the clip's picture comes from, and whether a proxy stands in for it. */
 function SourceRows({ clip }: { readonly clip: SelectedClip }) {
   const { t } = useTranslation();
-  const project = useDocStore((s) => s.project);
+  // The asset, not the document: a clip dragged on the timeline changes the document on every
+  // update (issue #244).
+  const media = useDocStore((s) => s.project?.media[clip.item.media as MediaId]);
   const rpc = useStore(engineStore, (s) => (s.blocked === null ? s.rpc : null));
-  const media = project?.media[clip.item.media as keyof typeof project.media];
   const [proxy, setProxy] = useState<ProxyStatus | null>(null);
   const mediaId = clip.item.media;
   const isVideo = isMovingPicture(media?.kind);
@@ -356,7 +358,50 @@ function SourceRows({ clip }: { readonly clip: SelectedClip }) {
   );
 }
 
-/** The inspector of one or more selected clips. */
+/**
+ * One section of hand-built rows. Memoized on plain values, so a drag that only moves the clip
+ * (issue #244) draws just the section that shows its timing.
+ */
+const FieldsSection = memo(function FieldsSection({
+  section,
+  clips,
+  editor,
+  locked,
+}: {
+  readonly section: (typeof SECTIONS)[number];
+  readonly clips: readonly SelectedClip[];
+  readonly editor: InspectorEditor;
+  readonly locked: boolean;
+}) {
+  const { t } = useTranslation();
+  const ids = clips.map((c) => c.item.id);
+  const only = clips.length === 1 ? clips[0] : undefined;
+  return (
+    <Section id={section.id} label={t(section.label)} ids={ids}>
+      <div className="cw-inspector__rows">
+        {FIELDS.filter((f) => f.section === section.id).map((field) => (
+          <FieldRow key={field.id} field={field} clips={clips} editor={editor} disabled={locked} />
+        ))}
+        {section.id === "clip" && only !== undefined ? <SourceRows clip={only} /> : null}
+        {section.id === "timing" && clips.length > 1 ? (
+          <p className="cw-inspector__note label">{t("inspector.multipleTime")}</p>
+        ) : null}
+      </div>
+    </Section>
+  );
+});
+
+const MemoVideoSections = memo(VideoSections);
+const MemoSpeedSection = memo(SpeedSection);
+const MemoAudioSection = memo(AudioSection);
+const MemoLayoutSection = memo(LayoutSection);
+const MemoTrackSection = memo(TrackSection);
+
+/**
+ * The inspector of one or more selected clips. While a clip is dragged only its timing changes:
+ * the Timing section gets the clips as they are, every other part the clips and project it last
+ * drew (`stable.ts`), so a drag update draws one section, not the whole panel (issue #244).
+ */
 function ClipInspector({
   clips,
   editor,
@@ -365,48 +410,37 @@ function ClipInspector({
   readonly editor: InspectorEditor;
 }) {
   const { t } = useTranslation();
-  const project = useDocStore((s) => s.project);
-  const locked = clips.some((c) => c.locked);
-  const ids = clips.map((c) => c.item.id);
-  const only = clips.length === 1 ? clips[0] : undefined;
+  const rest = useClipsWithoutTiming(clips);
+  const project = useProjectWithoutItems(
+    useDocStore((s) => s.project),
+    rest,
+  );
+  const locked = rest.some((c) => c.locked);
   return (
     <div className="cw-inspector" data-testid="clip-inspector">
-      {clips.length > 1 ? (
-        <p className="cw-inspector__note body">
-          {t("inspector.multiple", { count: clips.length })}
-        </p>
+      {rest.length > 1 ? (
+        <p className="cw-inspector__note body">{t("inspector.multiple", { count: rest.length })}</p>
       ) : null}
       {locked ? <p className="cw-inspector__note body">{t("timeline.reason.locked")}</p> : null}
       {SECTIONS.map((section) => (
         <Fragment key={section.id}>
-          <Section id={section.id} label={t(section.label)} ids={ids}>
-            <div className="cw-inspector__rows">
-              {FIELDS.filter((f) => f.section === section.id).map((field) => (
-                <FieldRow
-                  key={field.id}
-                  field={field}
-                  clips={clips}
-                  editor={editor}
-                  disabled={locked}
-                />
-              ))}
-              {section.id === "clip" && only !== undefined ? <SourceRows clip={only} /> : null}
-              {section.id === "timing" && clips.length > 1 ? (
-                <p className="cw-inspector__note label">{t("inspector.multipleTime")}</p>
-              ) : null}
-            </div>
-          </Section>
+          <FieldsSection
+            section={section}
+            clips={section.id === "timing" ? clips : rest}
+            editor={editor}
+            locked={locked}
+          />
           {section.id === "timing" ? (
             <>
-              <VideoSections clips={clips} editor={editor} locked={locked} />
-              <SpeedSection project={project} clips={clips} editor={editor} locked={locked} />
-              <AudioSection project={project} clips={clips} editor={editor} locked={locked} />
-              <LayoutSection clips={clips} locked={locked} />
+              <MemoVideoSections clips={rest} editor={editor} locked={locked} />
+              <MemoSpeedSection project={project} clips={rest} editor={editor} locked={locked} />
+              <MemoAudioSection project={project} clips={rest} editor={editor} locked={locked} />
+              <MemoLayoutSection clips={rest} locked={locked} />
             </>
           ) : null}
         </Fragment>
       ))}
-      <TrackSection project={project} clips={clips} editor={editor} />
+      <MemoTrackSection project={project} clips={rest} editor={editor} />
     </div>
   );
 }

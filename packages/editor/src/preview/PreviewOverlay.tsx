@@ -7,7 +7,7 @@
 // `TransformOverlay`, which may draw outside the frame; this layer is clipped to it.
 import { formatTimecode } from "@cutweave/timeline";
 import { useOwnerWindow } from "@cutweave/ui";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { observeSize } from "../shell/windows.ts";
 import { useDocStore } from "../state/docStore.ts";
@@ -36,14 +36,14 @@ const divisions = (n: number): number[] => Array.from({ length: n - 1 }, (_, i) 
 
 export function PreviewOverlay() {
   const { t } = useTranslation();
-  const project = useDocStore((s) => s.project);
   const safeAreas = useViewStore((s) => s.safeAreas);
   const playhead = useViewStore((s) => s.playhead);
   const { platform, thirds, cross, grid, aspect, pixelRatio } = useGuides((s) => s);
-  const format = useMemo(() => {
-    const id = selectActiveSequenceId(project);
-    return id === null ? undefined : project?.sequences[id]?.format;
-  }, [project]);
+  // The format, not the document: a clip dragged on the timeline changes it on every update (#244).
+  const format = useDocStore((s) => {
+    const id = selectActiveSequenceId(s.project);
+    return id === null ? undefined : s.project?.sequences[id]?.format;
+  });
   const rootRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   // Observed from its own window (a detached Preview's), again when it moves.
