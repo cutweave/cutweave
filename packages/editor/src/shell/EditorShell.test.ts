@@ -41,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.motion;
 });
 
 describe("EditorShell", () => {
@@ -157,6 +158,57 @@ describe("EditorShell", () => {
     for (const name of ["Assets", "Preview", "Inspector", "Timeline"]) {
       expect(await screen.findByRole("region", { name })).toBeTruthy();
     }
+  });
+
+  it("sets the density from Settings > Appearance: Standard is compact (WP-2H.09)", async () => {
+    const user = userEvent.setup();
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Timeline" });
+    const root = document.documentElement;
+    expect(root.dataset.density).toBe("compact");
+    await user.keyboard("{Control>},{/Control}");
+    const settings = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(within(settings).getByRole("tab", { name: "Appearance" }));
+    const density = within(settings).getByRole("radiogroup", { name: "Density" });
+    await user.click(within(density).getByRole("radio", { name: "Comfortable" }));
+    expect(root.dataset.density).toBe("comfortable");
+    expect(prefsStore.getState().values["appearance.density"]).toBe("comfortable");
+    await user.click(within(density).getByRole("radio", { name: "Standard" }));
+    expect(root.dataset.density).toBe("compact");
+    await user.click(within(settings).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
+  });
+
+  it("sets data-motion for Reduce motion On and Off, and none for the system's (WP-2H.09)", async () => {
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Timeline" });
+    const root = document.documentElement;
+    expect(root.hasAttribute("data-motion")).toBe(false);
+    await act(async () => preferences.set("appearance.reduce_motion", "on"));
+    expect(root.dataset.motion).toBe("reduce");
+    await act(async () => preferences.set("appearance.reduce_motion", "off"));
+    expect(root.dataset.motion).toBe("full");
+    await act(async () => preferences.set("appearance.reduce_motion", "system"));
+    expect(root.hasAttribute("data-motion")).toBe(false);
+  });
+
+  it("offers the five interface scales and stores the chosen one (WP-2H.09)", async () => {
+    const user = userEvent.setup();
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Timeline" });
+    await user.keyboard("{Control>},{/Control}");
+    const settings = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(within(settings).getByRole("tab", { name: "Appearance" }));
+    const scale = within(settings).getByRole("radiogroup", { name: "Interface scale" });
+    expect(
+      within(scale)
+        .getAllByRole("radio")
+        .map((radio) => radio.textContent),
+    ).toEqual(["90%", "100%", "110%", "125%", "150%"]);
+    await user.click(within(scale).getByRole("radio", { name: "125%" }));
+    expect(prefsStore.getState().values["appearance.scale"]).toBe(125);
+    await user.click(within(settings).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
   });
 
   it("has no axe violations (dark and light)", async () => {

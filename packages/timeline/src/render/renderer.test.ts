@@ -335,6 +335,38 @@ describe("zoom range and smooth zoom", () => {
     expect(instant.view.zooming).toBe(false);
   });
 
+  it("follows the root's data-motion before the system's reduced-motion setting (WP-2H.09)", () => {
+    const canvasIn = (motion: string | null, systemReduces: boolean): HTMLCanvasElement =>
+      ({
+        ...fakeCanvas(),
+        ownerDocument: {
+          documentElement: { getAttribute: () => motion },
+          defaultView: { matchMedia: () => ({ matches: systemReduces }) },
+        },
+      }) as unknown as HTMLCanvasElement;
+    const eases = (motion: string | null, systemReduces: boolean): boolean => {
+      const frames = manualFrames();
+      const view = new TimelineView(canvasIn(motion, systemReduces), {
+        theme: th,
+        context: recordingContext().ctx,
+        requestFrame: frames.requestFrame,
+        cancelFrame: frames.cancelFrame,
+        now: () => 0,
+      });
+      view.resize(1200, 400, 1);
+      view.setModel(model);
+      view.setViewState({ pxPerSec: 100 });
+      view.zoomSmooth(2, 600);
+      return view.zooming;
+    };
+    // No choice: the system decides.
+    expect(eases(null, false)).toBe(true);
+    expect(eases(null, true)).toBe(false);
+    // Reduce motion On and Off win over the system.
+    expect(eases("reduce", false)).toBe(false);
+    expect(eases("full", true)).toBe(true);
+  });
+
   it("a pan during a smooth zoom carries the zoom along", () => {
     const { view, frames, advance } = setup(model, { smoothZoom: true });
     view.setViewState({ pxPerSec: 100, scrollX: s(10) });

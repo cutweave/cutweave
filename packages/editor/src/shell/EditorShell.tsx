@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { resolveTheme } from "@cutweave/preferences";
+import { densityAttribute, motionAttribute, resolveTheme } from "@cutweave/preferences";
 import { ToastProvider, TooltipProvider } from "@cutweave/ui";
 import { useEffect, useSyncExternalStore } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
@@ -49,10 +49,24 @@ function Shell() {
   const choice = usePref("appearance.theme");
   const theme = resolveTheme(choice, useSystemDark());
 
-  // Tokens switch on `data-theme`; the compact density matches the reference screenshots.
+  // Density and Reduce motion are app preferences too (WP-2H.09).
+  const density = densityAttribute(usePref("appearance.density"));
+  const motion = motionAttribute(usePref("appearance.reduce_motion"));
+
+  // The size tokens switch on `data-density`: `compact` is Standard, the reference screenshots'.
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+  }, [density]);
+
+  // `data-motion` overrides the system's `prefers-reduced-motion`; without it the system decides.
+  useEffect(() => {
+    if (motion === undefined) delete document.documentElement.dataset.motion;
+    else document.documentElement.dataset.motion = motion;
+  }, [motion]);
+
+  // Tokens switch on `data-theme`.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.documentElement.dataset.density = "compact";
     // The OS window controls over the title bar take the same theme (Windows, Linux).
     void desktopFromWindow()
       ?.window?.setTheme?.(theme)

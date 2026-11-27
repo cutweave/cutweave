@@ -26,6 +26,15 @@ pub struct Family {
     pub tokens: Vec<PlainToken>,
 }
 
+/// A density other than the default one (`density.sets` in the token file): the size and
+/// spacing tokens it makes larger, under `[data-density="<id>"]`.
+#[derive(Debug, Clone)]
+pub struct Density {
+    pub id: String,
+    /// The tokens it overrides, in file order.
+    pub tokens: Vec<PlainToken>,
+}
+
 /// One typography style.
 #[derive(Debug, Clone)]
 pub struct TypeStyle {
@@ -46,6 +55,8 @@ pub struct Tokens {
     pub colors: Vec<ThemedToken>,
     pub shadows: Vec<ThemedToken>,
     pub families: Vec<Family>,
+    /// Densities besides the default one (the plain `families` values).
+    pub densities: Vec<Density>,
     pub font_families: Vec<(String, String)>,
     pub type_styles: Vec<TypeStyle>,
 }
@@ -160,6 +171,11 @@ impl Tokens {
             });
         }
 
+        let densities = match obj.get("density") {
+            Some(d) => parse_densities(d, &families)?,
+            None => Vec::new(),
+        };
+
         let ty = obj.get("type").ok_or("tokens.json: missing `type`")?;
         let font_families = ty
             .get("families")
@@ -210,6 +226,7 @@ impl Tokens {
             colors,
             shadows,
             families,
+            densities,
             font_families,
             type_styles,
         })
@@ -233,6 +250,86 @@ impl Tokens {
         }
         Err(format!("alias cycle starting at `{name}`"))
     }
+}
+
+/// A `12px` length as a number.
+fn px_of(value: &str) -> Option<f64> {
+    value.strip_suffix("px")?.parse::<f64>().ok()
+}
+
+/// Parses `density.sets`. A set may only make a `spacing` or `size` token larger: every token it
+/// names exists there, is a px length with a usage note, and is not smaller than the default.
+/// No control or track may end up smaller than the set's own `hit-min`.
+fn parse_densities(density: &Value, families: &[Family]) -> Result<Vec<Density>, String> {
+    let base = |name: &str| -> Option<&str> {
+        families
+            .iter()
+            .filter(|f| matches!(f.key.as_str(), "spacing" | "size"))
+            .flat_map(|f| &f.tokens)
+            .find(|t| t.name == name)
+            .map(|t| t.value.as_str())
+    };
+    let sets = density
+        .get("sets")
+        .and_then(Value::as_array)
+        .ok_or("density: missing `sets` array")?;
+    let mut out: Vec<Density> = Vec::new();
+    for set in sets {
+        let id = str_of(set, "id", "density.sets")?.to_owned();
+        let ctx = format!("density.{id}");
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
+            return Err(format!("{ctx}: the id must be lower-case letters"));
+        }
+        if out.iter().any(|d| d.id == id) {
+            return Err(format!("{ctx}: defined twice"));
+        }
+        let list = set
+            .get("tokens")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("{ctx}: missing `tokens` array"))?;
+        let mut tokens: Vec<PlainToken> = Vec::new();
+        for tok in list {
+            let name = str_of(tok, "name", &ctx)?.to_owned();
+            let value = scalar(tok.get("value").unwrap_or(&Value::Null), &ctx)?;
+            let usage = tok.get("usage").and_then(Value::as_str).unwrap_or_default();
+            if usage.trim().is_empty() {
+                return Err(format!("{ctx}.{name}: needs a usage note"));
+            }
+            if tokens.iter().any(|t| t.name == name) {
+                return Err(format!("{ctx}.{name}: listed twice"));
+            }
+            let standard = base(&name)
+                .ok_or_else(|| format!("{ctx}.{name}: not a `spacing` or `size` token"))?;
+            let (Some(new), Some(old)) = (px_of(&value), px_of(standard)) else {
+                return Err(format!("{ctx}.{name}: `{value}` must be a px length"));
+            };
+            if new < old {
+                return Err(format!(
+                    "{ctx}.{name}: {value} is smaller than the default {standard}"
+                ));
+            }
+            tokens.push(PlainToken { name, value });
+        }
+        let resolved = |name: &str| -> Option<f64> {
+            tokens
+                .iter()
+                .find(|t| t.name == name)
+                .map(|t| t.value.as_str())
+                .or_else(|| base(name))
+                .and_then(px_of)
+        };
+        if let Some(hit) = resolved("hit-min") {
+            let sizes = families.iter().filter(|f| f.key == "size");
+            for t in sizes.flat_map(|f| &f.tokens) {
+                let target = t.name.starts_with("control-") || t.name.starts_with("track-");
+                if target && resolved(&t.name).is_some_and(|v| v < hit) {
+                    return Err(format!("{ctx}: `{}` is smaller than `hit-min`", t.name));
+                }
+            }
+        }
+        out.push(Density { id, tokens });
+    }
+    Ok(out)
 }
 
 /// Returns `x` for `"{x}"`.
@@ -311,6 +408,60 @@ mod tests {
         assert_eq!(t.resolve_color("chain", 1).unwrap().r, 255);
         assert!(t.resolve_color("loop-a", 0).unwrap_err().contains("cycle"));
         assert!(t.resolve_color("nope", 0).is_err());
+    }
+
+    fn with_density(set: &str) -> Result<Tokens, String> {
+        let json = r##"{
+          "name": "T", "version": 1,
+          "color": {"themes": [{"id": "dark"}], "tokens": []},
+          "spacing": {"tokens": [{"name": "space-2", "value": "8px", "usage": "u"}]},
+          "size": {"tokens": [
+            {"name": "hit-min", "value": "24px", "usage": "u"},
+            {"name": "control-sm", "value": "24px", "usage": "u"}
+          ]},
+          "zIndex": {"tokens": [{"name": "z-top", "value": "20", "usage": "u"}]},
+          "density": {"sets": [{"id": "comfortable", "tokens": [SET]}]},
+          "type": {"families": {"ui": "x"}, "groups": []}
+        }"##;
+        Tokens::parse(&json.replace("SET", set))
+    }
+
+    #[test]
+    fn a_density_makes_size_and_spacing_tokens_larger() {
+        let t = with_density(
+            r#"{"name": "control-sm", "value": "28px", "usage": "u"},
+               {"name": "hit-min", "value": "28px", "usage": "u"},
+               {"name": "space-2", "value": "10px", "usage": "u"}"#,
+        )
+        .unwrap();
+        assert_eq!(t.densities.len(), 1);
+        assert_eq!(t.densities[0].id, "comfortable");
+        let names: Vec<&str> = t.densities[0]
+            .tokens
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(names, ["control-sm", "hit-min", "space-2"]);
+        // The default values are untouched, and `density` is not a token family of its own.
+        assert!(t.families.iter().all(|f| f.key != "density"));
+        let size = t.families.iter().find(|f| f.key == "size").unwrap();
+        assert_eq!(size.tokens[1].value, "24px");
+    }
+
+    #[test]
+    fn a_density_is_checked() {
+        let err = |set: &str| with_density(set).unwrap_err();
+        assert!(err(r#"{"name": "nope", "value": "28px", "usage": "u"}"#).contains("not a"));
+        assert!(err(r#"{"name": "z-top", "value": "28px", "usage": "u"}"#).contains("not a"));
+        assert!(err(r#"{"name": "space-2", "value": "6px", "usage": "u"}"#).contains("smaller"));
+        assert!(err(r#"{"name": "space-2", "value": "1em", "usage": "u"}"#).contains("px length"));
+        assert!(err(r#"{"name": "space-2", "value": "10px", "usage": " "}"#).contains("usage"));
+        assert!(err(r#"{"name": "space-2", "value": "10px"}"#).contains("usage"));
+        // A larger minimum target with a control left below it.
+        assert!(err(r#"{"name": "hit-min", "value": "28px", "usage": "u"}"#).contains("hit-min"));
+        let twice = r#"{"name": "space-2", "value": "10px", "usage": "u"},
+                       {"name": "space-2", "value": "12px", "usage": "u"}"#;
+        assert!(err(twice).contains("twice"));
     }
 
     #[test]

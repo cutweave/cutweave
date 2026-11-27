@@ -2,17 +2,23 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  DENSITY_CHOICES,
   defaultPreferences,
+  densityAttribute,
   exportPreferences,
+  INTERFACE_SCALES,
   isRendererWritable,
   loadPreferences,
   MAX_AGENT_FOLDERS,
+  motionAttribute,
   PREFERENCE_KEYS,
   parseImport,
+  REDUCE_MOTION_CHOICES,
   SCHEMA_VERSION,
   samePreferenceValue,
   serializePreferences,
   validatePreference,
+  zoomFactorFor,
 } from "./schema.ts";
 
 const CATALOG = readFileSync(
@@ -326,5 +332,66 @@ describe("keyboard shortcuts (WP-2H.05)", () => {
       "shortcuts.bindings": { "item.delete": ["Delete"] },
     });
     expect(parsed.skipped.map((s) => s.key)).toEqual(["appearance.theme"]);
+  });
+});
+
+describe("appearance: interface scale, density and reduce motion (WP-2H.09)", () => {
+  it("defaults to 100%, Standard and the system's motion setting", () => {
+    const values = defaultPreferences();
+    expect(values["appearance.scale"]).toBe(100);
+    expect(values["appearance.density"]).toBe("standard");
+    expect(values["appearance.reduce_motion"]).toBe("system");
+  });
+
+  it("offers 90, 100, 110, 125 and 150% and nothing between", () => {
+    expect([...INTERFACE_SCALES]).toEqual([90, 100, 110, 125, 150]);
+    for (const scale of INTERFACE_SCALES) {
+      expect(validatePreference("appearance.scale", scale).ok).toBe(true);
+    }
+    for (const bad of [0, 80, 120, 200, 1.25, "125", null]) {
+      expect(validatePreference("appearance.scale", bad).ok, String(bad)).toBe(false);
+    }
+  });
+
+  it("turns a scale into the window's zoom factor", () => {
+    expect(INTERFACE_SCALES.map(zoomFactorFor)).toEqual([0.9, 1, 1.1, 1.25, 1.5]);
+  });
+
+  it("accepts the two densities and the three motion choices only", () => {
+    for (const density of DENSITY_CHOICES) {
+      expect(validatePreference("appearance.density", density).ok).toBe(true);
+    }
+    for (const motion of REDUCE_MOTION_CHOICES) {
+      expect(validatePreference("appearance.reduce_motion", motion).ok).toBe(true);
+    }
+    expect(validatePreference("appearance.density", "compact").ok).toBe(false);
+    expect(validatePreference("appearance.reduce_motion", true).ok).toBe(false);
+  });
+
+  it("names the root attributes: Standard is `compact`, and the system has no `data-motion`", () => {
+    expect(densityAttribute("standard")).toBe("compact");
+    expect(densityAttribute("comfortable")).toBe("comfortable");
+    expect(motionAttribute("system")).toBeUndefined();
+    expect(motionAttribute("on")).toBe("reduce");
+    expect(motionAttribute("off")).toBe("full");
+  });
+
+  it("exports and imports the three with the other app preferences", () => {
+    const values = {
+      ...defaultPreferences(),
+      "appearance.scale": 125 as const,
+      "appearance.density": "comfortable" as const,
+      "appearance.reduce_motion": "on" as const,
+    };
+    const { text, count } = exportPreferences(values, defaultPreferences());
+    expect(count).toBe(3);
+    const parsed = parseImport(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.applied).toEqual({
+      "appearance.scale": 125,
+      "appearance.density": "comfortable",
+      "appearance.reduce_motion": "on",
+    });
   });
 });
