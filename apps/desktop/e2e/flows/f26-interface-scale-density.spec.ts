@@ -150,7 +150,8 @@ test.describe("F26 interface scale and density", () => {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
       await createProject(app, page, "Scale", work.dir);
-      const topBar = page.getByRole("banner");
+      // Also while Settings is open over it (the dialog hides the rest from assistive tech).
+      const topBar = page.getByRole("banner", { includeHidden: true });
       const dpr = await page.evaluate(() => devicePixelRatio);
       const width = await page.evaluate(() => innerWidth);
       expect(await zoomFactor(app)).toBeCloseTo(1, 3);
@@ -229,6 +230,7 @@ test.describe("F26 interface scale and density", () => {
       await snapshot(page, info, "editor comfortable 125");
 
       // A detached panel's window (F47) has the same scale and density.
+      const docked = await cssBox(page.getByRole("region", { name: "Inspector", exact: true }));
       const opened = app.waitForEvent("window");
       await page.getByRole("tab", { name: "Inspector", exact: true }).click({ button: "right" });
       const menu = page.getByRole("menu", { name: "Panel actions for Inspector" });
@@ -241,6 +243,13 @@ test.describe("F26 interface scale and density", () => {
       await expect.poll(() => popout.evaluate(() => devicePixelRatio)).toBeCloseTo(dpr * 1.25, 2);
       await expect.poll(() => rootAttribute(popout, "data-density")).toBe("comfortable");
       expect(await token(popout, "--control-md")).toBe(32);
+      // And the panel has the room it had in the dock: the window is that many CSS pixels wide.
+      await expect
+        .poll(async () => Math.abs((await popout.evaluate(() => innerWidth)) - docked.width))
+        .toBeLessThanOrEqual(2);
+      expect(
+        Math.abs((await popout.evaluate(() => innerHeight)) - docked.height),
+      ).toBeLessThanOrEqual(2);
       // Back to 100% and to 125% again: the detached window follows the editor's, at once.
       await setScale(app, page, 100);
       await expect.poll(() => zoomFactor(app, "detached")).toBeCloseTo(1, 3);

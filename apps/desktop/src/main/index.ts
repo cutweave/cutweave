@@ -53,7 +53,7 @@ import { EngineSupervisor } from "./engine/supervisor.ts";
 import { FocusGroup } from "./focus-group.ts";
 import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
-import { applyInterfaceScale, titleBarHeightFor } from "./interface-scale.ts";
+import { applyInterfaceScale, cssToScreen, titleBarHeightFor } from "./interface-scale.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { applicationMenuTemplate } from "./menu.ts";
 import {
@@ -192,11 +192,19 @@ function adoptPopout(
   child.webContents.on("did-finish-load", () =>
     applyInterfaceScale(child.webContents, currentScale()),
   );
-  // Its saved bounds may be on a monitor that is gone, or larger than any left.
+  // Its saved bounds may be on a monitor that is gone, or larger than any left. The editor
+  // asked for the size in its own CSS pixels (the panel's box, or the `innerWidth` and
+  // `innerHeight` dockview saved) and Chromium took them as screen points: at another interface
+  // scale the same page needs that many times the points.
   const outer = child.getBounds();
   const content = child.getContentBounds();
   const fitted = fitPopout(
-    { x: outer.x, y: outer.y, width: content.width, height: content.height },
+    {
+      x: outer.x,
+      y: outer.y,
+      width: cssToScreen(content.width, scale),
+      height: cssToScreen(content.height, scale),
+    },
     screen.getAllDisplays().map((d) => d.workArea),
   );
   if (fitted.width !== content.width || fitted.height !== content.height) {
