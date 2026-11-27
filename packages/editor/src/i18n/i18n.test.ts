@@ -70,6 +70,9 @@ const MENU_IDS: ReadonlySet<string> = new Set([
   "history.copy_label",
   "history.open",
   "menu.commandPalette",
+  // The timeline interaction machine's engine answers (WP-2A.08, wired by WP-2A.10).
+  "engine.result",
+  "engine.cancelled",
   // The export queue's engine methods (WP-2G.03a) and its row menu (WP-2G.04).
   "export.enqueue",
   "export.queue",

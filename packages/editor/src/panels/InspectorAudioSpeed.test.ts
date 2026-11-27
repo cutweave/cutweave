@@ -126,7 +126,8 @@ describe("the Audio section", () => {
   });
 
   it("edits only the sound clips of a mixed selection", async () => {
-    select(sampleProject(), sec(2), "itm_v", "itm_a");
+    // A picture and a sound of their own: a linked pair inspects as the clip clicked (WP-2A.10).
+    select(sampleProject({ itm_a: { linked_group: null } }), sec(2), "itm_v", "itm_a");
     view();
     const user = userEvent.setup();
     await user.dblClick(screen.getByRole("spinbutton", { name: "Volume" }));

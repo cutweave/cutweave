@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { FolderId, MediaId } from "@cutweave/protocol";
-import type { MediaDrag } from "@cutweave/timeline";
+import type { DroppedMedia } from "@cutweave/timeline";
 import {
   Button,
   FilterChip,
@@ -185,10 +185,10 @@ function isTextEntry(target: EventTarget | null): boolean {
 }
 
 /** What the timeline is told a card is: an image sequence is video there (ADR-0035). */
-const dropKind = (kind: Exclude<MediaCard["kind"], "sequence_ref">): MediaDrag["kind"] =>
+const dropKind = (kind: Exclude<MediaCard["kind"], "sequence_ref">): DroppedMedia["kind"] =>
   kind === "image_sequence" ? "video" : kind;
 
-const dragOf = (card: MediaCard): MediaDrag | null =>
+const dragOf = (card: MediaCard): DroppedMedia | null =>
   card.kind === "sequence_ref"
     ? null
     : {
@@ -204,7 +204,7 @@ const dragOf = (card: MediaCard): MediaDrag | null =>
 /** What a drag of a bin tile is told about the tile it starts on. */
 interface TileHandlers {
   onPress(tile: Tile, e: MouseEvent<HTMLElement>): void;
-  onDragStart(tile: Tile, media: MediaDrag | null, e: DragEvent<HTMLElement>): void;
+  onDragStart(tile: Tile, media: DroppedMedia | null, e: DragEvent<HTMLElement>): void;
   onDragEnd(): void;
   onCancelRename(): void;
 }
@@ -1028,7 +1028,7 @@ export function MediaPanel() {
     };
   };
 
-  const onTileDragStart = (tile: Tile, media: MediaDrag | null, e: DragEvent<HTMLElement>) => {
+  const onTileDragStart = (tile: Tile, media: DroppedMedia | null, e: DragEvent<HTMLElement>) => {
     const sel = currentSelection();
     const part = sel.tiles.some((s) => s.kind === tile.kind && s.id === tile.id);
     if (!part) applySelection({ tiles: [tile], anchor: tile });

@@ -156,6 +156,86 @@
       "keys": ["F2"]
     },
     {
+      "command": "timeline.ripple_delete",
+      "keys": ["Shift+Delete", "Shift+Backspace"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.nudge_left",
+      "keys": [","],
+      "unverified": true
+    },
+    {
+      "command": "timeline.nudge_right",
+      "keys": ["."],
+      "unverified": true
+    },
+    {
+      "command": "timeline.nudge_left_10",
+      "keys": ["Shift+,"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.nudge_right_10",
+      "keys": ["Shift+."],
+      "unverified": true
+    },
+    {
+      "command": "timeline.add_marker",
+      "keys": ["M"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.mark_in",
+      "keys": ["I"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.mark_out",
+      "keys": ["O"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.select",
+      "keys": ["V"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.ripple",
+      "keys": ["B"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.roll",
+      "keys": ["R"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.slip",
+      "keys": ["Y"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.slide",
+      "keys": ["U"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.razor",
+      "keys": ["C"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.hand",
+      "keys": ["H"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.tool.zoom",
+      "keys": ["Z"],
+      "unverified": true
+    },
+    {
       "command": "preview.nudge_left",
       "keys": ["ArrowLeft"]
     },

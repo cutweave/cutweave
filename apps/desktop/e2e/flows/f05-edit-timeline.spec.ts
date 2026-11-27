@@ -2,8 +2,8 @@
 // F5 Edit on the timeline (docs/user-flows.md): select, move by dragging, trim by an edge, split
 // at the playhead (key and button), delete, zoom in and out. Linked audio follows its video.
 // Ctrl+wheel zoom eases anchored at the pointer, and an agent's marker and in/out show on the
-// ruler (WP-2A.09). Not in the P1 UI, so not here: the razor and ripple tools and the zoom
-// buttons are shown disabled (WP-2A.10 wires the tools, WP-2A.03 and WP-2A.04 add ripple edits).
+// ruler (WP-2A.09). The razor, the other tools and the zoom buttons are F61 and the ripple,
+// roll, slip and slide tools F38 (WP-2A.10).
 import type { Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import {
@@ -311,9 +311,9 @@ test.describe("F5 edit on the timeline", () => {
         .toBeGreaterThan(3);
       await snapshot(page, info, "marker and in-out");
 
-      // The P1 toolbar shows the later tools disabled.
+      // The tools and the zoom buttons are live (WP-2A.10; F38 and F61 use them).
       for (const tool of ["Razor", "Ripple", "Zoom in", "Zoom out"]) {
-        await expect(timelineTools(page).getByRole("button", { name: tool })).toBeDisabled();
+        await expect(timelineTools(page).getByRole("button", { name: tool })).toBeEnabled();
       }
     } finally {
       await close();

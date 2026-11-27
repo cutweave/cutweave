@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The in-place track name input (issue 149): a design-system text field laid over the name in the
-// track header while `controller.rename` is open. Enter or blur commits through `track.set`, Esc
+// track header while `host.rename` is open. Enter or blur commits through `track.set`, Esc
 // cancels; an empty name is refused with its reason shown beside the field. It keeps the keyboard:
 // key events stop here, so the timeline's keys (S, J/K/L, Delete) never fire while typing.
 import { TextField } from "@cutweave/ui";
@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { useDocStore } from "../state/docStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
-import type { TimelineController } from "./controller.ts";
+import type { TimelineHost } from "./host.ts";
 
 function RenameField({
   controller,
@@ -17,7 +17,7 @@ function RenameField({
   reason,
   rect,
 }: {
-  readonly controller: TimelineController;
+  readonly controller: TimelineHost;
   readonly initial: string;
   readonly reason: string | null;
   readonly rect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
@@ -85,7 +85,7 @@ function RenameField({
 }
 
 /** Renders nothing until a rename is open and the track's name is on screen. */
-export function TrackRenameInput({ controller }: { readonly controller: TimelineController }) {
+export function TrackRenameInput({ controller }: { readonly controller: TimelineHost }) {
   const { trackId, reason } = useStore(controller.rename);
   // Follow the lane when the timeline scrolls or the project changes under the input.
   useViewStore((s) => s.scroll);
