@@ -5,12 +5,16 @@
 // rows exist for the `timeline.*` ids.
 //
 //   pnpm --filter @cutweave/timeline bench [--seconds 30] [--width 1600] [--height 900]
-//       [--dpr 1] [--uncapped] [--min-fps 55] [--out bench/results/local.json]
+//       [--dpr 1] [--uncapped] [--lanes] [--min-fps 55] [--out bench/results/local.json]
+//
+// `--lanes` opens the keyframe lanes of every clip (WP-2C.05), the worst case for them.
+// `--fixture <file>` runs on a real project's model and lanes instead of the synthetic one (the
+// JSON `packages/editor/src/timeline/keyframes.p5k.test.ts` writes for P-5K).
 //
 // Gate: fps p5 >= --min-fps (default 55 on a dev machine, 45 when CI is set); vsync run only.
 // Needs Playwright's Chromium (`pnpm exec playwright install chromium`).
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
@@ -28,6 +32,8 @@ const height = Number(opt("height", 900));
 const dpr = Number(opt("dpr", 1));
 const uncapped = args.includes("--uncapped");
 const media = args.includes("--no-media") ? 0 : 1;
+const lanes = args.includes("--lanes") ? 1 : 0;
+const fixture = opt("fixture", null);
 const minFps = Number(opt("min-fps", process.env.CI ? 45 : 55));
 const out = opt("out", null);
 
@@ -36,6 +42,7 @@ await build({
   logLevel: "warn",
   build: { outDir: resolve(root, "dist"), emptyOutDir: true },
 });
+if (fixture) copyFileSync(resolve(fixture), resolve(root, "dist", "fixture.json"));
 const server = await preview({
   root,
   build: { outDir: resolve(root, "dist") },
@@ -63,7 +70,9 @@ try {
     await browser.newContext({ viewport: { width, height }, deviceScaleFactor: dpr })
   ).newPage();
   page.on("pageerror", (e) => console.error("pageerror:", e.message));
-  await page.goto(`${url}?seconds=${seconds}&media=${media}`);
+  await page.goto(
+    `${url}?seconds=${seconds}&media=${media}&lanes=${lanes}&fixture=${fixture ? 1 : 0}`,
+  );
   await page.waitForFunction(() => window.__benchResult || window.__benchError, null, {
     timeout: (seconds + 90) * 1000,
   });

@@ -6,7 +6,7 @@ import {
   type ViewState,
 } from "@cutweave/timeline";
 import { Icon, useOwnerWindow } from "@cutweave/ui";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import { useMediaLoaders } from "../media/mediaWiring.ts";
@@ -52,6 +52,10 @@ function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
   const model = useMemo(() => selectTimelineModel(project), [project]);
   // The open keyframe lanes (WP-2C.05): view state, drawn from the document.
   const keyframeLanes = useKeyframeLanes(project);
+  // Opening or closing a lane moves the tracks below it: once the canvas has laid them out (its
+  // effect runs before this one), what is placed over the headers and clips renders again.
+  const [, relaid] = useState(0);
+  useEffect(() => relaid((n) => n + 1), [keyframeLanes]);
   // The sequence's in and out points shade the timeline (markers come with the model).
   const range = selectInOut(project);
   const playhead = useViewStore((s) => s.playhead);
