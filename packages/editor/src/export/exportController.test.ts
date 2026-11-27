@@ -503,15 +503,26 @@ describe("ExportController: presets of the person's", () => {
   });
 
   it("deletes a preset and forgets it as the last one used", async () => {
-    const { controller, call, prefs } = setup();
+    const { controller, call, prefs, toasts } = setup();
     await prefs.set("export.last_preset", "review");
     call.mockImplementation(async (name: string) => {
       if (name === "export.delete_preset") return { id: "review" };
       if (name === "export.list_presets") return { presets: PRESET_ENTRIES, problems: [] };
       throw new Error(`unexpected ${name}`);
     });
-    expect(await controller.deletePreset("review")).toMatchObject({ ok: true, id: "review" });
+    expect(await controller.deletePreset(mine)).toMatchObject({ ok: true, id: "review" });
     expect(call).toHaveBeenCalledWith("export.delete_preset", { id: "review" });
     await vi.waitFor(() => expect(prefs.get("export.last_preset")).toBe(""));
+    // Undo on the toast saves it back as it was.
+    const toast = toasts.getState().notices.at(-1);
+    expect(toast?.title).toBe("export.deletePreset.deleted");
+    call.mockImplementation(async (name: string) => {
+      if (name === "export.save_preset") return { id: "review", replaced: false };
+      return { presets: PRESET_ENTRIES, problems: [] };
+    });
+    toast?.actions?.[0]?.onClick();
+    await vi.waitFor(() =>
+      expect(call).toHaveBeenCalledWith("export.save_preset", { preset: mine }),
+    );
   });
 });

@@ -308,6 +308,11 @@ export class ExportController {
     try {
       const out = await rpc.call("export.save_preset", { preset });
       await this.loadPresets();
+      this.#deps.toasts.getState().push({
+        tone: "success",
+        title: this.#deps.t("export.savePreset.saved"),
+        message: this.#deps.t("export.savePreset.savedMessage", { name: preset.name }),
+      });
       return { ok: true, id: out.id, replaced: out.replaced };
     } catch (error) {
       const failure = asRpcError(error);
@@ -315,8 +320,12 @@ export class ExportController {
     }
   }
 
-  /** Deletes a preset of the person's (`export.delete_preset`) and asks for the list again. */
-  async deletePreset(id: string): Promise<PresetOutcome> {
+  /**
+   * Deletes a preset of the person's (`export.delete_preset`) and asks for the list again. The
+   * toast's Undo saves it back as it was.
+   */
+  async deletePreset(preset: ExportPresetSpec): Promise<PresetOutcome> {
+    const id = preset.id;
     const rpc = this.#rpc();
     if (rpc === null) {
       return { ok: false, message: this.#deps.t("export.errors.engine"), pointer: null };
@@ -328,6 +337,17 @@ export class ExportController {
         if (this.#pref(key) === id) void this.#deps.prefs?.set(key, "").catch(() => undefined);
       }
       await this.loadPresets();
+      this.#deps.toasts.getState().push({
+        tone: "info",
+        title: this.#deps.t("export.deletePreset.deleted"),
+        message: preset.name,
+        actions: [
+          {
+            label: this.#deps.t("export.deletePreset.undo"),
+            onClick: () => void this.savePreset(preset),
+          },
+        ],
+      });
       return { ok: true, id, replaced: false };
     } catch (error) {
       const failure = asRpcError(error);

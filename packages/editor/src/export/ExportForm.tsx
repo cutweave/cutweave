@@ -7,7 +7,8 @@
 // quality, the hardware encoder and the encoder's own options, from `export.describe_options`).
 // Export starts it now; Add to queue leaves it to the export queue. Every refusal the engine
 // names a field for shows at that field. Missing media (WP-2F.03c) shows as one line with
-// Relink… and Export anyway.
+// Relink… and Export anyway. Save as preset (WP-2G.04b) keeps what the dialog shows now as a
+// preset of the person's, under a name; a preset of theirs can be deleted (and brought back).
 
 import type {
   CodecEncoders,
@@ -22,6 +23,7 @@ import {
   Dialog,
   DialogNote,
   Icon,
+  IconButton,
   InspectorRow,
   type JsonSchema,
   SchemaForm,
@@ -29,6 +31,7 @@ import {
   Switch,
   setPath,
   TextField,
+  Tooltip,
   type UiHints,
 } from "@cutweave/ui";
 import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
@@ -77,6 +80,7 @@ import {
 } from "./exportModel.ts";
 import { baseName, encoderLabel, isAbsolutePath, QUALITIES } from "./exportSettings.ts";
 import { type ExportStore, useExportStore } from "./exportStore.ts";
+import { nameProblem, presetFromDraft, presetIdFor } from "./presetDraft.ts";
 import { exportController } from "./useExport.ts";
 
 const QUALITY_LABEL = {
@@ -360,7 +364,15 @@ function PresetForm({
     start: useId(),
     end: useId(),
     advanced: useId(),
+    presetName: useId(),
   };
+  // Save as preset: the name being typed, and what the engine said when it refused.
+  const [naming, setNaming] = useState<{
+    readonly name: string;
+    readonly busy: boolean;
+    readonly tried: boolean;
+    readonly refused: string | null;
+  } | null>(null);
 
   const groups = useMemo(() => groupPresets(entries, facts), [entries, facts]);
   const overrides = useMemo(() => overridesFor(spec, size, quality), [spec, size, quality]);
@@ -483,10 +495,9 @@ function PresetForm({
     const proposed = controller.defaultPath(s.name, s.container);
     return r.kind === "markers" ? markerTemplate(proposed) : proposed;
   };
-  const choosePreset = (id: string): void => {
-    const next = entries.find((e) => e.preset.id === id)?.preset;
-    if (next === undefined) return;
-    setPresetId(id);
+  /** Starts the form over at a preset: its own size, quality, hardware choice and options. */
+  const applyPreset = (next: ExportPresetSpec): void => {
+    setPresetId(next.id);
     setSize(PRESET_SIZE);
     setQuality(startingQuality(next, defaults.quality));
     setHardware(hardwareFor(next));
@@ -494,6 +505,60 @@ function PresetForm({
     setResolved(null);
     setRefusal(null);
     setPath_(pathTouched ? withExtension(path, next.container) : pathFor(next, range));
+  };
+  const choosePreset = (id: string): void => {
+    const next = entries.find((e) => e.preset.id === id)?.preset;
+    if (next !== undefined) applyPreset(next);
+  };
+
+  // ---- presets of the person's ----
+  const mine = entry?.source === "user";
+  const typedName = naming?.name ?? "";
+  const nameIssue = nameProblem(typedName);
+  const target = presetIdFor(typedName, entries);
+  const savePreset = async (): Promise<void> => {
+    if (naming === null || naming.busy) return;
+    if (nameIssue !== null || formatProblem !== null) {
+      setNaming({ ...naming, tried: true });
+      if (formatProblem !== null) {
+        setSubmitted(true);
+        setAdvancedOpen(true);
+      }
+      return;
+    }
+    const saved = presetFromDraft({
+      base: spec,
+      id: target.id,
+      name: typedName,
+      summary:
+        spec.platform === null || spec.platform === undefined
+          ? (spec.summary ?? t("export.savePreset.from", { preset: spec.name }))
+          : t("export.savePreset.from", { preset: spec.name }),
+      size,
+      resolved: { width, height },
+      quality,
+      hardware,
+      options,
+    });
+    setNaming({ ...naming, busy: true, tried: true, refused: null });
+    const outcome = await controller.savePreset(saved);
+    if (outcome.ok) {
+      setNaming(null);
+      applyPreset(saved);
+    } else {
+      setNaming({ ...naming, busy: false, tried: true, refused: outcome.message });
+    }
+  };
+  const deletePreset = async (): Promise<void> => {
+    if (!mine) return;
+    const outcome = await controller.deletePreset(spec);
+    if (!outcome.ok) {
+      setRefusal({ message: outcome.message, pointer: null });
+      return;
+    }
+    const left = entries.filter((e) => e.preset.id !== spec.id);
+    const next = left.find((e) => e.preset.id === startingPreset(left, []))?.preset;
+    if (next !== undefined) applyPreset(next);
   };
   const chooseRange = (kind: RangeKind): void => {
     const next = { ...range, kind };
@@ -666,7 +731,75 @@ function PresetForm({
               </optgroup>
             ))}
           </select>
+          <Tooltip label={t("export.savePreset.open")}>
+            <IconButton
+              icon="bookmark"
+              label={t("export.savePreset.open")}
+              pressed={naming !== null}
+              disabled={unsupported}
+              onClick={() =>
+                setNaming(
+                  naming === null ? { name: "", busy: false, tried: false, refused: null } : null,
+                )
+              }
+            />
+          </Tooltip>
+          {mine ? (
+            <Tooltip label={t("export.deletePreset.label")}>
+              <IconButton
+                icon="trash-2"
+                label={t("export.deletePreset.label")}
+                onClick={() => void deletePreset()}
+              />
+            </Tooltip>
+          ) : null}
         </InspectorRow>
+        {naming !== null ? (
+          <>
+            <InspectorRow label={t("export.savePreset.name")} htmlFor={ids.presetName}>
+              <TextField
+                id={ids.presetName}
+                className="cw-export__path"
+                autoFocus
+                value={naming.name}
+                maxLength={120}
+                invalid={naming.tried && (nameIssue !== null || naming.refused !== null)}
+                onChange={(name) => setNaming({ ...naming, name, refused: null })}
+                onKeyDown={(event) => {
+                  // Enter saves the preset; it does not start the export (the dialog's Enter).
+                  if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                  event.preventDefault();
+                  void savePreset();
+                }}
+              />
+              <Tooltip label={t("export.savePreset.save")}>
+                <IconButton
+                  icon="check"
+                  label={t("export.savePreset.save")}
+                  disabled={naming.busy}
+                  onClick={() => void savePreset()}
+                />
+              </Tooltip>
+              <Tooltip label={t("export.savePreset.cancel")}>
+                <IconButton
+                  icon="x"
+                  label={t("export.savePreset.cancel")}
+                  onClick={() => setNaming(null)}
+                />
+              </Tooltip>
+            </InspectorRow>
+            {target.replaces !== null && nameIssue === null ? (
+              <p className="caption cw-export__hint">
+                {t("export.savePreset.replaces", { name: target.replaces.name })}
+              </p>
+            ) : null}
+            {naming.tried && nameIssue !== null ? (
+              <FieldError>{t(`export.savePreset.${nameIssue}`)}</FieldError>
+            ) : naming.refused !== null ? (
+              <FieldError>{t("export.savePreset.refused", { message: naming.refused })}</FieldError>
+            ) : null}
+          </>
+        ) : null}
         {spec.summary !== undefined && spec.summary !== "" ? (
           <p className="caption cw-export__hint">{spec.summary}</p>
         ) : null}
