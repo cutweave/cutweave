@@ -88,6 +88,14 @@ export const CUSTOM_ICONS = {
       <path d="M12 3.5 3.5 12 12 20.5Z" fill="currentColor" />
     </>,
   ),
+  /** Interpolation: hold (the value jumps at the next key). */
+  "ease-hold": glyph(<path d="M4 18h12V6h4" />),
+  /** Interpolation: linear (constant speed). */
+  "ease-linear": glyph(<path d="M4 18 20 6" />),
+  /** Interpolation: bezier (eases out of the key and into the next). */
+  "ease-bezier": glyph(<path d="M4 18c8 0 8-12 16-12" />),
+  /** Interpolation: spring (overshoots, then settles). */
+  "ease-spring": glyph(<path d="M4 18c3 0 3-15 7-15s2 6 4 6 2-3 5-3" />),
   /** Mark in point. */
   "mark-in": glyph(
     <>
