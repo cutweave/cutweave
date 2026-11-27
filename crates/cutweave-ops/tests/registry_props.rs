@@ -98,8 +98,8 @@ const REGRESSIONS: &str = concat!(
 /// preconditions are rare (keyframes to move, a proxy to delete) want strategies that set
 /// them up rather than more cases (issue #184). Raised from 160 to 176 with the two commands
 /// of issue #222 (`timeline.update_marker`, `item.set_label_color`), and to 192 with them and
-/// `edit.set_history_limit` together.
-const COVERAGE_CASES: u32 = 192;
+/// `edit.set_history_limit` together, and to 200 with `sequence.set_background` (WP-2B.02).
+const COVERAGE_CASES: u32 = 200;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 
