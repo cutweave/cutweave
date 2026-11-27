@@ -330,6 +330,7 @@ fn hsv(h: f64, s: f64, v: f64) -> [f64; 3] {
 pub struct SyntheticSource {
     cards: HashMap<MediaId, TestCard>,
     proxies: HashMap<MediaId, TestCard>,
+    offline: Vec<MediaId>,
     frames: Mutex<HashMap<(MediaId, bool, i64), Arc<VideoFrame>>>,
 }
 
@@ -361,6 +362,13 @@ impl SyntheticSource {
         self
     }
 
+    /// Answers [`FrameError::Offline`] for `media`: its file is gone.
+    #[must_use]
+    pub fn with_offline(mut self, media: MediaId) -> SyntheticSource {
+        self.offline.push(media);
+        self
+    }
+
     fn forget(&self, media: MediaId) {
         if let Ok(mut f) = self.frames.lock() {
             f.retain(|(m, _, _), _| *m != media);
@@ -370,6 +378,12 @@ impl SyntheticSource {
 
 impl FrameSource for SyntheticSource {
     fn frame(&self, request: &FrameRequest) -> Result<Arc<VideoFrame>, FrameError> {
+        if self.offline.contains(&request.media) {
+            return Err(FrameError::Offline(format!(
+                "no file for {}",
+                request.media
+            )));
+        }
         let proxy = request
             .proxy
             .then(|| self.proxies.get(&request.media))

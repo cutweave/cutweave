@@ -244,12 +244,17 @@ impl VideoFrame {
 /// Why a frame could not be produced.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum FrameError {
-    /// The media or frame is not available (offline media, decode failure).
+    /// The media or frame is not available (no decoder, a decode failure, unknown media).
     #[error("frame unavailable: {0}")]
     Unavailable(String),
     /// The frame data is malformed.
     #[error("invalid frame: {0}")]
     Invalid(String),
+    /// The media's file is not on this computer (moved, renamed, deleted, a drive that is not
+    /// connected). The render graph draws the "media offline" slate ([`crate::slate`]) in the
+    /// layer's place; every other error leaves the layer out.
+    #[error("media offline (drawn as a slate): {0}")]
+    Offline(String),
 }
 
 /// Resolves frame requests to decoded frames (decoder pool / frame cache).

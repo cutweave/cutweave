@@ -14,7 +14,8 @@
 //!   identifies the whole frame, i.e. the `(subgraph hash, t)` frame-cache key of §8.
 //! * **Culling** happens while building, before any frame is requested where possible: zero
 //!   opacity, degenerate transforms, empty crops, layers entirely off the output, frames the
-//!   source cannot provide (recorded in [`RenderGraph::missing`]), and **occlusion**: everything
+//!   source cannot provide (recorded in [`RenderGraph::missing`]; a layer whose media file is
+//!   gone, [`FrameError::Offline`], is not culled: it shows the [`crate::slate`]), and **occlusion**: everything
 //!   below an opaque (Y'CbCr), normal-blend, opacity-1 layer covering the whole output is never
 //!   decoded. Compositing over such a cover is exact (`src + dst·0`), so culling never changes
 //!   a pixel. Two layers showing the same frame share one decode.
@@ -47,6 +48,7 @@ use crate::frame::{FrameError, FrameSource, VideoFrame};
 use crate::geometry::{LayerGeometry, mip_levels_for};
 use crate::hash::{CacheKey, Fnv};
 use crate::scene::{BlendMode, SceneDescription};
+use crate::slate;
 
 /// What a render produces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -345,7 +347,8 @@ pub struct RenderGraph {
     pub output: ResId,
     /// Frames referenced by decode passes.
     pub frames: Vec<Arc<VideoFrame>>,
-    /// Layers skipped because their frame was unavailable.
+    /// Layers whose frame was unavailable: skipped, or drawn as the "media offline" slate when
+    /// the source said [`FrameError::Offline`].
     pub missing: Vec<(ItemId, FrameError)>,
     /// Build statistics.
     pub stats: BuildStats,
@@ -769,6 +772,11 @@ fn cull(
             .and_then(|f| f.validate().map(|()| f))
         {
             Ok(f) => f,
+            // The file is gone: the "media offline" slate stands in for the picture.
+            Err(e @ FrameError::Offline(_)) => {
+                g.missing.push((layer.item, e));
+                slate::frame()
+            }
             Err(e) => {
                 g.missing.push((layer.item, e));
                 continue;
@@ -1096,6 +1104,57 @@ mod tests {
         assert_eq!(ops(&g), ["decode", "background", "composite"]);
         let empty = build(&scene(vec![]), t, &source(), &GraphOptions::default()).unwrap();
         assert_eq!(ops(&empty), ["background"]);
+    }
+
+    #[test]
+    fn an_offline_layer_shows_the_slate_at_the_clips_place() {
+        let offline = MediaId::from_u128(77);
+        let src = source().with_offline(offline);
+        // A 32x36 picture aspect-fit into the 64x36 canvas: pillarboxed, x from 16 to 48.
+        let s = scene(vec![layer(1, 10, (64, 36)), layer(2, 77, (32, 36))]);
+        let g = build(&s, Target::rgba8(64, 36), &src, &GraphOptions::default()).unwrap();
+        assert_eq!(
+            ops(&g),
+            [
+                "decode",
+                "decode",
+                "background",
+                "composite",
+                "composite",
+                "output"
+            ]
+        );
+        assert_eq!(g.stats.layers_visible, 2);
+        assert_eq!(g.stats.layers_culled, 0);
+        // It is still reported, as offline.
+        assert_eq!(g.missing.len(), 1);
+        assert_eq!(g.missing[0].0, ItemId::from_u128(2));
+        assert!(matches!(g.missing[0].1, FrameError::Offline(_)));
+        let slates: Vec<&Arc<VideoFrame>> =
+            g.frames.iter().filter(|f| slate::is_slate(f)).collect();
+        assert_eq!(slates.len(), 1);
+        assert!(Arc::ptr_eq(slates[0], &slate::frame()), "the shared frame");
+        let top = g
+            .passes
+            .iter()
+            .filter_map(|p| match &p.op {
+                PassOp::Composite(c) if c.item == ItemId::from_u128(2) => Some(c),
+                _ => None,
+            })
+            .next()
+            .unwrap();
+        // The rectangle of the picture plus its one-pixel soft edges.
+        assert_eq!(top.rect, [15, 0, 49, 36]);
+        assert!(!top.full_cover);
+
+        // Two offline clips share one decode of the slate, and the graph is the same every
+        // time (the slate's identity is fixed).
+        let two = scene(vec![layer(2, 77, (64, 36)), layer(3, 77, (64, 36))]);
+        let a = build(&two, Target::rgba8(64, 36), &src, &GraphOptions::default()).unwrap();
+        let b = build(&two, Target::rgba8(64, 36), &src, &GraphOptions::default()).unwrap();
+        assert_eq!(a.stats.decodes_shared, 1);
+        assert_eq!(a.passes.last().unwrap().key, b.passes.last().unwrap().key);
+        assert_eq!(a.missing.len(), 2);
     }
 
     #[test]

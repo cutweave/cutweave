@@ -540,6 +540,35 @@ fn occluded_layers_are_never_decoded() {
     }
 }
 
+/// WP-2F.03c: the GPU draws the "media offline" slate for a layer whose file is gone, exactly
+/// as the CPU reference does (and so `render.frame` and exports).
+#[test]
+fn offline_media_renders_the_slate_like_the_cpu_reference() {
+    use crate::slate;
+    let _serial = serial();
+    let Some(mut c) = compositor() else { return };
+    let src = sources().with_offline(MediaId::from_u128(999));
+    let (w, h) = (slate::WIDTH, slate::HEIGHT);
+    let t = Target::rgba8(w, h);
+    // Full frame, 1:1: the output is the slate itself.
+    let full = scene(w, h, Color::rgb(200, 10, 10), vec![layer(1, 999, (w, h))]);
+    let f = c.render(&full, &src, t).unwrap();
+    assert_eq!(f.missing.len(), 1);
+    assert!(matches!(f.missing[0].1, crate::FrameError::Offline(_)));
+    let cmp = compare(f.image().unwrap(), &slate::image(), OutputTransfer::Srgb);
+    assert!(cmp.max_abs_diff <= 1, "{cmp}");
+    // Placed and scaled like the clip: half size, over another layer.
+    let mut pip = layer(2, 999, (w, h));
+    pip.transform.scale = Vec2::new(0.5, 0.5);
+    pip.transform.position = Vec2::new(0.2, -0.1);
+    pip.opacity = 0.8;
+    let stacked = scene(w, h, Color::BLACK, vec![layer(1, 10, (w, h)), pip]);
+    let got = c.render(&stacked, &src, t).unwrap();
+    let want = cpu(&stacked, &src, t);
+    let cmp = compare(got.image().unwrap(), &want, OutputTransfer::Srgb);
+    assert!(cmp.passes_reference(), "{cmp}");
+}
+
 #[test]
 fn missing_media_renders_the_rest_and_reports_the_item() {
     let _serial = serial();

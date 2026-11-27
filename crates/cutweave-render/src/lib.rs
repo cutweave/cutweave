@@ -38,6 +38,7 @@ mod query_tests;
 pub mod reference;
 mod scene;
 pub mod sheet;
+pub mod slate;
 pub mod testcard;
 #[cfg(test)]
 mod testkit;
