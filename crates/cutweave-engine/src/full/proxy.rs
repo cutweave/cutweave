@@ -250,7 +250,10 @@ impl FullProxies {
             )
             .with_pacer(Arc::clone(&activity) as Arc<dyn Pacer>),
         );
-        let codec = generator.profile().map(|p| p.codec);
+        // The software codecs decide (`ProxyGenerator::profile` reads the full capabilities,
+        // whose first read probes the hardware: seconds, tens of seconds on a busy machine, on
+        // the way to the ready line; issue #224).
+        let codec = ProxyCodec::choose(&backend.software_capabilities());
         if codec.is_none() {
             tracing::info!("the media backend encodes no proxy codec: no proxies are made");
         }
@@ -909,6 +912,69 @@ mod tests {
             decoders: vec![name.to_owned()],
             encoders: vec![name.to_owned()],
         }
+    }
+
+    /// A backend whose full capabilities probe the hardware (FFmpeg's first read: seconds,
+    /// tens of seconds on a busy machine): reading them fails the test.
+    struct HardwareProbing(FakeBackend);
+
+    impl MediaBackend for HardwareProbing {
+        fn probe(
+            &self,
+            path: &std::path::Path,
+        ) -> Result<cutweave_model::ProbeInfo, cutweave_media::MediaError> {
+            self.0.probe(path)
+        }
+        fn index_media(
+            &self,
+            path: &std::path::Path,
+        ) -> Result<cutweave_media::FrameIndex, cutweave_media::MediaError> {
+            self.0.index_media(path)
+        }
+        fn open_decoder(
+            &self,
+            path: &std::path::Path,
+            opts: &cutweave_media::DecodeOpts,
+        ) -> Result<Box<dyn cutweave_media::VideoDecoder>, cutweave_media::MediaError> {
+            self.0.open_decoder(path, opts)
+        }
+        fn open_audio_decoder(
+            &self,
+            path: &std::path::Path,
+            stream: Option<u32>,
+        ) -> Result<Box<dyn cutweave_media::AudioDecoder>, cutweave_media::MediaError> {
+            self.0.open_audio_decoder(path, stream)
+        }
+        fn open_encoder(
+            &self,
+            spec: &cutweave_media::EncodeSpec,
+        ) -> Result<Box<dyn cutweave_media::Encoder>, cutweave_media::MediaError> {
+            self.0.open_encoder(spec)
+        }
+        fn capabilities(&self) -> Capabilities {
+            panic!("the hardware was probed on the way to the ready line");
+        }
+        fn software_capabilities(&self) -> Capabilities {
+            self.0.software_capabilities()
+        }
+    }
+
+    /// Issue #224: the proxies choose their codec from the software codecs at start; the full
+    /// capabilities (a hardware probe) are read on a worker after the ready line.
+    #[test]
+    fn the_proxy_codec_is_chosen_without_probing_the_hardware() {
+        let backend: Arc<dyn MediaBackend> =
+            Arc::new(HardwareProbing(FakeBackend::new().with_capabilities(
+                Capabilities::with_codecs([codec("prores", StreamKind::Video)]),
+            )));
+        let proxies = FullProxies::new(
+            &backend,
+            Arc::new(CacheDb::open_in_memory().unwrap()),
+            std::env::temp_dir().join("cutweave-proxy-codec-unused"),
+            CurrentDoc::default(),
+            EngineLink::detached(),
+        );
+        assert_eq!(proxies.profile().map(|p| p.codec), Some(ProxyCodec::ProRes));
     }
 
     /// What the selection test is served: the picture's size and whether it is a proxy's.

@@ -154,6 +154,10 @@ impl MediaBackend for SpyBackend {
     fn capabilities(&self) -> Capabilities {
         self.inner.capabilities()
     }
+
+    fn software_capabilities(&self) -> Capabilities {
+        self.inner.software_capabilities()
+    }
 }
 
 #[cfg(test)]

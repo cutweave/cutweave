@@ -216,11 +216,19 @@ impl LateGpu {
 
 /// Opens the device and both compositors on `choice`.
 pub(crate) fn open(choice: &AdapterChoice) -> Result<Opened, String> {
+    let began = Instant::now();
     let ctx = GpuContext::new(choice).map_err(|e| e.to_string())?;
+    let device = began.elapsed();
     let frame =
         Compositor::new(ctx.clone(), CompositorOptions::default()).map_err(|e| e.to_string())?;
     let preview =
         Compositor::new(ctx.clone(), CompositorOptions::default()).map_err(|e| e.to_string())?;
+    tracing::info!(
+        adapter = %ctx.info().key,
+        device_ms = crate::startup::ms(device),
+        compositors_ms = crate::startup::ms(began.elapsed().saturating_sub(device)),
+        "GPU device and compositors open"
+    );
     Ok((ctx, frame, preview))
 }
 
