@@ -8,27 +8,40 @@
 //
 // Needs an engine built with FFmpeg and the fetched corpus (`just corpus`); without either the
 // flow skips and says why.
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import type { Locator, Page } from "@playwright/test";
+import path from "node:path";
+import { promisify } from "node:util";
+import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
+  chooseMenu,
   chooseTheme,
+  cliBin,
   closeSettings,
   createProject,
   dirtyDot,
   dropCard,
   editorCaughtUp,
+  FLICKS,
+  hasCli,
   hasRealEngine,
+  item,
   laneY,
   launchFlowApp,
   layout,
   mediaCard,
   mediaCards,
+  movePlayhead,
+  openRecent,
   openSettingsPage,
   pickFiles,
+  profileDir,
+  removeDir,
   rulerY,
   sec,
+  sequence,
   shortcut,
   snapshot,
   timecode,
@@ -112,6 +125,32 @@ async function inspectorHash(page: Page): Promise<string> {
     for (let i = 0; i < data.length; i += 7) hash = ((hash << 5) + hash + (data[i] ?? 0)) | 0;
     return String(hash);
   });
+}
+
+const run = promisify(execFile);
+
+/** `cutweave exec <step>` attached to the app's engine (its run-file is in the app's HOME). */
+async function cli(
+  app: ElectronApplication,
+  home: string,
+  step: { cmd: string; args: Record<string, unknown> },
+): Promise<void> {
+  const pid = await app.evaluate(() => globalThis.__cutweaveTest?.enginePid() ?? null);
+  if (pid === null) throw new Error("no engine is running");
+  // Dev stub media in the CLI's own environment would make it spawn an engine of its own.
+  const { CUTWEAVE_DEV_STUB_MEDIA: _stub, ...inherited } = process.env;
+  await run(
+    cliBin,
+    [
+      "exec",
+      "--run-dir",
+      path.join(home, ".cutweave", "run"),
+      "--pid",
+      String(pid),
+      JSON.stringify(step),
+    ],
+    { env: { ...inherited, HOME: home, USERPROFILE: home }, timeout: 30_000 },
+  );
 }
 
 /** Keys go to the page (the keymap), not to a focused control. */
@@ -475,7 +514,7 @@ test.describe("F31 preview media before placing it", () => {
       await press(page, "k");
       await expect(play).toBeVisible();
 
-      // Enter in the Source view places the whole clip at the timeline's playhead: one step.
+      // Enter in the Source view inserts the whole clip at the timeline's playhead: one step.
       await page.getByRole("group", { name: /^Source: / }).click();
       await page.keyboard.press("Enter");
       const clipCount = async () => (await layout(page)).flatMap((t) => t.clips).length;
@@ -526,6 +565,194 @@ test.describe("F31 preview media before placing it", () => {
       await expect(header).toBeHidden();
     } finally {
       await close();
+    }
+  });
+
+  test("mark a source, insert and overwrite the range, reopen, match frame (WP-2A.14)", async () => {
+    test.setTimeout(420_000);
+    const info = test.info();
+    const corpus = corpusDir();
+    test.skip(corpus === null, "the corpus is not fetched (just corpus)");
+    const work = workspace();
+    const home = profileDir();
+    try {
+      const first = await launchFlowApp(work, home, { realMedia: true });
+      const { app, page } = first;
+      let closedFirst = false;
+      try {
+        const caps = await editorCall<{ available?: boolean }>(page, "media.capabilities");
+        test.skip(
+          caps.available !== true,
+          "this engine has no media backend; build it with --features cutweave-engine/ffmpeg",
+        );
+        await createProject(app, page, "Marks", work.dir);
+        const files = copyCorpusClips(corpus ?? "", work.media, [TRAILER]);
+        await pickFiles(app, files);
+        await page.getByRole("button", { name: "Import", exact: true }).click();
+        await expect(mediaCards(page)).toHaveCount(1);
+        const card = mediaCard(page, TRAILER);
+        const header = page.getByTestId("source-header");
+        const sourceTime = page.getByTestId("source-timecode");
+        const bar = page.getByRole("slider", { name: "Source position" });
+        const marksText = page.getByTestId("source-marks");
+        const cardRange = card.getByTestId("card-marked-range");
+        const stage = page.getByRole("group", { name: /^Source: / });
+        /** Opens the trailer in the Source view from its card and pauses it. */
+        const openSource = async () => {
+          await card.hover();
+          await card.locator(".cw-media__play").click();
+          await expect(header).toBeVisible();
+          await press(page, "k");
+          await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+        };
+        /** Moves the source's playhead to a whole second with the scrub bar's keys. */
+        const goToSecond = async (seconds: number) => {
+          await bar.focus();
+          await page.keyboard.press("Home");
+          for (let i = 0; i < seconds; i += 1) await page.keyboard.press("PageUp");
+          await expect(sourceTime).toHaveText(`00:00:${String(seconds).padStart(2, "0")}:00`);
+        };
+        /** The clips of the first video track: start, length and media position, in seconds. */
+        const placed = async () => {
+          const track = (await sequence(page)).tracks.find((t) => t.kind === "video");
+          const out: [number, number, number][] = [];
+          for (const clip of track?.items ?? []) {
+            const got = await item(page, clip.id);
+            out.push([
+              clip.start / FLICKS,
+              clip.duration / FLICKS,
+              (got.source?.source_in ?? -1) / FLICKS,
+            ]);
+          }
+          return out;
+        };
+        /** A clip as the engine has it, without its identity: what parity compares. */
+        const normalized = async () => {
+          const track = (await sequence(page)).tracks.find((t) => t.kind === "video");
+          const got = await item(page, track?.items[0]?.id ?? "");
+          const { id: _id, ...rest } = got.item;
+          return { ...got, item: rest, linked: got.linked.length };
+        };
+
+        // Play it in the Source view, mark in at 2 s and out at 5 s: on the bar and on its card.
+        await openSource();
+        await expect(marksText).toBeHidden();
+        await expect(cardRange).toHaveCount(0);
+        await goToSecond(2);
+        await page.keyboard.press("i");
+        await goToSecond(5);
+        await page.keyboard.press("o");
+        await expect(marksText).toHaveText("In 00:00:02:00 · Out 00:00:05:00 · 00:00:03:00");
+        await expect(page.getByTestId("source-range")).toBeVisible();
+        await expect(cardRange).toBeVisible();
+        await expect(cardRange).toHaveAttribute("data-in", String(sec(2)));
+        await expect(cardRange).toHaveAttribute("data-out", String(sec(5)));
+        await snapshot(page, info, "source-marked");
+        // Marks are not edits: the project is still clean.
+        await expect(dirtyDot(page)).toBeHidden();
+
+        // `,` inserts the range at the playhead (0 s): a 3 s clip that starts at source 2 s.
+        await stage.click();
+        await page.keyboard.press(",");
+        await expect.poll(placed).toEqual([[0, 3, 2]]);
+        await editorCaughtUp(page);
+        await expect(header).toBeVisible();
+        const fromSourceView = await normalized();
+
+        // One undo step; the same `timeline.insert` through the CLI makes the same clip (parity).
+        await shortcut(app, "Control+Z");
+        await expect.poll(placed).toEqual([]);
+        if (hasCli) {
+          const seq = await sequence(page);
+          const media = await editorCall<{ media: { id: string }[] }>(page, "media.list", {});
+          await cli(app, home, {
+            cmd: "timeline.insert",
+            args: {
+              sequence: seq.id,
+              track: seq.tracks.find((t) => t.kind === "video")?.id,
+              media: media.media[0]?.id,
+              at: 0,
+              source_in: sec(2),
+              duration: sec(3),
+              mode: "insert",
+            },
+          });
+          await expect.poll(placed).toEqual([[0, 3, 2]]);
+          expect(await normalized()).toEqual(fromSourceView);
+        } else {
+          info.annotations.push({ type: "note", description: "no CLI built: parity not compared" });
+          await stage.click();
+          await page.keyboard.press(",");
+          await expect.poll(placed).toEqual([[0, 3, 2]]);
+        }
+        await editorCaughtUp(page);
+
+        // Put the playhead on the clip (this leaves the Source view), come back: the marks stayed.
+        await movePlayhead(page, 1);
+        await expect(header).toBeHidden();
+        await openSource();
+        await expect(marksText).toHaveText("In 00:00:02:00 · Out 00:00:05:00 · 00:00:03:00");
+        // New marks, 10 s to 11 s, and `.`: one second of the clip under the playhead is replaced.
+        await goToSecond(10);
+        await page.keyboard.press("i");
+        await goToSecond(11);
+        await page.keyboard.press("o");
+        await expect(marksText).toHaveText("In 00:00:10:00 · Out 00:00:11:00 · 00:00:01:00");
+        await stage.click();
+        await page.keyboard.press(".");
+        await expect.poll(placed).toEqual([
+          [0, 1, 2],
+          [1, 1, 10],
+          [2, 1, 4],
+        ]);
+        await editorCaughtUp(page);
+        await snapshot(page, info, "source-overwritten");
+
+        // Save, quit and reopen the project: the marks are still on the card.
+        await shortcut(app, "Control+S");
+        await expect(dirtyDot(page)).toBeHidden();
+        const closed = app.waitForEvent("close");
+        await chooseMenu(page, app, "File", "Exit");
+        await closed;
+        closedFirst = true;
+        await first.close();
+      } finally {
+        if (!closedFirst) await first.close();
+      }
+
+      const second = await launchFlowApp(work, home, { realMedia: true });
+      try {
+        const page = second.page;
+        await openRecent(page, "Marks.cutweave");
+        await expect(page).toHaveTitle("Marks — Cutweave");
+        await expect(mediaCards(page)).toHaveCount(1);
+        const cardRange = mediaCard(page, TRAILER).getByTestId("card-marked-range");
+        await expect(cardRange).toBeVisible();
+        await expect(cardRange).toHaveAttribute("data-in", String(sec(10)));
+        await expect(cardRange).toHaveAttribute("data-out", String(sec(11)));
+        await editorCaughtUp(page);
+        await snapshot(page, info, "card-marked-after-reopen");
+
+        // F with the playhead on the last piece (2 s to 3 s, source 4 s to 5 s): the Source view
+        // opens at the same frame, with the piece's source range as its marks.
+        await movePlayhead(page, 2.5);
+        await page.keyboard.press("f");
+        const header = page.getByTestId("source-header");
+        await expect(header).toBeVisible();
+        await expect(header).toContainText(TRAILER);
+        await expect(page.getByTestId("source-timecode")).toHaveText("00:00:04:12");
+        await expect(page.getByTestId("source-marks")).toHaveText(
+          "In 00:00:04:00 · Out 00:00:05:00 · 00:00:01:00",
+        );
+        // The timeline's playhead stayed where it was.
+        expect((await editorCall<{ playhead: number }>(page, "view.get")).playhead).toBe(sec(2.5));
+        await snapshot(page, info, "match-frame");
+      } finally {
+        await second.close();
+      }
+    } finally {
+      work.remove();
+      removeDir(home);
     }
   });
 });

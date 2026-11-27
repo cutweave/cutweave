@@ -960,6 +960,32 @@ describe("timeline interactions against the real engine", () => {
   });
 
   live(
+    "A drag from the Source view places its marked range; its picture grip leaves the sound",
+    async () => {
+      const s = await clear();
+      // What `sourceDrag` carries for marks at 2 s and 5 s, from the picture grip (WP-2A.14).
+      const dragged = {
+        id: s.media,
+        kind: "video" as const,
+        duration: sec(3),
+        range: { sourceIn: sec(2), duration: sec(3) },
+        link: false as const,
+      };
+      expect(host.mediaOver(xOf(sec(1)), laneOf(s.video), dragged)).toBe(true);
+      host.mediaDrop(xOf(sec(1)), laneOf(s.video), dragged);
+      await host.settled();
+      await until(() => model().items.length === 1 && settledDoc());
+      expect(onTrack(s.audio)).toEqual([]);
+      const placed = onTrack(s.video)[0];
+      expect(placed?.duration).toBe(sec(3));
+      const clips = Object.values(stores.doc.getState().project?.sequences ?? {}).flatMap((q) =>
+        Object.values(q.tracks).flatMap((t) => Object.values(t.items)),
+      );
+      expect(clips.map((c) => c.source_in)).toEqual([sec(2)]);
+    },
+  );
+
+  live(
     "Dropping media onto a clip: overwrite replaces what it covers, insert pushes it later",
     async () => {
       const card = (media: string) => ({ id: media, kind: "video" as const, duration: sec(10) });
