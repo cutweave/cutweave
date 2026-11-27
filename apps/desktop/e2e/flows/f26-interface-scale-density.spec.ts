@@ -473,13 +473,26 @@ test.describe("F26 interface scale and density", () => {
       await expect(more).toBeVisible();
       await expect(proxies).toHaveCount(0);
       for (const name of ["Step back one frame", "Play", "Step forward one frame"]) {
-        await expect(bar.getByRole("button", { name })).toBeVisible();
+        await expect(bar.getByRole("button", { name, exact: true })).toBeVisible();
       }
       await expect(timecode(page)).toBeVisible();
       await snapshot(page, info, "transport at 125");
       // The proxies toggle from the menu, with the mouse: it was on, and is now off.
       await more.click();
       await expect(proxiesRow).toHaveAttribute("aria-checked", "true");
+      // The whole menu is on screen, although it is wider than the room to the right of More.
+      await expect
+        .poll(async () => {
+          const box = await cssBox(menu);
+          const view = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+          return (
+            box.x >= 0 &&
+            box.y >= 0 &&
+            box.x + box.width <= view.width &&
+            box.y + box.height <= view.height
+          );
+        })
+        .toBe(true);
       await snapshot(page, info, "transport more menu at 125");
       await proxiesRow.click();
       await expect(menu).toBeHidden();
@@ -504,7 +517,7 @@ test.describe("F26 interface scale and density", () => {
       await expect.poll(() => transportProblems(page)).toEqual([]);
       await expect(more).toBeVisible();
       await expect(proxies).toHaveCount(0);
-      await expect(bar.getByRole("button", { name: "Play" })).toBeVisible();
+      await expect(bar.getByRole("button", { name: "Play", exact: true })).toBeVisible();
       await snapshot(page, info, "transport in the narrowest preview");
       // With the keyboard this time: Enter on More opens the menu, the arrows reach the row and
       // Enter turns the proxies back on.

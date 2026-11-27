@@ -82,12 +82,13 @@ function useBarLevel(bar: HTMLElement | null): number {
     const next = fitLevel(available, needs.current);
     if (next !== shown.current) setLevel(next);
   }, [bar]);
-  // After every render: the level on screen is measured before it is painted, and one that does
-  // not fit is replaced at once.
+  // A new level is measured before it is painted, and one that does not fit is replaced at once.
   useLayoutEffect(() => {
     shown.current = level;
     fit();
-  });
+  }, [level, fit]);
+  // After that the bar and its three groups say when their size changes: the panel is resized,
+  // or a text, the density or the fonts make a group wider or narrower.
   useEffect(() => {
     if (bar === null) return;
     const stops = [bar, ...bar.children].map((el) => observeSize(el, fit));
