@@ -212,7 +212,7 @@ pub const PROJECTS: [Golden; 13] = [
 ];
 
 /// The canvas of the `background_*` projects: 9:16.
-pub const PORTRAIT: (u32, u32) = (360, 640);
+pub const PORTRAIT: (u32, u32) = (270, 480);
 
 /// The negative test: `scaled_offset` one pixel to the right.
 pub const NEGATIVE: Golden = Golden {

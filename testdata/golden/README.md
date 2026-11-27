@@ -43,7 +43,7 @@ A frame is only ever compared with the reference of **the adapter it rendered on
 | `flipped_phone` | the rotated phone clip cropped, flipped and turned another 90° by its transform (WP-2C.04) | 0, 45, 110 |
 | `screen_keyframed` | a half-size pattern in screen mode over bars, its position and rotation keyframed (WP-2C.04) | 0, 45, 110 |
 | `side_by_side` | two colour-bars clips arranged by `item.apply_layout` (side by side, fill): each half filled, no bars (WP-2C.08) | 0, 60, 119 |
-| `background_color` | the 16:9 moving pattern on a 9:16 sequence (360×640) over a plain colour (WP-2B.02) | 0, 45, 110 |
+| `background_color` | the 16:9 moving pattern on a 9:16 sequence (270×480) over a plain colour (WP-2B.02) | 0, 45, 110 |
 | `background_blur` | the same over a blurred, dimmed copy of the picture (`sequence.set_background`, kind `blur`); the frame is dithered (WP-2B.02) | 0, 45, 110 |
 | `background_image` | the same over a square still image covering the canvas (kind `image`, fit `cover`) (WP-2B.02) | 0, 45, 110 |
 | `background_transparent` | the same over nothing (kind `transparent`): alpha 0 above and below the clip (WP-2B.02) | 0, 45, 110 |
