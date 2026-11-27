@@ -932,27 +932,54 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Tests:** corpus integration, golden frames.
 - **Out of scope:** animated WebP/APNG, RAW stills, vector re-rasterization.
 
-### WP-2F.06 — Media bin tags, ratings, notes, collections and the bin sidebar
-- **Area:** crates/cutweave-ops/src/media/{tags,collections}.rs, crates/cutweave-model (fields, migration), packages/editor/src/media/
-- **Depends on:** E1D, E1M, WP-2F.03, WP-1M.12, WP-2F.07, WP-2F.08
+### WP-2F.06a — Media tags, ratings, notes and collections: model, commands, filter
+- **Area:** crates/cutweave-model (fields), crates/cutweave-ops/src/media/{tags,collections}.rs, the shared `MediaFilter` (engine and editor predicates)
+- **Depends on:** E1D, WP-2F.03, WP-1M.12, WP-2F.07, WP-2F.08
 - **Size:** M
 - **Executor:** sonnet
-- **Scope:** (re-scoped 2026-11-24: searching by name, kind, duration and use moved to WP-1M.12; folders are WP-2F.07 to WP-2F.09 under ADR-0020)
-  - Model: `MediaAsset.tags: Vec<String>` (case-insensitive, trimmed, ≤ 64 chars), `rating` (0–5), `note`; `Project.collections: Map<CollectionId, Collection {id, name, kind: manual{media_ids[]} | smart{filter, folder?}}>`. Schema migration and fixture, chained after WP-2F.07's v2.
-  - Commands in the `media` namespace (no new namespace, arch §5.1): `media.add_tags{media[], tags[]}`, `media.remove_tags`, `media.set_note`, `media.set_rating`, `media.create_collection`, `media.rename_collection`, `media.delete_collection`, `media.add_to_collection`, `media.remove_from_collection`, `media.set_collection_filter`; query `media.list_collections`.
-  - `MediaFilter` (WP-1M.12) gains `tags`, `min_rating`, `collection` and `imported_within_days`, and `text` also matches tags and notes. Smart collections are saved filters, optionally scoped to a folder, evaluated live (membership computed, not stored). Manual collections are the many-to-many view: an asset lives in exactly one folder (ADR-0020) but can be in any number of collections.
+- **Scope:** (split from WP-2F.06 by [ADR-0036](../adr/0036-media-tags-ratings-notes-and-collections.md), accepted 2026-11-27; searching by name, kind, duration and use is WP-1M.12; folders are WP-2F.07 to WP-2F.09 under ADR-0020)
+  - Model (ADR-0036): `MediaAsset.tags` (1–64 characters, no comma or control characters, at most 64 per asset, equal ignoring case and accents), `rating` (whole stars 1–5, absent for unrated), `note` (plain text, at most 2,000 characters); `Project.collections: Map<CollectionId, Collection {id, name, kind: manual{media[]} | smart{filter}}>`. Optional fields left out of the file while empty: **no schema bump and no migration**. A manual collection's member that names no asset is tolerated (queries skip it, edits drop it).
+  - Commands in the `media` namespace (arch §5.1), each undoable as one step: `media.add_tags{media[], tags[]}`, `media.remove_tags`, `media.rename_tag{from, to}`, `media.set_rating`, `media.set_note`, `media.create_collection`, `media.rename_collection`, `media.delete_collection`, `media.add_to_collection`, `media.remove_from_collection`, `media.set_collection_filter`; queries `media.list_collections` and `media.list_tags`.
+  - `MediaFilter` (WP-1M.12) gains `tags`, `min_rating` and `collection`; `text` also matches tags and notes. **No `imported_within_days`** (ADR-0036: no import time in the document, and no wall clock in queries). Smart collections are saved filters evaluated live (membership computed, not stored); a smart filter may not name a collection. `media.list` returns tags and rating, the note only with `include: ["note"]`.
   - Search stays a scan of the document shared by the engine and the editor (WP-1M.12), with no FTS5 index unless the 10,000-asset target below fails; transcript text joins through `transcript.search` in P3.
-  - UI: tag editor (multi-select assign), rating stars and a note field in the media info; the Filters popover gains Tags and Rating; "Save as smart collection" from the current search and filters; a **bin sidebar** (toggle, shown when the panel is wide enough) with the folder tree (WP-2F.07 folders, each a drop target like the breadcrumb) and the collections; a "used/unused" badge.
-  - MCP: `media_list` (core) takes the extended filter; the rest catalog.
-  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Add tag…, Set rating ▸ and Add to collection ▸ are items of `bin.card`; Save as smart collection is an item of `bin.background` when a filter is active.
+  - MCP: `media_list` (core) takes the extended filter; the rest catalog. Tags, notes and collection names are untrusted text in MCP results (ADR-0028).
 - **Interfaces:** commands and queries above; `Collection` JSON Schema; extended `MediaFilter`.
 - **Acceptance criteria:**
   - `media.list` with tags and text over 10,000 synthetic assets returns in < 30 ms p95; the Rust and TS predicates agree on the extended shared fixture.
   - Smart collection "video, duration > 60 s, tag:interview, unused" returns exactly the expected set on a fixture; membership updates within 100 ms after the asset is placed on a timeline.
-  - Undo identity for all tag and collection commands; schema migration golden passes.
+  - Undo identity for every tag and collection command; the registry property tests pass with them.
+  - A v3 document without the new fields reads the same as before; one with them keeps them through an older build's open and save (`extra`); a manual collection with a missing member opens, lists and edits without error.
+- **Tests:** proptest, unit, fixtures, parity.
+- **Out of scope:** the UI (WP-2F.06b, WP-2F.06c); AI auto-tagging and semantic search (P5); an FTS5 index unless the target fails.
+
+### WP-2F.06b — Media tags, ratings and notes in the bin UI
+- **Area:** packages/editor/src/media/
+- **Depends on:** WP-2F.06a, WP-1M.12
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:** (split from WP-2F.06 by ADR-0036)
+  - Tag editor (multi-select assign, from `media.list_tags`), rating stars and a note field in the media info; the Filters popover gains Tags and Rating.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Add tag… and Set rating ▸ are items of `bin.card`.
+- **Interfaces:** the WP-2F.06a commands and queries.
+- **Acceptance criteria:**
+  - Tagging, rating and a note on several selected cards are one undo step each; the Filters popover narrows the bin by tag and minimum rating.
+  - **A user flow (ADR-0018):** tag and rate assets from the card menu and the media info, then filter by them.
+- **Tests:** Vitest, user flow.
+- **Out of scope:** collections and the bin sidebar (WP-2F.06c).
+
+### WP-2F.06c — Collections and the bin sidebar
+- **Area:** packages/editor/src/media/
+- **Depends on:** WP-2F.06a, WP-2F.06b, WP-2F.07
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:** (split from WP-2F.06 by ADR-0036)
+  - "Save as smart collection" from the current search and filters; Add to collection ▸; a **bin sidebar** (toggle, shown when the panel is wide enough) with the folder tree (WP-2F.07 folders, each a drop target like the breadcrumb) and the collections; a "used/unused" badge. Whether the sidebar is shown, its width and the open collection are workspace state, not document state (ADR-0036).
+  - **Context menu:** Add to collection ▸ is an item of `bin.card`; Save as smart collection is an item of `bin.background` when a filter is active.
+- **Interfaces:** the WP-2F.06a collection commands and queries.
+- **Acceptance criteria:**
   - **A user flow (ADR-0018, F22 extended):** tag three assets, filter by tag, save as a smart collection, reopen the project and the collection is in the sidebar; drag a clip onto a folder in the sidebar's tree and it moves there.
-- **Tests:** proptest, unit, migration golden, Vitest, user flow.
-- **Out of scope:** AI auto-tagging and semantic search (P5); an FTS5 index unless the target fails; folder model and commands (WP-2F.07).
+- **Tests:** Vitest, user flow.
+- **Out of scope:** collections of collections (ADR-0036).
 
 ### WP-2F.07 — Media folders: model, commands and migration (ADR-0020)
 - **Area:** crates/cutweave-model (folders, asset display names, invariants, migration v1→v2 with fixtures), crates/cutweave-ops/src/media/ (folder commands, `media.list`), crates/cutweave-ops testing strategies, generated schema and TS types, docs/adr/0020-media-folders.md (status once accepted)
@@ -1002,7 +1029,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - A folder of 5,000 assets scrolls at ≥ 55 fps (the existing windowing) and opens in < 50 ms.
   - axe: 0 violations; visual baselines for folder tiles, the breadcrumb and the delete dialog in dark and light.
 - **Tests:** Vitest, visual, user flow.
-- **Out of scope:** the folder tree sidebar (WP-2F.06); importing OS folder structure (WP-2F.09); opening a folder in a second panel.
+- **Out of scope:** the folder tree sidebar (WP-2F.06c); importing OS folder structure (WP-2F.09); opening a folder in a second panel.
 
 ### WP-2F.09 — Import folders with their structure
 - **Area:** crates/cutweave-ops/src/media/ (`media.import` of directories), crates/cutweave-engine if the walk lives there, generated schema and TS types, apps/desktop (folder picker IPC), packages/editor (Import folder…, folder drops, progress), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
@@ -1021,7 +1048,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - A 500-file folder imports in < 30 s on the reference desktop (recorded, not gating).
   - **A user flow (ADR-0018, F22 extended):** Import folder… on the demo media folder (picker stubbed) creates its folders inside the open folder; an OS folder dropped onto a folder tile imports into it; the summary toast reports what was skipped; with the setting off, the files land flat.
 - **Tests:** integration, Vitest, user flow.
-- **Out of scope:** watching folders for new files; copying files into the project (WP-2F.04); tags from folder names (WP-2F.06).
+- **Out of scope:** watching folders for new files; copying files into the project (WP-2F.04); tags from folder names (WP-2F.06a).
 
 ---
 
@@ -1854,7 +1881,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | Media: relink | 2F.03 |
 | Media: collect & archive | 2F.04 |
 | Media: image and image-sequence support, still duration defaults | 2F.05 |
-| Media: bin search, tags, smart collections | 1M.12 (search, filters, sort), 2F.06 |
+| Media: bin search, tags, smart collections | 1M.12 (search, filters, sort), 2F.06a–c |
 | Media: folders and importing folder structure (product owner request, ADR-0020) | 2F.07, 2F.08, 2F.09 |
 | Settings: Editing, Timeline, Playback, Audio and Appearance pages; Project settings (product owner request; catalog `docs/reference/settings.md`) | 2A.13, 2H.10, 2E.08, 2H.09, 2H.08 |
 | Export: presets (YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes; product owner request: Instagram Stories and feed, X, dated limits, safe areas) | 2G.01, 2G.02, 2G.04, 2H.06 |
