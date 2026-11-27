@@ -925,6 +925,15 @@
 .cw-field::placeholder {
   color: var(--text-muted);
 }
+/* TextArea: a field of several lines. */
+.cw-field--multiline {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--control-sm) * 2);
+  padding: var(--space-1) var(--space-2);
+  resize: vertical;
+}
 .cw-field--numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;

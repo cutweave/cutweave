@@ -125,7 +125,8 @@ export function TagInput({
         break;
       }
       case "Escape":
-        // The first Escape puts the suggestions away; the next one is the dialog's.
+        // Escape puts the suggestions away and goes no further. (A dialog hears Escape before
+        // the field does, so there it closes the dialog as usual.)
         if (open) {
           event.preventDefault();
           event.stopPropagation();

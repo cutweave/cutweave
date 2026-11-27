@@ -843,7 +843,14 @@ describe("the bin's view state", () => {
     expect(
       toMediaFilter({
         text: "beach",
-        filters: { kinds: ["audio"], duration: "10sTo1m", use: "unused", problems: true },
+        filters: {
+          kinds: ["audio"],
+          duration: "10sTo1m",
+          use: "unused",
+          problems: true,
+          tags: ["b-roll", "Day 1"],
+          minRating: 3,
+        },
       }),
     ).toEqual({
       text: "beach",
@@ -852,6 +859,8 @@ describe("the bin's view state", () => {
       max_duration: 60 * F - 1,
       used: false,
       problems: true,
+      tags: ["b-roll", "Day 1"],
+      min_rating: 3,
     });
   });
 });

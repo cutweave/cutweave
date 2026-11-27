@@ -7,7 +7,10 @@ import { exportController } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
 import { openArchiveDialog } from "../media/ArchiveDialog.tsx";
 import { openCollectDialog } from "../media/CollectDialog.tsx";
+import { selectedTiles } from "../media/folderUi.ts";
+import { openRatingDialog } from "../media/RatingDialog.tsx";
 import { addShownFrameToBin, pickSlideshow } from "../media/slideshowCommands.ts";
+import { openTagEditor } from "../media/TagEditor.tsx";
 import { projectController } from "../session/useProject.ts";
 import { activeTimelineController } from "../timeline/activeController.ts";
 import { registerPaletteAction } from "./actions.ts";
@@ -42,4 +45,17 @@ export function registerBuiltinPaletteActions(): void {
   registerPaletteAction("media.import_frame", async () => void (await addShownFrameToBin()));
   registerPaletteAction("media.import_images_as_slideshow", () => pickSlideshow());
   registerPaletteAction("project.archive", () => openArchiveDialog());
+  // Add tag… and Set rating (WP-2F.06b) act on the cards selected in the bin: the tag editor and
+  // the stars, as the card's menu and the media info have them, instead of a form asking for IDs.
+  const needMedia = (): void => {
+    if (selectedTiles().media.length === 0) throw new Error(i18n.t("palette.needMedia"));
+  };
+  registerPaletteAction("media.add_tags", () => {
+    needMedia();
+    openTagEditor();
+  });
+  registerPaletteAction("media.set_rating", () => {
+    needMedia();
+    openRatingDialog();
+  });
 }

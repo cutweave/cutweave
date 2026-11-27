@@ -22,6 +22,7 @@ import {
 } from "../inspector/fields.ts";
 import { LayoutSection } from "../inspector/LayoutSection.tsx";
 import { PROXY_STATES } from "../inspector/labels.ts";
+import { MediaOrganize } from "../inspector/MediaOrganize.tsx";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { Section } from "../inspector/Section.tsx";
 import { SequenceSection } from "../inspector/SequenceSection.tsx";
@@ -469,6 +470,10 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
             <p className="cw-inspector__note label">{t("inspector.media.placeholder")}</p>
           ) : null}
         </div>
+      </Section>
+      {/* Rating, tags and note (WP-2F.06b): what the person says about the asset. */}
+      <Section id="organize" label={t("inspector.media.organize")} ids={[media.id]}>
+        <MediaOrganize media={media} />
       </Section>
     </div>
   );

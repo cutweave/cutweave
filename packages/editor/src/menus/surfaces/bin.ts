@@ -3,8 +3,8 @@
 // bin, and a filter chip. Rows name commands that exist today; what later work packages add is
 // listed in the TODO below, not stubbed.
 // TODO(WP-2A.14): Overwrite at playhead. TODO(WP-2B.01): New timeline from selection.
-// TODO(WP-2F.06): Add tag. Each work package adds its row
-// to these tables. Relink… (WP-2F.03) shows on a card whose file is missing. Regenerate proxies
+// TODO(WP-2F.06c): Add to collection. Each work package adds its row
+// to these tables. Add tag… and Set rating ▸ (WP-2F.06b) are on a card, for one or several. Relink… (WP-2F.03) shows on a card whose file is missing. Regenerate proxies
 // and Delete proxies (WP-2F.03b) show on video. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
 // #215: Duration… on an image card (the length its next insert uses) and Proxy ▸ Auto / Always /
 // Never on video (`media.set_proxy_mode`, ADR-0027).
@@ -20,6 +20,7 @@ import { insertDurationFor } from "../../media/insertDuration.ts";
 import { isMovingPicture } from "../../media/kinds.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { canHaveProxy, hasProxy, proxyStore } from "../../media/proxies.ts";
+import { MAX_TAG_MEDIA, RATINGS } from "../../media/tags.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
@@ -178,6 +179,35 @@ const proxyModeRows: readonly MenuRow[] = PROXY_MODES.map(
       return ids.length > 0 && ids.every((id) => (mediaAsset(id)?.proxy_mode ?? "auto") === mode);
     },
     args: (ctx) => ({ media: proxyModeTargets(ctx), mode }),
+  }),
+);
+
+/** Set rating ▸ None, 1 to 5 stars (WP-2F.06b): `media.set_rating` for every card of the target. */
+const RATING_CHOICES: readonly (number | null)[] = [null, ...RATINGS];
+
+const ratingRows: readonly MenuRow[] = RATING_CHOICES.map(
+  (rating, order): MenuRow => ({
+    id: rating === null ? "rating-none" : `rating-${rating}`,
+    command: "media.set_rating",
+    group: "organize",
+    order,
+    radio: true,
+    label:
+      rating === null
+        ? { key: "contextMenu.item.ratingNone" }
+        : rating === 1
+          ? { key: "mediaBin.rating.starOne" }
+          : { key: "mediaBin.rating.starMany", vars: { count: rating } },
+    when: "engine.live",
+    enabledIf: (ctx) => ctx.ids.length <= MAX_TAG_MEDIA,
+    reason: (ctx) =>
+      ctx.ids.length <= MAX_TAG_MEDIA
+        ? "contextMenu.reason.noEngine"
+        : "contextMenu.reason.tooManyItems",
+    // Checked when every card has this rating (none: the ratings differ).
+    checked: (ctx) =>
+      ctx.ids.length > 0 && ctx.ids.every((id) => (mediaAsset(id)?.rating ?? null) === rating),
+    args: (ctx) => ({ media: ctx.ids, rating }),
   }),
 );
 
@@ -362,6 +392,20 @@ export const BIN_CARD: MenuSurfaceDef = {
       when: "engine.live",
       reason: "contextMenu.reason.noEngine",
       args: (ctx) => ({ media: ctx.ids }),
+    },
+    {
+      command: "bin.add_tag",
+      group: "organize",
+      order: 2,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: (ctx) => ({ media: ctx.ids }),
+    },
+    {
+      id: "set-rating",
+      group: "organize",
+      order: 3,
+      submenu: { label: { key: "contextMenu.item.setRating" }, rows: ratingRows },
     },
     {
       command: "bin.remove_media",

@@ -74,6 +74,7 @@ import { layoutStore } from "../media/layoutStore.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
 import { type ProxyBadgeKind, useProxyBadge } from "../media/proxies.ts";
 import { requestDeleteSelection } from "../media/requestDelete.ts";
+import { projectTags, RATINGS, tagKey } from "../media/tags.ts";
 import { useThumbnailSource } from "../media/thumbnails.ts";
 import { useCardScrub } from "../media/useCardScrub.ts";
 import { useImport } from "../media/useImport.ts";
@@ -134,6 +135,9 @@ const SORT_KEY: Record<string, TKey> = {
   "duration-desc": "mediaBin.sort.durationDesc",
   "kind-asc": "mediaBin.sort.kindAsc",
 };
+
+/** Tags a card in the list shows before "+N" (WP-2F.06b). */
+const CARD_TAGS = 3;
 
 /** A second click on the name of the only selected tile renames it after this long. */
 const SLOW_CLICK_MS = 600;
@@ -424,6 +428,39 @@ function CardView({
           </span>
         )}
       </span>
+      {card.rating === null && card.tags.length === 0 ? null : (
+        // Tags and the rating (WP-2F.06b). The list has room for both; the grid shows only a
+        // rating, over the picture's corner (CSS), so its cards stay the same height.
+        <span className="cw-media__marks" data-testid="card-marks">
+          {card.tags.length === 0 ? null : (
+            <span
+              className="cw-media__tags"
+              title={t("mediaBin.tags.onCard", { tags: card.tags.join(", ") })}
+            >
+              {card.tags.slice(0, CARD_TAGS).map((tag) => (
+                <span key={tag} className="cw-media__tag caption">
+                  {tag}
+                </span>
+              ))}
+              {card.tags.length > CARD_TAGS ? (
+                <span className="cw-media__tag-more caption numeric">
+                  {t("mediaBin.tags.more", { count: card.tags.length - CARD_TAGS })}
+                </span>
+              ) : null}
+            </span>
+          )}
+          {card.rating === null ? null : (
+            <span
+              className="cw-media__rating caption numeric"
+              data-rating={card.rating}
+              title={t("mediaBin.rating.onCard", { count: card.rating })}
+            >
+              <Icon name="star" size="sm" />
+              {card.rating}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }
@@ -1038,6 +1075,17 @@ export function MediaPanel() {
   const kindLabel = (kind: BinKind) => t(KIND_KEY[kind]);
   const useLabel = (use: "used" | "unused") => t(USE_KEY[use]);
 
+  // Tags and Rating (WP-2F.06b): the project's own tags (an asset must have all the checked
+  // ones) and a least number of stars, each in a submenu so the menu stays short.
+  const knownTags = useMemo(() => projectTags(allCards), [allCards]);
+  const ratingLabel = (stars: number) =>
+    stars === 5
+      ? t("mediaBin.filters.ratingFive")
+      : stars === 1
+        ? t("mediaBin.filters.ratingFromOne")
+        : t("mediaBin.filters.ratingFrom", { count: stars });
+  const tagOn = (tag: string) => filters.tags.some((have) => tagKey(have) === tagKey(tag));
+
   const filterItems: MenuEntry[] = [
     { kind: "label", id: "kind-h", label: t("mediaBin.filters.kindHeading") },
     ...BIN_KINDS.map(
@@ -1097,6 +1145,44 @@ export function MediaPanel() {
       keepOpen: true,
       onSelect: () => bin.setProblems(!filters.problems),
     },
+    { kind: "separator", id: "sep-organize" },
+    {
+      kind: "submenu",
+      id: "tags",
+      label: t("mediaBin.filters.tagsHeading"),
+      disabled: knownTags.length === 0,
+      disabledReason: knownTags.length === 0 ? t("mediaBin.filters.noTags") : undefined,
+      items: knownTags.map((entry) => ({
+        id: `tag-${entry.tag}`,
+        label: entry.tag,
+        checked: tagOn(entry.tag),
+        keepOpen: true,
+        onSelect: () => bin.toggleTag(entry.tag),
+      })),
+    },
+    {
+      kind: "submenu",
+      id: "rating",
+      label: t("mediaBin.filters.ratingHeading"),
+      items: [
+        {
+          id: "rating-any",
+          label: t("mediaBin.filters.ratingAny"),
+          checked: filters.minRating === null,
+          choice: "radio",
+          keepOpen: true,
+          onSelect: () => bin.setMinRating(null),
+        },
+        ...RATINGS.map((stars) => ({
+          id: `rating-${stars}`,
+          label: ratingLabel(stars),
+          checked: filters.minRating === stars,
+          choice: "radio" as const,
+          keepOpen: true,
+          onSelect: () => bin.setMinRating(stars),
+        })),
+      ],
+    },
   ];
 
   const sortItems: MenuEntry[] = [
@@ -1140,6 +1226,20 @@ export function MediaPanel() {
           },
         ]
       : []),
+    ...filters.tags.map((tag) => ({
+      id: `tag-${tag}`,
+      label: t("mediaBin.filters.tagChip", { tag }),
+      remove: () => bin.toggleTag(tag),
+    })),
+    ...(filters.minRating === null
+      ? []
+      : [
+          {
+            id: "rating",
+            label: ratingLabel(filters.minRating),
+            remove: () => bin.setMinRating(null),
+          },
+        ]),
   ];
 
   const importLabel = t("mediaBin.importButton");

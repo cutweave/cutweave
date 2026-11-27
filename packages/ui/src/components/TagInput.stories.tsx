@@ -101,7 +101,11 @@ export const Suggestions = {
 export const Invalid = {
   render: () => (
     <div style={col}>
-      <Field initial={[{ tag: "b-roll" }]} text={"x".repeat(70)} error="Use 64 characters or fewer." />
+      <Field
+        initial={[{ tag: "b-roll" }]}
+        text={"x".repeat(70)}
+        error="Use 64 characters or fewer."
+      />
     </div>
   ),
 };

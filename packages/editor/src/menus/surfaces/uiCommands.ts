@@ -28,6 +28,7 @@ import { requestFolderDelete, requestMediaDelete } from "../../media/requestDele
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
 import { importPicked } from "../../media/sequence.ts";
 import { addShownFrameToBin, pickSlideshow } from "../../media/slideshowCommands.ts";
+import { openTagEditor } from "../../media/TagEditor.tsx";
 import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
 import { projectController } from "../../session/useProject.ts";
@@ -259,6 +260,14 @@ export const UI_COMMANDS: readonly UiCommand[] = [
       menuDialogStore.getState().open({ kind: "insert-duration", media: card.id, name: card.name });
     },
   },
+  // Add tag… (WP-2F.06b): the tag editor for the cards the menu was opened on; each tag it adds
+  // or removes is one `media.add_tags` or `media.remove_tags`.
+  {
+    id: "bin.add_tag",
+    label: "contextMenu.item.addTag",
+    when: "engine.live",
+    run: (args) => openTagEditor(arg<{ media?: string[] }>(args).media),
+  },
   {
     id: "bin.new_folder",
     label: "contextMenu.item.newFolder",
@@ -391,6 +400,8 @@ export const UI_COMMANDS: readonly UiCommand[] = [
       else if (chip === "duration") bin.setDuration(null);
       else if (chip === "use") bin.setUse(null);
       else if (chip === "problems") bin.setProblems(false);
+      else if (chip === "rating") bin.setMinRating(null);
+      else if (chip.startsWith("tag-")) bin.toggleTag(chip.slice("tag-".length));
     },
   },
   {

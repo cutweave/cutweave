@@ -811,7 +811,15 @@
       "useAny": "Any",
       "used": "On the timeline",
       "unused": "Not used",
-      "problems": "Only media with problems"
+      "problems": "Only media with problems",
+      "tagsHeading": "Tags",
+      "noTags": "No tags in this project",
+      "tagChip": "Tag: {{tag}}",
+      "ratingHeading": "Rating",
+      "ratingAny": "Any rating",
+      "ratingFrom": "{{count}} stars or more",
+      "ratingFromOne": "1 star or more",
+      "ratingFive": "5 stars"
     },
     "sort": {
       "button": "Sort",
@@ -984,6 +992,44 @@
       "duplicateTitle": "This frame is already in the media bin",
       "duplicateBody": "{{name}} shows the same picture.",
       "failed": "The frame was not added"
+    },
+    "tags": {
+      "label": "Tags",
+      "field": "Add tag",
+      "suggestions": "Suggested tags",
+      "remove": "Remove tag {{tag}}",
+      "addToAll": "Add {{tag}} to all {{count}}",
+      "someOf": "{{count}} of {{total}}",
+      "titleOne": "Tags of {{name}}",
+      "titleMany": "Tags of {{count}} items",
+      "bodyMany": "A dashed tag is on only some of them. Every tag you add or remove is one step to undo.",
+      "bodyOne": "Every tag you add or remove is one step to undo.",
+      "done": "Done",
+      "tooLong": "Use 64 characters or fewer.",
+      "control": "A tag is one line, without tabs.",
+      "tooMany": "An item holds 64 tags at most.",
+      "addFailed": "Could not add the tag",
+      "removeFailed": "Could not remove the tag",
+      "onCard": "Tags: {{tags}}",
+      "more": "+{{count}}"
+    },
+    "rating": {
+      "label": "Rating",
+      "starOne": "1 star",
+      "starMany": "{{count}} stars",
+      "failed": "Could not set the rating",
+      "onCard": "Rated {{count}} of 5",
+      "titleOne": "Rating of {{name}}",
+      "titleMany": "Rating of {{count}} items",
+      "body": "Click a star to rate. Click the current star again to clear the rating.",
+      "mixed": "The selected items have different ratings."
+    },
+    "note": {
+      "label": "Note",
+      "placeholder": "Add a note",
+      "count": "{{count}} of 2,000",
+      "tooLong": "A note holds 2,000 characters at most.",
+      "failed": "Could not save the note"
     }
   },
   "preview": {
@@ -1131,7 +1177,8 @@
         "play": "Play {{name}}",
         "pause": "Pause {{name}}"
       },
-      "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up."
+      "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up.",
+      "organize": "Rating, tags and note"
     },
     "groups": {
       "transform": "Transform",
@@ -1343,7 +1390,12 @@
       "open": "Open History…"
     },
     "applyLayout": "Apply layout",
-    "placeLayout": "Place side by side"
+    "placeLayout": "Place side by side",
+    "tagAdd": "Add tag",
+    "tagRemove": "Remove tag",
+    "tagRename": "Rename tag",
+    "rating": "Set rating",
+    "note": "Edit note"
   },
   "mathStartup": {
     "versionTitle": "Cutweave can't start: its math module is out of date",
@@ -1850,7 +1902,8 @@
       "notNumber": "Enter a number.",
       "notWhole": "Enter a whole number.",
       "notJson": "Enter valid JSON."
-    }
+    },
+    "needMedia": "Select media in the bin first."
   },
   "contextMenu": {
     "failed": "That did not work",
@@ -1907,7 +1960,8 @@
       "layoutSwap": "Apply a layout to the two clips first",
       "noProxyMedia": "Only video has proxies",
       "noProxyToDelete": "There is no proxy to delete",
-      "oneImage": "Select one picture"
+      "oneImage": "Select one picture",
+      "tooManyItems": "Select 256 items or fewer"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -1943,7 +1997,9 @@
       "itemApplyLayout": "Apply layout",
       "mediaImportFrame": "Add frame to media bin",
       "mediaImportImagesAsSlideshow": "Import as slideshow…",
-      "mediaSetProxyMode": "Set proxy mode"
+      "mediaSetProxyMode": "Set proxy mode",
+      "mediaAddTags": "Add tag…",
+      "mediaSetRating": "Set rating"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -2085,7 +2141,10 @@
       "proxy": "Proxy",
       "proxyAuto": "Auto",
       "proxyAlways": "Always",
-      "proxyNever": "Never"
+      "proxyNever": "Never",
+      "addTag": "Add tag…",
+      "setRating": "Set rating",
+      "ratingNone": "None"
     },
     "dialog": {
       "cancel": "Cancel",

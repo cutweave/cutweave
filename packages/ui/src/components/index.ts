@@ -87,6 +87,7 @@ export {
   type TabsProps,
 } from "./Tabs.tsx";
 export { TagInput, type TagInputProps, type TagInputTag } from "./TagInput.tsx";
+export { TextArea, type TextAreaProps } from "./TextArea.tsx";
 export { TextField, type TextFieldProps } from "./TextField.tsx";
 export {
   Toast,

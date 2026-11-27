@@ -71,6 +71,22 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
     label: "contextMenu.command.mediaSetProxyMode",
     undoable: true,
   },
+  // Set rating ▸ on a bin card and Add tag… (WP-2F.06b): one undo step for the assets chosen.
+  // The palette opens the stars and the tag editor for the selected cards
+  // (`palette/builtinActions.ts`).
+  {
+    name: "media.set_rating",
+    label: "contextMenu.command.mediaSetRating",
+    icon: "star",
+    undoable: true,
+    when: "engine.live",
+  },
+  {
+    name: "media.add_tags",
+    label: "contextMenu.command.mediaAddTags",
+    undoable: true,
+    when: "engine.live",
+  },
   {
     name: "item.duplicate",
     label: "contextMenu.command.itemDuplicate",

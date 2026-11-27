@@ -42,7 +42,9 @@ async function forMedia(
     return true;
   } catch (error) {
     if (tx !== null) await rpc.call("edit.cancel_tx", { tx }).catch(() => undefined);
-    deps.toasts.getState().push({ tone: "danger", title: deps.t(failed), message: messageOf(error) });
+    deps.toasts
+      .getState()
+      .push({ tone: "danger", title: deps.t(failed), message: messageOf(error) });
     return false;
   }
 }
@@ -87,7 +89,11 @@ export function setRating(
 }
 
 /** Sets the note of one asset (`null`: none): one undo step. */
-export async function setNote(deps: BinDeps, media: MediaId, note: string | null): Promise<boolean> {
+export async function setNote(
+  deps: BinDeps,
+  media: MediaId,
+  note: string | null,
+): Promise<boolean> {
   const rpc = deps.engine.getState().rpc;
   if (rpc === null) return false;
   try {

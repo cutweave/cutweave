@@ -34,6 +34,10 @@ export type MenuDialog =
   | { readonly kind: "slideshow"; readonly files: readonly string[] }
   // Duration… on an image card (#215): the length the next insert of that picture uses.
   | { readonly kind: "insert-duration"; readonly media: string; readonly name: string }
+  // Add tag… on a bin card (WP-2F.06b): the tag editor for the assets chosen.
+  | { readonly kind: "tags"; readonly media: readonly string[] }
+  // Set rating from the command palette (WP-2F.06b): the stars for the assets chosen.
+  | { readonly kind: "rating"; readonly media: readonly string[] }
   // The folder picker of "Move to…" for the assets and folders chosen.
   | {
       readonly kind: "move-to";
