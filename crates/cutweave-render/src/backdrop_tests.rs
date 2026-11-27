@@ -4,6 +4,9 @@
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
+    clippy::float_cmp,
+    clippy::needless_range_loop,
+    clippy::similar_names,
     clippy::unwrap_used,
     clippy::expect_used
 )]
@@ -279,7 +282,7 @@ fn the_fills_compile_to_the_documented_passes() {
     });
     let graph = build(&scene, target, &source, &GraphOptions::default()).unwrap();
     assert_eq!(graph.frames.len(), 1);
-    assert!(graph.missing.is_empty());
+    assert_eq!(graph.missing, Vec::new());
 }
 
 fn srgb_of(linear: [f64; 4]) -> [u8; 4] {

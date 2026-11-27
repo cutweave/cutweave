@@ -360,7 +360,7 @@ fn draw_layer(
 /// One Gaussian pass over `src` along x (`horizontal`) or y: weights `exp(−i² / 2σ²)` for `i`
 /// in `−taps..=taps`, normalised, edges clamped; then the colour times `1 − dim`.
 fn blur_pass(src: &Level, horizontal: bool, sigma: f64, taps: u32, dim: f64) -> Level {
-    let taps = taps as i32;
+    let taps = i32::try_from(taps).unwrap_or(0);
     let weights: Vec<f64> = (-taps..=taps)
         .map(|i| {
             if taps == 0 {

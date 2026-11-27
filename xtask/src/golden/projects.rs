@@ -374,9 +374,40 @@ struct NewProject {
     video_track: Value,
 }
 
+/// The steps of the `background_*` projects (WP-2B.02): the canvas turns 9:16 while it is
+/// empty, the 16:9 clip goes in, then the background is set. `None` for the other projects.
+fn background_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Option<Value> {
+    let (seq, v1) = (&ids.sequence, &ids.video_track);
+    let portrait = json!({"cmd": "sequence.set_format", "args": {
+        "sequence": seq, "width": PORTRAIT.0, "height": PORTRAIT.1, "background": "#203060"
+    }});
+    let insert = json!({"cmd": "timeline.insert", "args": {
+        "sequence": seq, "track": v1, "media": &media[0], "at": 0, "link": false
+    }});
+    let background = match project.name {
+        "background_color" => return Some(json!([portrait, insert])),
+        "background_blur" => json!({"kind": "blur"}),
+        "background_image" => json!({"kind": "image", "media": media.get(1), "fit": "cover"}),
+        "background_transparent" => json!({"kind": "transparent"}),
+        _ => return None,
+    };
+    let mut args = background;
+    args["sequence"] = seq.clone();
+    Some(json!([
+        portrait,
+        insert,
+        {"cmd": "sequence.set_background", "args": args}
+    ]))
+}
+
 /// The timeline steps of `project` (one `cutweave_execute` batch, one transaction): `media`
 /// holds the imported media ids in [`Golden::sources`] order.
 fn timeline_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Value {
+    background_steps(project, ids, media).unwrap_or_else(|| layer_steps(project, ids, media))
+}
+
+/// [`timeline_steps`] of the projects that arrange clips on the default canvas.
+fn layer_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Value {
     let (seq, v1) = (&ids.sequence, &ids.video_track);
     let insert = |track: Value, media: &Value, at: Value| {
         json!({"cmd": "timeline.insert", "args": {
@@ -399,32 +430,7 @@ fn timeline_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Value 
             "position": {"x": x / f64::from(WIDTH), "y": y / f64::from(HEIGHT)}
         }})
     };
-    // WP-2B.02: the 16:9 clip on a 9:16 canvas (resized while empty), then the background.
-    let portrait = json!({"cmd": "sequence.set_format", "args": {
-        "sequence": seq, "width": PORTRAIT.0, "height": PORTRAIT.1, "background": "#203060"
-    }});
-    let background = |args: Value| {
-        let mut args = args;
-        args["sequence"] = seq.clone();
-        json!({"cmd": "sequence.set_background", "args": args})
-    };
     match project.name {
-        "background_color" => json!([portrait, insert(v1.clone(), &media[0], at_0)]),
-        "background_blur" => json!([
-            portrait,
-            insert(v1.clone(), &media[0], at_0),
-            background(json!({"kind": "blur"})),
-        ]),
-        "background_image" => json!([
-            portrait,
-            insert(v1.clone(), &media[0], at_0),
-            background(json!({"kind": "image", "media": &media[1], "fit": "cover"})),
-        ]),
-        "background_transparent" => json!([
-            portrait,
-            insert(v1.clone(), &media[0], at_0),
-            background(json!({"kind": "transparent"})),
-        ]),
         "bars_100" | "rotated_phone" => json!([insert(v1.clone(), &media[0], at_0)]),
         "scaled_offset" => json!([
             insert(v1.clone(), &media[0], at_0),

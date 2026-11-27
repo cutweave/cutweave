@@ -725,7 +725,19 @@ pub fn build_into(
         plan_fill(scene, output, source, options, scratch);
     }
     plan_decodes(scratch, g);
+    push_passes(g, scratch, scene, target, options.filter)
+}
 
+/// Emits the passes of a planned frame (decodes, the background and its fill, one composite per
+/// visible layer, the output) and prunes what does not reach the output.
+fn push_passes(
+    g: &mut RenderGraph,
+    scratch: &mut BuildScratch,
+    scene: &SceneDescription,
+    target: Target,
+    filter: Filter,
+) -> Result<(), GraphError> {
+    let output = target.size();
     let BuildScratch {
         visible,
         blur,
@@ -767,7 +779,7 @@ pub fn build_into(
     let blurred = match blur.as_ref() {
         Some(b) => {
             let content = decode_res[decode_of[visible.len()]];
-            Some(push_blur(g, keys, b, bg, content, options.filter)?)
+            Some(push_blur(g, keys, b, bg, content, filter)?)
         }
         None => None,
     };
@@ -802,7 +814,7 @@ pub fn build_into(
         cur = push_pass(
             g,
             keys,
-            PassOp::Composite(composite_of(v, output, options.filter)),
+            PassOp::Composite(composite_of(v, output, filter)),
             PassInputs::from_slice(&[cur, decode_res[slot]])?,
             canvas_desc,
         );

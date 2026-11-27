@@ -1602,24 +1602,28 @@ impl Compositor {
             .as_ref()
             .map(|h| (h.texture.clone(), h.key))
             .ok_or_else(|| GraphError::Invalid("blur input not ready".into()))?;
-        let r = graph.resources[pass.output];
+        let size = graph.resources[pass.output];
         let key = TexKey {
             kind: TexKind::Content(1),
-            width: r.width,
-            height: r.height,
+            width: size.width,
+            height: size.height,
         };
         let device = self.ctx.device().clone();
         let dst = self.dev.take(&device, key, &mut f.stats);
         let uniform = self.dev.uniform(&device, slot);
-        let k = if b.taps == 0 || b.sigma <= 0.0 {
+        let falloff = if b.taps == 0 || b.sigma <= 0.0 {
             0.0
         } else {
             1.0 / (2.0 * b.sigma * b.sigma)
         };
-        let u = Uniforms::default()
-            .u4([r.width, r.height, b.taps, u32::from(b.horizontal)])
-            .f4([k, 1.0 - b.dim, 0.0, 0.0]);
-        in_wgpu(|| self.ctx.queue().write_buffer(&uniform, 0, u.as_bytes()));
+        let uniforms = Uniforms::default()
+            .u4([size.width, size.height, b.taps, u32::from(b.horizontal)])
+            .f4([falloff, 1.0 - b.dim, 0.0, 0.0]);
+        in_wgpu(|| {
+            self.ctx
+                .queue()
+                .write_buffer(&uniform, 0, uniforms.as_bytes());
+        });
         let bind = self.blur_bind(&device, slot, (&src, src_key), (&dst, key), &uniform);
         let pipeline = &self.dev.pipes.blur.pipeline;
         in_wgpu(|| {
@@ -1629,7 +1633,7 @@ impl Compositor {
             });
             cp.set_pipeline(pipeline);
             cp.set_bind_group(0, &bind, &[]);
-            cp.dispatch_workgroups(r.width.div_ceil(8), r.height.div_ceil(8), 1);
+            cp.dispatch_workgroups(size.width.div_ceil(8), size.height.div_ceil(8), 1);
         });
         f.scratch.held[pass.output] = Some(Held {
             texture: dst,

@@ -7,6 +7,7 @@
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
+    clippy::unnecessary_wraps,
     clippy::unwrap_used,
     clippy::expect_used
 )]

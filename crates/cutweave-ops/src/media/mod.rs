@@ -1205,7 +1205,11 @@ impl Command for MediaRemove {
             ));
         }
         let shows = |s: &&cutweave_model::Sequence| {
-            s.format.background_fill.as_ref().and_then(|f| f.media()) == Some(self.id)
+            s.format
+                .background_fill
+                .as_ref()
+                .and_then(cutweave_model::BackgroundFill::media)
+                == Some(self.id)
         };
         if let Some(s) = ctx.doc().sequences.values().find(shows) {
             return Err(CmdError::invalid(

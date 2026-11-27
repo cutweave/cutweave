@@ -29,11 +29,11 @@ use std::time::{Duration as StdDuration, Instant};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use cutweave_model::{
-    Animatable, BackgroundFill, BlendMode, BlurSource, Clip, ColorPrimaries, ColorRange, ColorTags, Duration, Extra,
-    FLICKS_PER_SECOND, FrameRate, Interp, ItemId, Keyframe, Keyframes, MatrixCoefficients,
-    MediaAsset, MediaId, MediaKind, ProbeInfo, Project, SampleRate, Sequence, SequenceFormat,
-    SequenceId, StreamInfo, StreamKind, Time, Track, TrackId, TrackKind, TransferCharacteristics,
-    Vec2,
+    Animatable, BackgroundFill, BlendMode, BlurSource, Clip, ColorPrimaries, ColorRange, ColorTags,
+    Duration, Extra, FLICKS_PER_SECOND, FrameRate, Interp, ItemId, Keyframe, Keyframes,
+    MatrixCoefficients, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, SampleRate, Sequence,
+    SequenceFormat, SequenceId, StreamInfo, StreamKind, Time, Track, TrackId, TrackKind,
+    TransferCharacteristics, Vec2,
 };
 use cutweave_render::frame::PixelFormat;
 use cutweave_render::gpu::{AdapterChoice, Compositor, CompositorOptions, GpuContext};

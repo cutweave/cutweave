@@ -361,7 +361,7 @@ fn a_background_fill_appears_changes_kind_and_disappears() {
     restores(&mut s, |s| set(s, json!({"kind": "image", "media": still})));
     restores(&mut s, |s| set(s, json!({"kind": "transparent"})));
     restores(&mut s, |s| {
-        set(s, json!({"kind": "color", "color": "#336699"}))
+        set(s, json!({"kind": "color", "color": "#336699"}));
     });
     set(
         &mut s,
@@ -369,7 +369,7 @@ fn a_background_fill_appears_changes_kind_and_disappears() {
     );
     restores(&mut s, |s| set(s, json!({"kind": "color"})));
     restores(&mut s, |s| {
-        set(s, json!({"kind": "image", "fit": "stretch"}))
+        set(s, json!({"kind": "image", "fit": "stretch"}));
     });
 
     // Document to document, with the JSON mirror: every pair of fills.

@@ -1045,7 +1045,11 @@ fn check_format(path: &str, format: &SequenceFormat, out: &mut Vec<Invariant>) {
     }
     // An image fill may name an asset that is gone (an older build can remove one it does not
     // know is used): it draws nothing, so it is not a violation.
-    if let Some(reason) = format.background_fill.as_ref().and_then(|f| f.problem()) {
+    if let Some(reason) = format
+        .background_fill
+        .as_ref()
+        .and_then(crate::BackgroundFill::problem)
+    {
         invalid(reason.to_owned());
     }
 }

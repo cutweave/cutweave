@@ -183,7 +183,10 @@ pub fn cover_layer(source: &Layer, frame: (u32, u32), canvas: (u32, u32)) -> Lay
             scale: Vec2::new(scale, scale),
             rotation_deg: 0.0,
             // The centre of what the crop leaves sits on the canvas centre.
-            anchor: Vec2::new((left + (1.0 - right)) * 0.5, (top + (1.0 - bottom)) * 0.5),
+            anchor: Vec2::new(
+                f64::midpoint(left, 1.0 - right),
+                f64::midpoint(top, 1.0 - bottom),
+            ),
         },
     )
 }
@@ -247,6 +250,13 @@ pub fn stretch_geometry(texture: (u32, u32), output: (u32, u32)) -> LayerGeometr
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::float_cmp,
+        clippy::manual_midpoint
+    )]
+
     use cutweave_model::{ColorTags, MediaId, Time};
 
     use super::*;
