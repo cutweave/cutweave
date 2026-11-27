@@ -544,6 +544,11 @@ pub fn generate_at(spec: &FixtureSpec, media_root: &str) -> Result<Fixture, Benc
             items: Vec::new(),
         });
     }
+    if audio == 0 {
+        // `project.new` always makes `A1`; a picture-only fixture drops it.
+        let a1 = text(&new, "audio_track", "project.new")?;
+        runner.run("track.remove", json!({"track": a1}))?;
+    }
     runner.run(
         "track.set_magnetic",
         json!({"track": tracks[0].id, "magnetic": true}),
