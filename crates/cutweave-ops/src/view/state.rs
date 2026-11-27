@@ -568,20 +568,20 @@ impl ViewCtx {
     fn merge_marks(
         &self,
         marks: &mut BTreeMap<MediaId, SourceMarks>,
-        patch: &BTreeMap<MediaId, SourceMarksInput>,
+        entries: &BTreeMap<MediaId, SourceMarksInput>,
     ) -> Result<(), CmdError> {
-        for (id, input) in patch {
-            let path = format!("/patch/source_marks/{id}");
+        for (id, input) in entries {
+            let at = format!("/patch/source_marks/{id}");
             if !self.doc.media.contains_key(id) {
                 return Err(CmdError::not_found(EntityKind::Media, *id));
             }
             let resolve = |t: Option<TimeInput>| {
                 t.map(|t| t.resolve(None))
                     .transpose()
-                    .map_err(|e| invalid(&path, e.to_string()))
+                    .map_err(|e| invalid(&at, e.to_string()))
             };
             let checked = check_marks(resolve(input.mark_in)?, resolve(input.mark_out)?)
-                .map_err(|m| invalid(&path, m))?;
+                .map_err(|m| invalid(&at, m))?;
             match checked {
                 Some(m) => {
                     marks.insert(*id, m);
