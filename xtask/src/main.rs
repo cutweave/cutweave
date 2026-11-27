@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen|golden|golden-projects|check-fixtures>`: developer automation (WP-0A.01).
+//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen-bench-project|gen|golden|golden-projects|check-fixtures>`: developer automation (WP-0A.01).
 
 mod bench;
 mod corpus;
@@ -47,6 +47,10 @@ COMMANDS:
                   manifest (sha256) and probe generated items with ffprobe against their `expect` table
     bench         --suite <name> --out <file>: run a benchmark suite (smoke) and write result JSON
     bench-check   <results.json> [--baseline <results.json>]: compare against bench/budgets.toml
+    gen-bench-project [--preset p-400|p-5k|p-short|all] [--items N --tracks T --keyframes K]
+                  [--out DIR] [--with-media] [--check]: write the seeded benchmark projects to
+                  testdata/bench-projects/ (git-ignored); --check verifies that generation is
+                  deterministic and writes nothing; --help lists every option
     tokens        generate design tokens (CSS, Tailwind, TS, Rust); `tokens --check` verifies
     gen           [--check]: generate schema/ catalogs and docs/reference/commands.md; --check fails with a diff if committed files are stale
     golden-projects
@@ -116,6 +120,29 @@ fn check_deps() -> bool {
     found.is_empty()
 }
 
+/// `cargo xtask gen-bench-project`: the generator of `cutweave-bench` (WP-2J.01).
+fn gen_bench_project(args: &[String]) -> bool {
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{}", cutweave_bench::cli::GEN_USAGE);
+        return true;
+    }
+    match cutweave_bench::cli::gen_bench_project(&workspace_root(), args) {
+        Ok(report) => {
+            print!("{report}");
+            true
+        }
+        Err(e) => {
+            eprintln!(
+                "gen-bench-project: {e}
+
+{}",
+                cutweave_bench::cli::GEN_USAGE
+            );
+            false
+        }
+    }
+}
+
 fn ci() -> bool {
     let steps: [(&str, Vec<&str>); 3] = [
         ("fmt", vec!["fmt", "--all", "--check"]),
@@ -162,6 +189,7 @@ fn main() -> ExitCode {
         Some("corpus-verify") => corpus::verify(&workspace_root(), &args[1..]),
         Some("bench") => bench::bench(&workspace_root(), &args[1..]),
         Some("bench-check") => bench::bench_check(&workspace_root(), &args[1..]),
+        Some("gen-bench-project") => gen_bench_project(&args[1..]),
         Some("tokens") => tokens::run(&workspace_root(), &args[1..]),
         Some("gen") => schema_gen::run(&workspace_root(), &args[1..]),
         Some("golden") => golden::golden(&workspace_root(), &args[1..]),

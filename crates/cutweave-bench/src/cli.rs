@@ -65,9 +65,10 @@ impl GenArgs {
                 "--out" => out.out = Some(PathBuf::from(value()?)),
                 "--preset" => match value()?.as_str() {
                     "all" => out.specs.extend(presets()),
-                    name => out.specs.push(FixtureSpec::preset(name).ok_or_else(|| {
-                        BenchError::Spec(format!("unknown preset `{name}`"))
-                    })?),
+                    name => out.specs.push(
+                        FixtureSpec::preset(name)
+                            .ok_or_else(|| BenchError::Spec(format!("unknown preset `{name}`")))?,
+                    ),
                 },
                 "--name" => custom.name.clone_from(value()?),
                 "--size" => {
@@ -188,8 +189,8 @@ pub fn finish(
     let result_path = out.map_or_else(|| result.default_path(root), Path::to_path_buf);
     result.write(&result_path).map_err(BenchError::Other)?;
     let histogram_path = result_path.with_extension("command-rtt.json");
-    let mut histogram = serde_json::to_string_pretty(&outcome.rtt)
-        .map_err(|e| BenchError::Other(e.to_string()))?;
+    let mut histogram =
+        serde_json::to_string_pretty(&outcome.rtt).map_err(|e| BenchError::Other(e.to_string()))?;
     histogram.push('\n');
     std::fs::write(&histogram_path, histogram)
         .map_err(|e| BenchError::io("write", &histogram_path, e))?;

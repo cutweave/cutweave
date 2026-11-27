@@ -61,14 +61,20 @@ fn the_suite_runs_end_to_end_at_smoke_scale() {
     assert_eq!(parsed.suite.as_deref(), Some("engine-smoke"));
     assert_eq!(parsed.metrics.len(), outcome.metrics.len());
     let raw: Value = serde_json::from_str(&text).unwrap();
-    let schema: Value =
-        serde_json::from_str(&std::fs::read_to_string(root.join("bench/result.schema.json")).unwrap())
-            .unwrap();
+    let schema: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("bench/result.schema.json")).unwrap(),
+    )
+    .unwrap();
     for key in schema["required"].as_array().unwrap() {
         assert!(raw.get(key.as_str().unwrap()).is_some(), "missing {key}");
     }
     let allowed = schema["properties"].as_object().unwrap();
-    assert!(raw.as_object().unwrap().keys().all(|k| allowed.contains_key(k)));
+    assert!(
+        raw.as_object()
+            .unwrap()
+            .keys()
+            .all(|k| allowed.contains_key(k))
+    );
     assert!(finished.histogram_path.is_file());
     assert!(finished.table.contains("command_roundtrip_p95_ms"));
     assert!(finished.table.contains("PASS") || finished.table.contains("FAIL"));

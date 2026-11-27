@@ -114,10 +114,13 @@ pub struct Workspace {
 impl Workspace {
     /// Generates and writes the fixtures of `scale` under `scratch`. `with_media` also makes
     /// the P-400 source files when there is an `ffmpeg`.
-    pub fn prepare(scale: &Scale, scratch: &Path, with_media: bool) -> Result<Workspace, BenchError> {
+    pub fn prepare(
+        scale: &Scale,
+        scratch: &Path,
+        with_media: bool,
+    ) -> Result<Workspace, BenchError> {
         let fixtures = scratch.join("fixtures");
-        std::fs::create_dir_all(&fixtures)
-            .map_err(|e| BenchError::io("create", &fixtures, e))?;
+        std::fs::create_dir_all(&fixtures).map_err(|e| BenchError::io("create", &fixtures, e))?;
         let edit = generate(&scale.edit)?;
         let stress = generate(&scale.stress)?;
         let edit_folder = edit.write(&fixtures)?;
@@ -170,9 +173,17 @@ pub struct RttHistogram {
 
 /// Opens the project and reads its timeline once: what "interactive" needs from the engine.
 pub fn open_once(conn: &Connection, ws: &Workspace) -> Result<(), BenchError> {
-    call(conn, "project.open", json!({"path": ws.edit.to_string_lossy()}))?;
+    call(
+        conn,
+        "project.open",
+        json!({"path": ws.edit.to_string_lossy()}),
+    )?;
     let sequence = &ws.edit_manifest.sequence;
-    call(conn, "timeline.get", json!({"sequence": sequence, "depth": 2}))?;
+    call(
+        conn,
+        "timeline.get",
+        json!({"sequence": sequence, "depth": 2}),
+    )?;
     Ok(())
 }
 
@@ -195,7 +206,11 @@ pub fn open_and_query(ws: &Workspace, scale: &Scale) -> Result<Vec<Metric>, Benc
         let mut times = Vec::new();
         for _ in 0..scale.queries {
             let t0 = Instant::now();
-            call(&conn, "timeline.get", json!({"sequence": sequence, "depth": depth}))?;
+            call(
+                &conn,
+                "timeline.get",
+                json!({"sequence": sequence, "depth": depth}),
+            )?;
             times.push(ms(t0));
         }
         by_depth.push(summarize(&times));
@@ -204,7 +219,12 @@ pub fn open_and_query(ws: &Workspace, scale: &Scale) -> Result<Vec<Metric>, Benc
     Ok(vec![
         Metric::new("project_open_1h_ms", opens.p50, "ms", opens.samples),
         Metric::new("project_open_1h_max_ms", opens.max, "ms", opens.samples),
-        Metric::new("timeline_get_p400_ms", by_depth[0].p95, "ms", by_depth[0].samples),
+        Metric::new(
+            "timeline_get_p400_ms",
+            by_depth[0].p95,
+            "ms",
+            by_depth[0].samples,
+        ),
         Metric::new(
             "timeline_get_p400_items_ms",
             by_depth[1].p95,
@@ -297,10 +317,7 @@ pub fn fan_out(
 
 /// One insert at the start of the magnetic main track (every item on it moves right), undone
 /// afterwards so the next one meets the same document.
-pub fn ripple_once(
-    conn: &Connection,
-    manifest: &FixtureManifest,
-) -> Result<Duration, BenchError> {
+pub fn ripple_once(conn: &Connection, manifest: &FixtureManifest) -> Result<Duration, BenchError> {
     let media = manifest
         .media
         .iter()
@@ -360,7 +377,10 @@ pub fn engine_start(ws: &Workspace, scale: &Scale, exe: &Path) -> Result<Vec<Met
         let t0 = Instant::now();
         let engine = ChildEngine::spawn(&spec)?;
         let mut client = engine.ws()?;
-        client.call("rpc.hello", &json!({"client": "cutweave-bench", "version": "1"}))?;
+        client.call(
+            "rpc.hello",
+            &json!({"client": "cutweave-bench", "version": "1"}),
+        )?;
         client.mutate("project.new", json!({"name": "Untitled"}))?;
         times.push(ms(t0));
         ready.push(engine.ready_after.as_secs_f64() * 1000.0);

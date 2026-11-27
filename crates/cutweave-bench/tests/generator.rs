@@ -18,22 +18,22 @@ fn scratch(tag: &str) -> PathBuf {
     dir
 }
 
-fn keyframes(fixture: &Fixture) -> usize {
-    let doc = serde_json::to_value(&fixture.project).unwrap();
-    fn count(v: &serde_json::Value) -> usize {
-        match v {
-            serde_json::Value::Object(map) => map
-                .iter()
-                .map(|(k, v)| match (k.as_str(), v) {
-                    ("keyframes", serde_json::Value::Array(keys)) => keys.len(),
-                    _ => count(v),
-                })
-                .sum(),
-            serde_json::Value::Array(items) => items.iter().map(count).sum(),
-            _ => 0,
-        }
+fn count_keys(v: &serde_json::Value) -> usize {
+    match v {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .map(|(k, v)| match (k.as_str(), v) {
+                ("keyframes", serde_json::Value::Array(keys)) => keys.len(),
+                _ => count_keys(v),
+            })
+            .sum(),
+        serde_json::Value::Array(items) => items.iter().map(count_keys).sum(),
+        _ => 0,
     }
-    count(&doc)
+}
+
+fn keyframes(fixture: &Fixture) -> usize {
+    count_keys(&serde_json::to_value(&fixture.project).unwrap())
 }
 
 #[test]
@@ -69,7 +69,12 @@ fn the_counts_are_the_ones_asked_for() {
         let items: usize = tracks.iter().map(|t| t.items.len()).sum();
         assert_eq!(items, spec.items as usize, "{}", spec.name);
         assert_eq!(fixture.item_count(), spec.items as usize);
-        assert_eq!(keyframes(&fixture), spec.keyframes as usize, "{}", spec.name);
+        assert_eq!(
+            keyframes(&fixture),
+            spec.keyframes as usize,
+            "{}",
+            spec.name
+        );
         assert_eq!(fixture.manifest.keyframes, spec.keyframes);
         assert_eq!(sequence.format.width, spec.width);
         assert_eq!(sequence.format.height, spec.height);
@@ -96,7 +101,10 @@ fn p_short_is_vertical_with_three_video_layers() {
 #[test]
 fn the_presets_have_the_sizes_the_wbs_names() {
     let p400 = FixtureSpec::p_400();
-    assert_eq!((p400.items, p400.tracks, p400.duration_secs), (400, 8, 3600));
+    assert_eq!(
+        (p400.items, p400.tracks, p400.duration_secs),
+        (400, 8, 3600)
+    );
     let p5k = FixtureSpec::p_5k();
     assert_eq!((p5k.items, p5k.keyframes), (5000, 50_000));
     assert_eq!(FixtureSpec::preset("P-5K"), Some(p5k));
@@ -110,7 +118,12 @@ fn a_bad_spec_is_refused() {
     assert!(generate(&spec).is_err());
     let mut spec = FixtureSpec::smoke();
     spec.keyframes = 1_000_000;
-    assert!(generate(&spec).unwrap_err().to_string().contains("do not fit"));
+    assert!(
+        generate(&spec)
+            .unwrap_err()
+            .to_string()
+            .contains("do not fit")
+    );
 }
 
 #[test]
@@ -136,7 +149,10 @@ fn the_written_folder_opens_and_keeps_the_canonical_hash_in_its_manifest() {
     let rooted = generate_at(&spec, "/elsewhere").unwrap();
     assert_ne!(rooted.sha256(), fixture.sha256());
     assert_eq!(
-        rooted.document().unwrap().replace("/elsewhere", CANONICAL_MEDIA_ROOT),
+        rooted
+            .document()
+            .unwrap()
+            .replace("/elsewhere", CANONICAL_MEDIA_ROOT),
         fixture.document().unwrap()
     );
 }

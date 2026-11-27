@@ -31,10 +31,10 @@ fn run(args: &[String]) -> Result<bool, BenchError> {
             "--smoke" => scale = Scale::smoke(),
             "--with-media" => with_media = true,
             "--out" => {
-                out = Some(PathBuf::from(
-                    it.next()
-                        .ok_or_else(|| BenchError::Spec("--out needs a value".into()))?,
-                ));
+                out =
+                    Some(PathBuf::from(it.next().ok_or_else(|| {
+                        BenchError::Spec("--out needs a value".into())
+                    })?));
             }
             other => return Err(BenchError::Spec(format!("unknown option `{other}`"))),
         }

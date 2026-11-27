@@ -144,7 +144,6 @@ impl Workload {
     /// 10% markers.
     pub fn next_step(&mut self) -> Step {
         match self.rng.below(100) {
-            0..35 => self.set_props(),
             35..55 => self.keyframe(),
             55..80 if !self.movable.is_empty() => self.move_item(),
             80..90 => self.mute(),

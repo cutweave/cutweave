@@ -174,8 +174,8 @@ impl WsClient {
     pub fn call(&mut self, method: &str, params: &Value) -> Result<Value, BenchError> {
         let id = self.next_id;
         self.next_id += 1;
-        let text = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
-            .to_string();
+        let text =
+            json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string();
         let ws = &mut self.ws;
         self.rt
             .block_on(ws.send(Message::text(text)))
@@ -390,7 +390,9 @@ fn resident_kb(pid: u32) -> Result<f64, BenchError> {
             .args(["/FI", &format!("PID eq {pid_text}"), "/FO", "CSV", "/NH"])
             .output()
     } else {
-        Command::new("ps").args(["-o", "rss=", "-p", &pid_text]).output()
+        Command::new("ps")
+            .args(["-o", "rss=", "-p", &pid_text])
+            .output()
     }
     .map_err(|e| other("ask the OS for the memory of the engine", e))?;
     let text = String::from_utf8_lossy(&output.stdout);

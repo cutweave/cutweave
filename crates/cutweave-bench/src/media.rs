@@ -58,7 +58,10 @@ pub fn synthesize(folder: &Path, manifest: &FixtureManifest) -> Result<bool, Ben
             cmd.args(["-t", &secs, "-c:v", "libx264", "-preset", "veryfast"]);
             cmd.args(["-crf", "36", "-g", "30", "-pix_fmt", "yuv420p"]);
         } else {
-            cmd.arg(format!("sine=frequency={}:sample_rate=48000", 220 * (n + 1)));
+            cmd.arg(format!(
+                "sine=frequency={}:sample_rate=48000",
+                220 * (n + 1)
+            ));
             cmd.args(["-t", &secs, "-ac", "2", "-c:a", "pcm_s16le"]);
         }
         let status = cmd

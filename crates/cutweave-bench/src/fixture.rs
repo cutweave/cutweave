@@ -258,7 +258,7 @@ impl Rng {
     }
 
     /// The next value.
-    pub fn next(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -269,7 +269,7 @@ impl Rng {
     /// A value in `0..n` (`0` when `n` is not positive).
     pub fn below(&mut self, n: i64) -> i64 {
         match u64::try_from(n) {
-            Ok(n) if n > 0 => i64::try_from(self.next() % n).unwrap_or(0),
+            Ok(n) if n > 0 => i64::try_from(self.next_u64() % n).unwrap_or(0),
             _ => 0,
         }
     }
@@ -332,7 +332,7 @@ fn shares(spec: &FixtureSpec) -> Vec<u32> {
     let main = match spec.main_items {
         Some(m) => m,
         None if others == 0 => spec.items,
-        None => spec.items / spec.tracks + u32::from(spec.items % spec.tracks > 0),
+        None => spec.items / spec.tracks + u32::from(!spec.items.is_multiple_of(spec.tracks)),
     };
     let mut out = vec![main];
     if others > 0 {
@@ -357,8 +357,8 @@ struct Builder<'a> {
 impl Builder<'_> {
     fn source(&mut self, video: bool) -> String {
         let pool: Vec<&FixtureMedia> = self.media.iter().filter(|m| m.video == video).collect();
-        let pick = usize::try_from(self.rng.below(i64::try_from(pool.len()).unwrap_or(1)))
-            .unwrap_or(0);
+        let pick =
+            usize::try_from(self.rng.below(i64::try_from(pool.len()).unwrap_or(1))).unwrap_or(0);
         pool[pick].id.clone()
     }
 
@@ -497,6 +497,57 @@ impl Builder<'_> {
     }
 }
 
+/// Adds the tracks next to the `V1` and `A1` of `project.new` (its output is `new`): the video
+/// tracks first, `V1` being the magnetic main track, then the audio tracks.
+fn make_tracks(
+    runner: &mut Runner,
+    spec: &FixtureSpec,
+    sequence: &str,
+    new: &Value,
+) -> Result<Vec<FixtureTrack>, BenchError> {
+    let audio = spec.audio_track_count();
+    let mut tracks = vec![FixtureTrack {
+        id: text(new, "video_track", "project.new")?,
+        video: true,
+        main: true,
+        items: Vec::new(),
+    }];
+    for _ in 1..spec.tracks - audio {
+        let out = runner.run("track.add", json!({"sequence": sequence, "kind": "video"}))?;
+        tracks.push(FixtureTrack {
+            id: text(&out, "track", "track.add")?,
+            video: true,
+            main: false,
+            items: Vec::new(),
+        });
+    }
+    for n in 0..audio {
+        // `project.new` made the first audio track.
+        let id = if n == 0 {
+            text(new, "audio_track", "project.new")?
+        } else {
+            let out = runner.run("track.add", json!({"sequence": sequence, "kind": "audio"}))?;
+            text(&out, "track", "track.add")?
+        };
+        tracks.push(FixtureTrack {
+            id,
+            video: false,
+            main: false,
+            items: Vec::new(),
+        });
+    }
+    if audio == 0 {
+        // `project.new` always makes `A1`; a picture-only fixture drops it.
+        let a1 = text(new, "audio_track", "project.new")?;
+        runner.run("track.remove", json!({"track": a1}))?;
+    }
+    runner.run(
+        "track.set_magnetic",
+        json!({"track": tracks[0].id, "magnetic": true}),
+    )?;
+    Ok(tracks)
+}
+
 /// Generates the fixture for `spec` with its media under `media_root`.
 ///
 /// [`CANONICAL_MEDIA_ROOT`] gives the canonical document, the one [`Fixture::sha256`] names.
@@ -513,46 +564,7 @@ pub fn generate_at(spec: &FixtureSpec, media_root: &str) -> Result<Fixture, Benc
         }),
     )?;
     let sequence = text(&new, "sequence", "project.new")?;
-    let audio = spec.audio_track_count();
-    let mut tracks = vec![FixtureTrack {
-        id: text(&new, "video_track", "project.new")?,
-        video: true,
-        main: true,
-        items: Vec::new(),
-    }];
-    for n in 1..spec.tracks - audio {
-        let out = runner.run("track.add", json!({"sequence": sequence, "kind": "video"}))?;
-        tracks.push(FixtureTrack {
-            id: text(&out, "track", "track.add")?,
-            video: true,
-            main: false,
-            items: Vec::with_capacity(usize::try_from(n).unwrap_or(0)),
-        });
-    }
-    for n in 0..audio {
-        // `project.new` made the first audio track.
-        let id = if n == 0 {
-            text(&new, "audio_track", "project.new")?
-        } else {
-            let out = runner.run("track.add", json!({"sequence": sequence, "kind": "audio"}))?;
-            text(&out, "track", "track.add")?
-        };
-        tracks.push(FixtureTrack {
-            id,
-            video: false,
-            main: false,
-            items: Vec::new(),
-        });
-    }
-    if audio == 0 {
-        // `project.new` always makes `A1`; a picture-only fixture drops it.
-        let a1 = text(&new, "audio_track", "project.new")?;
-        runner.run("track.remove", json!({"track": a1}))?;
-    }
-    runner.run(
-        "track.set_magnetic",
-        json!({"track": tracks[0].id, "magnetic": true}),
-    )?;
+    let tracks = make_tracks(&mut runner, spec, &sequence, &new)?;
     let mut b = Builder {
         spec,
         runner,
@@ -564,6 +576,7 @@ pub fn generate_at(spec: &FixtureSpec, media_root: &str) -> Result<Fixture, Benc
         keyframes: 0,
     };
     b.register_media(media_root)?;
+    let mut tracks = tracks;
     for (track, count) in tracks.iter_mut().zip(shares(spec)) {
         track.items = b.place(track, count)?;
     }
