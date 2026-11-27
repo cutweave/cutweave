@@ -2,15 +2,23 @@
 // What the media bin shows (WP-1M.12): the search text, the filters and the sort. The filters and
 // the sort are the panel's view state and come back on the next launch; the text is kept for the
 // session and cleared when another project opens (`clearSearch`, called from the engine runtime).
-import type { FolderId, MediaKind, MediaSort } from "@cutweave/protocol";
+// Tags (WP-2F.06b) are a project's own words, so the tag filter goes with the text: it is not
+// saved and another project starts without it. The minimum rating is saved like the other filters.
+import type { CollectionId, FolderId, MediaKind, MediaSort } from "@cutweave/protocol";
 import { FLICKS_PER_SECOND } from "@cutweave/timeline";
 import { useStore } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
 import type { MediaFilter } from "./find.ts";
+import { MAX_TAGS_PER_CALL, RATINGS, tagKey } from "./tags.ts";
 
 /** The kinds the Filters menu offers (a compound clip is not something to import and search). */
-export const BIN_KINDS = ["video", "audio", "image"] as const satisfies readonly MediaKind[];
+export const BIN_KINDS = [
+  "video",
+  "audio",
+  "image",
+  "image_sequence",
+] as const satisfies readonly MediaKind[];
 export type BinKind = (typeof BIN_KINDS)[number];
 
 /** Length ranges of the Filters menu. Bounds are inclusive, so the ranges do not overlap. */
@@ -30,9 +38,20 @@ export interface BinFilters {
   readonly duration: DurationBucket | null;
   readonly use: UseFilter | null;
   readonly problems: boolean;
+  /** Tags an asset must all have (ADR-0036); session only. */
+  readonly tags: readonly string[];
+  /** At least this many stars, 1 to 5; `null`: any rating. */
+  readonly minRating: number | null;
 }
 
-export const NO_FILTERS: BinFilters = { kinds: [], duration: null, use: null, problems: false };
+export const NO_FILTERS: BinFilters = {
+  kinds: [],
+  duration: null,
+  use: null,
+  problems: false,
+  tags: [],
+  minRating: null,
+};
 
 /** Newest import first. */
 export const DEFAULT_BIN_SORT: Required<MediaSort> = { by: "imported", order: "desc" };
@@ -52,7 +71,7 @@ export const SORT_CHOICES: readonly Required<MediaSort>[] = [
 export const SEARCH_SCOPES = ["all", "folder"] as const;
 export type SearchScope = (typeof SEARCH_SCOPES)[number];
 
-/** How many projects keep their open folder (the oldest are forgotten). */
+/** How many projects keep their open folder or collection (the oldest are forgotten). */
 const MAX_OPEN_FOLDERS = 50;
 
 export interface BinState {
@@ -67,6 +86,14 @@ export interface BinState {
    * that no longer exists reads as the top level (`resolveOpenFolder`).
    */
   readonly openFolders: Readonly<Record<string, FolderId>>;
+  /**
+   * The collection the bin has open instead of a folder, per project (WP-2F.06c). A project has
+   * an open folder or an open collection, never both; a collection that no longer exists reads as
+   * none (`resolveOpenCollection`).
+   */
+  readonly openCollections: Readonly<Record<string, CollectionId>>;
+  /** Whether the bin's sidebar (folders and collections) is shown: editor state (ADR-0036). */
+  readonly sidebar: boolean;
 }
 
 export interface BinActions {
@@ -75,15 +102,21 @@ export interface BinActions {
   setDuration(duration: DurationBucket | null): void;
   setUse(use: UseFilter | null): void;
   setProblems(on: boolean): void;
+  /** Adds the tag to the filter, or takes it out (compared ignoring case and accents). */
+  toggleTag(tag: string): void;
+  setMinRating(stars: number | null): void;
   setSort(sort: Required<MediaSort>): void;
   setScope(scope: SearchScope): void;
   /** Opens `folder` (`null`: the top level) for the project at `project`. */
   openFolder(project: string, folder: FolderId | null): void;
+  /** Opens `collection` for the project at `project` (it leaves the folder); `null` closes it. */
+  openCollection(project: string, collection: CollectionId | null): void;
+  setSidebar(shown: boolean): void;
   /** Drops the filters, keeps the text. */
   clearFilters(): void;
   /** Drops the text and the filters. */
   clearAll(): void;
-  /** Another project opened: forget the search text, keep the view settings. */
+  /** Another project opened: forget the search text and the tag filter, keep the view settings. */
   clearSearch(): void;
 }
 
@@ -100,6 +133,8 @@ export function toMediaFilter(state: Pick<BinState, "text" | "filters">): MediaF
   if (range !== null && "max" in range) filter.max_duration = range.max;
   if (filters.use !== null) filter.used = filters.use === "used";
   if (filters.problems) filter.problems = true;
+  if (filters.tags.length > 0) filter.tags = [...filters.tags];
+  if (filters.minRating !== null) filter.min_rating = filters.minRating;
   return filter;
 }
 
@@ -109,7 +144,9 @@ export function activeFilterCount(filters: BinFilters): number {
     filters.kinds.length +
     (filters.duration === null ? 0 : 1) +
     (filters.use === null ? 0 : 1) +
-    (filters.problems ? 1 : 0)
+    (filters.problems ? 1 : 0) +
+    filters.tags.length +
+    (filters.minRating === null ? 0 : 1)
   );
 }
 
@@ -121,7 +158,9 @@ const isOneOf = <T extends string>(list: readonly T[], value: unknown): value is
 /** Keeps only well-formed persisted values, so a stale or hand-edited blob cannot break the bin. */
 function sanitize(
   persisted: unknown,
-): Partial<Pick<BinState, "filters" | "sort" | "scope" | "openFolders">> {
+): Partial<
+  Pick<BinState, "filters" | "sort" | "scope" | "openFolders" | "openCollections" | "sidebar">
+> {
   if (typeof persisted !== "object" || persisted === null) return {};
   const p = persisted as Record<string, unknown>;
   const out: {
@@ -129,8 +168,18 @@ function sanitize(
     sort?: Required<MediaSort>;
     scope?: SearchScope;
     openFolders?: Record<string, FolderId>;
+    openCollections?: Record<string, CollectionId>;
+    sidebar?: boolean;
   } = {};
   if (isOneOf(SEARCH_SCOPES, p.scope)) out.scope = p.scope;
+  if (typeof p.sidebar === "boolean") out.sidebar = p.sidebar;
+  if (typeof p.openCollections === "object" && p.openCollections !== null) {
+    out.openCollections = Object.fromEntries(
+      Object.entries(p.openCollections).filter(
+        (entry): entry is [string, CollectionId] => typeof entry[1] === "string",
+      ),
+    );
+  }
   if (typeof p.openFolders === "object" && p.openFolders !== null) {
     out.openFolders = Object.fromEntries(
       Object.entries(p.openFolders).filter(
@@ -146,6 +195,10 @@ function sanitize(
       duration: isOneOf(DURATION_BUCKET_IDS, f.duration) ? f.duration : null,
       use: isOneOf(["used", "unused"] as const, f.use) ? f.use : null,
       problems: f.problems === true,
+      tags: [],
+      minRating: (RATINGS as readonly unknown[]).includes(f.minRating)
+        ? (f.minRating as number)
+        : null,
     };
   }
   if (typeof p.sort === "object" && p.sort !== null) {
@@ -182,6 +235,8 @@ export const initialBinState: BinState = {
   sort: DEFAULT_BIN_SORT,
   scope: "all",
   openFolders: {},
+  openCollections: {},
+  sidebar: false,
 };
 
 /** Builds a bin store; pass `storage` to persist the filters and the sort (the app uses localStorage). */
@@ -204,29 +259,62 @@ export function createBinStore(storage?: StateStorage) {
         setDuration: (duration) => set((s) => ({ filters: { ...s.filters, duration } })),
         setUse: (use) => set((s) => ({ filters: { ...s.filters, use } })),
         setProblems: (problems) => set((s) => ({ filters: { ...s.filters, problems } })),
+        toggleTag: (tag) =>
+          set((s) => {
+            const key = tagKey(tag);
+            const without = s.filters.tags.filter((have) => tagKey(have) !== key);
+            const tags =
+              without.length < s.filters.tags.length
+                ? without
+                : // The engine's filter takes 16 tags; one more replaces nothing.
+                  s.filters.tags.length >= MAX_TAGS_PER_CALL
+                  ? s.filters.tags
+                  : [...s.filters.tags, tag];
+            return { filters: { ...s.filters, tags } };
+          }),
+        setMinRating: (minRating) => set((s) => ({ filters: { ...s.filters, minRating } })),
         setSort: (sort) => set(() => ({ sort })),
         setScope: (scope) => set(() => ({ scope })),
         openFolder: (project, folder) =>
           set((s) => {
             const { [project]: _gone, ...rest } = s.openFolders;
-            if (folder === null) return { openFolders: rest };
+            // A folder (or the top level) is the place now: the collection closes.
+            const { [project]: _closed, ...openCollections } = s.openCollections;
+            if (folder === null) return { openFolders: rest, openCollections };
             // Newest last; the oldest projects fall off.
             const kept = Object.entries(rest).slice(-(MAX_OPEN_FOLDERS - 1));
-            return { openFolders: { ...Object.fromEntries(kept), [project]: folder } };
+            return {
+              openFolders: { ...Object.fromEntries(kept), [project]: folder },
+              openCollections,
+            };
           }),
+        openCollection: (project, collection) =>
+          set((s) => {
+            const { [project]: _gone, ...rest } = s.openCollections;
+            if (collection === null) return { openCollections: rest };
+            const { [project]: _left, ...openFolders } = s.openFolders;
+            const kept = Object.entries(rest).slice(-(MAX_OPEN_FOLDERS - 1));
+            return {
+              openCollections: { ...Object.fromEntries(kept), [project]: collection },
+              openFolders,
+            };
+          }),
+        setSidebar: (sidebar) => set(() => ({ sidebar })),
         clearFilters: () => set(() => ({ filters: NO_FILTERS })),
         clearAll: () => set(() => ({ text: "", filters: NO_FILTERS })),
-        clearSearch: () => set(() => ({ text: "" })),
+        clearSearch: () => set((s) => ({ text: "", filters: { ...s.filters, tags: [] } })),
       }),
       {
         name: BIN_STORAGE_KEY,
         version: 1,
         storage: createJSONStorage(() => medium),
         partialize: (s) => ({
-          filters: s.filters,
+          filters: { ...s.filters, tags: [] },
           sort: s.sort,
           scope: s.scope,
           openFolders: s.openFolders,
+          openCollections: s.openCollections,
+          sidebar: s.sidebar,
         }),
         merge: (persisted, current) => ({ ...current, ...sanitize(persisted) }),
       },

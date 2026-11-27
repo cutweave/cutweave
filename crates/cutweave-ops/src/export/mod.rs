@@ -19,7 +19,8 @@
 //! and a failed or cancelled export leaves it as it was, `rename` picks a free name). The
 //! range may be the whole sequence, its in/out points, a custom range or one file per marker
 //! ([`range`]); a marker set queues one job per region. Before queueing, the free disk space
-//! is checked ([`output::check_disk`]).
+//! is checked ([`output::check_disk`]). An export that would play **missing media** is refused
+//! unless `allow_offline` ([`offline`], WP-2F.03c).
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -34,6 +35,7 @@ use cutweave_model::{
 
 pub mod advanced;
 pub mod encoders;
+pub mod offline;
 pub mod output;
 pub mod presets;
 pub mod queue;
@@ -234,7 +236,9 @@ pub struct ExportedFile {
 /// .mov for ProRes) with {seq}, {marker_label}, {n}; the
 /// output lists every job). `collision` says what happens to an existing file: "fail"
 /// (default), "rename" (pick a free name) or "overwrite" (replace it when the export
-/// succeeds). Fails with `Invalid` when the drive has too little free space.
+/// succeeds). Fails with `Invalid` when the drive has too little free space, and with `Invalid`
+/// at `/media/<id>` when a clip in the range plays a media file that is missing, unless
+/// `allow_offline` is true (such clips then show a "media offline" slate and are silent).
 #[command(
     name = "export.start",
     summary = "Export a sequence to a video file (H.264, HEVC, AV1, ProRes) as a background job; returns job_id",
@@ -261,6 +265,9 @@ pub struct ExportStart {
     pub overwrite: Option<bool>,
     /// An existing file: "fail" (default), "rename" or "overwrite".
     pub collision: Option<Collision>,
+    /// Export although media files are missing: their clips show a "media offline" slate and
+    /// are silent (default false: fails with `Invalid` at `/media/<id>` naming them).
+    pub allow_offline: Option<bool>,
     /// Fine control (export.describe_options{codec} gives a codec's options as a JSON Schema):
     /// video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
     /// gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,
@@ -331,6 +338,9 @@ pub struct PlanAdvanced {
     pub audio_channels: Option<u16>,
     /// The PCM sample size, 16 or 24 (24 when absent).
     pub pcm_bits: Option<u8>,
+    /// The master's true-peak limiter (WP-2E.02; on when absent).
+    #[serde(default)]
+    pub audio_limiter: Option<bool>,
 }
 
 impl Default for PlanOutput {
@@ -370,6 +380,9 @@ pub struct ExportPlan {
     pub path: PathBuf,
     /// Whether an existing file at `path` may be replaced.
     pub overwrite: bool,
+    /// Whether the export may run with media files missing (their clips render as the "media
+    /// offline" slate); when false the export fails instead (WP-2F.03c).
+    pub allow_offline: bool,
     /// Range start on the sequence timeline (frame-aligned).
     pub start: Time,
     /// Range end on the sequence timeline, exclusive (frame-aligned).
@@ -437,6 +450,13 @@ pub trait ExportStarter: Send {
     /// Whether another queued or running export writes `path` (a free name for
     /// `collision: "rename"` must not be one). No queue: never.
     fn output_claimed(&self, _path: &Path) -> bool {
+        false
+    }
+
+    /// Whether the file of `asset` is not on this computer (moved, renamed, deleted, a drive
+    /// that is not connected), so its clips would render as the "media offline" slate
+    /// ([`offline`]). A starter that cannot tell says `false` (the default).
+    fn media_offline(&self, _asset: &cutweave_model::MediaAsset) -> bool {
         false
     }
 
@@ -732,6 +752,7 @@ impl ExportStart {
             hw: self.hw.as_ref(),
             overwrite: self.overwrite,
             collision: self.collision,
+            allow_offline: self.allow_offline,
             advanced: self.advanced.as_ref(),
         }
     }
@@ -772,6 +793,8 @@ pub struct ExportRequest<'a> {
     pub overwrite: Option<bool>,
     /// Collision policy.
     pub collision: Option<Collision>,
+    /// Export with media files missing (default false: refuse).
+    pub allow_offline: Option<bool>,
     /// Advanced settings.
     pub advanced: Option<&'a AdvancedExportOptions>,
 }
@@ -810,6 +833,7 @@ impl ExportRequest<'_> {
         let seq = resolve_sequence(doc, self.sequence)?;
         let regions = range::resolve_regions(self.range, seq)?;
         let policy = Policy::of(self.collision, self.overwrite)?;
+        let allow_offline = self.allow_offline == Some(true);
         let template = if self.is_marker_set() {
             check_abs_path("/path", self.path)?;
             let t = Template::parse(self.path, self.container_extension(presets))?;
@@ -887,6 +911,7 @@ impl ExportRequest<'_> {
                 sequence: seq.id,
                 path,
                 overwrite: policy.collision == Collision::Overwrite,
+                allow_offline,
                 start: region.start,
                 end: region.end,
                 width,
@@ -901,6 +926,7 @@ impl ExportRequest<'_> {
                 output,
             });
         }
+        offline::check(doc, seq, &regions, allow_offline, starter)?;
         output::check_disk(&plans, starter)?;
         Ok((plans, labels))
     }

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Proxies (WP-2F.01; arch §7): which media get one automatically ([`ProxyPolicy`],
-//! [`auto_reason`]) and the engine commands `media.generate_proxy`, `media.delete_proxy` and
-//! `media.proxy_status`, all in the MCP catalog.
+//! [`auto_reason`], [`wanted`]), the engine commands `media.generate_proxy`,
+//! `media.delete_proxy` and `media.proxy_status`, and the document commands
+//! `media.set_proxy_policy` and `media.set_proxy_mode` (ADR-0027), all in the MCP catalog.
 //!
 //! A proxy is a smaller intra-frame copy of a video file in the global cache. The preview
 //! scrubs it; exports, `render.frame` and thumbnails always use the original. Proxies are cache
@@ -10,10 +11,12 @@
 //!
 //! **Policy.** Under [`ProxyPolicy::Auto`] a video gets a proxy when it is long-GOP H.264 or
 //! HEVC and wider or taller than 1920 pixels, faster than 60 fps, or HEVC with 10-bit samples
-//! ([`auto_reason`]). The project's own policy and a per-asset mode (`project.settings
-//! .proxy_policy`, `MediaAsset.proxy_mode`, `media.set_proxy_policy`, `media.set_proxy_mode`)
-//! change the project format: they wait for ADR-0027 (Proposed), and every project follows
-//! `auto` until then ([`DEFAULT_POLICY`]).
+//! ([`auto_reason`]). The project stores its policy (`project.settings.proxy_policy`: `off`,
+//! `auto` or `all`) and each asset a mode (`MediaAsset.proxy_mode`: `auto` follows the policy,
+//! `force` makes one whatever the policy, `off` makes none and the preview uses none), both
+//! optional fields that are left out of the file while `auto` (ADR-0027). They are the editor's
+//! intent and travel with the project; `media.set_proxy_policy` and `media.set_proxy_mode`
+//! change them, undoably. The engine queues what a change now wants and never deletes.
 //!
 //! **Import.** `media.import` reports per file whether a proxy was queued
 //! ([`ImportProxy`]), after the asset's `index` analysis job.
@@ -21,31 +24,15 @@
 use std::sync::Arc;
 
 use cutweave_commands::{
-    Annotations, CmdError, CommandSpec, Described, EngineCommand, EntryKind, McpExposure,
-    Registrable, Registry, RegistryError, Scope, command, wire,
+    Annotations, CmdError, Command, CommandSpec, Described, EngineCommand, EntryKind, McpExposure,
+    QueryCtx, Registrable, Registry, RegistryError, Scope, Tx, command, wire,
 };
 use cutweave_jobs::JobId;
 use cutweave_model::{EntityKind, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind};
+pub use cutweave_model::{ProxyMode, ProxyPolicy};
 
 /// Most assets one proxy command names.
 pub const MAX_PROXY_MEDIA: usize = 256;
-
-/// When proxies are made automatically.
-#[wire]
-#[derive(Copy, Eq, Hash, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum ProxyPolicy {
-    /// Never automatically (`media.generate_proxy` still makes one).
-    Off,
-    /// For video that is slow to scrub ([`auto_reason`]); the default.
-    #[default]
-    Auto,
-    /// For every video file.
-    All,
-}
-
-/// The policy every project follows until ADR-0027 stores one in the project.
-pub const DEFAULT_POLICY: ProxyPolicy = ProxyPolicy::Auto;
 
 /// Long-GOP codecs `auto` considers (FFmpeg codec names).
 const LONG_GOP: [&str; 2] = ["h264", "hevc"];
@@ -93,10 +80,25 @@ pub fn wants_proxy(policy: ProxyPolicy, asset: &MediaAsset) -> Option<String> {
     }
 }
 
-/// Whether `asset` can have a proxy at all: a video file with a picture stream.
+/// Whether the project `doc` wants a proxy of its `asset` made automatically, and why: the
+/// asset's mode first (`off`: never; `force`: always), else the project's policy (ADR-0027).
+#[must_use]
+pub fn wanted(doc: &Project, asset: &MediaAsset) -> Option<String> {
+    if !proxyable(asset) {
+        return None;
+    }
+    match asset.proxy_mode {
+        ProxyMode::Off => None,
+        ProxyMode::Force => Some("its proxy mode is `force`".to_owned()),
+        ProxyMode::Auto => wants_proxy(doc.settings.proxy_policy, asset),
+    }
+}
+
+/// Whether `asset` can have a proxy at all: a video file, or an image sequence (video for
+/// proxies, ADR-0035), with a picture stream.
 #[must_use]
 pub fn proxyable(asset: &MediaAsset) -> bool {
-    asset.kind == MediaKind::Video
+    matches!(asset.kind, MediaKind::Video | MediaKind::ImageSequence)
         && asset.path_abs.is_some()
         && asset
             .probe
@@ -287,7 +289,7 @@ pub struct ProxiesOutput {
 
 // ----- media.generate_proxy ----------------------------------------------------------------
 
-/// Makes proxies of video assets now, whatever the policy: one background job each (two run
+/// Makes proxies of video assets now, whatever the policy and their mode: one background job each (two run
 /// at a time, one while an export runs), resumed from its finished parts if an earlier one was
 /// interrupted. Assets whose proxy is ready or being made are left alone. Returns their status;
 /// follow it with `media.proxy_status` or `job.wait`.
@@ -313,7 +315,7 @@ impl EngineCommand for MediaGenerateProxy {
         check_media(&call.doc, &self.media)?;
         Ok(ProxiesOutput {
             proxies: call.service()?.generate(&call.doc, &self.media)?,
-            policy: DEFAULT_POLICY,
+            policy: call.doc.settings.proxy_policy,
         })
     }
 }
@@ -345,7 +347,7 @@ impl EngineCommand for MediaDeleteProxy {
         check_media(&call.doc, &self.media)?;
         Ok(ProxiesOutput {
             proxies: call.service()?.delete(&call.doc, &self.media)?,
-            policy: DEFAULT_POLICY,
+            policy: call.doc.settings.proxy_policy,
         })
     }
 }
@@ -411,7 +413,106 @@ impl EngineCommand for MediaProxyStatus {
         };
         Ok(ProxiesOutput {
             proxies,
-            policy: DEFAULT_POLICY,
+            policy: call.doc.settings.proxy_policy,
+        })
+    }
+}
+
+// ----- media.set_proxy_policy --------------------------------------------------------------
+
+/// Result of `media.set_proxy_policy`.
+#[wire]
+pub struct ProxyPolicySet {
+    /// The project's policy now.
+    pub policy: ProxyPolicy,
+    /// What it was before.
+    pub previous: ProxyPolicy,
+}
+
+/// Chooses which of the project's video gets proxies automatically: `off` (none), `auto`
+/// (video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than
+/// 60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then
+/// queues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).
+/// An asset's own mode (`media.set_proxy_mode`) wins over the policy.
+#[command(
+    name = "media.set_proxy_policy",
+    summary = "Choose which of the project's video gets proxies automatically: off, auto or all",
+    undoable,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct MediaSetProxyPolicy {
+    /// `off`, `auto` or `all`.
+    pub policy: ProxyPolicy,
+}
+
+impl Command for MediaSetProxyPolicy {
+    type Output = ProxyPolicySet;
+
+    fn validate(&self, _ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
+        Ok(())
+    }
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<ProxyPolicySet, CmdError> {
+        let previous = tx.doc().settings.proxy_policy;
+        tx.update_settings(|s| {
+            s.proxy_policy = self.policy;
+            Ok(())
+        })?;
+        Ok(ProxyPolicySet {
+            policy: self.policy,
+            previous,
+        })
+    }
+}
+
+// ----- media.set_proxy_mode ----------------------------------------------------------------
+
+/// Result of `media.set_proxy_mode`.
+#[wire]
+pub struct ProxyModeSet {
+    /// The assets, in request order.
+    pub media: Vec<MediaId>,
+    /// Their mode now.
+    pub mode: ProxyMode,
+}
+
+/// Sets whether video assets get a proxy, whatever the project's policy says: `force` makes
+/// one, `off` makes none and the preview does not use one that exists (it stays in the cache),
+/// `auto` follows the policy again. The mode is saved in the project, one undo step for all
+/// the assets named.
+#[command(
+    name = "media.set_proxy_mode",
+    summary = "Set whether video assets get a proxy whatever the policy: auto, force or off",
+    undoable,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct MediaSetProxyMode {
+    /// The video assets (1..=256, no repeats).
+    pub media: Vec<MediaId>,
+    /// `auto` (follow the project's policy), `force` or `off`.
+    pub mode: ProxyMode,
+}
+
+impl Command for MediaSetProxyMode {
+    type Output = ProxyModeSet;
+
+    fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
+        check_media(ctx.doc(), &self.media)
+    }
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<ProxyModeSet, CmdError> {
+        self.validate(&tx.query_ctx())?;
+        for id in &self.media {
+            tx.update_media(*id, |m| {
+                m.proxy_mode = self.mode;
+                Ok(())
+            })?;
+        }
+        Ok(ProxyModeSet {
+            media: self.media.clone(),
+            mode: self.mode,
         })
     }
 }
@@ -421,7 +522,9 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<MediaGenerateProxy>()?
         .register::<MediaDeleteProxy>()?
-        .register::<MediaProxyStatus>()?;
+        .register::<MediaProxyStatus>()?
+        .register::<MediaSetProxyPolicy>()?
+        .register::<MediaSetProxyMode>()?;
     Ok(())
 }
 

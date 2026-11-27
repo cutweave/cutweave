@@ -7,7 +7,7 @@ import type { CommandInfo } from "../commands.ts";
 import { registerKeyHint } from "../keys.ts";
 import type { MenuServices } from "../services.ts";
 import type { MenuSurfaceDef } from "../types.ts";
-import { BIN_BACKGROUND, BIN_CARD, BIN_CHIP, BIN_FOLDER } from "./bin.ts";
+import { BIN_BACKGROUND, BIN_CARD, BIN_CHIP, BIN_COLLECTION, BIN_FOLDER } from "./bin.ts";
 import {
   CHROME_ENGINE,
   CHROME_EXPORT,
@@ -45,12 +45,70 @@ import { UI_COMMANDS } from "./uiCommands.ts";
 
 /** Catalog commands the tables name beyond the framework's own (`builtins.ts`). */
 export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
+  // The palette's rows for the two WP-2F.05d commands: the menus' words, and the editor carries
+  // them out its own way (`palette/builtinActions.ts`), reading the frame on screen and asking
+  // for the pictures.
+  {
+    name: "media.import_frame",
+    label: "contextMenu.command.mediaImportFrame",
+    icon: "image",
+    when: "engine.live",
+  },
+  {
+    name: "media.import_images_as_slideshow",
+    label: "contextMenu.command.mediaImportImagesAsSlideshow",
+    icon: "film",
+    when: "engine.live",
+  },
   {
     name: "item.set_props",
     label: "contextMenu.command.itemSetProps",
     undoable: true,
   },
   { name: "job.cancel", label: "contextMenu.command.jobCancel" },
+  // Proxy ▸ Auto / Always / Never on a bin card (#215): one undo step for the assets chosen.
+  {
+    name: "media.set_proxy_mode",
+    label: "contextMenu.command.mediaSetProxyMode",
+    undoable: true,
+  },
+  // Set rating ▸ on a bin card and Add tag… (WP-2F.06b): one undo step for the assets chosen.
+  // The palette opens the stars and the tag editor for the selected cards
+  // (`palette/builtinActions.ts`).
+  {
+    name: "media.set_rating",
+    label: "contextMenu.command.mediaSetRating",
+    icon: "star",
+    undoable: true,
+    when: "engine.live",
+  },
+  {
+    name: "media.add_tags",
+    label: "contextMenu.command.mediaAddTags",
+    undoable: true,
+    when: "engine.live",
+  },
+  // Collections (WP-2F.06c). The palette asks for a name, and lists the manual collections for
+  // the selected cards (`palette/builtinActions.ts`); a card's menu has Remove from collection
+  // while a manual collection is open.
+  {
+    name: "media.create_collection",
+    label: "contextMenu.command.mediaCreateCollection",
+    icon: "plus",
+    undoable: true,
+    when: "engine.live",
+  },
+  {
+    name: "media.add_to_collection",
+    label: "contextMenu.command.mediaAddToCollection",
+    undoable: true,
+    when: "engine.live",
+  },
+  {
+    name: "media.remove_from_collection",
+    label: "contextMenu.command.mediaRemoveFromCollection",
+    undoable: true,
+  },
   {
     name: "item.duplicate",
     label: "contextMenu.command.itemDuplicate",
@@ -114,6 +172,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
   DOCK_EMPTY,
   BIN_CARD,
   BIN_FOLDER,
+  BIN_COLLECTION,
   BIN_BACKGROUND,
   BIN_CHIP,
   PREVIEW_CANVAS,
@@ -166,11 +225,20 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
   "timeline.split_at_playhead": "clip.split",
 };
 
+/**
+ * UI commands the palette lists too: they read the editor's own state, not a menu's target. Save
+ * as smart collection… stores the bin's search and filters (WP-2F.06c).
+ */
+const PALETTE_UI_COMMANDS: ReadonlySet<string> = new Set(["bin.save_smart_collection"]);
+
 /** Puts the surface tables, UI commands, command texts and hints into `services`. */
 export function registerSurfaceMenus(services: MenuServices): void {
   for (const info of SURFACE_COMMAND_INFO) services.commands.register(info);
-  // Menu-only: they take their arguments from the menu's target, so the palette does not list them.
-  for (const command of UI_COMMANDS) services.ui.register({ ...command, hidden: true });
+  // Menu-only: they take their arguments from the menu's target, so the palette does not list
+  // them, except the few that need none (`PALETTE_UI_COMMANDS`).
+  for (const command of UI_COMMANDS) {
+    services.ui.register({ ...command, hidden: !PALETTE_UI_COMMANDS.has(command.id) });
+  }
   for (const surface of SURFACES) services.surfaces.register(surface);
   for (const [command, binding] of Object.entries(KEY_HINTS)) registerKeyHint(command, binding);
 }

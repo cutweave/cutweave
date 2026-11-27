@@ -36,13 +36,16 @@ pub(crate) mod atomic;
 mod lock;
 mod paths;
 
+use std::collections::HashSet;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use cutweave_commands::{DocSnapshot, Rev};
 use cutweave_model::{
-    MediaId, MigrationError, MigrationReport, OpenOutcome, Project, open_str, to_document_string,
+    MediaAsset, MediaId, MediaKind, MigrationError, MigrationReport, OpenOutcome, Project,
+    open_str, to_document_string,
 };
 use sha2::{Digest, Sha256};
 
@@ -239,7 +242,7 @@ pub struct OpenReport {
     /// Media found by relative path only; `path_abs` was updated in the returned project
     /// (editable opens only).
     pub relinked_media: Vec<RelinkedMedia>,
-    /// Media found by neither path (relinking is a P2 feature).
+    /// Media found by neither path, and image sequences with pictures of their run gone.
     pub missing_media: Vec<MissingMedia>,
     /// The record of a crashed holder whose stale lock was taken over.
     pub stale_lock_taken: Option<LockInfo>,
@@ -835,7 +838,10 @@ fn locate(path: &Path) -> Result<ProjectLayout, ProjectIoError> {
 }
 
 /// Resolves media against the filesystem: absolute path first, then the folder-relative path (the
-/// project was moved). Newly found locations are written into `project` for editable opens.
+/// project was moved). Newly found locations are written into `project` for editable opens. An
+/// image sequence (ADR-0035) is found by its first picture, and is also reported as missing when
+/// that picture is there while others of its run are gone (`media.find_missing` then says
+/// `incomplete`).
 fn resolve_media(
     layout: &ProjectLayout,
     project: &mut Project,
@@ -854,7 +860,17 @@ fn resolve_media(
             .path_abs
             .as_deref()
             .is_some_and(|p| Path::new(p).exists());
+        let missing = || MissingMedia {
+            id,
+            path_abs: asset.path_abs.clone(),
+            path_rel: asset.path_rel.clone(),
+        };
         if abs_ok {
+            if let Some(first) = asset.path_abs.as_deref()
+                && !run_is_whole(asset, Path::new(first))
+            {
+                report.missing_media.push(missing());
+            }
             continue;
         }
         let rel_hit = asset
@@ -864,6 +880,9 @@ fn resolve_media(
             .filter(|p| p.exists());
         match rel_hit {
             Some(found) => {
+                if !run_is_whole(asset, &found) {
+                    report.missing_media.push(missing());
+                }
                 let to = found.to_string_lossy().into_owned();
                 report.relinked_media.push(RelinkedMedia {
                     id,
@@ -874,13 +893,33 @@ fn resolve_media(
                     a.path_abs = Some(to);
                 }
             }
-            None => report.missing_media.push(MissingMedia {
-                id,
-                path_abs: asset.path_abs.clone(),
-                path_rel: asset.path_rel.clone(),
-            }),
+            None => report.missing_media.push(missing()),
         }
     }
+}
+
+/// Whether every picture of an image-sequence `asset` is in the folder of its first picture,
+/// `first` (the numbers that had no file at import are not looked for). `true` for any other
+/// asset. One listing of the folder answers for the pictures that are there; only the others are
+/// asked for one by one.
+fn run_is_whole(asset: &MediaAsset, first: &Path) -> bool {
+    let Some(run) = asset
+        .image_sequence
+        .as_ref()
+        .filter(|_| asset.kind == MediaKind::ImageSequence)
+    else {
+        return true;
+    };
+    let Some(dir) = first.parent() else {
+        return true;
+    };
+    let listed: HashSet<OsString> = fs::read_dir(dir)
+        .map_or_default(|entries| entries.flatten().map(|e| e.file_name()).collect());
+    run.segments()
+        .into_iter()
+        .flat_map(|(start, len)| start..start.saturating_add(len))
+        .filter_map(|number| run.file_name(number))
+        .all(|name| listed.contains(OsStr::new(&name)) || dir.join(&name).exists())
 }
 
 #[cfg(test)]

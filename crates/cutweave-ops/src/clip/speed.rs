@@ -691,7 +691,9 @@ fn plan_freeze(
     check_editable_kind("/item", track.kind)?;
     let clip = clip_of(&located.item)?;
     let media = media_of(doc, clip)?;
-    if track.kind != TrackKind::Video || media.kind != MediaKind::Video {
+    // An image sequence is a moving picture too (ADR-0035).
+    let moving = matches!(media.kind, MediaKind::Video | MediaKind::ImageSequence);
+    if track.kind != TrackKind::Video || !moving {
         return Err(CmdError::unsupported(format!(
             "clip `{}` has no moving picture to freeze (only video clips can be frozen)",
             clip.id

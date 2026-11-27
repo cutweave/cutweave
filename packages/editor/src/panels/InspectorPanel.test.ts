@@ -254,6 +254,8 @@ describe("InspectorPanel", () => {
   it("shows mixed values for several clips and edits them as one step", async () => {
     load({
       itm_a: {
+        // Two clips of their own: a linked pair inspects as the clip clicked (WP-2A.10).
+        linked_group: null,
         visual: {
           transform: {
             position: { x: 0, y: 0 },

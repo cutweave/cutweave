@@ -170,6 +170,16 @@ impl Rig {
     /// `None` (skip) without the GPU adapter: the software one (WARP, lavapipe) unless
     /// `CUTWEAVE_GPU` names another.
     fn new() -> Option<Rig> {
+        // A 32 MiB decoded-frame cache, so the warm-up fills and cycles it.
+        let options = CompositorOptions {
+            cache_budget_bytes: 32 << 20,
+            ..CompositorOptions::default()
+        };
+        Rig::with(fixture(), options)
+    }
+
+    /// [`Rig::new`] over another timeline and compositor options.
+    fn with((project, backend): (Project, FakeBackend), options: CompositorOptions) -> Option<Rig> {
         let ctx = match GpuContext::new(&AdapterChoice::from_env_or(AdapterChoice::Software)) {
             Ok(ctx) => ctx,
             Err(e) => {
@@ -178,16 +188,10 @@ impl Rig {
             }
         };
         eprintln!("adapter: {}", ctx.info().key);
-        // A 32 MiB decoded-frame cache, so the warm-up fills and cycles it.
-        let options = CompositorOptions {
-            cache_budget_bytes: 32 << 20,
-            ..CompositorOptions::default()
-        };
         let frame = Compositor::new(ctx.clone(), options.clone()).unwrap();
         let preview = Compositor::new(ctx.clone(), options).unwrap();
         let gpu = Arc::new(LateGpu::new());
         gpu.settle(Some((ctx, frame, preview)));
-        let (project, backend) = fixture();
         let actor = DocActor::spawn(DocConfig::new(Arc::new(Registry::new()), project)).unwrap();
         let doc = actor.handle().clone();
         let current = CurrentDoc::default();
@@ -395,4 +399,150 @@ fn reverse_playback_frames_come_from_the_read_back_without_heap_allocation() {
         from_read_back >= COUNTED - windows,
         "{from_read_back} of {COUNTED} frames came from the read-back"
     );
+}
+
+/// A 640×360 @ 30 fps sequence with one 10 s clip of a 4000×3000 still (a 12-megapixel photo:
+/// an image asset, no duration), and the backend that decodes it.
+fn still_fixture() -> (Project, FakeBackend) {
+    let path = std::env::temp_dir()
+        .join("cutweave-preview-alloc-photo.png")
+        .to_string_lossy()
+        .into_owned();
+    let backend = FakeBackend::new().with_media(
+        &path,
+        FakeMedia::video(FakeVideo::new(4000, 3000, FrameRate::FPS_30, 1)),
+    );
+    let id = MediaId::from_u128(23);
+    let mut photo = asset(id, &path, (4000, 3000), 3);
+    photo.kind = MediaKind::Image;
+    photo.probe.duration = None;
+    let mut project = Project::new("preview alloc still");
+    project.media.insert(id, photo);
+    let seq = SequenceId::from_u128(1);
+    let format = SequenceFormat::new(640, 360, FrameRate::FPS_30, SampleRate::HZ_48_000);
+    let mut sequence = Sequence::new(seq, "Main", format);
+    let v1 = TrackId::from_u128(11);
+    sequence.insert_track(0, Track::new(v1, TrackKind::Video, "V1"));
+    let ten = Duration::from_secs(10).unwrap();
+    sequence
+        .track_mut(&v1)
+        .unwrap()
+        .items
+        .insert(Clip::new(ItemId::from_u128(33), id, Time::ZERO, ten).into());
+    project.sequences.insert(seq, sequence);
+    (project, backend)
+}
+
+/// WP-2F.05a: a large still is decoded once. Its first frame decodes the 12-megapixel picture;
+/// every later frame of its clip (playing across it, scrubbing in it, a paused refresh) shows
+/// the picture the preview holds and the texture the compositor cached: nothing from the media
+/// layer, no allocation of our own, and one decoder opened in all.
+#[test]
+fn a_large_still_is_decoded_once_for_every_frame_of_its_clip() {
+    let (project, backend) = still_fixture();
+    let probe = backend.clone();
+    let Some(mut rig) = Rig::with((project, backend), CompositorOptions::default()) else {
+        return;
+    };
+    let full = Quality::FULL;
+    let playback = RenderPurpose::Playback;
+    let first = rig.render([0], full, playback);
+    assert!(first[0][MEDIA] > 0, "the first frame decodes the picture");
+    rig.render(1..WARM_UP, full, playback);
+
+    let n = i64::try_from(COUNTED).unwrap();
+    let played = rig.render(WARM_UP..WARM_UP + n, full, playback);
+    let (_, media) = check("still clip playback", &played);
+    assert_eq!(media, 0, "a still the preview holds needs no media layer");
+
+    let quarter = Quality::new(Scale::Quarter, false);
+    rig.render([WARM_UP, WARM_UP + 1], quarter, RenderPurpose::Scrub);
+    let mut scrub = Vec::new();
+    for f in (WARM_UP..WARM_UP + n).step_by(6) {
+        scrub.extend(rig.render([f], quarter, RenderPurpose::Scrub));
+        scrub.extend(rig.render([f], full, RenderPurpose::Still));
+    }
+    let (_, media) = check("still clip scrub", &scrub);
+    assert_eq!(media, 0, "scrubbing inside a still needs no media layer");
+    assert_eq!(probe.decoders_opened(), 1, "one decoder, one decode");
+}
+
+/// [`fixture`] on a computer where the files in `gone` (0: the V1 clip's, 1: the
+/// picture-in-picture's) are not on the disk: the backend answers `NotFound` for them.
+fn offline_fixture(gone: [bool; 2]) -> (Project, FakeBackend) {
+    let (project, _) = fixture();
+    let path = |n: u128| {
+        project.media[&MediaId::from_u128(n)]
+            .path_abs
+            .clone()
+            .unwrap()
+    };
+    let ten = Duration::from_secs(10).unwrap();
+    let mut backend = FakeBackend::new();
+    if !gone[0] {
+        backend = backend.with_media(
+            path(21),
+            FakeMedia::video(
+                FakeVideo::lasting(640, 360, FrameRate::FPS_30, ten).with_format(MediaFormat::Nv12),
+            ),
+        );
+    }
+    if !gone[1] {
+        backend = backend.with_media(
+            path(22),
+            FakeMedia::video(FakeVideo::lasting(320, 180, FrameRate::FPS_30, ten)),
+        );
+    }
+    (project, backend)
+}
+
+/// WP-2F.03c: a clip whose media file is gone shows the "media offline" slate in the live
+/// preview. Playing across it makes no heap allocation of our own, and once the file was found
+/// gone, playback does not ask the media layer about it again (a drive that is not connected
+/// can be slow to answer): a paused frame and a scrub ask again, so a file that came back
+/// shows. The slate itself is built once, on the first frame that needs it.
+#[test]
+fn an_offline_clip_plays_as_the_slate_without_heap_allocation() {
+    let options = || CompositorOptions {
+        cache_budget_bytes: 32 << 20,
+        ..CompositorOptions::default()
+    };
+    let full = Quality::FULL;
+    let playback = RenderPurpose::Playback;
+    let n = i64::try_from(COUNTED).unwrap();
+
+    // The picture-in-picture is offline, the clip under it plays.
+    let Some(mut rig) = Rig::with(offline_fixture([false, true]), options()) else {
+        return;
+    };
+    rig.render(0..WARM_UP, full, playback);
+    let played = rig.render(WARM_UP..WARM_UP + n, full, playback);
+    let (_, media) = check("playback over an offline clip", &played);
+    assert!(media > 0, "the clip under it still decodes");
+    let paused = WARM_UP + 7;
+    rig.render([paused], full, RenderPurpose::Still);
+    let still = rig.render(
+        std::iter::repeat_n(paused, COUNTED),
+        full,
+        RenderPurpose::Still,
+    );
+    check("paused on an offline clip", &still);
+    let quarter = Quality::new(Scale::Quarter, false);
+    rig.render([WARM_UP, WARM_UP + 1], quarter, RenderPurpose::Scrub);
+    let mut scrub = Vec::new();
+    for f in (WARM_UP..WARM_UP + n).step_by(6) {
+        scrub.extend(rig.render([f], quarter, RenderPurpose::Scrub));
+        scrub.extend(rig.render([f], full, RenderPurpose::Still));
+    }
+    check("scrub over an offline clip", &scrub);
+
+    // Both offline: the frame is two slates (`render` checks it is not black), and playback
+    // never reaches the media layer after the first frame found the files gone.
+    let Some(mut rig) = Rig::with(offline_fixture([true, true]), options()) else {
+        return;
+    };
+    rig.render(0..WARM_UP, full, playback);
+    let played = rig.render(WARM_UP..WARM_UP + n, full, playback);
+    let (_, media) = check("playback of offline clips", &played);
+    assert_eq!(media, 0, "offline media is not asked for during playback");
 }

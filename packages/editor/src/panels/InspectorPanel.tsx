@@ -8,7 +8,7 @@ import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { AudioSection } from "../inspector/AudioSection.tsx";
-import { selectSelectedClips, selectSelectedMedia } from "../inspector/clips.ts";
+import { selectInspectedClips, selectSelectedMedia } from "../inspector/clips.ts";
 import { InspectorEditor } from "../inspector/editor.ts";
 import {
   FIELDS,
@@ -22,12 +22,14 @@ import {
 } from "../inspector/fields.ts";
 import { LayoutSection } from "../inspector/LayoutSection.tsx";
 import { PROXY_STATES } from "../inspector/labels.ts";
+import { MediaOrganize } from "../inspector/MediaOrganize.tsx";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { Section } from "../inspector/Section.tsx";
 import { SequenceSection } from "../inspector/SequenceSection.tsx";
 import { SpeedSection } from "../inspector/SpeedSection.tsx";
 import { TrackSection } from "../inspector/TrackSection.tsx";
 import { VideoSections } from "../inspector/VideoSections.tsx";
+import { isMovingPicture } from "../media/kinds.ts";
 import { ContextSurface } from "../menus/host.tsx";
 import { useDocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId, selectSequenceSummary } from "../state/selectors.ts";
@@ -48,6 +50,7 @@ const MEDIA_KIND: Record<MediaAsset["kind"], TKey> = {
   video: "inspector.media.kinds.video",
   audio: "inspector.media.kinds.audio",
   image: "inspector.media.kinds.image",
+  image_sequence: "inspector.media.kinds.imageSequence",
   sequence_ref: "inspector.media.kinds.sequence",
 };
 
@@ -305,7 +308,7 @@ function SourceRows({ clip }: { readonly clip: SelectedClip }) {
   const media = project?.media[clip.item.media as keyof typeof project.media];
   const [proxy, setProxy] = useState<ProxyStatus | null>(null);
   const mediaId = clip.item.media;
-  const isVideo = media?.kind === "video";
+  const isVideo = isMovingPicture(media?.kind);
   useEffect(() => {
     setProxy(null);
     if (rpc === null || !isVideo) return;
@@ -468,6 +471,10 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
           ) : null}
         </div>
       </Section>
+      {/* Rating, tags and note (WP-2F.06b): what the person says about the asset. */}
+      <Section id="organize" label={t("inspector.media.organize")}>
+        <MediaOrganize media={media} />
+      </Section>
     </div>
   );
 }
@@ -516,7 +523,7 @@ export function InspectorPanel() {
   const selection = useViewStore((s) => s.selection);
   const project = useDocStore((s) => s.project);
   const editor = useInspectorEditor();
-  const clips = useMemo(() => selectSelectedClips(project, selection), [project, selection]);
+  const clips = useMemo(() => selectInspectedClips(project, selection), [project, selection]);
   const media = useMemo(() => selectSelectedMedia(project, selection), [project, selection]);
   if (clips.length > 0) return <ClipInspector clips={clips} editor={editor} />;
   if (media !== null) return <MediaInfo media={media} />;

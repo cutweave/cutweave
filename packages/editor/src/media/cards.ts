@@ -25,9 +25,16 @@ export interface MediaCard {
   readonly codec: string | null;
   /** A file kind whose probe found no streams: nothing can be read from it. */
   readonly broken: boolean;
+  /** Tags, sorted ignoring case and accents (ADR-0036); empty: none. */
+  readonly tags: readonly string[];
+  /** Stars, 1 to 5; `null`: unrated. */
+  readonly rating: number | null;
+  /** The note; `null`: none. */
+  readonly note: string | null;
 }
 
 const cache = new WeakMap<Project, readonly MediaCard[]>();
+const NO_TAGS: readonly string[] = [];
 
 function toCard(asset: MediaAsset): MediaCard {
   const video = asset.probe.streams.find((s) => s.kind === "video");
@@ -46,6 +53,9 @@ function toCard(asset: MediaAsset): MediaCard {
     rate: fps === null || fps.den === 0 || fps.num === 0 ? null : { num: fps.num, den: fps.den },
     codec: codec === null ? null : codec.toUpperCase(),
     broken: asset.kind !== "sequence_ref" && asset.probe.streams.length === 0,
+    tags: asset.tags ?? NO_TAGS,
+    rating: asset.rating ?? null,
+    note: asset.note ?? null,
   };
 }
 

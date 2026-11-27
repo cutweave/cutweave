@@ -93,8 +93,16 @@ pub const DEGRADED_EVENT: &str = "engine.degraded";
 /// proxy, so reverse playback is slower until the proxy queued for it is ready (WP-2D.01b).
 pub const REVERSE_SLOW_EVENT: &str = "media.reverse_slow";
 
+/// The `playback.meters` event: the track and master meters, 30 times a second while playing
+/// (WP-2E.02).
+pub const METERS_EVENT: &str = "playback.meters";
+
 /// The events subsystems emit, as `(name, summary)` (for the generated events catalog).
 pub const SUBSYSTEM_EVENTS: &[(&str, &str)] = &[
+    (
+        METERS_EVENT,
+        "The meters, 30 times a second while playing (WP-2E.02); payload: {t, master{peak_db[2], rms_db[2], true_peak_db, lufs_momentary, lufs_short_term, lufs_integrated, gr_db}, buses[{track, peak_db[2], rms_db[2]}]} (dB values null when silent; RMS on the AES17 scale)",
+    ),
     (
         DEGRADED_EVENT,
         "A subsystem runs in a reduced mode (audio on the null clock, software rendering); payload: {subsystem, reason}",
@@ -283,7 +291,8 @@ pub trait Subsystems: Send + Sync {
 
     /// The media caches and decoding policy the cache commands act on (`media.cache_status`
     /// and the UI-only `media.set_cache_config`, `media.clear_cache`,
-    /// `media.set_decode_policy`; WP-1D.08); `None`: this engine has none.
+    /// `media.set_decode_policy`, `media.set_proxy_config`; WP-1D.08, WP-2F.03b); `None`: this
+    /// engine has none.
     fn cache_control(&self) -> Option<Arc<dyn crate::media_cache::CacheControl>> {
         None
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! WP-1M.12: the shared media-search fixture. The Rust predicate and sort (`media.list`) are the
+//! WP-1M.12, WP-2F.06a: the shared media-search fixture. The Rust predicate and sort (`media.list`) are the
 //! reference; this test builds the documents, runs every case through the engine's query and
 //! checks the result against `tests/fixtures/media-find.json`, which the editor's TypeScript
 //! predicate is tested against (`packages/editor/src/media/find.test.ts`).
@@ -20,8 +20,9 @@ use std::{fs, path::PathBuf};
 
 use common::H;
 use cutweave_model::{
-    Clip, Duration, FolderId, FrameRate, MediaAsset, MediaFolder, MediaId, MediaKind, ProbeInfo,
-    Project, SampleRate, Sequence, SequenceFormat, SequenceId, Time, Track, TrackId, TrackKind,
+    Clip, Collection, CollectionId, CollectionKind, Duration, FolderId, FrameRate, MediaAsset,
+    MediaFolder, MediaId, MediaKind, ProbeInfo, Project, SampleRate, Sequence, SequenceFormat,
+    SequenceId, Time, Track, TrackId, TrackKind,
 };
 use cutweave_ops::media::FakeProbe;
 use serde_json::{Value, json};
@@ -42,7 +43,23 @@ struct Spec {
     name: Option<&'static str>,
     /// The bin folder, by number (`folder_id`); `None`: the top level.
     folder: Option<u128>,
+    /// Tags, in stored order (ADR-0036).
+    tags: &'static [&'static str],
+    rating: Option<u8>,
+    note: Option<&'static str>,
 }
+
+/// A collection of a fixture document: number, name and what it holds (the stored JSON of
+/// `Collection::kind`, with members and folders by number).
+type CollectionSpec = (u128, &'static str, Value);
+
+/// A fixture document: its assets, the media each sequence uses, its folders and collections.
+type Doc = (
+    Vec<Spec>,
+    Vec<Vec<u128>>,
+    Vec<FolderSpec>,
+    Vec<CollectionSpec>,
+);
 
 /// A folder of a fixture document: number, name and the number of its parent.
 type FolderSpec = (u128, &'static str, Option<u128>);
@@ -57,7 +74,23 @@ const fn spec(n: u128, kind: MediaKind, path: &'static str, duration: Option<i64
         broken: false,
         name: None,
         folder: None,
+        tags: &[],
+        rating: None,
+        note: None,
     }
+}
+
+/// `spec` with tags, a rating and a note.
+const fn noted(
+    mut s: Spec,
+    tags: &'static [&'static str],
+    rating: Option<u8>,
+    note: Option<&'static str>,
+) -> Spec {
+    s.tags = tags;
+    s.rating = rating;
+    s.note = note;
+    s
 }
 
 /// `spec` with a display name and a folder.
@@ -109,7 +142,7 @@ fn ties() -> (Vec<Spec>, Vec<Vec<u128>>) {
 }
 
 /// Display names and folders (ADR-0020): Interviews > Day 1, and B-roll, next to the top level.
-fn folders() -> (Vec<Spec>, Vec<Vec<u128>>, Vec<FolderSpec>) {
+fn folders() -> Doc {
     use MediaKind::{Audio, Image, Video};
     let assets = vec![
         placed(
@@ -141,13 +174,117 @@ fn folders() -> (Vec<Spec>, Vec<Vec<u128>>, Vec<FolderSpec>) {
         (2, "Day 1", Some(1)),
         (3, "B-roll", None),
     ];
-    (assets, vec![vec![1, 4]], tree)
+    (assets, vec![vec![1, 4]], tree, Vec::new())
 }
 
-fn with_tree(
-    (assets, sequences): (Vec<Spec>, Vec<Vec<u128>>),
-) -> (Vec<Spec>, Vec<Vec<u128>>, Vec<FolderSpec>) {
-    (assets, sequences, Vec::new())
+fn with_tree((assets, sequences): (Vec<Spec>, Vec<Vec<u128>>)) -> Doc {
+    (assets, sequences, Vec::new(), Vec::new())
+}
+
+/// Tags, ratings, notes and collections (ADR-0036): a shoot with interviews and b-roll in two
+/// folders, three manual or smart collections, and one smart collection whose folder is gone.
+fn tagged() -> Doc {
+    use MediaKind::{Audio, Image, Video};
+    let assets = vec![
+        noted(
+            placed(
+                spec(1, Video, "/t/A001.mp4", Some(120 * SEC)),
+                None,
+                Some(1),
+            ),
+            &["Café", "interview"],
+            Some(5),
+            Some("Best answer at 01:10. Naïve question first."),
+        ),
+        noted(
+            placed(spec(2, Video, "/t/A002.mp4", Some(60 * SEC)), None, Some(1)),
+            &["interview"],
+            Some(3),
+            None,
+        ),
+        noted(
+            spec(3, Video, "/t/B001 cafe.mp4", Some(300 * SEC)),
+            &["b-roll", "Wide"],
+            Some(4),
+            None,
+        ),
+        noted(
+            spec(4, Video, "/t/A003.mp4", Some(90 * SEC)),
+            &["Interview", "wide"],
+            None,
+            Some("Out of focus\nuse the audio only"),
+        ),
+        noted(
+            spec(5, Audio, "/t/interview room tone.wav", Some(200 * SEC)),
+            &["INTERVIEW"],
+            Some(1),
+            None,
+        ),
+        noted(
+            spec(6, Video, "/t/A004.mp4", Some(61 * SEC)),
+            &["interview", "keep"],
+            Some(2),
+            Some("ÉCLAIR in the background"),
+        ),
+        noted(
+            spec(7, Image, "/t/poster.png", None),
+            &["keep"],
+            Some(5),
+            None,
+        ),
+        spec(8, Video, "/t/untagged.mp4", Some(600 * SEC)),
+        noted(
+            placed(
+                spec(9, Video, "/t/A005.mp4", Some(601 * SEC)),
+                None,
+                Some(2),
+            ),
+            &["interview", "日本語"],
+            Some(4),
+            Some("wide shot"),
+        ),
+    ];
+    let tree = vec![(1, "Day 1", None), (2, "Day 2", Some(1))];
+    let m = |n: u128| media_id(n);
+    let collections = vec![
+        // A manual list in the order it was built, with a member that names no asset.
+        (
+            1,
+            "Selects",
+            json!({"type": "manual", "media": [m(9), m(3), m(99), m(1)]}),
+        ),
+        (2, "Empty", json!({"type": "manual", "media": []})),
+        // ADR-0036's example: video, longer than 60 s, tagged interview, unused.
+        (
+            3,
+            "Unused long interviews",
+            json!({"type": "smart", "filter": {"kinds": ["video"], "min_duration": 60 * SEC + 1,
+                   "tags": ["interview"], "used": false}}),
+        ),
+        (
+            4,
+            "Day 1 and below, rated",
+            json!({"type": "smart", "filter": {"folder": folder_id(1), "recursive": true,
+                   "min_rating": 4}}),
+        ),
+        (
+            5,
+            "Wide in words",
+            json!({"type": "smart", "filter": {"text": "wide"}}),
+        ),
+        // Its folder no longer exists: no members.
+        (
+            6,
+            "Gone folder",
+            json!({"type": "smart", "filter": {"folder": folder_id(77)}}),
+        ),
+    ];
+    // Assets 4 and 7 are on a timeline.
+    (assets, vec![vec![4, 7]], tree, collections)
+}
+
+fn collection_id(n: u128) -> CollectionId {
+    CollectionId::from_u128(0x0190_0000_0000_7000_b000_0000_0000_0000 + n)
 }
 
 fn folder_id(n: u128) -> FolderId {
@@ -158,8 +295,18 @@ fn media_id(n: u128) -> MediaId {
     MediaId::from_u128(0x0190_0000_0000_7000_8000_0000_0000_0000 + n)
 }
 
-fn build(assets: &[Spec], sequences: &[Vec<u128>], tree: &[FolderSpec]) -> Project {
+fn build(
+    assets: &[Spec],
+    sequences: &[Vec<u128>],
+    tree: &[FolderSpec],
+    collections: &[CollectionSpec],
+) -> Project {
     let mut doc = Project::new("Fixture");
+    for (n, name, kind) in collections {
+        let id = collection_id(*n);
+        let kind: CollectionKind = serde_json::from_value(kind.clone()).unwrap();
+        doc.collections.insert(id, Collection::new(id, *name, kind));
+    }
     for (n, name, parent) in tree {
         let id = folder_id(*n);
         doc.folders
@@ -190,6 +337,9 @@ fn build(assets: &[Spec], sequences: &[Vec<u128>], tree: &[FolderSpec]) -> Proje
         asset.path_rel = s.path_rel.map(str::to_owned);
         asset.name = s.name.map(str::to_owned);
         asset.folder = s.folder.map(folder_id);
+        asset.tags = s.tags.iter().map(|t| (*t).to_owned()).collect();
+        asset.rating = s.rating;
+        asset.note = s.note.map(str::to_owned);
         if s.kind == MediaKind::SequenceRef {
             // A compound clip of the first sequence, used on the second.
             asset.sequence = Some(SequenceId::from_u128(
@@ -351,6 +501,88 @@ fn cases() -> Vec<(&'static str, Value, Value, Option<u64>)> {
         f(json!({"folder": fid(1), "recursive": false, "used": false})),
         None,
     );
+    // Tags, ratings, notes and collections (ADR-0036).
+    let cid = |n: u128| collection_id(n);
+    add("tagged", f(json!({"tags": ["interview"]})), None);
+    add("tagged", f(json!({"tags": ["INTERVIEW", "wide"]})), None);
+    add("tagged", f(json!({"tags": [" cafe "]})), None);
+    add("tagged", f(json!({"tags": ["inter"]})), None);
+    add("tagged", f(json!({"tags": ["日本語"]})), None);
+    add("tagged", f(json!({"tags": []})), None);
+    add(
+        "tagged",
+        f(json!({"tags": ["keep"], "kinds": ["image"]})),
+        None,
+    );
+    add("tagged", f(json!({"min_rating": 1})), None);
+    add("tagged", f(json!({"min_rating": 4})), None);
+    add("tagged", f(json!({"min_rating": 5})), None);
+    add(
+        "tagged",
+        f(json!({"min_rating": 3, "tags": ["interview"]})),
+        None,
+    );
+    add("tagged", f(json!({"min_rating": 2, "used": true})), None);
+    // Text in the name, a tag or the note; every term somewhere.
+    add("tagged", f(json!({"text": "cafe"})), None);
+    add("tagged", f(json!({"text": "interview"})), None);
+    add("tagged", f(json!({"text": "wide"})), None);
+    add("tagged", f(json!({"text": "naive A001"})), None);
+    add("tagged", f(json!({"text": "eclair keep mp4"})), None);
+    add("tagged", f(json!({"text": "focus audio"})), None);
+    add("tagged", f(json!({"text": "interview room"})), None);
+    add("tagged", f(json!({"text": "wide zzz"})), None);
+    add("tagged", f(json!({"text": "日本"})), None);
+    add("tagged", f(json!({"text": "only\tUSE"})), None);
+    add(
+        "tagged",
+        f(json!({"text": "interview", "tags": ["wide"]})),
+        None,
+    );
+    for n in 1..=6 {
+        add("tagged", f(json!({"collection": cid(n)})), None);
+    }
+    add(
+        "tagged",
+        f(json!({"collection": cid(1), "kinds": ["video"], "min_rating": 5})),
+        None,
+    );
+    add(
+        "tagged",
+        f(json!({"collection": cid(3), "text": "a00"})),
+        None,
+    );
+    add(
+        "tagged",
+        f(json!({"collection": cid(3), "folder": fid(1), "recursive": true})),
+        None,
+    );
+    add(
+        "tagged",
+        f(json!({"collection": cid(4), "used": false})),
+        None,
+    );
+    add(
+        "tagged",
+        f(json!({"collection": cid(5), "tags": ["interview"]})),
+        None,
+    );
+    add(
+        "tagged",
+        (
+            json!({"collection": cid(1)}),
+            json!({"by": "name", "order": "desc"}),
+        ),
+        Some(2),
+    );
+    add(
+        "tagged",
+        (
+            json!({"tags": ["interview"]}),
+            json!({"by": "duration", "order": "asc"}),
+        ),
+        Some(4),
+    );
     add("empty", f(json!({"text": "x"})), None);
     add("empty", f(json!({})), None);
     add("ties", f(json!({"text": "clip"})), None);
@@ -394,13 +626,14 @@ fn cases() -> Vec<(&'static str, Value, Value, Option<u64>)> {
 fn generate() -> Value {
     let mut documents = Vec::new();
     let mut harnesses = Vec::new();
-    for (name, (assets, sequences, tree)) in [
+    for (name, (assets, sequences, tree, collections)) in [
         ("library", with_tree(library())),
-        ("empty", (Vec::new(), vec![vec![]], Vec::new())),
+        ("empty", (Vec::new(), vec![vec![]], Vec::new(), Vec::new())),
         ("ties", with_tree(ties())),
         ("folders", folders()),
+        ("tagged", tagged()),
     ] {
-        let doc = build(&assets, &sequences, &tree);
+        let doc = build(&assets, &sequences, &tree, &collections);
         doc.validate().unwrap();
         documents.push(json!({
             "name": name,
@@ -413,6 +646,14 @@ fn generate() -> Value {
                 "streams": if s.broken || s.kind == MediaKind::SequenceRef { 0 } else { 1 },
                 "name": s.name,
                 "folder": s.folder.map(folder_id),
+                "tags": s.tags,
+                "rating": s.rating,
+                "note": s.note,
+            })).collect::<Vec<_>>(),
+            "collections": collections.iter().map(|(n, name, kind)| json!({
+                "id": collection_id(*n),
+                "name": name,
+                "kind": kind,
             })).collect::<Vec<_>>(),
             "folders": tree.iter().map(|(n, name, parent)| json!({
                 "id": folder_id(*n),
@@ -483,18 +724,25 @@ fn media_find_fixture_matches_the_engine() {
 fn the_fixture_has_enough_cases_and_they_are_not_trivial() {
     let v = generate();
     let cases = v["cases"].as_array().unwrap();
-    assert!(cases.len() >= 40, "{} cases", cases.len());
+    assert!(cases.len() >= 80, "{} cases", cases.len());
+    for part in ["tags", "min_rating", "collection"] {
+        let with = cases
+            .iter()
+            .filter(|c| !c["filter"][part].is_null())
+            .count();
+        assert!(with >= 5, "{with} cases with `{part}`");
+    }
     assert!(cases.iter().filter(|c| c.get("pages").is_some()).count() >= 8);
     let distinct = cases
         .iter()
         .map(|c| c["ids"].to_string())
         .collect::<std::collections::HashSet<_>>();
-    assert!(distinct.len() >= 25, "{} distinct results", distinct.len());
+    assert!(distinct.len() >= 45, "{} distinct results", distinct.len());
 }
 
 #[test]
 fn bad_filters_and_cursors_are_refused() {
-    let doc = build(&library().0, &library().1, &[]);
+    let doc = build(&library().0, &library().1, &[], &[]);
     let h = H::with_doc(doc);
     let bad =
         |params: Value, path: &str| common::assert_invalid(h.query("media.list", params), path);

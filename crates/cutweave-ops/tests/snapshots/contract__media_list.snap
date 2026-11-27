@@ -53,8 +53,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "string",
                 "null"
               ],
-              "description": "Terms that must all occur in the name, ignoring case and accents.",
-              "default": null
+              "description": "Terms that must all occur in the name, tags or note, ignoring case and accents."
             },
             "kinds": {
               "type": [
@@ -80,14 +79,18 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "const": "image"
                   },
                   {
+                    "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                    "type": "string",
+                    "const": "image_sequence"
+                  },
+                  {
                     "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                     "type": "string",
                     "const": "sequence_ref"
                   }
                 ]
               },
-              "description": "Only these kinds.",
-              "default": null
+              "description": "Only these kinds."
             },
             "min_duration": {
               "anyOf": [
@@ -109,8 +112,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "type": "null"
                 }
               ],
-              "description": "Shortest length (flicks), inclusive; stills never match a bound.",
-              "default": null
+              "description": "Shortest length (flicks), inclusive; stills never match a bound."
             },
             "max_duration": {
               "anyOf": [
@@ -132,24 +134,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "type": "null"
                 }
               ],
-              "description": "Longest length (flicks), inclusive.",
-              "default": null
+              "description": "Longest length (flicks), inclusive."
             },
             "used": {
               "type": [
                 "boolean",
                 "null"
               ],
-              "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
-              "default": null
+              "description": "Placed on a timeline of any sequence (`true`) or not (`false`)."
             },
             "problems": {
               "type": [
                 "boolean",
                 "null"
               ],
-              "description": "`true`: only files nothing can be read from (no streams).",
-              "default": null
+              "description": "`true`: only files nothing can be read from (no streams)."
             },
             "folder": {
               "type": [
@@ -157,16 +156,42 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "pattern": "^fld_[0-9a-f]{32}$",
-              "description": "Only this bin folder.",
-              "default": null
+              "description": "Only this bin folder."
             },
             "recursive": {
               "type": [
                 "boolean",
                 "null"
               ],
-              "description": "With subfolders (default: true without folder).",
-              "default": null
+              "description": "With subfolders (default: true without folder)."
+            },
+            "tags": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "description": "Has all these tags."
+            },
+            "min_rating": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint8",
+              "minimum": 1,
+              "maximum": 5,
+              "description": "Rated at least this (1-5)."
+            },
+            "collection": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^col_[0-9a-f]{32}$",
+              "description": "On this collection."
             }
           },
           "description": "Keep only matching media.",
@@ -204,9 +229,27 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "description": "Order.",
           "default": null
+        },
+        "include": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "What `media.list` adds to each asset on request.",
+            "oneOf": [
+              {
+                "description": "The asset's note.",
+                "type": "string",
+                "const": "note"
+              }
+            ]
+          },
+          "description": "Extra fields per asset: `note`.",
+          "default": null
         }
       },
-      "description": "Lists the media of the project, filtered (also by bin folder) and ordered, one page at a\ntime. Each asset carries the name the bin shows and its folder.",
+      "description": "Lists the media of the project, filtered (also by bin folder, tags, rating and collection)\nand ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags\nand rating.",
       "title": "MediaList"
     },
     "output_schema": {
@@ -241,6 +284,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "description": "A still image (no duration).",
                     "type": "string",
                     "const": "image"
+                  },
+                  {
+                    "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                    "type": "string",
+                    "const": "image_sequence"
                   },
                   {
                     "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
@@ -284,6 +332,30 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "has_audio": {
                 "description": "Whether it has sound.",
                 "type": "boolean"
+              },
+              "tags": {
+                "description": "Its tags, sorted ignoring case and accents.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rating": {
+                "description": "Stars, 1 to 5; absent: unrated.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "note": {
+                "description": "Its note; only with `include: [\"note\"]`, and left out otherwise.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "additionalProperties": false,
@@ -295,7 +367,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "path",
               "duration",
               "has_video",
-              "has_audio"
+              "has_audio",
+              "tags",
+              "rating"
             ]
           },
           "description": "The page, in the requested order (default: by ID)."
@@ -366,8 +440,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "string",
               "null"
             ],
-            "description": "Terms that must all occur in the name, ignoring case and accents.",
-            "default": null
+            "description": "Terms that must all occur in the name, tags or note, ignoring case and accents."
           },
           "kinds": {
             "type": [
@@ -393,14 +466,18 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "const": "image"
                 },
                 {
+                  "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                  "type": "string",
+                  "const": "image_sequence"
+                },
+                {
                   "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                   "type": "string",
                   "const": "sequence_ref"
                 }
               ]
             },
-            "description": "Only these kinds.",
-            "default": null
+            "description": "Only these kinds."
           },
           "min_duration": {
             "anyOf": [
@@ -422,8 +499,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "type": "null"
               }
             ],
-            "description": "Shortest length (flicks), inclusive; stills never match a bound.",
-            "default": null
+            "description": "Shortest length (flicks), inclusive; stills never match a bound."
           },
           "max_duration": {
             "anyOf": [
@@ -445,24 +521,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "type": "null"
               }
             ],
-            "description": "Longest length (flicks), inclusive.",
-            "default": null
+            "description": "Longest length (flicks), inclusive."
           },
           "used": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
-            "default": null
+            "description": "Placed on a timeline of any sequence (`true`) or not (`false`)."
           },
           "problems": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "`true`: only files nothing can be read from (no streams).",
-            "default": null
+            "description": "`true`: only files nothing can be read from (no streams)."
           },
           "folder": {
             "type": [
@@ -470,16 +543,42 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "pattern": "^fld_[0-9a-f]{32}$",
-            "description": "Only this bin folder.",
-            "default": null
+            "description": "Only this bin folder."
           },
           "recursive": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "With subfolders (default: true without folder).",
-            "default": null
+            "description": "With subfolders (default: true without folder)."
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Has all these tags."
+          },
+          "min_rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint8",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Rated at least this (1-5)."
+          },
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^col_[0-9a-f]{32}$",
+            "description": "On this collection."
           }
         },
         "description": "Keep only matching media.",
@@ -517,9 +616,27 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         ],
         "description": "Order.",
         "default": null
+      },
+      "include": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "What `media.list` adds to each asset on request.",
+          "oneOf": [
+            {
+              "description": "The asset's note.",
+              "type": "string",
+              "const": "note"
+            }
+          ]
+        },
+        "description": "Extra fields per asset: `note`.",
+        "default": null
       }
     },
-    "description": "Lists the media of the project, filtered (also by bin folder) and ordered, one page at a\ntime. Each asset carries the name the bin shows and its folder.",
+    "description": "Lists the media of the project, filtered (also by bin folder, tags, rating and collection)\nand ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags\nand rating.",
     "title": "MediaList"
   },
   "output": {
@@ -554,6 +671,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "description": "A still image (no duration).",
                   "type": "string",
                   "const": "image"
+                },
+                {
+                  "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                  "type": "string",
+                  "const": "image_sequence"
                 },
                 {
                   "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
@@ -597,6 +719,30 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "has_audio": {
               "description": "Whether it has sound.",
               "type": "boolean"
+            },
+            "tags": {
+              "description": "Its tags, sorted ignoring case and accents.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rating": {
+              "description": "Stars, 1 to 5; absent: unrated.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint8",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "note": {
+              "description": "Its note; only with `include: [\"note\"]`, and left out otherwise.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
@@ -608,7 +754,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "path",
             "duration",
             "has_video",
-            "has_audio"
+            "has_audio",
+            "tags",
+            "rating"
           ]
         },
         "description": "The page, in the requested order (default: by ID)."

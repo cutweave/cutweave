@@ -47,6 +47,8 @@ pub enum EntityKind {
     Marker,
     /// A folder of the media bin (`fld_`, ADR-0020).
     Folder,
+    /// A collection of media (`col_`, ADR-0036).
+    Collection,
 }
 
 impl EntityKind {
@@ -61,6 +63,7 @@ impl EntityKind {
             EntityKind::Group => "grp",
             EntityKind::Marker => "mrk",
             EntityKind::Folder => "fld",
+            EntityKind::Collection => "col",
         }
     }
 
@@ -75,6 +78,7 @@ impl EntityKind {
             EntityKind::Group => "group",
             EntityKind::Marker => "marker",
             EntityKind::Folder => "folder",
+            EntityKind::Collection => "collection",
         }
     }
 }
@@ -100,7 +104,7 @@ mod sealed {
 }
 
 /// Implemented by every typed ID ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`],
-/// [`GroupId`], [`MarkerId`], [`FolderId`]). Sealed: the set of ID kinds is part of the project
+/// [`GroupId`], [`MarkerId`], [`FolderId`], [`CollectionId`]). Sealed: the set of ID kinds is part of the project
 /// format.
 pub trait EntityId:
     Copy
@@ -287,6 +291,12 @@ entity_id!(
     Folder,
     "^fld_[0-9a-f]{32}$"
 );
+entity_id!(
+    /// The ID of a collection of media (ADR-0036): `col_…`.
+    CollectionId,
+    Collection,
+    "^col_[0-9a-f]{32}$"
+);
 
 /// A source of fresh 128-bit UUIDv7(-shaped) values for new IDs.
 ///
@@ -457,6 +467,7 @@ mod tests {
             EntityKind::Group,
             EntityKind::Marker,
             EntityKind::Folder,
+            EntityKind::Collection,
         ];
         let prefixes: std::collections::BTreeSet<_> = kinds.iter().map(|k| k.prefix()).collect();
         assert_eq!(prefixes.len(), kinds.len());

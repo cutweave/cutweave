@@ -13,8 +13,10 @@ use cutweave_commands::{
 };
 use cutweave_model::{GroupId, ItemId, MediaId, Project, SeededGen, SequenceId, Time, TrackId};
 use cutweave_ops::media::{
-    AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegisterTree,
-    MediaRegistered, MediaSink, MediaTreeRegistered, register_batch,
+    AnalysisSink, FakeProbe, FrameRegistered, ImportCtx, MediaEvent, MediaRegister,
+    MediaRegisterTree, MediaRegistered, MediaSetLocation, MediaSink, MediaTreeRegistered,
+    MemoryFiles, RelinkCtx, RelinkSink, SlideshowBatch, SlideshowPlaced, place_slideshow,
+    register_batch, register_frame, relocate_batch,
 };
 use serde_json::{Value, json};
 
@@ -165,6 +167,17 @@ impl H {
         ImportCtx::new(Arc::new(prober), Box::new(HSink(self.shared.clone())))
     }
 
+    /// A relink context over this harness's document: its sink commits in one transaction.
+    pub fn relink_ctx(&self, prober: FakeProbe, files: MemoryFiles) -> RelinkCtx {
+        RelinkCtx {
+            doc: self.doc(),
+            prober: Arc::new(prober),
+            files: Arc::new(files),
+            sink: Some(Box::new(HSink(self.shared.clone()))),
+            policy: cutweave_ops::media::ImportPolicy::default(),
+        }
+    }
+
     /// Imports a fake video (`secs` seconds, optional audio) and returns its media ID.
     pub fn add_video(&mut self, path: &str, secs: i64, audio: bool) -> MediaId {
         let p = FakeProbe::video(path, secs, audio);
@@ -211,6 +224,58 @@ impl MediaSink for HSink {
         *doc = committed.doc;
         *commits += 1;
         Ok(out)
+    }
+
+    fn slideshow(&mut self, batch: SlideshowBatch) -> Result<SlideshowPlaced, CmdError> {
+        let mut s = self.0.lock().unwrap();
+        let Shared { doc, ids, commits } = &mut *s;
+        let mut txn = Transaction::begin(doc.clone());
+        let out = place_slideshow(&mut txn.tx(ids, Access::STANDARD), &batch)?;
+        let committed = txn.commit();
+        committed.doc.validate().expect("a valid document");
+        assert_eq!(
+            apply_patch(&committed.doc, &committed.inverse).unwrap(),
+            *doc,
+            "undoing the slideshow must restore the document"
+        );
+        *doc = committed.doc;
+        *commits += 1;
+        Ok(out)
+    }
+
+    fn register_frame(
+        &mut self,
+        register: MediaRegister,
+        name: String,
+    ) -> Result<FrameRegistered, CmdError> {
+        let mut s = self.0.lock().unwrap();
+        let Shared { doc, ids, commits } = &mut *s;
+        let mut txn = Transaction::begin(doc.clone());
+        let out = register_frame(&mut txn.tx(ids, Access::STANDARD), &register, &name)?;
+        let committed = txn.commit();
+        assert_eq!(
+            apply_patch(&committed.doc, &committed.inverse).unwrap(),
+            *doc,
+            "undoing the imported frame must restore the document"
+        );
+        if out.registered.created {
+            *commits += 1;
+        }
+        *doc = committed.doc;
+        Ok(out)
+    }
+}
+
+impl RelinkSink for HSink {
+    fn relocate(&mut self, batch: Vec<MediaSetLocation>) -> Result<(), CmdError> {
+        let mut s = self.0.lock().unwrap();
+        let Shared { doc, ids, commits } = &mut *s;
+        let mut txn = Transaction::begin(doc.clone());
+        relocate_batch(&mut txn.tx(ids, Access::STANDARD), &batch)?;
+        let committed = txn.commit();
+        *doc = committed.doc;
+        *commits += 1;
+        Ok(())
     }
 }
 

@@ -32,7 +32,8 @@ export function trackReplacePicks(): () => void {
 
 trackReplacePicks();
 
-const isPicture = (kind: MediaAsset["kind"]): boolean => kind === "video" || kind === "image";
+const isPicture = (kind: MediaAsset["kind"]): boolean =>
+  kind === "video" || kind === "image" || kind === "image_sequence";
 
 const hasSound = (asset: MediaAsset): boolean =>
   asset.kind === "audio" || (asset.kind === "video" && asset.probe.audio !== null);

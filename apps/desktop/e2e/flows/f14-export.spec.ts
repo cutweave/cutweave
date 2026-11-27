@@ -138,20 +138,25 @@ test.describe("F14 export", () => {
       const cancelled = path.join(outDir, "cut-cancelled.mp4");
       const finalFile = path.join(outDir, "cut-final.mp4");
 
-      // The dialog: the project's folder and name, the sequence's size and rate, one preset.
+      // The dialog: the project's folder and name, the general 1080p preset (WP-2G.04), the
+      // sequence's size and rate under Advanced.
       await exportButton.click();
       await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel("Preset")).toHaveValue("h264-mp4-1080p");
+      await expect(dialog.getByTestId("export-summary")).toContainText(
+        "1920 × 1080 · 30 fps · H.264 + AAC · MP4",
+      );
       await snapshot(page, info, "export dialog");
       const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
       expect(norm(await dialog.getByLabel("Save to").inputValue())).toBe(
         norm(path.join(outDir, "Cut.mp4")),
       );
-      await expect(dialog.getByText("MP4 H.264 1080p")).toBeVisible();
+      await dialog.getByRole("button", { name: "Advanced" }).click();
       await expect(dialog.getByLabel("Width")).toHaveValue("1920");
       await expect(dialog.getByLabel("Height")).toHaveValue("1080");
       await expect(dialog.getByLabel("Frame rate")).toHaveValue("30");
       await expect(dialog.getByRole("radio", { name: "Medium" })).toBeChecked();
-      await expect(dialog.getByText("Entire timeline")).toBeVisible();
+      await expect(dialog.getByRole("radio", { name: "Whole sequence" })).toBeChecked();
       const hardware = dialog.getByRole("switch", { name: "Use hardware encoder" });
       await expect(hardware).toBeChecked();
       // Auto names what this computer has, or says it will choose.
@@ -210,7 +215,7 @@ test.describe("F14 export", () => {
       const proposed = await pickSavePath(app, finalFile);
       await chooseMenu(page, app, "File", "Export…");
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByLabel("Width")).toHaveValue("1920");
+      await expect(dialog.getByTestId("export-summary")).toContainText("1920 × 1080");
       await dialog.getByRole("button", { name: "Choose…" }).click();
       await expect(dialog.getByLabel("Save to")).toHaveValue(finalFile);
       expect((await proposed()).map((p) => norm(p ?? ""))).toEqual([

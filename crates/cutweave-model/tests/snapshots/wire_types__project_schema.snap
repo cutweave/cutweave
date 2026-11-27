@@ -258,6 +258,85 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       ],
       "type": "object"
     },
+    "Collection": {
+      "description": "A collection of media (ADR-0036): a named list an asset can be on without leaving its\nfolder.",
+      "properties": {
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data (arch §4.3).",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "id": {
+          "description": "The collection ID (also its key in `Project::collections`).",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/CollectionKind",
+          "description": "Manual (stored members) or smart (a stored filter)."
+        },
+        "name": {
+          "description": "The name shown in the bin: 1 to 255 characters without control characters, unique\namong collections ignoring case.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "CollectionKind": {
+      "description": "What a collection holds (ADR-0036).",
+      "oneOf": [
+        {
+          "description": "A list of assets, kept in the order they were added.",
+          "properties": {
+            "media": {
+              "default": [],
+              "description": "The members, without repeats. One that names no asset is skipped by queries and\ndropped by the next edit of the collection.",
+              "items": {
+                "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                "pattern": "^med_[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "const": "manual",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A saved search: the assets that pass the filter, computed when asked.",
+          "properties": {
+            "filter": {
+              "$ref": "#/$defs/MediaFilter",
+              "description": "The filter. It may not name a collection."
+            },
+            "type": {
+              "const": "smart",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "filter"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "ColorRange": {
       "description": "Sample range of a video stream.",
       "oneOf": [
@@ -503,6 +582,48 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       },
       "required": [
         "at_source"
+      ],
+      "type": "object"
+    },
+    "ImageSequence": {
+      "description": "A numbered run of pictures imported as one asset (ADR-0035): frame `n` (from 0) is the file\n`pattern` with the number `first + n`. Files are referenced, never copied.",
+      "properties": {
+        "count": {
+          "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "first": {
+          "description": "The number of the first file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fps": {
+          "$ref": "#/$defs/FrameRate",
+          "description": "The frame rate chosen at import; changing the app setting never changes it."
+        },
+        "missing": {
+          "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "pattern": {
+          "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "first",
+        "count",
+        "fps",
+        "missing"
       ],
       "type": "object"
     },
@@ -940,12 +1061,30 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "pattern": "^med_[0-9a-f]{32}$",
           "type": "string"
         },
+        "image_sequence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageSequence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run of pictures (`image_sequence` only, ADR-0035); left out of the file otherwise.\n`path_abs` and `path_rel` name the first file of the run."
+        },
         "kind": {
           "$ref": "#/$defs/MediaKind",
           "description": "What the media is."
         },
         "name": {
           "description": "The name shown in the bin (ADR-0020); absent: the file name. 1 to 255 characters\nwithout control characters.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "description": "A note in plain text, at most 2,000 characters (ADR-0036). Left out of the file while\nabsent.",
           "type": [
             "string",
             "null"
@@ -969,6 +1108,20 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "$ref": "#/$defs/ProbeInfo",
           "description": "Probe results."
         },
+        "proxy_mode": {
+          "$ref": "#/$defs/ProxyMode",
+          "description": "Whether it gets a proxy (ADR-0027): as the project's policy decides, always or never.\n`auto` is left out of the file, so documents written before the field read the same."
+        },
+        "rating": {
+          "description": "Rating in whole stars, 1 to 5 (ADR-0036); absent: unrated. Left out of the file while\nabsent.",
+          "format": "uint8",
+          "maximum": 5,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "sequence": {
           "description": "The referenced sequence (`sequence_ref` only).",
           "pattern": "^seq_[0-9a-f]{32}$",
@@ -976,6 +1129,13 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
             "string",
             "null"
           ]
+        },
+        "tags": {
+          "description": "Tags (ADR-0036): each 1 to 64 characters without commas or control characters, at most\n64, sorted ignoring case and accents, without repeats. Left out of the file while\nempty.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -984,6 +1144,131 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "probe",
         "custom"
       ],
+      "type": "object"
+    },
+    "MediaFilter": {
+      "additionalProperties": false,
+      "description": "Which media to list; every part that is absent or empty lets everything through. The filter\nof `media.list`, and what a smart collection stores (ADR-0036).",
+      "properties": {
+        "collection": {
+          "description": "On this collection.",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "folder": {
+          "description": "Only this bin folder.",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kinds": {
+          "description": "Only these kinds.",
+          "items": {
+            "$ref": "#/$defs/MediaKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_duration": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                  "type": "string"
+                }
+              ],
+              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Longest length (flicks), inclusive."
+        },
+        "min_duration": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                  "type": "string"
+                }
+              ],
+              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Shortest length (flicks), inclusive; stills never match a bound."
+        },
+        "min_rating": {
+          "description": "Rated at least this (1-5).",
+          "format": "uint8",
+          "maximum": 5,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "problems": {
+          "description": "`true`: only files nothing can be read from (no streams).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "recursive": {
+          "description": "With subfolders (default: true without folder).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "tags": {
+          "description": "Has all these tags.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "text": {
+          "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "used": {
+          "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "MediaFolder": {
@@ -1038,6 +1323,11 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         {
           "const": "image",
           "description": "A still image (no duration).",
+          "type": "string"
+        },
+        {
+          "const": "image_sequence",
+          "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
           "type": "string"
         },
         {
@@ -1165,12 +1455,78 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "default_format": {
           "$ref": "#/$defs/SequenceFormat",
           "description": "Format of new sequences."
+        },
+        "proxy_policy": {
+          "$ref": "#/$defs/ProxyPolicy",
+          "description": "Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so\ndocuments written before the field read the same."
+        },
+        "still_duration": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                  "type": "string"
+                }
+              ],
+              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How long a still image is when it is placed without a length (ADR-0035). Absent: five\nseconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so\ndocuments written before the field read the same. Changing it never alters clips that\nalready exist."
         }
       },
       "required": [
         "default_format"
       ],
       "type": "object"
+    },
+    "ProxyMode": {
+      "description": "Whether one asset gets a proxy (ADR-0027), next to the project's policy.",
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "As the project's policy decides. The default.",
+          "type": "string"
+        },
+        {
+          "const": "force",
+          "description": "One is made whatever the policy.",
+          "type": "string"
+        },
+        {
+          "const": "off",
+          "description": "None is made, and the preview does not use one that exists.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProxyPolicy": {
+      "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project.",
+      "oneOf": [
+        {
+          "const": "off",
+          "description": "Never automatically (`media.generate_proxy` still makes one).",
+          "type": "string"
+        },
+        {
+          "const": "auto",
+          "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+          "type": "string"
+        },
+        {
+          "const": "all",
+          "description": "For every video file.",
+          "type": "string"
+        }
+      ]
     },
     "Sequence": {
       "description": "A timeline (arch §4.2). A project may hold several (e.g. a long cut and its shorts); the v1\nUI shows one.",
@@ -1631,6 +1987,16 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The project document: everything saved in `<Name>.cutweave` (arch §17).\n\nEntities are addressed by ID, never by index (arch §4.3). All collections are persistent\n(`imbl`), so `clone()` is O(1) and snapshots share structure (ADR-0005). Mutate only through\ncommands (`cutweave-ops`); readers get immutable snapshots.\n\nThe JSON form has a stable layout (fields in declaration order, maps sorted by key), so\nsaved files diff cleanly.",
   "properties": {
+    "collections": {
+      "additionalProperties": false,
+      "description": "Collections of media, keyed by ID (ADR-0036). Left out of the file while empty, so\ndocuments written before the field read the same.",
+      "patternProperties": {
+        "^col_[0-9a-f]{32}$": {
+          "$ref": "#/$defs/Collection"
+        }
+      },
+      "type": "object"
+    },
     "custom": {
       "additionalProperties": true,
       "description": "Plugin data (arch §4.3).",

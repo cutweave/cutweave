@@ -39,16 +39,26 @@ export function selectSelectedClips(
     const clip = ref.kind === "item" ? found.get(ref.id) : undefined;
     if (clip !== undefined) ordered.push(clip);
   }
-  return oneClipPerGroup(project, ordered, wanted);
+  return ordered;
 }
 
 /**
- * A click on the timeline selects a clip's whole linked group (timeline spec INV-341, WP-2A.10):
- * the picture and its sound. The inspector shows such a group as the one clip clicked (the first
- * of it in the selection), as an editor's clip inspector does; the engine still applies timing
- * edits to every member (INV-35). A group only partly selected (Alt+click, or linked selection
- * off) keeps each selected member.
+ * What the clip inspector shows and edits for a selection. A click on the timeline selects a
+ * clip's whole linked group (timeline spec INV-341, WP-2A.10): the picture and its sound. The
+ * inspector shows such a group as the one clip clicked (the first of it in the selection), as an
+ * editor's clip inspector does; the engine still applies timing edits to every member (INV-35).
+ * A group only partly selected (Alt+click, or linked selection off) keeps each selected member.
  */
+export function selectInspectedClips(
+  project: Project | null,
+  selection: readonly SelectionRef[],
+): SelectedClip[] {
+  const clips = selectSelectedClips(project, selection);
+  if (project === null || clips.length < 2) return clips;
+  const wanted = new Set<string>(selection.filter((r) => r.kind === "item").map((r) => r.id));
+  return oneClipPerGroup(project, clips, wanted);
+}
+
 function oneClipPerGroup(
   project: Project,
   clips: readonly SelectedClip[],

@@ -90,7 +90,7 @@ function media(n: number) {
 /** One 1920 × 1080 sequence at 30 fps: three 2 s clips back to back on a video track. */
 export function threeClipProject() {
   return {
-    meta: { name: "Three clips", schema_version: 2, created: null, app_version: null },
+    meta: { name: "Three clips", schema_version: 3, created: null, app_version: null },
     settings: { default_format: {} },
     media: Object.fromEntries([1, 2, 3].map((n) => [`med_${n}`, media(n)])),
     sequences: {

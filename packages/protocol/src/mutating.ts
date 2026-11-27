@@ -8,6 +8,7 @@
  * against `schema/commands.json` (`readOnlyHint`), so a new query cannot be missed.
  */
 export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
+  "audio.get_levels",
   "edit.history",
   "edit.list_checkpoints",
   "edit.locks",
@@ -26,9 +27,13 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "keyframe.eval",
   "media.cache_status",
   "media.capabilities",
+  "media.find_missing",
   "media.list",
+  "media.list_collections",
   "media.list_folders",
+  "media.list_tags",
   "media.proxy_status",
+  "project.collect_estimate",
   "project.connections",
   "project.info",
   "project.snapshot",

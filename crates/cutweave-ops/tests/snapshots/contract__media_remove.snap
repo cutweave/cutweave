@@ -31,7 +31,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "required": [
         "id"
       ],
-      "description": "Removes a media asset from the project (the file on disk is untouched). Fails with\n`Invalid` while any clip uses it; delete those clips first.",
+      "description": "Removes a media asset from the project (the file on disk is untouched) and takes it off\nevery manual collection. Fails with `Invalid` while any clip uses it; delete those clips\nfirst.",
       "title": "MediaRemove"
     },
     "output_schema": {
@@ -64,7 +64,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "required": [
       "id"
     ],
-    "description": "Removes a media asset from the project (the file on disk is untouched). Fails with\n`Invalid` while any clip uses it; delete those clips first.",
+    "description": "Removes a media asset from the project (the file on disk is untouched) and takes it off\nevery manual collection. Fails with `Invalid` while any clip uses it; delete those clips\nfirst.",
     "title": "MediaRemove"
   },
   "output": {

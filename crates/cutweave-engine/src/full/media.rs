@@ -88,7 +88,8 @@ impl MediaFile {
     #[must_use]
     pub fn of(snapshot: &DocSnapshot, id: MediaId) -> Option<MediaFile> {
         let asset = snapshot.doc.media.get(&id)?;
-        let path = asset.path_abs.as_ref()?;
+        // What the backend reads: the file, or the locator of an image sequence (ADR-0035).
+        let path = asset.source_path()?;
         Some(MediaFile {
             id,
             path: PathBuf::from(path),
@@ -146,12 +147,14 @@ impl MediaState {
         self.doc.snapshot()
     }
 
-    /// The cache reference of `file`: its registered hash, or a fast hash of the file.
+    /// The cache reference of `file`: its registered hash, or a fast hash of the file, and the
+    /// probe's display rotation (thumbnails are upright, as the preview shows the picture).
     pub fn media_ref(file: &MediaFile) -> Result<MediaRef, CacheError> {
-        match file.hash {
-            Some(hash) => Ok(MediaRef::new(file.path.clone(), hash)),
-            None => MediaRef::from_path(file.path.clone()),
-        }
+        let reference = match file.hash {
+            Some(hash) => MediaRef::new(file.path.clone(), hash),
+            None => MediaRef::from_path(file.path.clone())?,
+        };
+        Ok(reference.with_rotation(file.probe.rotation))
     }
 }
 
@@ -332,6 +335,12 @@ fn has_stream(probe: &ProbeInfo, kind: StreamKind) -> bool {
     probe.streams.iter().any(|s| s.kind == kind)
 }
 
+/// A video file or an image sequence: media with pictures over time.
+fn moving_picture(media: &AnalysisInput) -> bool {
+    matches!(media.kind, MediaKind::Video | MediaKind::ImageSequence)
+        && has_stream(&media.probe, StreamKind::Video)
+}
+
 /// `index`: the frame index of a video, into `cache.sqlite` (announces `media.indexed`).
 pub(crate) struct IndexStage {
     pub(crate) backend: Arc<dyn MediaBackend>,
@@ -348,7 +357,8 @@ impl AnalysisStage for IndexStage {
     }
 
     fn applies_to(&self, media: &AnalysisInput) -> bool {
-        media.kind == MediaKind::Video && has_stream(&media.probe, StreamKind::Video)
+        // An image sequence is video here too: its index is computed, not scanned (ADR-0035).
+        moving_picture(media)
     }
 
     fn run(&self, media: &AnalysisInput, ctx: &JobCtx) -> Result<(), JobError> {
@@ -382,12 +392,13 @@ impl AnalysisStage for ThumbStage {
 
     fn applies_to(&self, media: &AnalysisInput) -> bool {
         // Audio-only media would fail with `NoStream` (WP-1D.05 handoff).
-        media.kind == MediaKind::Video && has_stream(&media.probe, StreamKind::Video)
+        moving_picture(media)
     }
 
     fn run(&self, media: &AnalysisInput, ctx: &JobCtx) -> Result<(), JobError> {
         ctx.check()?;
-        let reference = MediaRef::new(PathBuf::from(&media.path), hash_of(media)?);
+        let reference = MediaRef::new(PathBuf::from(&media.path), hash_of(media)?)
+            .with_rotation(media.probe.rotation);
         let cancel = job_cancel(ctx);
         self.thumbs
             .prefetch(&reference, PrefetchSpec::default(), &cancel, &mut |f| {

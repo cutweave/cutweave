@@ -1,0 +1,406 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.set_collection_filter",
+    "summary": "Replace the filter of a smart collection of media",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection (smart)."
+        },
+        "filter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Terms that must all occur in the name, tags or note, ignoring case and accents."
+            },
+            "kinds": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "description": "What a [`MediaAsset`] is.",
+                "oneOf": [
+                  {
+                    "description": "A video file (may also carry audio).",
+                    "type": "string",
+                    "const": "video"
+                  },
+                  {
+                    "description": "An audio-only file.",
+                    "type": "string",
+                    "const": "audio"
+                  },
+                  {
+                    "description": "A still image (no duration).",
+                    "type": "string",
+                    "const": "image"
+                  },
+                  {
+                    "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                    "type": "string",
+                    "const": "image_sequence"
+                  },
+                  {
+                    "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                    "type": "string",
+                    "const": "sequence_ref"
+                  }
+                ]
+              },
+              "description": "Only these kinds."
+            },
+            "min_duration": {
+              "anyOf": [
+                {
+                  "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Shortest length (flicks), inclusive; stills never match a bound."
+            },
+            "max_duration": {
+              "anyOf": [
+                {
+                  "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Longest length (flicks), inclusive."
+            },
+            "used": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Placed on a timeline of any sequence (`true`) or not (`false`)."
+            },
+            "problems": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "`true`: only files nothing can be read from (no streams)."
+            },
+            "folder": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^fld_[0-9a-f]{32}$",
+              "description": "Only this bin folder."
+            },
+            "recursive": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "With subfolders (default: true without folder)."
+            },
+            "tags": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "description": "Has all these tags."
+            },
+            "min_rating": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint8",
+              "minimum": 1,
+              "maximum": 5,
+              "description": "Rated at least this (1-5)."
+            },
+            "collection": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^col_[0-9a-f]{32}$",
+              "description": "On this collection."
+            }
+          },
+          "description": "The new filter."
+        }
+      },
+      "required": [
+        "collection",
+        "filter"
+      ],
+      "description": "Replaces the filter of a smart collection (the same filter `media.list` takes; it cannot\nname a collection). Fails with `Invalid` for a manual collection.",
+      "title": "MediaSetCollectionFilter"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection."
+        },
+        "members": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many assets pass the new filter now."
+        }
+      },
+      "required": [
+        "collection_id",
+        "members"
+      ],
+      "description": "Result of `media.set_collection_filter`.",
+      "title": "CollectionFilterSet"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection (smart)."
+      },
+      "filter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Terms that must all occur in the name, tags or note, ignoring case and accents."
+          },
+          "kinds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "What a [`MediaAsset`] is.",
+              "oneOf": [
+                {
+                  "description": "A video file (may also carry audio).",
+                  "type": "string",
+                  "const": "video"
+                },
+                {
+                  "description": "An audio-only file.",
+                  "type": "string",
+                  "const": "audio"
+                },
+                {
+                  "description": "A still image (no duration).",
+                  "type": "string",
+                  "const": "image"
+                },
+                {
+                  "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                  "type": "string",
+                  "const": "image_sequence"
+                },
+                {
+                  "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                  "type": "string",
+                  "const": "sequence_ref"
+                }
+              ]
+            },
+            "description": "Only these kinds."
+          },
+          "min_duration": {
+            "anyOf": [
+              {
+                "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shortest length (flicks), inclusive; stills never match a bound."
+          },
+          "max_duration": {
+            "anyOf": [
+              {
+                "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longest length (flicks), inclusive."
+          },
+          "used": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Placed on a timeline of any sequence (`true`) or not (`false`)."
+          },
+          "problems": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true`: only files nothing can be read from (no streams)."
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "description": "Only this bin folder."
+          },
+          "recursive": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "With subfolders (default: true without folder)."
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Has all these tags."
+          },
+          "min_rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint8",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Rated at least this (1-5)."
+          },
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^col_[0-9a-f]{32}$",
+            "description": "On this collection."
+          }
+        },
+        "description": "The new filter."
+      }
+    },
+    "required": [
+      "collection",
+      "filter"
+    ],
+    "description": "Replaces the filter of a smart collection (the same filter `media.list` takes; it cannot\nname a collection). Fails with `Invalid` for a manual collection.",
+    "title": "MediaSetCollectionFilter"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection_id": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection."
+      },
+      "members": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "How many assets pass the new filter now."
+      }
+    },
+    "required": [
+      "collection_id",
+      "members"
+    ],
+    "description": "Result of `media.set_collection_filter`.",
+    "title": "CollectionFilterSet"
+  }
+}

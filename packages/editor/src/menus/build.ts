@@ -41,11 +41,13 @@ function resolveRow(
   override?: { label?: string; icon?: MenuItem["icon"] },
 ): Resolved | null {
   if (!evaluateWhen(row.visible, ctx.keys)) return null;
+  if (row.visibleIf !== undefined && !row.visibleIf(ctx)) return null;
   const order = clampOrder(row.order, ORDER_MAX);
 
   if (row.submenu !== undefined) {
     const items: MenuLeaf[] = [];
-    for (const sub of [...row.submenu.rows].sort((a, b) => a.order - b.order)) {
+    const rows = [...row.submenu.rows, ...(row.submenu.more?.(ctx) ?? [])];
+    for (const sub of rows.sort((a, b) => a.order - b.order)) {
       const resolved = resolveRow(services, sub, ctx, choose);
       if (resolved !== null && resolved.entry.kind !== "submenu") items.push(resolved.entry);
     }

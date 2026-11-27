@@ -24,9 +24,11 @@
 //!   [`PIPELINE_DEPTH`] frames ahead of the next stage, so an export runs at the speed of its
 //!   slowest stage rather than their sum; clips decode sequentially
 //!   ([`DecoderFrameSource`](super::DecoderFrameSource)).
-//! - **Sound** is the offline mixdown ([`mixdown`], the real-time mixer's lane and bus code) of
-//!   the exported range at [`EXPORT_SAMPLE_RATE`] stereo, gapless from sample 0, pushed in step
-//!   with the pictures (up to the end of each frame).
+//! - **Sound** is the offline mixdown ([`mixdown_with`], the real-time mixer's lane and bus code:
+//!   track gain, mute and solo, the master's true-peak limiter at −1 dBTP unless
+//!   `advanced.audio.limiter` is false; WP-2E.02) of the exported range at
+//!   [`EXPORT_SAMPLE_RATE`] stereo, gapless from sample 0, pushed in step with the pictures (up
+//!   to the end of each frame).
 //! - **Timestamps.** Frame `i` shows sequence time `start + i / fps` and gets pts `i / fps` in
 //!   the file (output time from 0); flicks become codec time bases only inside the encoder.
 //! - **Encoder** (WP-1E.02): the plan's `hw` becomes the encode spec's [`HwEncode`] (`auto`:
@@ -54,7 +56,7 @@ use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, PoisonError};
 use std::time::{Duration as StdDuration, Instant};
 
-use cutweave_audio::{Mixdown, mixdown};
+use cutweave_audio::{BusGraph, LimiterConfig, Mixdown, mixdown_with};
 use cutweave_jobs::{CancelToken, JobError, JobProgress};
 use cutweave_media::{
     AudioChunk, AudioEncodeSpec, CancelCheck, EncodeSpec, EncodeSummary, Encoder, HwEncode,
@@ -62,6 +64,7 @@ use cutweave_media::{
     VideoAdvanced, VideoEncodeSpec, VideoFrame, encode_with_fallback,
 };
 use cutweave_model::{ColorTags, Project, Rounding, SampleRate, SequenceId, Time};
+use cutweave_ops::export::offline::{describe as describe_offline, offline_media};
 use cutweave_ops::export::presets::{AudioCodec, PlanRate, VideoCodec};
 use cutweave_ops::export::{ExportHw, ExportPlan, ExportQuality};
 use cutweave_render::graph::{GraphOptions, RenderGraph, build};
@@ -250,7 +253,8 @@ pub struct ExportSummary {
     /// The hardware encoder that failed during the export, after which it was encoded again
     /// in software.
     pub failed_encoder: Option<String>,
-    /// Frames on which some layer's media was unavailable (drawn without it).
+    /// Frames on which some layer's media was offline (drawn as the "media offline" slate) or
+    /// could not be read (drawn without it).
     pub frames_missing_media: u32,
     /// Audio clips whose source failed (silent in the mix).
     pub audio_source_errors: u64,
@@ -277,7 +281,8 @@ impl ExportSummary {
         if self.frames_missing_media > 0 {
             let _ = write!(
                 msg,
-                "; {} frames were drawn without unavailable media",
+                "; {} frames have offline or unreadable media (offline clips show the \"media \
+                 offline\" slate)",
                 self.frames_missing_media
             );
         }
@@ -464,13 +469,24 @@ impl AudioFeed {
             .start
             .checked_add(plan.duration)
             .map_err(|e| failed(format!("the export range: {e}")))?;
+        // The audible tracks only (nothing to decode for a muted track), with their buses.
         let segments = evaluate_audio(doc, plan.sequence, plan.start, end)
             .map_err(|e| failed(format!("cannot evaluate the audio: {e}")))?;
-        let mix = mixdown(
+        let buses = doc
+            .sequences
+            .get(&plan.sequence)
+            .map_or_else(|| BusGraph::from_segments(&segments), BusGraph::of_sequence);
+        let limiter = LimiterConfig {
+            enabled: plan.output.advanced.audio_limiter.unwrap_or(true),
+            ..LimiterConfig::default()
+        };
+        let mix = mixdown_with(
             &services.sources.audio(doc),
             &segments,
+            &buses,
             plan.start..end,
             rate,
+            limiter,
         )
         .map_err(|e| failed(format!("cannot mix the audio down: {e}")))?;
         Ok(AudioFeed {
@@ -880,6 +896,32 @@ fn push_everything(
     })
 }
 
+/// Fails an export that did not allow offline media (WP-2F.03c) when a file its range plays is
+/// gone now: the request was checked when it was queued, and a file can go missing while it
+/// waits its turn.
+fn refuse_offline(plan: &ExportPlan, services: &ExportServices) -> Result<(), ExportError> {
+    if plan.allow_offline {
+        return Ok(());
+    }
+    let doc = &plan.snapshot.doc;
+    let missing = doc
+        .sequences
+        .get(&plan.sequence)
+        .map_or_else(Vec::new, |seq| {
+            offline_media(doc, seq, &[(plan.start, plan.end)], &|asset| {
+                services.sources.offline(asset)
+            })
+        });
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(failed(format!(
+        "{}; relink them and export again, or export with allow_offline: true to get a \"media \
+         offline\" slate in their place",
+        describe_offline(&missing)
+    )))
+}
+
 /// Runs the export of `plan` (see the module docs): renders, mixes and encodes it into
 /// `plan.path`, reporting its progress to `report`, until done or `cancel`. After a mid-stream
 /// hardware-encoder failure (`hw: auto`) it starts over in software from frame 0, reporting
@@ -901,6 +943,7 @@ pub fn run_export(
             plan.path.display()
         )));
     }
+    refuse_offline(plan, services)?;
     let written = Arc::new(AtomicI64::new(0));
     let bytes = Arc::new(AtomicU64::new(0));
     let spec = encode_spec(plan, services, cancel, &written, &bytes);

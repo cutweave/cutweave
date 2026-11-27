@@ -7,13 +7,16 @@
 
 import {
   FRAME_MEMORY_CHOICES,
+  PROXY_JOB_CHOICES,
+  PROXY_LIMITS,
   type PreferenceKey,
   THUMBNAIL_LIMITS,
   WAVEFORM_LIMITS,
 } from "@cutweave/preferences";
 import type { CacheKind } from "@cutweave/protocol";
 import { Button, TextField } from "@cutweave/ui";
-import { useEngineReady } from "../engine/engineStore.ts";
+import { engineStore, useEngineReady } from "../engine/engineStore.ts";
+import { refreshProxies } from "../media/proxies.ts";
 import {
   clearCaches,
   formatBytes,
@@ -32,6 +35,29 @@ const bytesOption = (bytes: number): ChoiceOption => ({ value: bytes, text: form
 
 const thumbnailOptions = THUMBNAIL_LIMITS.map(bytesOption);
 const waveformOptions = WAVEFORM_LIMITS.map(bytesOption);
+const proxyOptions = PROXY_LIMITS.map(bytesOption);
+// Counts are numbers: nothing to translate.
+const proxyJobOptions: readonly ChoiceOption[] = PROXY_JOB_CHOICES.map((value) => ({
+  value,
+  text: String(value),
+}));
+
+/** What each cache is called, and its "Clear" button. */
+const KIND_NAME = {
+  thumbnails: "settings.cache.thumbnails",
+  waveforms: "settings.cache.waveforms",
+  proxies: "settings.cache.proxies",
+} as const;
+const KIND_CLEAR = {
+  thumbnails: "settings.cache.clearThumbnails",
+  waveforms: "settings.cache.clearWaveforms",
+  proxies: "settings.cache.clearProxies",
+} as const;
+
+/** The bin's proxy badges follow a cache change made here (a lower limit, "Clear proxies"). */
+const proxiesChanged = (kind: CacheKind): void => {
+  if (kind === "proxies") void refreshProxies({ engine: engineStore });
+};
 const frameMemoryOptions: readonly ChoiceOption[] = FRAME_MEMORY_CHOICES.map((bytes) =>
   bytes === 0 ? { value: 0, label: "settings.rows.frameMemory.auto" } : bytesOption(bytes),
 );
@@ -57,7 +83,7 @@ function CacheKindControl({ kind, prefKey, options, controlId, ctx }: KindContro
       : used === 0
         ? t("settings.cache.empty")
         : t("settings.cache.inUse", { used: formatBytes(used) });
-  const name = t(kind === "thumbnails" ? "settings.cache.thumbnails" : "settings.cache.waveforms");
+  const name = t(KIND_NAME[kind]);
   return (
     <>
       <span className="caption" data-testid={`cache-usage-${kind}`} data-bytes={used ?? ""}>
@@ -74,7 +100,12 @@ function CacheKindControl({ kind, prefKey, options, controlId, ctx }: KindContro
           if (option === undefined) return;
           void ctx.client
             .set(prefKey, option.value as never)
-            .then(() => window.setTimeout(() => void refreshCacheStatus(), 300))
+            .then(() =>
+              window.setTimeout(() => {
+                void refreshCacheStatus();
+                proxiesChanged(kind);
+              }, 300),
+            )
             .catch(() => undefined);
         }}
       >
@@ -89,6 +120,7 @@ function CacheKindControl({ kind, prefKey, options, controlId, ctx }: KindContro
         disabled={!engineReady || used === undefined || used === 0}
         onClick={() => {
           void clearCaches([kind]).then((done) => {
+            proxiesChanged(kind);
             ctx.say(
               done
                 ? t("settings.cache.cleared", { name })
@@ -97,11 +129,7 @@ function CacheKindControl({ kind, prefKey, options, controlId, ctx }: KindContro
           });
         }}
       >
-        {t(
-          kind === "thumbnails"
-            ? "settings.cache.clearThumbnails"
-            : "settings.cache.clearWaveforms",
-        )}
+        {t(KIND_CLEAR[kind])}
       </Button>
     </>
   );
@@ -215,6 +243,26 @@ const cache: SettingsPageDef = {
       applies: "engine",
     },
     {
+      id: "cache.proxies_limit",
+      key: "cache.proxies_limit",
+      label: "settings.rows.proxiesLimit.label",
+      description: "settings.rows.proxiesLimit.description",
+      keywords: "settings.rows.proxiesLimit.keywords",
+      control: {
+        kind: "custom",
+        render: (ctx, controlId) => (
+          <CacheKindControl
+            kind="proxies"
+            prefKey="cache.proxies_limit"
+            options={proxyOptions}
+            controlId={controlId}
+            ctx={ctx}
+          />
+        ),
+      },
+      applies: "engine",
+    },
+    {
       id: "cache.clear_all",
       label: "settings.rows.clearCaches.label",
       description: "settings.rows.clearCaches.description",
@@ -296,6 +344,15 @@ const performance: SettingsPageDef = {
       description: "settings.rows.frameMemory.description",
       keywords: "settings.rows.frameMemory.keywords",
       control: { kind: "select", options: frameMemoryOptions },
+      applies: "engine",
+    },
+    {
+      id: "performance.proxy_jobs",
+      key: "performance.proxy_jobs",
+      label: "settings.rows.proxyJobs.label",
+      description: "settings.rows.proxyJobs.description",
+      keywords: "settings.rows.proxyJobs.keywords",
+      control: { kind: "select", options: proxyJobOptions },
       applies: "engine",
     },
     {

@@ -283,9 +283,13 @@ describe("every key handler in the editor is accounted for", () => {
   const KNOWN: Readonly<Record<string, string>> = {
     "history/HistoryPanel.tsx":
       "the history list's keys: Up, Down, Home and End move between rows, Enter goes to one",
+    "inspector/MediaOrganize.tsx":
+      "note field: Ctrl+Enter commits (Enter is a new line), Escape puts the stored note back (dialogs group)",
     "inspector/MediaPreview.tsx":
       "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
     "keymap/dispatch.ts": "the global dispatcher: every `global` binding of the keymap",
+    "media/BinSidebar.tsx":
+      "the bin sidebar's trees: Up, Down, Home and End move between rows, Right and Left open and close a folder, Enter opens a row; rename and delete of a collection are the keymap's `bin` bindings (binKeys.ts)",
     "menus/host.tsx":
       "Shift+F10 and the Menu key open the context menu of the focused surface: the platform's own keys (reserved)",
     "inspector/SpeedSection.tsx":

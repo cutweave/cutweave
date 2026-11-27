@@ -201,6 +201,31 @@ export const ExportOptions = {
   ),
 };
 
+/** Values the host refused (the engine's `Invalid` pointers): the reason under each field. */
+export const RefusedValues = {
+  render: () => (
+    <div style={col}>
+      <Bound
+        schema={exportSchema}
+        initial={{
+          container: "mp4",
+          rate_control: "cbr",
+          crf: 18,
+          bitrate: 80000,
+          two_pass: true,
+          keyint: 60,
+          threads: 0,
+          note: "",
+        }}
+        errors={{
+          rate_control: "This hardware encoder has no constant bitrate; use VBR or software.",
+          bitrate: "At most 50000 kb/s.",
+        }}
+      />
+    </div>
+  ),
+};
+
 export const MultiSelection = {
   render: () => (
     <div style={col}>

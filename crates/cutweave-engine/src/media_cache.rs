@@ -5,7 +5,8 @@
 //! - `media.cache_status` (a read-only engine command, in the MCP catalog): the cache folder,
 //!   each disk cache's usage and limit, the hardware decoding policy and the memory the decoded
 //!   frame cache may use. Agents may read it.
-//! - `media.set_cache_config`, `media.clear_cache` and `media.set_decode_policy` (**UI-only**
+//! - `media.set_cache_config`, `media.clear_cache`, `media.set_decode_policy` and
+//!   `media.set_proxy_config` (WP-2F.03b: the proxy size and the proxy jobs at once) (**UI-only**
 //!   scope): the desktop app applies its machine preferences to its engine after each
 //!   handshake and when they change. None is undoable or journaled, none touches the project
 //!   document or marks it dirty, and an agent token gets `forbidden`. A lower limit shrinks
@@ -29,6 +30,16 @@ pub const MIN_FRAME_CACHE_BYTES: u64 = 64 << 20;
 pub const MAX_FRAME_CACHE_BYTES: u64 = 64 << 30;
 /// The largest disk cache limit `media.set_cache_config` accepts: 16 TiB.
 pub const MAX_CACHE_LIMIT_BYTES: u64 = 16 << 40;
+
+/// The proxy sizes `media.set_proxy_config` accepts: the longest side in pixels ("540p",
+/// "720p" and "960p" in the app's settings; a 16:9 picture at 960 is 960 × 540).
+pub const PROXY_SIZES: [u32; 3] = [540, 720, 960];
+/// The proxy size of an engine nobody configured.
+pub const DEFAULT_PROXY_SIZE: u32 = 960;
+/// The most proxy jobs at once `media.set_proxy_config` accepts.
+pub const MAX_PROXY_JOBS: u32 = 8;
+/// The proxy jobs at once of an engine nobody configured.
+pub const DEFAULT_PROXY_JOBS: u32 = 2;
 
 /// A kind of disk cache.
 #[wire]
@@ -109,6 +120,10 @@ pub struct MediaCacheStatusOutput {
     /// Bytes of decoded frames the RAM frame cache may hold.
     #[specta(type = specta_typescript::Number)]
     pub frame_cache_bytes: u64,
+    /// The longest side, in pixels, of the proxies made from now on (540, 720 or 960).
+    pub proxy_size: u32,
+    /// How many proxy jobs run at once (one while an export runs).
+    pub proxy_jobs: u32,
 }
 
 /// What clearing one kind removed.
@@ -158,6 +173,14 @@ pub trait CacheControl: Send + Sync {
     /// Sets the hardware decoding policy for decoders opened from now on; decoders already
     /// open are closed when idle and reopened by the next seek.
     fn set_decode_hw(&self, hw: DecodeHw) -> Result<(), CmdError>;
+
+    /// Sets the size of the proxies made from now on and how many proxy jobs run at once (a
+    /// value left out stays); returns the status in force.
+    fn set_proxy_config(
+        &self,
+        size: Option<u32>,
+        jobs: Option<u32>,
+    ) -> Result<MediaCacheStatusOutput, CmdError>;
 }
 
 /// What the cache commands run against: the engine's [`CacheControl`], if it has one.
@@ -227,6 +250,8 @@ impl EngineCommand for MediaCacheStatus {
                 kinds: Vec::new(),
                 decode_hw: DecodeHw::Auto,
                 frame_cache_bytes: 0,
+                proxy_size: DEFAULT_PROXY_SIZE,
+                proxy_jobs: DEFAULT_PROXY_JOBS,
             },
         })
     }
@@ -358,12 +383,57 @@ impl EngineCommand for MediaSetDecodePolicy {
     }
 }
 
+// ----- media.set_proxy_config -----------------------------------------------------------------
+
+/// Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960
+/// pixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size
+/// applies to proxies made from now on: generations of the old size stop, the open project's
+/// wanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache
+/// unused until its limit removes them. Not undoable, not journaled, never marks the project
+/// dirty; UI credential only (the desktop app applies the person's machine preferences).
+#[command(
+    name = "media.set_proxy_config",
+    summary = "Set the proxy size and how many proxy jobs run at once",
+    engine,
+    scope = "ui",
+    undoable = false,
+    journaled = false,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct MediaSetProxyConfig {
+    /// The longest side of new proxies in pixels: 540, 720 or 960. Left out: unchanged.
+    pub size: Option<u32>,
+    /// Proxy jobs at once, 1 to 8. Left out: unchanged.
+    pub jobs: Option<u32>,
+}
+
+impl EngineCommand for MediaSetProxyConfig {
+    type Context = CacheCall;
+    type Output = MediaCacheStatusOutput;
+
+    fn run(&self, call: &mut CacheCall) -> Result<MediaCacheStatusOutput, CmdError> {
+        let control = call.control()?;
+        if self.size.is_some_and(|s| !PROXY_SIZES.contains(&s)) {
+            return Err(CmdError::invalid("/size", "must be 540, 720 or 960"));
+        }
+        if self
+            .jobs
+            .is_some_and(|j| !(1..=MAX_PROXY_JOBS).contains(&j))
+        {
+            return Err(CmdError::invalid("/jobs", "must be between 1 and 8"));
+        }
+        control.set_proxy_config(self.size, self.jobs)
+    }
+}
+
 /// Registers the cache commands.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<MediaCacheStatus>()?
         .register::<MediaSetCacheConfig>()?
         .register::<MediaClearCache>()?
-        .register::<MediaSetDecodePolicy>()?;
+        .register::<MediaSetDecodePolicy>()?
+        .register::<MediaSetProxyConfig>()?;
     Ok(())
 }

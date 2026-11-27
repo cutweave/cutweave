@@ -1,0 +1,124 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.set_rating",
+    "summary": "Rate media assets 1 to 5 stars, or clear the rating",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets (1..=256, no repeats)."
+        },
+        "rating": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Whole stars, 1 to 5; absent or null: unrated.",
+          "default": null
+        }
+      },
+      "required": [
+        "media"
+      ],
+      "description": "Rates media assets from 1 to 5 stars, or clears their rating without `rating`.",
+      "title": "MediaSetRating"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets that changed (those that already were as asked are left out)."
+        }
+      },
+      "required": [
+        "changed"
+      ],
+      "description": "Result of the tag and rating commands.",
+      "title": "MediaTagged"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets (1..=256, no repeats)."
+      },
+      "rating": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint8",
+        "minimum": 1,
+        "maximum": 5,
+        "description": "Whole stars, 1 to 5; absent or null: unrated.",
+        "default": null
+      }
+    },
+    "required": [
+      "media"
+    ],
+    "description": "Rates media assets from 1 to 5 stars, or clears their rating without `rating`.",
+    "title": "MediaSetRating"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets that changed (those that already were as asked are left out)."
+      }
+    },
+    "required": [
+      "changed"
+    ],
+    "description": "Result of the tag and rating commands.",
+    "title": "MediaTagged"
+  }
+}

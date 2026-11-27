@@ -90,6 +90,7 @@ The form is controlled and shows `value`; while a gesture runs it shows the poin
 
 - `mixed`: dot paths where the selection disagrees (`mergeSelection(values)` computes the merged value and the list). Mixed fields show an em dash or "Mixed", never a guess, and offer reset.
 - Defaults come from the schema's `default`, or the `defaults` prop by path. Reset shows only while the value differs; it calls `onReset(path)` when given, else sends the default through `onChange`. `onResetGroup(group, paths)` enables the section reset.
+- `errors[path]` = the reason a value was refused (an engine `Invalid` pointer turned into a dot path, `/advanced/video/rate_control/mode` → `video.rate_control.mode`): the field's label turns to the danger color and the reason shows under the row (`role="alert"`). A path with no field on screen shows nothing; the host says it elsewhere (WP-2G.04).
 - `keyframes[path]` = `{state: "off" | "on" | "elsewhere", onToggle, onPrev?, onNext?}` draws the diamond (filled while a keyframe sits at the playhead, `on`). Without the `keyframes` prop no diamond shows (export dialog); with it, a `keyframeable` field without an entry keeps a disabled slot so rows stay aligned. The form never calls the engine: the host wires these to `keyframe.*` and `item.set_props{auto_key}`.
 
 ## Strings and accessibility

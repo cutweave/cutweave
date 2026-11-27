@@ -310,6 +310,50 @@ fn sizes_formats_and_parameter_errors() {
     assert_eq!(out.items_visible[0].item, f.a);
 }
 
+/// WP-2F.03c: `render.frame` shows the "media offline" slate where a clip's file is gone,
+/// pixel for pixel when the clip fills a frame of the slate's size, and says so in its notes.
+#[test]
+fn an_offline_clip_renders_the_media_offline_slate() {
+    use crate::slate;
+    let mut f = three_clips(slate::WIDTH, slate::HEIGHT);
+    let source = crate::testcard::SyntheticSource::new()
+        .with_offline(cutweave_model::MediaId::from_u128(21));
+    f.source = Arc::new(source);
+    // 1 s: only clip A (offline) is on screen, at full size.
+    let out = frame(&f, json!({ "t": "1s", "format": "png", "max_size": 320 })).unwrap();
+    assert_eq!((out.width, out.height), (slate::WIDTH, slate::HEIGHT));
+    let png = png_of(&out);
+    assert_eq!(png, slate::image(), "the slate, exactly");
+    // The clip is on screen (as the slate), and the note names it.
+    let visible: Vec<ItemId> = out.items_visible.iter().map(|v| v.item).collect();
+    assert_eq!(visible, [f.a]);
+    assert!(out.items_hidden.is_empty());
+    assert!(
+        out.notes
+            .iter()
+            .any(|n| n.contains(&f.a.to_string()) && n.contains("media offline")),
+        "{:?}",
+        out.notes
+    );
+
+    // At half size the slate is scaled with the frame: bands and plate keep their places.
+    let half = frame(&f, json!({ "t": "1s", "format": "png", "max_size": 160 })).unwrap();
+    let small = png_of(&half);
+    assert_eq!((small.width, small.height), (160, 90));
+    for (x, y, want) in [
+        (2, 2, slate::BAND),
+        (8, 5, slate::FIELD),
+        (17, 36, slate::PLATE),
+        (155, 85, slate::BAND),
+    ] {
+        let got = small.pixel(x, y);
+        assert!(
+            delta_e([got[0], got[1], got[2]], [want[0], want[1], want[2]]) < 2.0,
+            "({x}, {y}): {got:?} for {want:?}"
+        );
+    }
+}
+
 #[test]
 fn hidden_items_are_reported() {
     let mut f = three_clips(W, H);

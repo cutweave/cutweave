@@ -24,9 +24,15 @@
 //! outlives the request. Two simultaneous requests for the same missing entry both generate it;
 //! the results are byte-identical and the later write replaces the earlier.
 //!
-//! The pictures are the decoded frames as they are: container rotation and display aspect are the
-//! decoder's business, not applied here, and colour is not converted (RGBA out of the decoder is
-//! treated as sRGB).
+//! **Orientation.** Decoders return frames as coded; the picture is turned upright here, by the
+//! display rotation the caller read from the probe ([`MediaRef::rotation`]: a phone video shot
+//! upright, a photo's EXIF quarter turn), the way the preview shows it. A quarter turn swaps the
+//! picture's width and height, so widths and tile sizes are those of the upright picture. The
+//! rotation is part of the key of a turned picture only, so entries of unrotated media keep their
+//! keys and entries made before pictures were turned are never served for a rotated one.
+//!
+//! The display (pixel) aspect ratio is not applied, and colour is not converted (RGBA out of the
+//! decoder is treated as sRGB).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -41,6 +47,7 @@ use cutweave_media::{DecodeOpts, HwMode, MediaError};
 use cutweave_model::{Duration, MediaId, Time};
 use cutweave_render::Image;
 use cutweave_render::encode::{DEFAULT_JPEG_QUALITY, encode_jpeg};
+use cutweave_render::geometry::quarter_turns;
 
 use crate::disk::{DiskCache, DiskKind};
 use crate::{CacheDb, CacheError};
@@ -62,6 +69,9 @@ pub struct MediaRef {
     pub path: PathBuf,
     /// Its content hash: the cache key.
     pub hash: ContentHash,
+    /// The display rotation its probe reports, in degrees clockwise (`ProbeInfo::rotation`):
+    /// pictures are turned by it (see the module docs). 0 for a reference made without a probe.
+    pub rotation: u16,
 }
 
 impl MediaRef {
@@ -71,14 +81,22 @@ impl MediaRef {
         MediaRef {
             path: path.into(),
             hash,
+            rotation: 0,
         }
+    }
+
+    /// The same file shown turned by `degrees` clockwise (the probe's display rotation).
+    #[must_use]
+    pub fn with_rotation(mut self, degrees: u16) -> MediaRef {
+        self.rotation = degrees;
+        self
     }
 
     /// Hashes `path` (fast mode) to make the reference.
     pub fn from_path(path: impl Into<PathBuf>) -> Result<MediaRef, CacheError> {
         let path = path.into();
         let hash = content_hash(&path, HashMode::Fast)?;
-        Ok(MediaRef { path, hash })
+        Ok(MediaRef::new(path, hash))
     }
 }
 
@@ -132,7 +150,7 @@ impl ThumbConfig {
 pub struct Thumb {
     /// The JPEG file.
     pub jpeg: Vec<u8>,
-    /// Its width in pixels (the requested width, or the picture's if that is smaller).
+    /// Its width in pixels (the requested width, or the upright picture's if that is smaller).
     pub width: u32,
     /// Its height in pixels.
     pub height: u32,
@@ -302,11 +320,18 @@ impl ThumbCache {
         &self.disk
     }
 
-    fn params_hash(&self, what: &str, parts: &[i64]) -> String {
+    fn params_hash(&self, what: &str, media: &MediaRef, parts: &[i64]) -> String {
         let mut s = format!("{what}/v{GENERATOR_VERSION}/q{}", self.quality);
         for p in parts {
             s.push('/');
             s.push_str(&p.to_string());
+        }
+        // Only a turned picture names its rotation: unrotated media keep the keys they had
+        // before pictures were turned (#207), and a rotated one never gets a sideways entry.
+        let turns = quarter_turns(media.rotation);
+        if turns != 0 {
+            s.push_str("/r");
+            s.push_str(&turns.to_string());
         }
         let hex = blake3::hash(s.as_bytes()).to_hex();
         hex.as_str()[..16].to_owned()
@@ -316,13 +341,14 @@ impl ThumbCache {
         format!("{}-{params}", media.hash)
     }
 
-    fn thumb_params(&self, t: Time, w: u32) -> String {
-        self.params_hash("thumb", &[t.flicks(), i64::from(w)])
+    fn thumb_params(&self, media: &MediaRef, t: Time, w: u32) -> String {
+        self.params_hash("thumb", media, &[t.flicks(), i64::from(w)])
     }
 
-    fn filmstrip_params(&self, spec: FilmstripSpec) -> String {
+    fn filmstrip_params(&self, media: &MediaRef, spec: FilmstripSpec) -> String {
         self.params_hash(
             "filmstrip",
+            media,
             &[i64::from(spec.count), i64::from(spec.tile_w)],
         )
     }
@@ -330,7 +356,7 @@ impl ThumbCache {
     /// The ETag [`thumb`](Self::thumb) returns for these parameters (no I/O).
     pub fn thumb_etag(&self, media: &MediaRef, t: Time, w: u32) -> Result<String, CacheError> {
         check_width(w)?;
-        Ok(ThumbCache::etag(media, &self.thumb_params(t, w)))
+        Ok(ThumbCache::etag(media, &self.thumb_params(media, t, w)))
     }
 
     /// The ETag [`filmstrip`](Self::filmstrip) returns for this spec (no I/O).
@@ -340,7 +366,7 @@ impl ThumbCache {
         spec: FilmstripSpec,
     ) -> Result<String, CacheError> {
         check_spec(spec)?;
-        Ok(ThumbCache::etag(media, &self.filmstrip_params(spec)))
+        Ok(ThumbCache::etag(media, &self.filmstrip_params(media, spec)))
     }
 
     /// The thumbnail if it is already cached (never decodes).
@@ -351,7 +377,7 @@ impl ThumbCache {
         w: u32,
     ) -> Result<Option<Thumb>, CacheError> {
         check_width(w)?;
-        let params = self.thumb_params(t, w);
+        let params = self.thumb_params(media, t, w);
         let Some(entry) = self
             .disk
             .get(DiskKind::Thumb, &media.hash, &format!("{params}.jpg"))?
@@ -390,14 +416,15 @@ impl ThumbCache {
         let index = self.index(media)?;
         let mut lease = self.checkout(media, &index, t, cancel)?;
         let frame = lease.seek_exact(clamp_to_stream(&index, t))?;
-        let (tw, th) = tile_size(&frame, w);
-        let pixels = shrink(&frame, tw, th)?;
+        let turns = quarter_turns(media.rotation);
+        let (tw, th) = tile_size(&frame, w, turns);
+        let pixels = upright(&frame, tw, th, turns)?;
         let jpeg = self.encode(&Image {
             width: tw,
             height: th,
             data: pixels,
         })?;
-        let params = self.thumb_params(t, w);
+        let params = self.thumb_params(media, t, w);
         self.disk.put(
             DiskKind::Thumb,
             &media.hash,
@@ -420,7 +447,7 @@ impl ThumbCache {
         spec: FilmstripSpec,
     ) -> Result<Option<Filmstrip>, CacheError> {
         check_spec(spec)?;
-        let params = self.filmstrip_params(spec);
+        let params = self.filmstrip_params(media, spec);
         let Some(entry) =
             self.disk
                 .get(DiskKind::Filmstrip, &media.hash, &format!("{params}.jpg"))?
@@ -475,6 +502,7 @@ impl ThumbCache {
             clamp_to_stream(&index, Time::from_flicks(t).unwrap_or(start))
         };
 
+        let turns = quarter_turns(media.rotation);
         let mut lease = self.checkout(media, &index, start, cancel)?;
         let mut sprite: Option<(Image, FilmstripManifest)> = None;
         for i in 0..spec.count {
@@ -482,7 +510,7 @@ impl ThumbCache {
             let frame = lease.seek_exact(tile_at(i))?;
             let (img, m) = sprite.get_or_insert_with(|| {
                 // The first picture fixes the tile size.
-                let (tw, th) = tile_size(&frame, spec.tile_w);
+                let (tw, th) = tile_size(&frame, spec.tile_w, turns);
                 let m = FilmstripManifest {
                     tile_w: tw,
                     tile_h: th,
@@ -494,13 +522,13 @@ impl ThumbCache {
                 let (sw, sh) = m.sprite_size();
                 (Image::filled(sw, sh, [0, 0, 0, 255]), m)
             });
-            let tile = shrink(&frame, m.tile_w, m.tile_h)?;
+            let tile = upright(&frame, m.tile_w, m.tile_h, turns)?;
             blit(img, &tile, m, i);
             progress(f64::from(i + 1) / f64::from(spec.count));
         }
         let (img, manifest) = sprite.ok_or_else(|| no_pictures(media))?;
         let jpeg = self.encode(&img)?;
-        let params = self.filmstrip_params(spec);
+        let params = self.filmstrip_params(media, spec);
         self.disk.put(
             DiskKind::Filmstrip,
             &media.hash,
@@ -644,12 +672,50 @@ fn clamp_to_stream(index: &FrameIndex, t: Time) -> Time {
     last.map_or(t, |l| t.min(l))
 }
 
-/// The size of a `frame` shrunk to at most `w` wide (aspect kept, at least 1 px each way).
-fn tile_size(frame: &VideoFrame, w: u32) -> (u32, u32) {
-    let tw = w.min(frame.width).max(1);
-    let th = (u64::from(frame.height) * u64::from(tw) + u64::from(frame.width) / 2)
-        / u64::from(frame.width.max(1));
+/// The size of a `frame` turned by `turns` (0, 90, 180 or 270) and shrunk to at most `w` wide
+/// (aspect kept, at least 1 px each way).
+fn tile_size(frame: &VideoFrame, w: u32, turns: u16) -> (u32, u32) {
+    let (fw, fh) = if turns % 180 == 90 {
+        (frame.height, frame.width)
+    } else {
+        (frame.width, frame.height)
+    };
+    let tw = w.min(fw).max(1);
+    let th = (u64::from(fh) * u64::from(tw) + u64::from(fw) / 2) / u64::from(fw.max(1));
     (tw, u32::try_from(th).unwrap_or(u32::MAX).max(1))
+}
+
+/// `frame` (RGBA, as coded) turned clockwise by `turns` (0, 90, 180 or 270) and shrunk to exactly
+/// `dw × dh` (the size of the turned picture); packed RGBA with opaque alpha. The picture is
+/// shrunk as coded and the small result turned, so the turn costs one pass over the tile.
+fn upright(frame: &VideoFrame, dw: u32, dh: u32, turns: u16) -> Result<Vec<u8>, CacheError> {
+    match turns {
+        180 => {
+            let mut px = shrink(frame, dw, dh)?;
+            // Half a turn is the pixels in reverse order.
+            px.as_chunks_mut::<4>().0.reverse();
+            Ok(px)
+        }
+        90 | 270 => {
+            // The coded tile is `dh` wide and `dw` high.
+            let coded = shrink(frame, dh, dw)?;
+            let (cw, ch) = (dh as usize, dw as usize);
+            let mut out = vec![255_u8; coded.len()];
+            for (i, px) in out.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                let (x, y) = (i % ch, i / ch);
+                // The same mapping as the compositor's (`cutweave_render::geometry`).
+                let (sx, sy) = if turns == 90 {
+                    (y, ch - 1 - x)
+                } else {
+                    (cw - 1 - y, x)
+                };
+                let at = (sy * cw + sx) * 4;
+                px.copy_from_slice(&coded[at..at + 4]);
+            }
+            Ok(out)
+        }
+        _ => shrink(frame, dw, dh),
+    }
 }
 
 /// `frame` (RGBA) shrunk to exactly `dw × dh` with an area-averaging box filter; packed RGBA with
@@ -753,12 +819,20 @@ mod tests {
     }
 
     fn rig(tag: &str, w: u32, h: u32, seconds: i64, max_bytes: u64) -> Rig {
+        rig_turned(tag, w, h, seconds, max_bytes, 0)
+    }
+
+    /// [`rig`] with a clip whose probe reports a display rotation.
+    fn rig_turned(tag: &str, w: u32, h: u32, seconds: i64, max_bytes: u64, rotation: u16) -> Rig {
         let dir = TempDir::new(tag);
         let path = dir.path().join("project").join("clip.mp4");
         std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
         std::fs::write(&path, tag.as_bytes()).expect("write");
-        let media = MediaRef::from_path(&path).expect("hash");
-        let video = FakeVideo::lasting(w, h, FrameRate::FPS_30, secs(seconds));
+        let media = MediaRef::from_path(&path)
+            .expect("hash")
+            .with_rotation(rotation);
+        let video =
+            FakeVideo::lasting(w, h, FrameRate::FPS_30, secs(seconds)).with_rotation(rotation);
         let backend = FakeBackend::new().with_media(path, FakeMedia::video(video));
         let db = Arc::new(CacheDb::open_in_memory().expect("db"));
         let cache_dir = dir.path().join("os-cache");
@@ -809,6 +883,189 @@ mod tests {
             .thumb(&r.media, at(1), 1000, &CancelToken::new())
             .expect("thumb");
         assert_eq!((big.width, big.height), (320, 180));
+    }
+
+    /// The coded pixel of a `cw × ch` picture shown at `(x, y)` of the picture turned by `turns`,
+    /// worked out from where the corners go (not with the generator's formula).
+    fn coded_at(turns: u16, (cw, ch): (u32, u32), x: u32, y: u32) -> (u32, u32) {
+        match turns {
+            // Clockwise: the coded left edge is the top, the coded bottom edge the left.
+            90 => (y, ch - 1 - x),
+            180 => (cw - 1 - x, ch - 1 - y),
+            // Counter-clockwise: the coded right edge is the top, the coded top edge the left.
+            270 => (cw - 1 - y, x),
+            _ => (x, y),
+        }
+    }
+
+    /// Red, green and blue of `FakeBackend`'s frame `n` at a coded pixel (off the frame label).
+    fn fake_rgb(x: u32, y: u32, n: u32) -> [u8; 3] {
+        let byte = |v: u32| u8::try_from(v % 256).expect("a byte");
+        let v = x + 2 * y + 3 * n;
+        [byte(v), byte(v + 5), byte(v + 10)]
+    }
+
+    /// Asserts that the `w × h` picture at `(ox, oy)` of `img` is frame `n` of a 64×36 fake clip
+    /// turned by `turns` (the pattern is a ramp, so every direction of it is told apart).
+    fn assert_turned(img: &Image, (ox, oy): (u32, u32), (w, h): (u32, u32), turns: u16, n: u32) {
+        for (x, y) in [
+            (w / 4, h / 4),
+            (3 * w / 4, h / 4),
+            (w / 4, 3 * h / 4),
+            (3 * w / 4, 3 * h / 4),
+            (w / 2, h / 2),
+        ] {
+            let (cx, cy) = coded_at(turns, (64, 36), x, y);
+            let want = fake_rgb(cx, cy, n);
+            let got = img.pixel(ox + x, oy + y);
+            for c in 0..3 {
+                assert!(
+                    got[c].abs_diff(want[c]) <= 8,
+                    "{turns}°: ({x}, {y}) is {got:?}, coded ({cx}, {cy}) is {want:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_rotated_clip_gives_an_upright_thumb_with_swapped_sides() {
+        for turns in [90_u16, 180, 270] {
+            let r = rig_turned(&format!("thumb-turn-{turns}"), 64, 36, 2, u64::MAX, turns);
+            // Wider than the picture: no shrink, so the pixels are the frame's.
+            let t = r
+                .cache
+                .thumb(&r.media, Time::ZERO, 100, &CancelToken::new())
+                .expect("thumb");
+            let size = if turns == 180 { (64, 36) } else { (36, 64) };
+            assert_eq!((t.width, t.height), size, "{turns}°");
+            let img = decode_jpeg(&t.jpeg);
+            assert_eq!((img.width, img.height), size, "{turns}°");
+            assert_turned(&img, (0, 0), size, turns, 0);
+            // The width asked for is the upright picture's.
+            let small = r
+                .cache
+                .thumb(&r.media, Time::ZERO, 18, &CancelToken::new())
+                .expect("thumb");
+            let want = if turns == 180 { (18, 10) } else { (18, 32) };
+            assert_eq!((small.width, small.height), want, "{turns}°");
+            // The cached entry says the same.
+            let again = r
+                .cache
+                .cached_thumb(&r.media, Time::ZERO, 18)
+                .expect("lookup");
+            assert_eq!(again, Some(small));
+        }
+    }
+
+    #[test]
+    fn a_rotated_clip_gives_upright_filmstrip_tiles_with_swapped_sides() {
+        for turns in [90_u16, 180, 270] {
+            let r = rig_turned(&format!("strip-turn-{turns}"), 64, 36, 2, u64::MAX, turns);
+            let spec = FilmstripSpec {
+                count: 2,
+                tile_w: 100,
+            };
+            let fs = r
+                .cache
+                .filmstrip(&r.media, spec, &CancelToken::new())
+                .expect("strip");
+            let m = fs.manifest;
+            let size = if turns == 180 { (64, 36) } else { (36, 64) };
+            assert_eq!((m.tile_w, m.tile_h), size, "{turns}°");
+            assert_eq!(m.columns, 2);
+            let img = decode_jpeg(&fs.jpeg);
+            assert_eq!((img.width, img.height), m.sprite_size());
+            // Tile i shows the frame at i seconds (30 fps), each one upright.
+            for i in 0..2 {
+                assert_turned(&img, (i * m.tile_w, 0), size, turns, 30 * i);
+            }
+            let cached = r.cache.cached_filmstrip(&r.media, spec).expect("lookup");
+            assert_eq!(cached, Some(fs));
+        }
+    }
+
+    #[test]
+    fn a_sideways_entry_made_before_pictures_were_turned_is_not_served() {
+        let r = rig_turned("turn-stale", 64, 36, 2, u64::MAX, 90);
+        let c = CancelToken::new();
+        let spec = FilmstripSpec {
+            count: 2,
+            tile_w: 32,
+        };
+        // What the generator stored before it turned pictures: the coded picture, under the key
+        // that does not name a rotation.
+        let before = MediaRef::new(r.media.path.clone(), r.media.hash);
+        let old_thumb = r.cache.thumb(&before, at(1), 32, &c).expect("old thumb");
+        let old_strip = r.cache.filmstrip(&before, spec, &c).expect("old strip");
+        assert_eq!((old_thumb.width, old_thumb.height), (32, 18), "sideways");
+
+        assert_eq!(r.cache.cached_thumb(&r.media, at(1), 32).expect("q"), None);
+        assert_eq!(r.cache.cached_filmstrip(&r.media, spec).expect("q"), None);
+        let decoded = r.backend.decoded_frames();
+        let thumb = r.cache.thumb(&r.media, at(1), 32, &c).expect("thumb");
+        assert!(r.backend.decoded_frames() > decoded, "made again");
+        assert_eq!((thumb.width, thumb.height), (32, 57), "upright");
+        let strip = r.cache.filmstrip(&r.media, spec, &c).expect("strip");
+        assert_eq!((strip.manifest.tile_w, strip.manifest.tile_h), (32, 57));
+        // A client holding the sideways picture is not told it is still good.
+        assert_ne!(thumb.etag, old_thumb.etag);
+        assert_ne!(strip.etag, old_strip.etag);
+        assert_eq!(
+            thumb.etag,
+            r.cache.thumb_etag(&r.media, at(1), 32).expect("etag")
+        );
+        assert_eq!(
+            strip.etag,
+            r.cache.filmstrip_etag(&r.media, spec).expect("etag")
+        );
+        // Each quarter turn is its own entry.
+        let other = r.media.clone().with_rotation(270);
+        assert_ne!(
+            r.cache.thumb_etag(&other, at(1), 32).expect("etag"),
+            thumb.etag
+        );
+    }
+
+    #[test]
+    fn unrotated_media_keep_the_keys_and_bytes_they_had() {
+        let r = rig("turn-none", 64, 36, 2, u64::MAX);
+        let c = CancelToken::new();
+        // The keys of generator version 1, before a rotation was part of any of them.
+        let key = |text: &str| blake3::hash(text.as_bytes()).to_hex().as_str()[..16].to_owned();
+        let t = at(1);
+        let thumb_key = key(&format!("thumb/v1/q80/{}/32", t.flicks()));
+        let strip_key = key("filmstrip/v1/q80/4/16");
+        let spec = FilmstripSpec {
+            count: 4,
+            tile_w: 16,
+        };
+        assert_eq!(
+            r.cache.thumb_etag(&r.media, t, 32).expect("etag"),
+            format!("{}-{thumb_key}", r.media.hash)
+        );
+        assert_eq!(
+            r.cache.filmstrip_etag(&r.media, spec).expect("etag"),
+            format!("{}-{strip_key}", r.media.hash)
+        );
+        // The picture is the shrunk frame, untouched: the same bytes as encoding it directly.
+        let thumb = r.cache.thumb(&r.media, t, 32, &c).expect("thumb");
+        let frame = FakeVideo::lasting(64, 36, FrameRate::FPS_30, secs(2))
+            .frame(30, PixelFormat::Rgba8)
+            .expect("frame");
+        let plain = r
+            .cache
+            .encode(&Image {
+                width: 32,
+                height: 18,
+                data: shrink(&frame, 32, 18).expect("shrink"),
+            })
+            .expect("jpeg");
+        assert_eq!(thumb.jpeg, plain);
+        // A rotation that is no turn at all (0 or a full turn) is the same entry.
+        let decoded = r.backend.decoded_frames();
+        let full_turn = r.media.clone().with_rotation(360);
+        assert_eq!(r.cache.thumb(&full_turn, t, 32, &c).expect("thumb"), thumb);
+        assert_eq!(r.backend.decoded_frames(), decoded);
     }
 
     #[test]

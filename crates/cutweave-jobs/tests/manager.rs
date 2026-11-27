@@ -104,6 +104,54 @@ fn eventually(what: &str, cond: impl Fn() -> bool) {
 }
 
 #[test]
+fn the_proxy_budget_changes_while_jobs_run() {
+    let jm = manager(4, 1);
+    let (now, max) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    let release = Arc::new(AtomicBool::new(false));
+    let submit = |release: &Arc<AtomicBool>| {
+        jm.submit(
+            JobSpec::new(JobKind::Proxy, "proxy"),
+            counted(&now, &max, release),
+        )
+    };
+    // Two run; with one slot the running jobs finish, and the next ones go one at a time.
+    let first = [submit(&release), submit(&release)];
+    eventually("two proxy jobs", || now.load(Ordering::SeqCst) == 2);
+    jm.set_proxy_slots(1);
+    assert_eq!(jm.proxy_slots(), 1);
+    let one = Arc::new(AtomicBool::new(false));
+    let second = [submit(&one), submit(&one)];
+    release.store(true, Ordering::SeqCst);
+    for job in &first {
+        assert_eq!(job.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    }
+    eventually("one proxy job", || now.load(Ordering::SeqCst) == 1);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(now.load(Ordering::SeqCst), 1, "one slot, one job");
+    // Three slots: the waiting job starts at once, and a third next to them.
+    jm.set_proxy_slots(3);
+    let third = submit(&one);
+    eventually("three proxy jobs", || now.load(Ordering::SeqCst) == 3);
+    // Zero is one: proxies never stop altogether.
+    jm.set_proxy_slots(0);
+    assert_eq!(jm.proxy_slots(), 1);
+    one.store(true, Ordering::SeqCst);
+    for job in second.iter().chain([&third]) {
+        assert_eq!(job.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    }
+    let last = Arc::new(AtomicBool::new(false));
+    let tail = [submit(&last), submit(&last)];
+    eventually("one of the last two", || now.load(Ordering::SeqCst) == 1);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(now.load(Ordering::SeqCst), 1, "back to one slot");
+    last.store(true, Ordering::SeqCst);
+    for job in &tail {
+        assert_eq!(job.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    }
+    assert_eq!(max.load(Ordering::SeqCst), 3);
+}
+
+#[test]
 fn proxy_jobs_run_two_at_a_time_and_one_while_an_export_runs() {
     let jm = manager(4, 1);
     assert_eq!(jm.config().proxy_slots, DEFAULT_PROXY_SLOTS);

@@ -4,7 +4,7 @@
 // selected member; unlinked clips are each themselves.
 import type { Project, SelectionRef } from "@cutweave/protocol";
 import { describe, expect, it } from "vitest";
-import { selectSelectedClips } from "./clips.ts";
+import { selectInspectedClips } from "./clips.ts";
 
 const clip = (id: string, group: string | null) => ({
   id,
@@ -31,7 +31,7 @@ const project = {
 const items = (...ids: string[]): SelectionRef[] =>
   ids.map((id) => ({ kind: "item", id }) as SelectionRef);
 const ids = (selection: SelectionRef[]) =>
-  selectSelectedClips(project, selection).map((c) => c.item.id);
+  selectInspectedClips(project, selection).map((c) => c.item.id);
 
 describe("the inspector's clips", () => {
   it("shows a whole linked group as the member clicked first", () => {

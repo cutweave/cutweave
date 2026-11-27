@@ -3,54 +3,29 @@
 //! same predicate in TypeScript (`packages/editor/src/media/find.ts`); both are checked against
 //! `tests/fixtures/media-find.json`, which `tests/media_find_fixture.rs` generates from this code.
 //!
-//! Text matching: the name is the asset's display name (ADR-0020), else its file name (relative
-//! path, else absolute, else the ID); terms are split on space, tab, CR and LF; every term must
-//! occur, ignoring case and accents (NFD, combining marks removed, lower case).
+//! Text matching: a term is looked for in the name, the tags and the note. The name is the
+//! asset's display name (ADR-0020), else its file name (relative path, else absolute, else the
+//! ID); terms are split on space, tab, CR and LF; every term must occur, ignoring case and
+//! accents (NFD, combining marks removed, lower case).
 //!
 //! Folders (WP-2F.07): `folder` and `recursive` scope the list to one folder, a folder and its
 //! subfolders, or the top level ([`folder_scope`]).
+//!
+//! Tags, ratings and collections (WP-2F.06a, ADR-0036): `tags` keeps the assets that have all
+//! of them (compared by `tag_key`), `min_rating` those rated at least that, `collection` the
+//! members of a manual or smart collection; a term of `text` may also occur in a tag or in the
+//! note.
 
 use std::{borrow::Cow, cmp::Ordering, collections::HashSet};
 
 use cutweave_commands::{CmdError, wire};
-use cutweave_model::{Duration, EntityKind, FolderId, MediaAsset, MediaId, MediaKind, Project};
-use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
-
-/// Longest accepted `filter.text`, in characters.
-pub const MAX_FILTER_TEXT_CHARS: usize = 256;
-
-/// Which media to list; every part that is absent or empty lets everything through.
-#[wire]
-#[derive(Default)]
-pub struct MediaFilter {
-    /// Terms that must all occur in the name, ignoring case and accents.
-    #[serde(default)]
-    pub text: Option<String>,
-    /// Only these kinds.
-    #[serde(default)]
-    pub kinds: Option<Vec<MediaKind>>,
-    /// Shortest length (flicks), inclusive; stills never match a bound.
-    #[serde(default)]
-    pub min_duration: Option<Duration>,
-    /// Longest length (flicks), inclusive.
-    #[serde(default)]
-    pub max_duration: Option<Duration>,
-    /// Placed on a timeline of any sequence (`true`) or not (`false`).
-    #[serde(default)]
-    pub used: Option<bool>,
-    /// `true`: only files nothing can be read from (no streams).
-    #[serde(default)]
-    pub problems: Option<bool>,
-    // Without `folder`, `recursive: false` lists the top level of the bin (the default lists
-    // the whole project); with one, the default is that folder only (ADR-0020). The doc
-    // comments are short: they count against the core MCP tool budget.
-    /// Only this bin folder.
-    #[serde(default)]
-    pub folder: Option<FolderId>,
-    /// With subfolders (default: true without folder).
-    #[serde(default)]
-    pub recursive: Option<bool>,
-}
+use cutweave_model::{
+    Collection, CollectionId, CollectionKind, EntityKind, FolderId, MediaAsset, MediaId, MediaKind,
+    Project, tag_key,
+};
+// The filter is part of the document since ADR-0036 (a smart collection stores one), so the
+// type and the fold it matches with live in `cutweave-model`.
+pub use cutweave_model::{MAX_FILTER_TEXT_CHARS, MediaFilter, fold};
 
 /// What to order by: `imported` (by ID), `name`, `duration` (stills first when ascending) or
 /// `kind` (video, audio, image, sequence; by name within a kind).
@@ -94,25 +69,6 @@ impl Default for MediaSort {
             order: MediaSortOrder::Asc,
         }
     }
-}
-
-/// The text of `s` as matching sees it: accents removed, lower case. Plain ASCII that is
-/// already lower case is borrowed, so the common case allocates nothing.
-#[must_use]
-pub fn fold(s: &str) -> Cow<'_, str> {
-    if s.is_ascii() {
-        return if s.bytes().any(|b| b.is_ascii_uppercase()) {
-            Cow::Owned(s.to_ascii_lowercase())
-        } else {
-            Cow::Borrowed(s)
-        };
-    }
-    Cow::Owned(
-        s.nfd()
-            .filter(|c| !is_combining_mark(*c))
-            .collect::<String>()
-            .to_lowercase(),
-    )
 }
 
 /// The name the bin shows for an asset: its display name (ADR-0020), else the last component of
@@ -171,49 +127,113 @@ pub fn folder_scope(
     })
 }
 
+/// The collection, or `NotFound`.
+pub fn find_collection(doc: &Project, id: CollectionId) -> Result<&Collection, CmdError> {
+    doc.collections
+        .get(&id)
+        .ok_or_else(|| CmdError::not_found(EntityKind::Collection, id))
+}
+
+/// Whether matching `filter` reads which assets are on a timeline ([`used_media`]): it asks
+/// for `used`, or names a smart collection whose filter does.
+#[must_use]
+pub fn needs_used(doc: &Project, filter: &MediaFilter) -> bool {
+    filter.used.is_some()
+        || filter
+            .collection
+            .and_then(|c| doc.collections.get(&c))
+            .is_some_and(|c| match &c.kind {
+                CollectionKind::Smart { filter } => filter.used.is_some(),
+                CollectionKind::Manual { .. } => false,
+            })
+}
+
 /// A filter prepared for many assets.
 pub struct Matcher<'a> {
     filter: &'a MediaFilter,
     terms: Vec<String>,
+    /// The keys ([`tag_key`]) of the tags an asset must have.
+    tags: Vec<String>,
     used: Option<&'a HashSet<MediaId>>,
     folders: Option<HashSet<Option<FolderId>>>,
+    /// The members of the manual collection the filter names.
+    members: Option<HashSet<MediaId>>,
+    /// The filter of the smart collection the filter names.
+    smart: Option<Box<Matcher<'a>>>,
+    /// Nothing matches: a smart collection whose filter can no longer be used.
+    nothing: bool,
 }
 
 impl<'a> Matcher<'a> {
-    /// Checks the filter and folds its text once. `used` is read when `filter.used` is set.
+    /// Checks the filter and folds its text and tags once. `used` is read when `filter.used`
+    /// is set. The folder and the collection of the filter are not applied: see
+    /// [`Matcher::for_doc`].
     ///
     /// # Errors
-    /// `Invalid` when the text is too long or the duration bounds are reversed.
+    /// `Invalid` when the filter cannot be used ([`MediaFilter::problem`]).
     pub fn new(
         filter: &'a MediaFilter,
         used: Option<&'a HashSet<MediaId>>,
     ) -> Result<Matcher<'a>, CmdError> {
-        let text = filter.text.as_deref().unwrap_or("");
-        if text.chars().count() > MAX_FILTER_TEXT_CHARS {
-            return Err(CmdError::invalid(
-                "/filter/text",
-                format!("the text is at most {MAX_FILTER_TEXT_CHARS} characters"),
-            ));
+        if let Some((pointer, reason)) = filter.problem() {
+            return Err(CmdError::invalid(format!("/filter{pointer}"), reason));
         }
-        if let (Some(min), Some(max)) = (filter.min_duration, filter.max_duration)
-            && min > max
-        {
-            return Err(CmdError::invalid(
-                "/filter/min_duration",
-                "min_duration is longer than max_duration",
-            ));
-        }
-        let terms = fold(text)
+        let terms = fold(filter.text.as_deref().unwrap_or(""))
             .split(is_term_break)
             .filter(|t| !t.is_empty())
             .map(str::to_owned)
             .collect();
+        let tags = filter
+            .tags
+            .iter()
+            .flatten()
+            .map(|t| tag_key(t.trim()).into_owned())
+            .collect();
         Ok(Matcher {
             filter,
             terms,
+            tags,
             used,
             folders: None,
+            members: None,
+            smart: None,
+            nothing: false,
         })
+    }
+
+    /// The whole filter against `doc`: [`Matcher::new`] plus its folder scope and its
+    /// collection. `used` is [`used_media`] of `doc`, needed when [`needs_used`] says so.
+    ///
+    /// A smart collection whose own filter can no longer be used (its folder is gone) has no
+    /// members.
+    ///
+    /// # Errors
+    /// `Invalid` as [`Matcher::new`]; `NotFound` when the folder or the collection of `filter`
+    /// does not exist.
+    pub fn for_doc(
+        doc: &'a Project,
+        filter: &'a MediaFilter,
+        used: Option<&'a HashSet<MediaId>>,
+    ) -> Result<Matcher<'a>, CmdError> {
+        let mut matcher = Matcher::new(filter, used)?.in_folders(folder_scope(doc, filter)?);
+        if let Some(id) = filter.collection {
+            match &find_collection(doc, id)?.kind {
+                CollectionKind::Manual { media } => {
+                    matcher.members = Some(media.iter().copied().collect());
+                }
+                CollectionKind::Smart { filter: inner } => {
+                    // A stored filter names no collection (a document invariant), so this
+                    // goes one level deep; one that does is treated as matching nothing.
+                    match Matcher::for_doc(doc, inner, used) {
+                        Ok(inner_matcher) if inner.collection.is_none() => {
+                            matcher.smart = Some(Box::new(inner_matcher));
+                        }
+                        _ => matcher.nothing = true,
+                    }
+                }
+            }
+        }
+        Ok(matcher)
     }
 
     /// The same matcher, keeping only assets in `scope` (see [`folder_scope`]).
@@ -227,8 +247,16 @@ impl<'a> Matcher<'a> {
     #[must_use]
     pub fn matches(&self, media: &MediaAsset) -> bool {
         let f = self.filter;
+        if self.nothing {
+            return false;
+        }
         if let Some(scope) = &self.folders
             && !scope.contains(&media.folder)
+        {
+            return false;
+        }
+        if let Some(members) = &self.members
+            && !members.contains(&media.id)
         {
             return false;
         }
@@ -246,6 +274,11 @@ impl<'a> Matcher<'a> {
                 return false;
             }
         }
+        if let Some(min) = f.min_rating
+            && media.rating.is_none_or(|r| r < min)
+        {
+            return false;
+        }
         if let Some(want) = f.used {
             let is_used = self.used.is_some_and(|u| u.contains(&media.id));
             if is_used != want {
@@ -255,14 +288,72 @@ impl<'a> Matcher<'a> {
         if f.problems == Some(true) && !is_problem(media) {
             return false;
         }
-        if !self.terms.is_empty() {
-            let name = asset_name(media);
-            let name = fold(&name);
-            if !self.terms.iter().all(|t| name.contains(t.as_str())) {
-                return false;
-            }
+        if !self
+            .tags
+            .iter()
+            .all(|want| media.tags.iter().any(|t| tag_key(t) == want.as_str()))
+        {
+            return false;
         }
-        true
+        if !self.terms.is_empty() && !self.text_matches(media) {
+            return false;
+        }
+        self.smart.as_ref().is_none_or(|inner| inner.matches(media))
+    }
+
+    /// Every term occurs in the name, a tag or the note. Tags and the note are folded only
+    /// when the name alone does not hold every term.
+    fn text_matches(&self, media: &MediaAsset) -> bool {
+        let name = asset_name(media);
+        let name = fold(&name);
+        if self.terms.iter().all(|t| name.contains(t.as_str())) {
+            return true;
+        }
+        if media.tags.is_empty() && media.note.is_none() {
+            return false;
+        }
+        let tags: Vec<Cow<'_, str>> = media.tags.iter().map(|t| fold(t)).collect();
+        let note = media.note.as_deref().map(fold);
+        self.terms.iter().all(|t| {
+            let t = t.as_str();
+            name.contains(t)
+                || tags.iter().any(|tag| tag.contains(t))
+                || note.as_ref().is_some_and(|n| n.contains(t))
+        })
+    }
+}
+
+/// The assets on `collection`, as `media.list` would return them: a manual collection's
+/// members in the order they were added, skipping those that name no asset; a smart
+/// collection's in ID order. `used` is [`used_media`] of `doc`, needed when the collection is
+/// smart and its filter asks for `used`.
+#[must_use]
+// `used` is the set `used_media` returns, which `Matcher` borrows as it is.
+#[allow(clippy::implicit_hasher)]
+pub fn collection_members(
+    doc: &Project,
+    collection: &Collection,
+    used: Option<&HashSet<MediaId>>,
+) -> Vec<MediaId> {
+    match &collection.kind {
+        CollectionKind::Manual { media } => media
+            .iter()
+            .copied()
+            .filter(|m| doc.media.contains_key(m))
+            .collect(),
+        CollectionKind::Smart { filter } => {
+            if filter.collection.is_some() {
+                return Vec::new();
+            }
+            let Ok(matcher) = Matcher::for_doc(doc, filter, used) else {
+                return Vec::new();
+            };
+            doc.media
+                .values()
+                .filter(|m| matcher.matches(m))
+                .map(|m| m.id)
+                .collect()
+        }
     }
 }
 
@@ -271,7 +362,8 @@ fn kind_rank(kind: MediaKind) -> u8 {
         MediaKind::Video => 0,
         MediaKind::Audio => 1,
         MediaKind::Image => 2,
-        MediaKind::SequenceRef => 3,
+        MediaKind::ImageSequence => 3,
+        MediaKind::SequenceRef => 4,
     }
 }
 

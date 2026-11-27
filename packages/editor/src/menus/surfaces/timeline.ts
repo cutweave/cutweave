@@ -10,6 +10,7 @@ import { formatTimecode } from "@cutweave/timeline";
 import { canSwap, visualClipIds } from "../../layout/actions.ts";
 import { LAYOUT_NAMES } from "../../layout/names.ts";
 import { LAYOUTS } from "../../layout/table.ts";
+import { isMovingPicture } from "../../media/kinds.ts";
 import { activeDocument } from "../../shell/windows.ts";
 import { docStore } from "../../state/docStore.ts";
 import { selectInOut } from "../../state/selectors.ts";
@@ -35,7 +36,7 @@ const LOCKED = "contextMenu.reason.trackLocked" as const;
 /** A clip that plays moving pictures: video media on a video track, not a freeze frame. */
 const moving = (f: ClipFact): boolean =>
   f.track.kind === "video" &&
-  mediaAsset(f.clip.media)?.kind === "video" &&
+  isMovingPicture(mediaAsset(f.clip.media)?.kind) &&
   (f.clip.freeze ?? null) === null;
 
 /** A clip's speed as `num/den` text (`1/1` when the document has none). */

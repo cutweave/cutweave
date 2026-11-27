@@ -1,0 +1,140 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.remove_from_collection",
+    "summary": "Take media assets off a manual collection (the assets stay; idempotent)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection (manual)."
+        },
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets to take off (at least one, no repeats)."
+        }
+      },
+      "required": [
+        "collection",
+        "media"
+      ],
+      "description": "Takes assets off a manual collection; the assets themselves stay in the project. An asset\nthat is not on it is ignored, so the call can be repeated. Fails with `Invalid` for a smart\ncollection, whose members come from its filter.",
+      "title": "MediaRemoveFromCollection"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection."
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets that left it (those that were not on it are left out)."
+        },
+        "members": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many members it has now."
+        }
+      },
+      "required": [
+        "collection_id",
+        "removed",
+        "members"
+      ],
+      "description": "Result of `media.remove_from_collection`.",
+      "title": "MediaRemovedFromCollection"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection (manual)."
+      },
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets to take off (at least one, no repeats)."
+      }
+    },
+    "required": [
+      "collection",
+      "media"
+    ],
+    "description": "Takes assets off a manual collection; the assets themselves stay in the project. An asset\nthat is not on it is ignored, so the call can be repeated. Fails with `Invalid` for a smart\ncollection, whose members come from its filter.",
+    "title": "MediaRemoveFromCollection"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection_id": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection."
+      },
+      "removed": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets that left it (those that were not on it are left out)."
+      },
+      "members": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "How many members it has now."
+      }
+    },
+    "required": [
+      "collection_id",
+      "removed",
+      "members"
+    ],
+    "description": "Result of `media.remove_from_collection`.",
+    "title": "MediaRemovedFromCollection"
+  }
+}

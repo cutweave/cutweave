@@ -925,6 +925,15 @@
 .cw-field::placeholder {
   color: var(--text-muted);
 }
+/* TextArea: a field of several lines. */
+.cw-field--multiline {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--control-sm) * 2);
+  padding: var(--space-1) var(--space-2);
+  resize: vertical;
+}
 .cw-field--numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1029,6 +1038,157 @@
 .cw-chip__remove:focus-visible {
   outline: var(--border-thick) solid var(--focus-ring);
   outline-offset: 1px;
+}
+
+.cw-chip__remove:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+/* A tag only some of a selection has (TagInput). */
+.cw-chip--partial {
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-secondary);
+}
+.cw-chip__detail {
+  flex: none;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ---------- TagInput ---------- */
+.cw-taginput {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.cw-taginput__box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-height: var(--control-lg);
+  padding: var(--space-1);
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  cursor: text;
+}
+.cw-taginput__box:focus-within {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--marigold);
+}
+.cw-taginput__box[data-invalid="true"] {
+  border-color: var(--danger);
+}
+.cw-taginput__box[data-disabled="true"] {
+  border-color: var(--border-subtle);
+  cursor: not-allowed;
+}
+.cw-taginput__chips {
+  display: contents;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cw-taginput__chips > .cw-chip {
+  cursor: default;
+}
+.cw-taginput__field {
+  flex: 1 1 var(--space-12);
+  box-sizing: border-box;
+  min-width: var(--space-12);
+  height: var(--control-sm);
+  padding: 0 var(--space-1);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+}
+.cw-taginput__field::placeholder {
+  color: var(--text-muted);
+}
+.cw-taginput__field:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.cw-taginput__error {
+  margin: 0;
+  color: var(--danger);
+}
+.cw-taginput__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cw-taginput__option {
+  box-sizing: border-box;
+  max-width: 100%;
+  height: var(--control-sm);
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border: var(--border-thin) solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  line-height: calc(var(--control-sm) - 2 * var(--border-thin));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cw-taginput__option:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.cw-taginput__option[aria-selected="true"] {
+  background: var(--marigold-subtle);
+  border-color: var(--marigold);
+  color: var(--text-primary);
+}
+
+/* ---------- RatingStars ---------- */
+.cw-stars {
+  display: inline-flex;
+  align-items: center;
+}
+.cw-stars__star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cw-stars__star:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.cw-stars__star:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+/* A set star is an "on" state: drawn as a pressed toggle's icon, and filled. */
+.cw-stars__star[data-filled="true"] {
+  color: var(--marigold-text);
+}
+.cw-stars__star:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.cw-stars__star[data-filled="true"] > .cw-stars__icon {
+  fill: currentColor;
 }
 
 /* ---------- Progress bar ---------- */

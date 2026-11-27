@@ -349,7 +349,8 @@ fn offset_in(clip: &Clip, t: Time) -> Option<(Duration, Time)> {
 fn layer_at(media: Option<&MediaAsset>, track: TrackId, clip: &Clip, t: Time) -> Option<Layer> {
     let media = media?;
     let still = match media.kind {
-        MediaKind::Video => false,
+        // An image sequence plays like video: frame `n` is its own picture (ADR-0035).
+        MediaKind::Video | MediaKind::ImageSequence => false,
         MediaKind::Image => true,
         // Compound clips need recursive evaluation (later); audio has no picture.
         MediaKind::Audio | MediaKind::SequenceRef => return None,

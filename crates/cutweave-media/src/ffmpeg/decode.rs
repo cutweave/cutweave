@@ -29,6 +29,10 @@
 //! explicit `target_size` (proxies, WP-2F.01) go through swscale with the stream's matrix and
 //! range.
 //!
+//! **Stills** (WP-2F.05a): frames are in coded orientation, like video; the probe reports a
+//! photo's EXIF quarter turn as the display rotation. A mirrored EXIF orientation is the one
+//! thing applied here (`still_mirror`), because a rotation cannot carry it.
+//!
 //! **Hardware** (WP-1D.04, S3 H1-H10): under [`HwMode::Auto`] an eligible stream decodes with a
 //! device `hwdec` verified for its codec, on one thread (S3 H3: frame threads only add delay with
 //! a hwaccel). The hwaccel only replaces slice decoding inside libavcodec, so the seek rule,
@@ -45,7 +49,7 @@ use std::ffi::c_int;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cutweave_model::{ColorRange, ColorTags, MatrixCoefficients, Time};
+use cutweave_model::{ColorRange, ColorTags, FrameRate, MatrixCoefficients, Time};
 use ffmpeg_next::codec::{self, threading};
 use ffmpeg_next::format::Pixel;
 use ffmpeg_next::format::context::Input;
@@ -59,6 +63,7 @@ use super::sys::{self, HwDecode, Scaler};
 use super::{index, input, probe};
 use crate::backend::{DecodeMode, DecodeOpts, HwMode, VideoDecoder};
 use crate::cancel;
+use crate::frame::Mirror;
 use crate::path::display as shown;
 use crate::{CancelToken, FrameIndex, MediaError, PixelFormat, Plane, VideoFrame};
 
@@ -78,6 +83,23 @@ const HW_THREADS: threading::Config = threading::Config {
     count: 1,
 };
 
+/// Where a decoder's packets come from.
+#[derive(Clone, Debug)]
+pub(super) enum Source {
+    /// The file at the decoder's path.
+    File,
+    /// The decoder's path is an `image2` pattern (`shot_%04d.png` in its directory): an
+    /// unbroken stretch of numbered pictures from `start`, `fps` pictures a second (ADR-0035).
+    Sequence {
+        /// The number of the first file.
+        start: u32,
+        /// The frame rate: one picture is one tick of the stream's time base.
+        fps: FrameRate,
+        /// The first file, for what only a real file can tell (its EXIF orientation).
+        first_file: PathBuf,
+    },
+}
+
 /// Opens a decoder for the main video stream of `path`, in hardware when `opts.hw` and `policy`
 /// allow it and the stream is eligible (`hwdec`).
 pub(super) fn open(
@@ -89,7 +111,19 @@ pub(super) fn open(
         Some(index) => Arc::clone(index),
         None => Arc::new(index::index_media(path)?),
     };
-    let (input, stream, info) = open_input(path, &index)?;
+    open_source(path, Source::File, index, opts, policy)
+}
+
+/// Opens a decoder on `source` at `path` with its frame `index` (`opts.index` is not read): a
+/// file, or a stretch of an image sequence, whose index is computed by the caller.
+pub(super) fn open_source(
+    path: &Path,
+    source: Source,
+    index: Arc<FrameIndex>,
+    opts: &DecodeOpts,
+    policy: &hwdec::Policy,
+) -> Result<Box<dyn VideoDecoder>, MediaError> {
+    let (input, stream, info) = open_input(path, &source, &index)?;
     let choice = match opts.hw {
         HwMode::Off => None,
         HwMode::Auto => {
@@ -108,7 +142,7 @@ pub(super) fn open(
             }
         }
     };
-    open_opened(path, opts, index, (input, stream, info), choice)
+    open_opened(path, source, opts, index, (input, stream, info), choice)
 }
 
 /// Tests: a decoder on `choice` whatever the stream's eligibility (real init failures).
@@ -122,13 +156,14 @@ pub(super) fn open_with_choice(
         Some(index) => Arc::clone(index),
         None => Arc::new(index::index_media(path)?),
     };
-    let opened = open_input(path, &index)?;
-    open_opened(path, opts, index, opened, Some(choice))
+    let opened = open_input(path, &Source::File, &index)?;
+    open_opened(path, Source::File, opts, index, opened, Some(choice))
 }
 
 /// The decoder on an opened input, in hardware on `choice` if given.
 fn open_opened(
     path: &Path,
+    source: Source,
     opts: &DecodeOpts,
     index: Arc<FrameIndex>,
     (input, stream, info): (Input, usize, StreamInfo),
@@ -136,8 +171,14 @@ fn open_opened(
 ) -> Result<Box<dyn VideoDecoder>, MediaError> {
     let sw_threads = threading_for(opts, &index);
     let end = index.end_time();
+    let mirror = match &source {
+        Source::File => still_mirror(path, &input),
+        // Every picture of a run is turned like its first one.
+        Source::Sequence { first_file, .. } => still_mirror(first_file, &input),
+    };
     let mut d = FfmpegVideoDecoder {
         path: path.to_path_buf(),
+        source,
         input,
         codec: None,
         stream,
@@ -152,6 +193,7 @@ fn open_opened(
         scratch: frame::Video::empty(),
         sw: frame::Video::empty(),
         out: Output::new(opts.target_pixfmt, opts.target_size),
+        mirror,
         stream_color: info.color,
         pending: None,
         next_idx: Some(0),
@@ -181,6 +223,24 @@ fn open_opened(
     Ok(Box::new(d))
 }
 
+/// The mirror a still image's EXIF orientation asks for (orientations 2, 4, 5 and 7), as an axis
+/// of the coded picture (WP-2F.05a). The probe reports the orientation's quarter turn as the
+/// display rotation and the compositor applies it; a turn cannot express the mirror, so the
+/// decoder mirrors the picture itself: left to right when the turn is 0° or 180°, top to bottom
+/// when it is 90° or 270° (a mirror after a quarter turn is a mirror along the other axis before
+/// it). `None` for video and for stills that are not mirrored.
+fn still_mirror(path: &Path, input: &Input) -> Option<Mirror> {
+    if !probe::is_image_container(input.format().name()) {
+        return None;
+    }
+    let orientation = crate::still_orientation(path).filter(|o| o.mirrored)?;
+    Some(if orientation.rotation % 180 == 0 {
+        Mirror::Horizontal
+    } else {
+        Mirror::Vertical
+    })
+}
+
 /// Frame threads for throughput and long-GOP seeks; slice threads for seeks in intra-only
 /// streams, where frame threads only add pipeline delay (S3 F4: ProRes seeks 15× slower).
 fn threading_for(opts: &DecodeOpts, index: &FrameIndex) -> threading::Config {
@@ -206,8 +266,19 @@ struct StreamInfo {
 
 /// Opens the container, checks the index's stream against it and makes the demuxer skip every
 /// other stream.
-fn open_input(path: &Path, index: &FrameIndex) -> Result<(Input, usize, StreamInfo), MediaError> {
-    let mut input = input::open(path)?;
+fn open_input(
+    path: &Path,
+    source: &Source,
+    index: &FrameIndex,
+) -> Result<(Input, usize, StreamInfo), MediaError> {
+    let mut input = match source {
+        Source::File => input::open(path)?,
+        Source::Sequence {
+            start,
+            fps,
+            first_file,
+        } => input::open_sequence(path, first_file, *start, *fps)?,
+    };
     let stream = usize::try_from(index.stream()).unwrap_or(usize::MAX);
     let not_this_file = || MediaError::Invalid {
         message: format!(
@@ -369,6 +440,8 @@ struct Stats {
 
 struct FfmpegVideoDecoder {
     path: PathBuf,
+    /// What `path` is: a file, or the pattern of an image sequence.
+    source: Source,
     input: Input,
     /// Always `Some` once opened (an `Option` only so `open` can build it with `self`).
     codec: Option<Codec>,
@@ -392,6 +465,9 @@ struct FfmpegVideoDecoder {
     /// The system-memory copy of a hardware `frame` (buffers reused from copy to copy).
     sw: frame::Video,
     out: Output,
+    /// A still whose EXIF orientation is mirrored: the axis its frames are mirrored along
+    /// before they are returned ([`still_mirror`]).
+    mirror: Option<Mirror>,
     /// The stream's tags, for fields a frame leaves unspecified.
     stream_color: ColorTags,
     /// A packet read but not yet sent (the landing keyframe, or one the decoder refused).
@@ -560,7 +636,7 @@ impl FfmpegVideoDecoder {
             "{}: demuxer seeks never landed at or before keyframe packet {k}; reading from the start",
             shown(&self.path)
         );
-        let (input, _, _) = open_input(&self.path, &self.index)?;
+        let (input, _, _) = open_input(&self.path, &self.source, &self.index)?;
         self.codec = None;
         self.input = input;
         self.codec = Some(self.open_codec()?);
@@ -872,13 +948,16 @@ impl FfmpegVideoDecoder {
                 .map_err(|e| Fail::Hardware(format!("copying the frame to memory failed: {e}")))?;
         }
         let src = if surface { &self.sw } else { &self.frame };
-        let frame = self
+        let mut frame = self
             .out
             .convert(src, pts, color, damaged)
             .map_err(|e| match e {
                 Fault::Ffmpeg(e) => media_error(&self.path, e),
                 Fault::Media(e) => e,
             })?;
+        if let Some(axis) = self.mirror {
+            frame.mirror(axis);
+        }
         if damaged {
             self.stats.damaged += 1;
         }

@@ -36,7 +36,7 @@
 )]
 
 use crate::color::{InputColor, InputTransform, encode_output, merge_tags, srgb8_to_linear_premul};
-use crate::frame::{FrameSource, PixelFormat, VideoFrame};
+use crate::frame::{FrameError, FrameSource, PixelFormat, VideoFrame};
 use crate::geometry::{LayerGeometry, apply_affine, mip_levels_for, mip_size};
 use crate::graph::{Filter, GraphError, GraphOptions, Target};
 use crate::image::Image;
@@ -222,7 +222,7 @@ fn sample(levels: &[Level], t: [f64; 2], lod: f64, filter: Filter) -> Rgba {
 }
 
 /// Renders `scene` for an RGBA8 target on the CPU. Layers whose frame is unavailable are skipped
-/// (as on the GPU). `Texture` targets are rendered as sRGB RGBA8.
+/// and layers whose media is offline show the slate (as on the GPU). `Texture` targets are rendered as sRGB RGBA8.
 pub fn render(
     scene: &SceneDescription,
     target: Target,
@@ -264,8 +264,11 @@ pub fn render_linear(
         if layer.opacity.is_nan() || layer.opacity <= 0.0 {
             continue;
         }
-        let Ok(frame) = source.frame(&layer.request) else {
-            continue;
+        let frame = match source.frame(&layer.request) {
+            Ok(frame) => frame,
+            // The file is gone: the "media offline" slate, as on the GPU.
+            Err(FrameError::Offline(_)) => crate::slate::frame(),
+            Err(_) => continue,
         };
         let Some(geo) = LayerGeometry::new(
             layer,

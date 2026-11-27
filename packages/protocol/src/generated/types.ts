@@ -32,6 +32,8 @@ export type AdvancedAudio = {
 	sample_rate?: number | null,
 	/**  "mono" or "stereo". */
 	channels?: AudioChannels | null,
+	/**  The master's true-peak limiter (−1 dBTP): on unless false (WP-2E.02). */
+	limiter?: boolean | null,
 };
 
 /**  The audio codec of an export. */
@@ -147,6 +149,13 @@ export type AgentConnection = {
 
 /**  A static value or keyed values (keyframes §3.1); the wire form for TypeScript. */
 export type Animatable<T> = T | Keyframes<T>;
+
+/**  What an archive is. */
+export type ArchiveFormat = 
+/**  A folder: the collected project plus `archive.json`. */
+"folder" | 
+/**  One `.zip` file holding that folder (stored entries, Zip64 when needed). */
+"zip";
 
 /**  A group of properties, as `item.reset_props` and the Inspector name them. */
 export type Attribute = 
@@ -1060,6 +1069,137 @@ export type CodecInfo = {
 	encoders: string[],
 };
 
+/**  Result of `project.collect_estimate`. */
+export type CollectEstimate = {
+	/**  The folder the copy goes into. */
+	dest: string,
+	/**  The media files to copy. */
+	files: number,
+	/**  Their size in bytes. */
+	bytes: number,
+	/**  Free bytes on the destination drive, when it can be told. */
+	free_bytes: number | null,
+	/**  Whether the files fit (true when the free space cannot be told). */
+	enough_space: boolean,
+	/**
+	 *  Media whose file is missing, and image sequences with pictures that are gone: relink
+	 *  them first (`media.relink_folder`).
+	 */
+	missing: CollectMissing[],
+	/**  Media left out because no timeline uses them (`trim_unused`). */
+	trimmed: number,
+};
+
+/**  A media file a collect cannot read. */
+export type CollectMissing = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  The name the bin shows. */
+	name: string,
+	/**  Where the project says its file is (for an image sequence: its first picture). */
+	path: string,
+	/**
+	 *  For an image sequence: how many of its pictures are gone, the first one included (the
+	 *  numbers that had no file at import are not counted). Absent for other media.
+	 */
+	missing_frames: number | null,
+};
+
+/**  Where collected media go. */
+export type CollectMode = 
+/**  Every media file goes under `media/` (the default). */
+"copy_all" | 
+/**
+ *  Files inside the project folder keep their place relative to it; only the others go
+ *  under `media/`.
+ */
+"copy_external_only";
+
+/**
+ *  A collection of media (ADR-0036): a named list an asset can be on without leaving its
+ *  folder.
+ */
+export type Collection = {
+	/**  The collection ID (also its key in `Project::collections`). */
+	id: CollectionId,
+	/**
+	 *  The name shown in the bin: 1 to 255 characters without control characters, unique
+	 *  among collections ignoring case.
+	 */
+	name: string,
+	/**  Manual (stored members) or smart (a stored filter). */
+	kind: CollectionKind,
+	/**  Plugin data (arch §4.3). */
+	custom: { [key in string]: JsonValue },
+} & { [key in string]: unknown };
+
+/**  Result of `media.delete_collection`. */
+export type CollectionDeleted = {
+	/**  The deleted collection. */
+	collection_id: CollectionId,
+};
+
+/**  Result of `media.set_collection_filter`. */
+export type CollectionFilterSet = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  How many assets pass the new filter now. */
+	members: number,
+};
+
+/**
+ *  The ID of a collection of media (ADR-0036): `col_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type CollectionId = string & { readonly __brand: "CollectionId" };
+
+/**  What a collection holds (ADR-0036). */
+export type CollectionKind = 
+/**  A list of assets, kept in the order they were added. */
+{ type: "manual"; 
+/**
+ *  The members, without repeats. One that names no asset is skipped by queries and
+ *  dropped by the next edit of the collection.
+ */
+media?: MediaId[] } | 
+/**  A saved search: the assets that pass the filter, computed when asked. */
+{ type: "smart"; 
+/**  The filter. It may not name a collection. */
+filter: MediaFilter };
+
+/**  Result of `media.create_collection` and `media.rename_collection`. */
+export type CollectionNamed = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  Its name (trimmed). */
+	name: string,
+};
+
+/**  One collection of media. */
+export type CollectionSummary = {
+	/**  The collection. */
+	id: CollectionId,
+	/**  Its name. */
+	name: string,
+	/**  Manual or smart. */
+	kind: CollectionType,
+	/**  The filter of a smart collection; absent for a manual one. */
+	filter: MediaFilter | null,
+	/**
+	 *  How many assets are on it now (a smart collection's filter is run; members that no
+	 *  longer exist are not counted).
+	 */
+	media_count: number,
+};
+
+/**  Whether a collection stores its members or a filter. */
+export type CollectionType = 
+/**  Stored members. */
+"manual" | 
+/**  A stored filter; the members are computed. */
+"smart";
+
 /**  What to do when the output file exists. */
 export type Collision = 
 /**  Pick a free name (`name (1).mp4`). */
@@ -1438,7 +1578,9 @@ export type EntityKind =
 /**  A timeline or item marker (`mrk_`). */
 "marker" | 
 /**  A folder of the media bin (`fld_`, ADR-0020). */
-"folder";
+"folder" | 
+/**  A collection of media (`col_`, ADR-0036). */
+"collection";
 
 /**  Why a transaction is in the history. */
 export type EntryCause = 
@@ -1511,6 +1653,8 @@ export type ExportEnqueue = {
 	overwrite?: boolean | null,
 	/**  An existing file: "fail" (default), "rename" or "overwrite". */
 	collision?: Collision | null,
+	/**  Export although media files are missing (a "media offline" slate), as in export.start. */
+	allow_offline?: boolean | null,
 	/**  Fine control (rate control, GOP, encoder, color tags, audio), as in export.start. */
 	advanced?: AdvancedExportOptions | null,
 };
@@ -1722,7 +1866,9 @@ export type ExportRetry = {
  *  .mov for ProRes) with {seq}, {marker_label}, {n}; the
  *  output lists every job). `collision` says what happens to an existing file: "fail"
  *  (default), "rename" (pick a free name) or "overwrite" (replace it when the export
- *  succeeds). Fails with `Invalid` when the drive has too little free space.
+ *  succeeds). Fails with `Invalid` when the drive has too little free space, and with `Invalid`
+ *  at `/media/<id>` when a clip in the range plays a media file that is missing, unless
+ *  `allow_offline` is true (such clips then show a "media offline" slate and are silent).
  */
 export type ExportStart = {
 	/**  Sequence; optional when the project has one. */
@@ -1745,6 +1891,11 @@ export type ExportStart = {
 	overwrite?: boolean | null,
 	/**  An existing file: "fail" (default), "rename" or "overwrite". */
 	collision?: Collision | null,
+	/**
+	 *  Export although media files are missing: their clips show a "media offline" slate and
+	 *  are silent (default false: fails with `Invalid` at `/media/<id>` naming them).
+	 */
+	allow_offline?: boolean | null,
 	/**
 	 *  Fine control (export.describe_options{codec} gives a codec's options as a JSON Schema):
 	 *  video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
@@ -1947,6 +2098,16 @@ export type FormatSpec = {
 	sample_rate: SampleRate | null,
 };
 
+/**  Which picture `media.import_frame` saves. */
+export type FrameOf = 
+/**  The frame the Preview shows: the sequence the editor shows, composited. */
+"sequence" | 
+/**
+ *  The frame the Source viewer shows for this video or image-sequence asset, at its own
+ *  size.
+ */
+{ media: MediaId };
+
 /**
  *  A video frame rate as an exact rational `num/den` frames per second (`30000/1001` is
  *  29.97 fps), always in lowest terms.
@@ -2006,6 +2167,54 @@ export type GetHistory = {
 	cursor?: string | null,
 	/**  Only this actor's entries. */
 	actor?: Actor | null,
+};
+
+/**
+ *  Measures the audio of a sequence over a range, mixed as an export would be (track gain,
+ *  mute and solo, the master limiter at −1 dBTP unless `limiter` is false): sample peak, true
+ *  peak (dBTP), RMS (dBFS, AES17: a sine reads its peak level), integrated loudness (LUFS),
+ *  the loudest momentary and short-term loudness and the loudness range of the master, and
+ *  the same levels (without momentary, short-term and range) for every audio track
+ *  (post-fader). Silent values are null. Read-only; it decodes and mixes the whole range before
+ *  it answers, so a long range takes a while.
+ */
+export type GetLevels = {
+	/**  Sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  Measure after the master limiter, as an export does (default true). */
+	limiter?: boolean | null,
+} & ({
+	/**  Start: flicks, "2.5s", "f:60" or a timecode (default: 0). */
+	in?: TimeInput | null,
+} & {
+	/**  Start: flicks, "2.5s", "f:60" or a timecode (default: 0). */
+	start?: TimeInput | null,
+}) & ({
+	/**  End, exclusive, at most the sequence end (default: the sequence end). */
+	out?: TimeInput | null,
+} & {
+	/**  End, exclusive, at most the sequence end (default: the sequence end). */
+	end?: TimeInput | null,
+});
+
+/**  Result of `audio.get_levels`. */
+export type GetLevelsOutput = {
+	/**  The measured sequence. */
+	sequence: SequenceId,
+	/**  Range start (sequence time, flicks). */
+	in: Time,
+	/**  Range end, exclusive. */
+	out: Time,
+	/**  Whether the master limiter was on (as in an export). */
+	limiter: boolean,
+	/**  The master output. */
+	master: LevelReading,
+	/**  The audio tracks with clips in the range, top to bottom (post-fader). */
+	tracks: TrackLevels[],
+	/**  The deepest gain reduction of the master limiter in dB (0: it never limited). */
+	limiter_reduction_db: number | null,
+	/**  Clips whose audio could not be decoded (measured as silence). */
+	source_errors: number,
 };
 
 /**  The graphics adapter the renderer runs on. */
@@ -2177,6 +2386,30 @@ export type HwCodecInfo = {
 	/**  The implementation, as `export.start{hw: {force}}` takes it (`h264_nvenc`). */
 	implementation: string,
 };
+
+/**
+ *  A numbered run of pictures imported as one asset (ADR-0035): frame `n` (from 0) is the file
+ *  `pattern` with the number `first + n`. Files are referenced, never copied.
+ */
+export type ImageSequence = {
+	/**
+	 *  The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`
+	 *  (`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in
+	 *  the directory of `path_abs`.
+	 */
+	pattern: string,
+	/**  The number of the first file. */
+	first: number,
+	/**  How many numbers the run covers, from `first` (missing ones included); at least 2. */
+	count: number,
+	/**  The frame rate chosen at import; changing the app setting never changes it. */
+	fps: FrameRate,
+	/**
+	 *  The numbers with no file at import time, ascending. A missing frame shows the last
+	 *  picture before it.
+	 */
+	missing: number[],
+} & { [key in string]: unknown };
 
 /**  A file that was not imported (no asset was created for it). */
 export type ImportFailure = {
@@ -2504,6 +2737,24 @@ parent: FolderId | null;
 first: FolderId; 
 /**  Another folder with the same name. */
 second: FolderId; 
+/**  The name of `second`. */
+name: string } | 
+/**
+ *  A collection that breaks ADR-0036: a bad name, too many members or a repeated one, a
+ *  smart filter that cannot be used or that names a collection, or more collections than
+ *  allowed. (A member that names no asset is allowed.)
+ */
+{ invariant: "invalid_collection"; 
+/**  The collection. */
+collection: CollectionId; 
+/**  What is wrong. */
+reason: string } | 
+/**  Two collections whose names are equal ignoring case (ADR-0036). */
+{ invariant: "duplicate_collection_name"; 
+/**  The collection with the lower ID. */
+first: CollectionId; 
+/**  Another collection with the same name. */
+second: CollectionId; 
 /**  The name of `second`. */
 name: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
@@ -2969,7 +3220,9 @@ export type JobKind =
  *  Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller
  *  intra-frame copy.
  */
-"proxy";
+"proxy" | 
+/**  Copying a project's files into another folder (WP-2F.04): disk work, no decoding. */
+"collect";
 
 /**
  *  Lists background jobs, newest first: unfinished ones and recently finished ones, optionally
@@ -3375,6 +3628,27 @@ export type LayoutInfo = {
 	cells: CellFraction[],
 };
 
+/**  What the engine measures for one signal. */
+export type LevelReading = {
+	/**  Sample peak in dBFS (the louder channel); null when silent. */
+	peak_db?: number | null,
+	/**  True peak in dBTP (4× oversampled; the louder channel); null when silent. */
+	true_peak_db?: number | null,
+	/**
+	 *  RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null
+	 *  when silent.
+	 */
+	rms_db?: number | null,
+	/**  Integrated loudness in LUFS; null when everything is below the −70 LUFS gate. */
+	lufs_integrated?: number | null,
+	/**  The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only). */
+	lufs_momentary_max?: number | null,
+	/**  The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only). */
+	lufs_short_term_max?: number | null,
+	/**  Loudness range in LU (master only). */
+	loudness_range_lu?: number | null,
+};
+
 /**  Every checkpoint, oldest first. */
 export type ListCheckpoints = Record<string, never>;
 
@@ -3472,6 +3746,41 @@ export type MarkerKind =
 export type MatrixCoefficients = string;
 
 /**
+ *  Adds tags to media assets. A tag is 1 to 64 characters without commas or control characters
+ *  (trimmed); two tags are the same when they are equal ignoring case and accents, and an
+ *  asset that already has a tag keeps its spelling. An asset holds at most 64 tags. Adding a
+ *  tag an asset already has changes nothing, so the call can be repeated.
+ */
+export type MediaAddTags = {
+	/**  The assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  The tags to add (1..=16). */
+	tags: string[],
+};
+
+/**
+ *  Adds assets to the end of a manual collection, in the order given. An asset already on it
+ *  stays where it is, so the call can be repeated. A collection holds at most 10,000 members.
+ *  Fails with `Invalid` for a smart collection, whose members come from its filter.
+ */
+export type MediaAddToCollection = {
+	/**  The collection (manual). */
+	collection: CollectionId,
+	/**  The assets to add (at least one, no repeats). */
+	media: MediaId[],
+};
+
+/**  Result of `media.add_to_collection`. */
+export type MediaAddedToCollection = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  The assets that joined it, in order (those already on it are left out). */
+	added: MediaId[],
+	/**  How many members it has now. */
+	members: number,
+};
+
+/**
  *  `media.analysis_failed`: a background analysis stage failed on an asset. The asset stays
  *  usable; what the stage produces (thumbnails, waveform, …) may be missing.
  */
@@ -3510,6 +3819,32 @@ export type MediaAsset = {
 	content_hash: string | null,
 	/**  The referenced sequence (`sequence_ref` only). */
 	sequence: SequenceId | null,
+	/**
+	 *  The run of pictures (`image_sequence` only, ADR-0035); left out of the file otherwise.
+	 *  `path_abs` and `path_rel` name the first file of the run.
+	 */
+	image_sequence?: ImageSequence | null,
+	/**
+	 *  Whether it gets a proxy (ADR-0027): as the project's policy decides, always or never.
+	 *  `auto` is left out of the file, so documents written before the field read the same.
+	 */
+	proxy_mode?: ProxyMode,
+	/**
+	 *  Tags (ADR-0036): each 1 to 64 characters without commas or control characters, at most
+	 *  64, sorted ignoring case and accents, without repeats. Left out of the file while
+	 *  empty.
+	 */
+	tags?: string[],
+	/**
+	 *  Rating in whole stars, 1 to 5 (ADR-0036); absent: unrated. Left out of the file while
+	 *  absent.
+	 */
+	rating?: number | null,
+	/**
+	 *  A note in plain text, at most 2,000 characters (ADR-0036). Left out of the file while
+	 *  absent.
+	 */
+	note?: string | null,
 	/**  Probe results. */
 	probe: ProbeInfo,
 	/**  Plugin data (arch §4.3). */
@@ -3536,6 +3871,10 @@ export type MediaCacheStatusOutput = {
 	decode_hw: DecodeHw,
 	/**  Bytes of decoded frames the RAM frame cache may hold. */
 	frame_cache_bytes: number,
+	/**  The longest side, in pixels, of the proxies made from now on (540, 720 or 960). */
+	proxy_size: number,
+	/**  How many proxy jobs run at once (one while an export runs). */
+	proxy_jobs: number,
 };
 
 /**
@@ -3580,6 +3919,23 @@ export type MediaClearCacheOutput = {
 };
 
 /**
+ *  Creates a collection of media: a named list an asset can be on without leaving its folder.
+ *  `kind` is `{"type": "manual", "media": [...]}` (the members, in order; may be empty or left
+ *  out) or `{"type": "smart", "filter": {...}}` (a saved `media.list` filter whose matches are
+ *  the members, always current; it cannot name a collection). The name must be new, ignoring
+ *  case. A project holds at most 1,000 collections and a manual one at most 10,000 members.
+ */
+export type MediaCreateCollection = {
+	/**
+	 *  Its name: 1 to 255 characters without control characters (trimmed), unique ignoring
+	 *  case.
+	 */
+	name: string,
+	/**  Manual (members) or smart (a filter). */
+	kind: CollectionKind,
+};
+
+/**
  *  Creates a folder in the media bin, at the top level or inside `parent` (at most 32 levels
  *  deep). Without a name it is "New folder" (or "New folder 2", … when taken). A name that a
  *  sibling already has, ignoring case, fails with `Invalid` unless `on_conflict` is `rename`.
@@ -3597,11 +3953,20 @@ export type MediaCreateFolder = {
 };
 
 /**
+ *  Deletes a collection. Its assets stay in the project, in their folders and on their
+ *  timelines; only the list goes.
+ */
+export type MediaDeleteCollection = {
+	/**  The collection. */
+	collection: CollectionId,
+};
+
+/**
  *  Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one
  *  level (a subfolder whose name the parent already has gets the next free name);
  *  `contents: remove` also removes its subfolders and every asset inside that no timeline
- *  uses, and moves the used assets to the deleted folder's parent. Timelines and files on disk
- *  never change; one undo restores everything.
+ *  uses (taking them off every manual collection), and moves the used assets to the deleted
+ *  folder's parent. Timelines and files on disk never change; one undo restores everything.
  */
 export type MediaDeleteFolder = {
 	/**  The folder. */
@@ -3620,9 +3985,12 @@ export type MediaDeleteProxy = {
 	media: MediaId[],
 };
 
-/**  Which media to list; every part that is absent or empty lets everything through. */
+/**
+ *  Which media to list; every part that is absent or empty lets everything through. The filter
+ *  of `media.list`, and what a smart collection stores (ADR-0036).
+ */
 export type MediaFilter = {
-	/**  Terms that must all occur in the name, ignoring case and accents. */
+	/**  Terms that must all occur in the name, tags or note, ignoring case and accents. */
 	text?: string | null,
 	/**  Only these kinds. */
 	kinds?: MediaKind[] | null,
@@ -3638,6 +4006,33 @@ export type MediaFilter = {
 	folder?: FolderId | null,
 	/**  With subfolders (default: true without folder). */
 	recursive?: boolean | null,
+	/**  Has all these tags. */
+	tags?: string[] | null,
+	/**  Rated at least this (1-5). */
+	min_rating?: number | null,
+	/**  On this collection. */
+	collection?: CollectionId | null,
+};
+
+/**
+ *  Lists the media whose file is not where the project says (moved, renamed, deleted or on a
+ *  drive that is not connected). With `verify` it also reads every file that is there and
+ *  reports the ones whose content is no longer what was imported as `changed`. An image
+ *  sequence is `missing` when its first picture is gone and `incomplete` when the first is
+ *  there but other pictures of the run are not; `missing_frames` counts them. Relink them
+ *  with `media.relink_folder` or `media.relink`.
+ */
+export type MediaFindMissing = {
+	/**  Also read the files that exist and report changed content (slower; default false). */
+	verify: boolean | null,
+};
+
+/**  Result of `media.find_missing`. */
+export type MediaFindMissingOutput = {
+	/**  The assets whose file is missing or changed and the incomplete image sequences, by id. */
+	missing: MissingMedia[],
+	/**  The number of media files that were checked. */
+	checked: number,
 };
 
 /**  A folder of the media bin (ADR-0020). */
@@ -3695,7 +4090,7 @@ export type MediaFolderRenamed = {
 };
 
 /**
- *  Makes proxies of video assets now, whatever the policy: one background job each (two run
+ *  Makes proxies of video assets now, whatever the policy and their mode: one background job each (two run
  *  at a time, one while an export runs), resumed from its finished parts if an earlier one was
  *  interrupted. Assets whose proxy is ready or being made are left alone. Returns their status;
  *  follow it with `media.proxy_status` or `job.wait`.
@@ -3728,6 +4123,17 @@ export type MediaId = string & { readonly __brand: "MediaId" };
  *  creates a bin folder for each directory that holds new media, named after it, inside
  *  `folder`. One undo removes the media and those folders; files already in the project stay
  *  where they are.
+ * 
+ *  With `copy_to_project` (WP-2F.04c) each new file is first copied into the project's
+ *  `media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from
+ *  an imported folder keeps its place in that folder's tree) and the asset points at the copy,
+ *  so the project keeps working when the original moves. The copy is compared with the
+ *  original before it is used. A file already inside the project folder is not copied, and
+ *  neither is one whose content the project already has (it is returned as a duplicate). The
+ *  call fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it
+ *  has no folder) or when the files do not fit on its drive; nothing is copied then. A file
+ *  that cannot be copied is listed in `failed`. Undoing the import removes the assets; the
+ *  copied files stay on disk (undo never deletes a file).
  */
 export type MediaImport = {
 	/**  Absolute paths of files or folders (1..=256, no repeats). */
@@ -3739,6 +4145,76 @@ export type MediaImport = {
 	 *  puts every file straight into `folder`.
 	 */
 	keep_structure?: boolean | null,
+	/**  Copy each new file into the project's `media/` folder first (default false). */
+	copy_to_project?: boolean | null,
+};
+
+/**
+ *  Saves the frame the Preview shows (`source: "sequence"`: the sequence the editor shows) or
+ *  the frame of a video or image-sequence asset (`source: {"media": id}`) at time `at` as a PNG
+ *  picture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`
+ *  at that time. The file goes into the project's `generated/frames/` folder, named after the
+ *  new asset; `name` is the name the bin shows (default: the source's name and the timecode)
+ *  and `folder` the bin folder. One undo step removes the asset; the file stays. Fails with
+ *  `Invalid` while the project has never been saved (it has no folder yet: save it first),
+ *  and with `Unsupported` on an engine without a renderer.
+ */
+export type MediaImportFrame = {
+	/**  `"sequence"` (the Preview) or `{"media": id}` (a video or image sequence on its own). */
+	source: FrameOf,
+	/**  The time of the frame: flicks, "2.5s", "f:60" or a timecode. */
+	at: TimeInput,
+	/**  The name the bin shows (default: the source's name and the timecode). */
+	name?: string | null,
+	/**  Bin folder (default: top level). */
+	folder?: FolderId | null,
+};
+
+/**  Result of `media.import_frame`. */
+export type MediaImportFrameOutput = {
+	/**  The picture's asset; the existing one when the same picture was already in the project. */
+	media_id: MediaId,
+	/**  Absolute path of the PNG the asset points at. */
+	path: string,
+	/**  The name the bin shows for it. */
+	name: string,
+	/**  Picture width in px. */
+	width: number,
+	/**  Picture height in px. */
+	height: number,
+	/**  The time that was rendered: of the sequence, or of the source. */
+	time: Time,
+	/**  `true` when the same picture was already in the project and nothing was added. */
+	duplicate: boolean,
+	/**  Background analysis jobs queued for the new asset (wait with `job.wait`). */
+	job_ids: JobId[],
+};
+
+/**
+ *  Imports pictures as stills and places them one after the other on a video track, each
+ *  `per_image` long (default: the project's still duration), as one undo step. Pictures whose
+ *  content is already in the project reuse that asset. Files that cannot be read or are not
+ *  still pictures are listed in `failed` and left out; with no picture at all the call fails
+ *  with `Invalid`. `order` is `given` (default), `name` or `name_numeric`. The pictures go to
+ *  `track` (default: the main video track, else the first unlocked video track) of `sequence`
+ *  (optional when the project has one), starting at `at` (default: the end of that track). On
+ *  the magnetic main track what is after `at` moves later; on another track the range must be
+ *  free. Agents and headless callers may only import from the project folder and user-approved
+ *  folders.
+ */
+export type MediaImportImagesAsSlideshow = {
+	/**  Absolute paths of the pictures (1..=256, no repeats). */
+	files: string[],
+	/**  How long each picture stays, `> 0` (default: the project's still duration). */
+	per_image?: TimeInput | null,
+	/**  `given` (default), `name` or `name_numeric`. */
+	order?: SlideshowOrder | null,
+	/**  The sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  A video track (default: the main video track, else the first unlocked one). */
+	track?: TrackId | null,
+	/**  Where the first picture starts (default: the end of the track). */
+	at?: TimeInput | null,
 };
 
 /**  Result of `media.import`. */
@@ -3771,6 +4247,75 @@ export type MediaImportProgress = {
 	total: number,
 };
 
+/**
+ *  Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that
+ *  plays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:
+ *  the run is every file of that folder whose name differs only in the number at its end.
+ *  Fewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a
+ *  sequence). Only the first picture is read, so a long run imports at once; the files are
+ *  referenced, not copied.
+ * 
+ *  With `copy_to_project` every picture of the run is first copied into the project's
+ *  `media/` folder, all into one folder (`media/<source folder name>/`, or `<name> (2)` when a
+ *  name there is taken by another file) under its own file name, and the asset points at the
+ *  copy, so the project keeps working when the originals move. Each copy is compared with its
+ *  original. A run already inside the project folder is not copied, and neither is one the
+ *  project already has (it is returned as a duplicate). The call fails with `Invalid` at
+ *  `/copy_to_project` when the project has not been saved yet (it has no folder) or when the
+ *  pictures do not fit on its drive, and at `/path` when a picture cannot be copied; nothing
+ *  is imported then. Undoing the import removes the asset; the copied files stay on disk.
+ * 
+ *  Numbers without a file are allowed: they are listed in `image_sequence.missing`, named in
+ *  `warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame
+ *  rate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes
+ *  on video tracks only (it has no sound). One undo removes it. Agents and headless callers
+ *  may only import from the project folder and user-approved folders.
+ */
+export type MediaImportSequence = {
+	/**  Absolute path of one picture of the run, or of the folder that holds the run. */
+	path: string,
+	/**
+	 *  Frames per second, as a fraction (`{"num": 24000, "den": 1001}`). Default: the frame
+	 *  rate of the sequence the editor shows, 30 without one.
+	 */
+	fps?: FrameRate | null,
+	/**  Bin folder (default: top level). */
+	folder?: FolderId | null,
+	/**  Copy every picture of the run into the project's `media/` folder first (default false). */
+	copy_to_project?: boolean | null,
+};
+
+/**  Result of `media.import_sequence`. */
+export type MediaImportSequenceOutput = {
+	/**  The asset; an existing one if the same run was imported before. */
+	media_id: MediaId,
+	/**  `image_sequence`. */
+	kind: MediaKind,
+	/**  `true` when the run was already in the project and nothing was added. */
+	duplicate: boolean,
+	/**
+	 *  Absolute path of the first picture of the run, where it was found (with
+	 *  `copy_to_project` the asset points at the copy in the project folder).
+	 */
+	path: string,
+	/**
+	 *  The run as stored on the asset: pattern, first number, count, frame rate and the
+	 *  numbers that have no file.
+	 */
+	image_sequence: ImageSequence,
+	/**  One sentence per stretch of missing numbers; empty when the run has no gaps. */
+	warnings: string[],
+	/**  Background analysis jobs queued for the new asset (wait with `job.wait`). */
+	job_ids: JobId[],
+	/**  Whether a proxy was queued for it, or is already in the cache. */
+	proxy: ImportProxy,
+};
+
+/**  What `media.list` adds to each asset on request. */
+export type MediaInclude = 
+/**  The asset's note. */
+"note";
+
 /**  `media.indexed`: the asset's frame index is ready. */
 export type MediaIndexed = {
 	/**  The asset. */
@@ -3785,12 +4330,18 @@ export type MediaKind =
 "audio" | 
 /**  A still image (no duration). */
 "image" | 
+/**
+ *  A numbered run of pictures that plays like video (ADR-0035); the asset's
+ *  `image_sequence` field describes the run.
+ */
+"image_sequence" | 
 /**  Another sequence of this project, used as a compound clip (arch §4.3). */
 "sequence_ref";
 
 /**
- *  Lists the media of the project, filtered (also by bin folder) and ordered, one page at a
- *  time. Each asset carries the name the bin shows and its folder.
+ *  Lists the media of the project, filtered (also by bin folder, tags, rating and collection)
+ *  and ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags
+ *  and rating.
  */
 export type MediaList = {
 	/**  Page size, `1..=500` (default 50). */
@@ -3801,6 +4352,21 @@ export type MediaList = {
 	filter?: MediaFilter | null,
 	/**  Order. */
 	sort?: MediaSort | null,
+	/**  Extra fields per asset: `note`. */
+	include?: MediaInclude[] | null,
+};
+
+/**
+ *  Lists the project's collections of media: each one's ID, name, kind (manual or smart), the
+ *  filter of a smart one and how many assets are on it. List the members with `media.list` and
+ *  `filter.collection`.
+ */
+export type MediaListCollections = Record<string, never>;
+
+/**  Result of `media.list_collections`. */
+export type MediaListCollectionsOutput = {
+	/**  Every collection, by name ignoring case. */
+	collections: CollectionSummary[],
 };
 
 /**
@@ -3835,6 +4401,24 @@ export type MediaListOutput = {
 };
 
 /**
+ *  Lists every tag in the project with the number of assets that carry it. Tags that differ
+ *  only in case or accents count as one.
+ */
+export type MediaListTags = Record<string, never>;
+
+/**  Result of `media.list_tags`. */
+export type MediaListTagsOutput = {
+	/**  Every tag some asset has, sorted ignoring case and accents. */
+	tags: TagCount[],
+};
+
+/**  Result of `media.set_location`. */
+export type MediaLocationSet = {
+	/**  The asset. */
+	media_id: MediaId,
+};
+
+/**
  *  Moves assets and folders (with everything inside them) into a folder, or to the top level
  *  without `to`. Moving a folder into itself or one of its subfolders, or so deep that
  *  something would be nested more than 32 levels, fails with `Invalid`. A moved folder whose
@@ -3864,6 +4448,14 @@ export type MediaMoved = {
 	renamed: FolderRenamed[],
 };
 
+/**  Result of `media.set_note`. */
+export type MediaNoteSet = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  Whether it has a note now. */
+	has_note: boolean,
+};
+
 /**
  *  Shows where the proxies of video assets are: none, queued, generating (with progress),
  *  ready (path, size), incomplete, evicted or failed, and whether the policy wants one.
@@ -3890,6 +4482,12 @@ export type MediaRegister = {
 	content_hash: string,
 	/**  The folder of the bin to put the new asset in; absent: the top level. */
 	folder?: FolderId | null,
+	/**
+	 *  For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`
+	 *  the picture with the run's duration and frame rate; the asset's kind is
+	 *  `image_sequence`. Absent for every other file.
+	 */
+	image_sequence?: ImageSequence | null,
 };
 
 /**
@@ -3914,18 +4512,109 @@ export type MediaRegistered = {
 };
 
 /**
- *  Removes a media asset from the project (the file on disk is untouched). Fails with
- *  `Invalid` while any clip uses it; delete those clips first.
+ *  Points one media asset at a file: the same file after it was moved or renamed, or another
+ *  file to use in its place. A replacement must be the same kind of media (video, audio or
+ *  image) and at least as long as the original, so every clip that uses the asset stays valid;
+ *  the asset then takes the new file's content hash and probe results. Fails with `Invalid` at
+ *  `/path` when the file cannot be read or cannot stand in. One undo step puts the old path
+ *  back. Agents and headless callers may only name files inside the project folder and the
+ *  folders the user approved.
+ * 
+ *  For an image sequence, `path` is any picture of the run at its new place, or the folder
+ *  that holds it: the asset is pointed at the run there, which must have every picture (same
+ *  file names, same numbers; `Invalid` at `/path` says how many are not there). `to` is the
+ *  first picture.
+ */
+export type MediaRelink = {
+	/**  The asset (a file, not a compound clip). */
+	media: MediaId,
+	/**
+	 *  Absolute path of the file to use (for an image sequence: one of its pictures at the
+	 *  new place, or the folder they are in).
+	 */
+	path: string,
+};
+
+/**
+ *  Searches a folder for the files of missing media and points each asset at its file, all in
+ *  one undo step. A file is recognized by its content, so moved and renamed files are found;
+ *  an asset whose content is nowhere in the folder takes the one file with its name, kind and
+ *  duration, if there is exactly one. Assets whose file is where the project says are left
+ *  alone. An image sequence is found as a whole: by the file name of its first picture, in a
+ *  folder that holds every picture of the run (an incomplete run is passed over), by content
+ *  when the pictures are the same and else when it is the only such run. Reads at most 2,000
+ *  files per call (16 levels down, no links, no hidden files).
+ *  Agents and headless callers may only search the project folder and the folders the user
+ *  approved (`Invalid` at `/folder` otherwise).
+ */
+export type MediaRelinkFolder = {
+	/**  Absolute path of the folder on disk to search. */
+	folder: string,
+	/**  Also search the folders inside it (default true). */
+	recursive?: boolean | null,
+	/**  Only relink these assets (1..=256, no repeats); absent: every missing asset. */
+	media?: MediaId[] | null,
+};
+
+/**  Result of `media.relink_folder`. */
+export type MediaRelinkFolderOutput = {
+	/**  The assets whose file was found, by asset id. */
+	relinked: Relinked[],
+	/**  The assets (of `media`, or of the project) that are still missing or incomplete. */
+	still_missing: MediaId[],
+	/**  The number of files that were read (an image sequence's run counts once). */
+	scanned: number,
+	/**  The folder holds more files than one call reads (2,000): run it on its subfolders. */
+	truncated: boolean,
+};
+
+/**
+ *  Removes a media asset from the project (the file on disk is untouched) and takes it off
+ *  every manual collection. Fails with `Invalid` while any clip uses it; delete those clips
+ *  first.
  */
 export type MediaRemove = {
 	/**  The asset to remove. */
 	id: MediaId,
 };
 
+/**
+ *  Takes assets off a manual collection; the assets themselves stay in the project. An asset
+ *  that is not on it is ignored, so the call can be repeated. Fails with `Invalid` for a smart
+ *  collection, whose members come from its filter.
+ */
+export type MediaRemoveFromCollection = {
+	/**  The collection (manual). */
+	collection: CollectionId,
+	/**  The assets to take off (at least one, no repeats). */
+	media: MediaId[],
+};
+
 /**  Result of `media.remove`. */
 export type MediaRemoveOutput = {
 	/**  The removed asset. */
 	media_id: MediaId,
+};
+
+/**
+ *  Removes tags from media assets, matching them ignoring case and accents. Removing a tag an
+ *  asset does not have changes nothing, so the call can be repeated.
+ */
+export type MediaRemoveTags = {
+	/**  The assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  The tags to remove (1..=16). */
+	tags: string[],
+};
+
+/**  Result of `media.remove_from_collection`. */
+export type MediaRemovedFromCollection = {
+	/**  The collection. */
+	collection_id: CollectionId,
+	/**  The assets that left it (those that were not on it are left out). */
+	removed: MediaId[],
+	/**  How many members it has now. */
+	members: number,
 };
 
 /**
@@ -3943,6 +4632,17 @@ export type MediaRename = {
 };
 
 /**
+ *  Renames a collection. Fails with `Invalid` when another collection has the name, ignoring
+ *  case (changing only the case of its own name is fine).
+ */
+export type MediaRenameCollection = {
+	/**  The collection. */
+	collection: CollectionId,
+	/**  The new name: 1 to 255 characters without control characters (trimmed). */
+	name: string,
+};
+
+/**
  *  Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the
  *  name, ignoring case (changing only the case of the folder's own name is fine).
  */
@@ -3951,6 +4651,19 @@ export type MediaRenameFolder = {
 	folder: FolderId,
 	/**  The new name: 1 to 255 characters, no `/` or control characters (trimmed). */
 	name: string,
+};
+
+/**
+ *  Renames a tag on every asset that has it, as one undo step. `from` is matched ignoring case
+ *  and accents; afterwards each of those assets carries `to` exactly as given (an asset that
+ *  had both keeps one). Renaming to another spelling of the same tag (`interview` to
+ *  `Interview`) respells it. When no asset has `from`, nothing changes.
+ */
+export type MediaRenameTag = {
+	/**  The tag to rename. */
+	from: string,
+	/**  Its new name: 1 to 64 characters without commas or control characters (trimmed). */
+	to: string,
 };
 
 /**  Result of `media.rename`. */
@@ -3979,6 +4692,17 @@ export type MediaSetCacheConfig = {
 };
 
 /**
+ *  Replaces the filter of a smart collection (the same filter `media.list` takes; it cannot
+ *  name a collection). Fails with `Invalid` for a manual collection.
+ */
+export type MediaSetCollectionFilter = {
+	/**  The collection (smart). */
+	collection: CollectionId,
+	/**  The new filter. */
+	filter: MediaFilter,
+};
+
+/**
  *  Sets whether decoders may use the hardware. It applies to decoders opened from now on; idle
  *  decoders are closed and the open pools reopen on their next seek. Exports and `render.frame`
  *  always decode in software. Not undoable, not journaled, never marks the project dirty; UI
@@ -3993,6 +4717,108 @@ export type MediaSetDecodePolicy = {
 export type MediaSetDecodePolicyOutput = {
 	/**  The policy now in force. */
 	hw: DecodeHw,
+};
+
+/**
+ *  Records where a media file is now. Internal plumbing of `media.relink` and
+ *  `media.relink_folder`, which check the file first: this command only writes the path, and
+ *  the content hash and probe results when the file's content is not what was imported. The
+ *  project-relative path is dropped (it named the old place) and recomputed when the project is
+ *  saved. For an image sequence the path is the first picture of the run at its new place.
+ */
+export type MediaSetLocation = {
+	/**  The asset (a file, not a compound clip). */
+	media: MediaId,
+	/**  Absolute path of the file. */
+	path: string,
+	/**  The file's content hash, when it differs from the asset's. */
+	content_hash?: string | null,
+	/**  What probing the file found, when its content differs from the asset's. */
+	probe?: ProbeInfo | null,
+};
+
+/**
+ *  Sets the note of a media asset: plain text of at most 2,000 characters (line breaks and
+ *  tabs allowed, other control characters not; space around it is trimmed). Without `note`, or
+ *  with a blank one, the note is removed.
+ */
+export type MediaSetNote = {
+	/**  The asset. */
+	media: MediaId,
+	/**  The note; absent, null or blank: no note. */
+	note?: string | null,
+};
+
+/**
+ *  Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960
+ *  pixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size
+ *  applies to proxies made from now on: generations of the old size stop, the open project's
+ *  wanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache
+ *  unused until its limit removes them. Not undoable, not journaled, never marks the project
+ *  dirty; UI credential only (the desktop app applies the person's machine preferences).
+ */
+export type MediaSetProxyConfig = {
+	/**  The longest side of new proxies in pixels: 540, 720 or 960. Left out: unchanged. */
+	size?: number | null,
+	/**  Proxy jobs at once, 1 to 8. Left out: unchanged. */
+	jobs?: number | null,
+};
+
+/**
+ *  Sets whether video assets get a proxy, whatever the project's policy says: `force` makes
+ *  one, `off` makes none and the preview does not use one that exists (it stays in the cache),
+ *  `auto` follows the policy again. The mode is saved in the project, one undo step for all
+ *  the assets named.
+ */
+export type MediaSetProxyMode = {
+	/**  The video assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  `auto` (follow the project's policy), `force` or `off`. */
+	mode: ProxyMode,
+};
+
+/**
+ *  Chooses which of the project's video gets proxies automatically: `off` (none), `auto`
+ *  (video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than
+ *  60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then
+ *  queues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).
+ *  An asset's own mode (`media.set_proxy_mode`) wins over the policy.
+ */
+export type MediaSetProxyPolicy = {
+	/**  `off`, `auto` or `all`. */
+	policy: ProxyPolicy,
+};
+
+/**  Rates media assets from 1 to 5 stars, or clears their rating without `rating`. */
+export type MediaSetRating = {
+	/**  The assets (1..=256, no repeats). */
+	media: MediaId[],
+	/**  Whole stars, 1 to 5; absent or null: unrated. */
+	rating?: number | null,
+};
+
+/**  Result of `media.import_images_as_slideshow`. */
+export type MediaSlideshowOutput = {
+	/**  The sequence the pictures went into. */
+	sequence: SequenceId,
+	/**  The track they are on. */
+	track: TrackId,
+	/**  Where the first picture starts (snapped to the frame grid). */
+	at: Time,
+	/**  How long each picture stays (a whole number of frames). */
+	per_image: Duration,
+	/**  Where the last picture ends. */
+	end: Time,
+	/**  The new clips, in slideshow order. */
+	clips: ItemId[],
+	/**  One entry per placed picture, in slideshow order. */
+	media: ImportedMedia[],
+	/**  The assets of `media`, in the same order (a duplicate names the existing asset). */
+	media_ids: MediaId[],
+	/**  The files that were left out: unreadable, or not a still picture. */
+	failed: ImportFailure[],
+	/**  Background analysis jobs queued for the new assets (wait with `job.wait`). */
+	job_ids: JobId[],
 };
 
 /**  How to order the list; without one, by ID ascending. */
@@ -4012,6 +4838,20 @@ export type MediaSortBy = "imported" | "name" | "duration" | "kind";
 /**  `asc` (default), or `desc`: exactly the reverse. */
 export type MediaSortOrder = "asc" | "desc";
 
+/**  Whether an asset's file is usable (`MediaAsset.status` of WP-2F.03; never saved). */
+export type MediaStatus = 
+/**  The file is where the project says. */
+"ok" | 
+/**  There is no readable file at the asset's path. */
+"missing" | 
+/**  There is a file, but its content is not what was imported (`verify` only). */
+"changed" | 
+/**
+ *  An image sequence whose first picture is there while other pictures of the run are
+ *  gone (`missing_frames` says how many).
+ */
+"incomplete";
+
 /**  Summary of one media asset. */
 export type MediaSummary = {
 	/**  The asset. */
@@ -4030,6 +4870,18 @@ export type MediaSummary = {
 	has_video: boolean,
 	/**  Whether it has sound. */
 	has_audio: boolean,
+	/**  Its tags, sorted ignoring case and accents. */
+	tags: string[],
+	/**  Stars, 1 to 5; absent: unrated. */
+	rating: number | null,
+	/**  Its note; only with `include: ["note"]`, and left out otherwise. */
+	note?: string | null,
+};
+
+/**  Result of the tag and rating commands. */
+export type MediaTagged = {
+	/**  The assets that changed (those that already were as asked are left out). */
+	changed: MediaId[],
 };
 
 /**  Result of `media.register_tree`. */
@@ -4038,6 +4890,23 @@ export type MediaTreeRegistered = {
 	results: MediaRegistered[],
 	/**  How many bin folders were created. */
 	folders: number,
+};
+
+/**  An asset whose file is missing or changed, or an image sequence with pictures gone. */
+export type MissingMedia = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  The name the bin shows. */
+	name: string,
+	/**  Where the project says its file is. */
+	path: string | null,
+	/**  What is wrong: `missing`, `changed` or `incomplete`. */
+	status: MediaStatus,
+	/**
+	 *  For an image sequence: how many of its pictures are gone, the first one included (the
+	 *  numbers that had no file at import are not counted). Absent for other media.
+	 */
+	missing_frames: number | null,
 };
 
 /**  Where one item ended up. */
@@ -4340,11 +5209,53 @@ export type Project = {
 	media: { [key in MediaId]: MediaAsset },
 	/**  The folder tree of the media bin, keyed by ID (ADR-0020). */
 	folders: { [key in FolderId]: MediaFolder },
+	/**
+	 *  Collections of media, keyed by ID (ADR-0036). Left out of the file while empty, so
+	 *  documents written before the field read the same.
+	 */
+	collections?: { [key in CollectionId]: Collection },
 	/**  Sequences, keyed by ID. */
 	sequences: { [key in SequenceId]: Sequence },
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
+
+/**
+ *  Bundles the project for storage or a handover: the project document, every media file it
+ *  uses (under `media/`), its `generated/` folder, and a file list `archive.json` with the size
+ *  and SHA-256 of every file. `format: "folder"` writes a project folder at `dest`;
+ *  `format: "zip"` writes one `.zip` file at `dest` (the name must end in `.zip`) that holds
+ *  that folder, uncompressed, with Zip64 for large files. Proxies and caches are left out. The
+ *  open project and its files are not changed. Returns a background job; the archive is
+ *  complete when the job succeeds: the zip gets its name only after it was read back and
+ *  compared with the file list, so a cancelled or failed run leaves no `.zip`. A folder
+ *  archive that was cancelled continues when called again with the same folder. Fails with
+ *  `Invalid` at `/dest` when the files do not fit on the drive, the folder already holds a
+ *  project or the `.zip` already exists, and at `/media` when a media file is missing (relink
+ *  it first). `project.collect_estimate` with the same folder says what would be bundled.
+ *  Agents and headless callers may only archive into folders the user approved.
+ */
+export type ProjectArchive = {
+	/**
+	 *  Absolute path of the archive: for `folder` a new or empty folder (or the folder of an
+	 *  interrupted archive of this project), for `zip` a `.zip` file that does not exist yet.
+	 */
+	dest: string,
+	/**  `folder` (a project folder with `archive.json`) or `zip` (one `.zip` holding it). */
+	format: ArchiveFormat,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused?: boolean | null,
+	/**  Also bundle the project's `generated/` folder (default true). */
+	include_generated?: boolean | null,
+};
+
+/**  Result of `project.archive`. */
+export type ProjectArchiveOutput = {
+	/**  The archive job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`. */
+	job_id: JobId,
+	/**  What it bundles; `dest` is the folder or the `.zip` file. */
+	estimate: CollectEstimate,
+};
 
 /**
  *  Closes the open project (releasing its lock) and starts an untitled document. With
@@ -4376,6 +5287,67 @@ export type ProjectCloseOutput = {
 export type ProjectClosed = {
 	/**  The document path of the project that was closed. */
 	path: string,
+};
+
+/**
+ *  Makes a self-contained copy of the project in another folder: the project document and
+ *  every media file it uses (under `media/`), with the copy's document pointing at the copied
+ *  files, so the folder opens on any computer. The open project and its files are not changed.
+ *  Returns a background job; the copy is complete when the job succeeds (the document is
+ *  written last). Each copied file is compared with its original. Calling it again with the
+ *  same folder after a cancel or a crash continues without copying finished files again.
+ *  Fails with `Invalid` at `/dest` when the files do not fit on the drive or the folder
+ *  already holds a project, and at `/media` when a media file is missing (relink it first).
+ *  An image sequence is copied whole, every picture under its own name in one folder; a
+ *  picture that is gone counts as a missing file.
+ *  Agents and headless callers may only collect into folders the user approved.
+ */
+export type ProjectCollect = {
+	/**
+	 *  Absolute path of the folder to collect into: a new or empty folder, or the folder of
+	 *  an interrupted collect of this project.
+	 */
+	dest: string,
+	/**
+	 *  Where media go: `copy_all` (default, everything under `media/`) or
+	 *  `copy_external_only` (files inside the project folder keep their place).
+	 */
+	mode?: CollectMode | null,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused?: boolean | null,
+	/**  Also copy the project's `generated/` folder (default true). */
+	include_generated?: boolean | null,
+};
+
+/**
+ *  Says what `project.collect` with the same params would copy: how many media files, how many
+ *  bytes, the free space on the destination drive and whether the files fit, and which media
+ *  cannot be copied because their file is missing (an image sequence counts every picture, and
+ *  is listed with `missing_frames` when some are gone). Changes nothing.
+ */
+export type ProjectCollectEstimate = {
+	/**
+	 *  Absolute path of the folder to collect into: a new or empty folder, or the folder of
+	 *  an interrupted collect of this project.
+	 */
+	dest: string,
+	/**
+	 *  Where media go: `copy_all` (default, everything under `media/`) or
+	 *  `copy_external_only` (files inside the project folder keep their place).
+	 */
+	mode: CollectMode | null,
+	/**  Leave out the media no timeline uses (default false). */
+	trim_unused: boolean | null,
+	/**  Also copy the project's `generated/` folder (default true). */
+	include_generated: boolean | null,
+};
+
+/**  Result of `project.collect`. */
+export type ProjectCollectOutput = {
+	/**  The copy job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`. */
+	job_id: JobId,
+	/**  What it copies. */
+	estimate: CollectEstimate,
 };
 
 /**
@@ -4457,6 +5429,16 @@ export type ProjectNew = {
 	name: string,
 	/**  Format of the first sequence; also the default for new sequences. */
 	format?: FormatSpec | null,
+	/**
+	 *  How long a still image is when it is placed without a length (up to one hour); absent:
+	 *  five seconds. The editor passes the person's "Still image duration" setting.
+	 */
+	still_duration?: TimeInput | null,
+	/**
+	 *  Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);
+	 *  absent: `auto`. The editor passes the person's "Proxies for new projects" setting.
+	 */
+	proxy_policy?: ProxyPolicy | null,
 };
 
 /**  Result of `project.new`. */
@@ -4513,7 +5495,10 @@ export type ProjectOpenFailed = {
 export type ProjectOpenOutput = {
 	/**  The session now. */
 	project: ProjectStatus,
-	/**  Media whose file was found at neither its absolute nor its project-relative path. */
+	/**
+	 *  Media whose file was found at neither its absolute nor its project-relative path, and
+	 *  image sequences with pictures of their run gone (`media.find_missing` tells which).
+	 */
 	missing_media: MediaId[],
 	/**  The schema version the document was migrated from, if it was. */
 	migrated_from: number | null,
@@ -4669,6 +5654,18 @@ export type ProjectSetAutosaveOutput = {
 export type ProjectSettings = {
 	/**  Format of new sequences. */
 	default_format: SequenceFormat,
+	/**
+	 *  How long a still image is when it is placed without a length (ADR-0035). Absent: five
+	 *  seconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so
+	 *  documents written before the field read the same. Changing it never alters clips that
+	 *  already exist.
+	 */
+	still_duration?: Duration | null,
+	/**
+	 *  Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so
+	 *  documents written before the field read the same.
+	 */
+	proxy_policy?: ProxyPolicy,
 } & { [key in string]: unknown };
 
 /**  What the engine holds: the `project.*` commands return it and `project.opened` carries it. */
@@ -4769,14 +5766,45 @@ export type ProxyInfo = {
 	error: string | null,
 };
 
-/**  When proxies are made automatically. */
+/**  Whether one asset gets a proxy (ADR-0027), next to the project's policy. */
+export type ProxyMode = 
+/**  As the project's policy decides. The default. */
+"auto" | 
+/**  One is made whatever the policy. */
+"force" | 
+/**  None is made, and the preview does not use one that exists. */
+"off";
+
+/**  Result of `media.set_proxy_mode`. */
+export type ProxyModeSet = {
+	/**  The assets, in request order. */
+	media: MediaId[],
+	/**  Their mode now. */
+	mode: ProxyMode,
+};
+
+/**
+ *  When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache
+ *  state of each computer; the policy is the editor's intent and travels with the project.
+ */
 export type ProxyPolicy = 
 /**  Never automatically (`media.generate_proxy` still makes one). */
 "off" | 
-/**  For video that is slow to scrub ([`auto_reason`]); the default. */
+/**
+ *  For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster
+ *  than 60 fps, or 10-bit HEVC. The default.
+ */
 "auto" | 
 /**  For every video file. */
 "all";
+
+/**  Result of `media.set_proxy_policy`. */
+export type ProxyPolicySet = {
+	/**  The project's policy now. */
+	policy: ProxyPolicy,
+	/**  What it was before. */
+	previous: ProxyPolicy,
+};
 
 /**  Where an asset's proxy is. */
 export type ProxyStatus = 
@@ -4897,6 +5925,27 @@ export type ReframePolicy =
 /**  Leave transforms alone. */
 "none";
 
+/**  How a file was recognized as an asset's. */
+export type RelinkMatch = 
+/**  Its content hash is the asset's: the same file, moved or renamed. */
+"hash" | 
+/**  Other bytes with the asset's file name, kind and duration (`media.relink_folder`). */
+"name" | 
+/**  The caller named it (`media.relink`) and its content differs from what was imported. */
+"chosen";
+
+/**  One asset that was pointed at a file. */
+export type Relinked = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  Where the document said its file was. */
+	from: string | null,
+	/**  Where it is now. */
+	to: string,
+	/**  How the file was recognized. */
+	matched_by: RelinkMatch,
+};
+
 /**  An item whose `linked_group` or `attached_to` changed. */
 export type RelinkedReport = {
 	/**  The item. */
@@ -4994,6 +6043,8 @@ export type ResourceKind =
 "marker" | 
 /**  A folder of the media bin (`fld_…`, ADR-0020). */
 "folder" | 
+/**  A collection of media (`col_…`, ADR-0036). */
+"collection" | 
 /**  A registry entry: an unknown command or query name. */
 "command" | 
 /**  An open transaction (WP-1B.04). */
@@ -5377,6 +6428,15 @@ export type SetKey = {
 	outside: boolean,
 };
 
+/**  The order the pictures of a slideshow are placed in. */
+export type SlideshowOrder = 
+/**  As listed in `files`. */
+"given" | 
+/**  By file name, ignoring case. */
+"name" | 
+/**  By file name, ignoring case, numbers compared by value (`img2` before `img10`). */
+"name_numeric";
+
 /**
  *  A constant playback speed: `num/den` times normal, from 1/10 to 100, in lowest terms.
  * 
@@ -5483,6 +6543,14 @@ export type StreamKind =
 "data" | 
 /**  Attached files (fonts, cover art). */
 "attachment";
+
+/**  One tag of the project. */
+export type TagCount = {
+	/**  The tag, in the spelling of the first asset (by ID) that has it. */
+	tag: string,
+	/**  How many assets have it. */
+	count: number,
+};
 
 /**
  *  A position on a timeline or in a source, in flicks (1/705,600,000 s).
@@ -6007,6 +7075,14 @@ export type TrackKind =
 "caption" | 
 /**  Adjustment layers (later versions). */
 "adjustment";
+
+/**  One track bus's levels (post-fader). */
+export type TrackLevels = {
+	/**  The audio track. */
+	track: TrackId,
+	/**  Its levels after its gain, pan, mute and solo. */
+	levels: LevelReading,
+};
 
 /**  Lists a sequence's tracks in display order with their flags, height and item counts. */
 export type TrackList = {

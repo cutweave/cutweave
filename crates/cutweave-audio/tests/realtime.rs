@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Real-time mixer tests (WP-1G.01): a paced mock sink with 8 sources and 256-frame buffers
-//! (0 underruns, 0 heap operations in the callback), offline == real-time, seeks, edits during
-//! playback and gain changes.
+//! Real-time mixer tests (WP-1G.01, WP-2E.02): a paced mock sink with 8 sources and 256-frame
+//! buffers (0 underruns, 0 heap operations in the callback, meters included; 120 s with the
+//! limiter working), offline == real-time, seeks, edits during playback and gain changes.
 //!
 //! The counting allocator stands in for `assert_no_alloc` (BSD-1-Clause, not allowed by
 //! `deny.toml`): every heap operation inside an `RtSection` on the callback thread is counted.
@@ -25,7 +25,8 @@ use common::{
 };
 use cutweave_audio::rt_alloc::{CountingAlloc, RtSection};
 use cutweave_audio::{
-    Mixer, MixerConfig, MixerHandle, PcmFormat, SourceFactory, Tone, ToneSpec, db_to_gain,
+    BusGraph, BusLevel, BusParams, LoudnessMeter, MAX_METER_BUSES, METER_HZ, Mixer, MixerConfig,
+    MixerHandle, PcmFormat, SourceFactory, Tone, ToneSpec, db_to_gain,
 };
 use cutweave_model::{FrameRate, SampleRate, Time};
 use proptest::prelude::*;
@@ -43,26 +44,49 @@ struct SinkReport {
     heap_ops: u64,
     max_callback: StdDuration,
     late_wakeups: u64,
+    /// The smallest limiter gain the meters saw.
+    min_limiter_gain: f32,
+    /// The last master loudness reading (integrated, LUFS).
+    integrated_lufs: f64,
 }
 
 /// A mock device: calls `render` with `buffer`-frame buffers on the device's schedule
-/// (absolute deadlines every `buffer / rate`), for `seconds` of advancing output.
+/// (absolute deadlines every `buffer / rate`), for `seconds` of advancing output. Like the
+/// output callback it also meters inside the real-time section: the master loudness every
+/// callback, the bus levels and the limiter gain every meter window.
 fn paced_sink(mixer: &mut Mixer, buffer: usize, seconds: f64) -> SinkReport {
     let mut out = vec![0.0f32; buffer * 2];
     let period = StdDuration::from_secs_f64(buffer as f64 / f64::from(RATE.hz()));
     let total = (seconds * f64::from(RATE.hz())) as u64;
+    let mut loudness = LoudnessMeter::new(RATE).unwrap();
+    let mut buses = [BusLevel::SILENT; MAX_METER_BUSES];
+    let window = u64::from(RATE.hz() / METER_HZ);
+    let mut metered = 0u64;
     let mut report = SinkReport {
         callbacks: 0,
         frames: 0,
         heap_ops: 0,
         max_callback: StdDuration::ZERO,
         late_wakeups: 0,
+        min_limiter_gain: 1.0,
+        integrated_lufs: f64::NEG_INFINITY,
     };
     let mut deadline = Instant::now();
     while report.frames < total {
         let t0 = Instant::now();
         let section = RtSection::enter();
         let info = mixer.render(&mut out);
+        if info.position.is_some() {
+            loudness.add(&out);
+            metered += buffer as u64;
+            if metered >= window {
+                metered -= window;
+                let _ = mixer.take_bus_levels(&mut buses);
+                report.min_limiter_gain = report.min_limiter_gain.min(mixer.take_limiter_gain());
+                report.integrated_lufs = loudness.reading().integrated;
+                let _ = loudness.take_true_peak();
+            }
+        }
         report.heap_ops += section.exit();
         report.max_callback = report.max_callback.max(t0.elapsed());
         report.callbacks += 1;
@@ -80,10 +104,22 @@ fn paced_sink(mixer: &mut Mixer, buffer: usize, seconds: f64) -> SinkReport {
     report
 }
 
-fn soak(seconds: f64) {
+/// Runs the paced sink over 8 tracks for `seconds`. `hot`: every bus at +20 dB, so the master
+/// limiter works all the time (WBS 2E.02 "active limiter").
+fn soak(seconds: f64, hot: bool) {
     let (sources, segs) = eight_sources(seconds);
+    let segs = segments(&segs);
+    let mut graph = BusGraph::from_segments(&segs);
+    if hot {
+        for bus in graph.buses().to_vec() {
+            graph.set(BusParams {
+                gain_db: bus.gain_db + 20.0,
+                ..bus
+            });
+        }
+    }
     let (mut mixer, handle) = mixer(&sources);
-    handle.set_segments(&segments(&segs)).unwrap();
+    handle.set_mix(&segs, &graph).unwrap();
     handle.seek(Time::ZERO);
     let report = paced_sink(&mut mixer, 256, seconds);
     let stats = handle.stats();
@@ -91,9 +127,10 @@ fn soak(seconds: f64) {
         .min_lookahead_frames
         .map_or(f64::NAN, |f| f as f64 * 1000.0 / f64::from(RATE.hz()));
     eprintln!(
-        "soak {seconds} s, 8 sources, 256-frame buffers: {} callbacks, {} underrun frames \
-         ({} callbacks), {} RT heap ops, max callback {:?}, min lane look-ahead {lookahead_ms:.1} ms, \
-         {} late sink wake-ups, {} source errors, {} leaked plans",
+        "soak {seconds} s, 8 sources, 256-frame buffers, hot {hot}: {} callbacks, {} underrun \
+         frames ({} callbacks), {} RT heap ops, max callback {:?}, min lane look-ahead \
+         {lookahead_ms:.1} ms, {} late sink wake-ups, {} source errors, {} leaked plans, \
+         min limiter gain {:.3}, integrated {:.1} LUFS",
         report.callbacks,
         stats.underrun_frames,
         stats.underrun_callbacks,
@@ -102,8 +139,16 @@ fn soak(seconds: f64) {
         report.late_wakeups,
         stats.source_errors,
         stats.leaked_plans,
+        report.min_limiter_gain,
+        report.integrated_lufs,
     );
     assert_eq!(report.heap_ops, 0, "the callback touched the heap");
+    if hot {
+        assert!(report.min_limiter_gain < 0.5, "the limiter was not working");
+    } else {
+        assert_eq!(report.min_limiter_gain, 1.0);
+    }
+    assert!(report.integrated_lufs.is_finite());
     assert_eq!(stats.underrun_frames, 0, "underruns");
     assert_eq!(stats.source_errors, 0);
     assert_eq!(stats.leaked_plans, 0);
@@ -114,7 +159,15 @@ fn soak(seconds: f64) {
 /// 0 underruns, 0 callback allocations. Short variant for `just check`.
 #[test]
 fn realtime_8_sources_256_frames_no_underruns_no_allocations() {
-    soak(3.0);
+    soak(3.0, false);
+}
+
+/// WBS 2E.02 acceptance: 120 s at 256-frame buffers with 8 tracks and the limiter working on
+/// every buffer: 0 underruns, 0 heap operations in the callback (meters included). Paced in
+/// real time, so it is in the nextest retry filter for loaded machines.
+#[test]
+fn realtime_soak_120_s_with_the_limiter_active() {
+    soak(120.0, true);
 }
 
 /// The 10-minute variant (nightly): `cargo nextest run -p cutweave-audio --run-ignored only`.
@@ -126,7 +179,7 @@ fn realtime_soak_10_minutes() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(600.0);
-    soak(seconds);
+    soak(seconds, true);
 }
 
 /// Plan application (seek, new lanes, hand-offs) inside `render` does not allocate either.
@@ -242,8 +295,9 @@ fn edits_during_playback_switch_at_their_sample() {
     assert_eq!(handle.stats().underrun_frames, 0);
 }
 
-/// Track gain changes ramp in at the next callback without re-rendering the lane; the master
-/// gain ramps too.
+/// Track gain changes ramp in at the next callback without re-rendering the lane (heard the
+/// limiter latency later: the lanes run that far ahead of the output); the master gain (after
+/// the limiter) ramps too, at once.
 #[test]
 fn gain_changes_ramp_without_rerendering() {
     let sources = factory(&[sine(250.0, 0.2, 0.0, RATE, 1)]);
@@ -259,9 +313,14 @@ fn gain_changes_ramp_without_rerendering() {
     let reference = offline(&sources, &at(0.0), Time::ZERO, secs(1.0));
     let g = db_to_gain(-6.0);
     let ramp = sample_of(secs(0.01)) as usize;
+    let latency = mixer.latency();
+    assert!(latency > 0 && latency < ramp);
     for (i, f) in tail.as_chunks::<2>().0.iter().enumerate() {
         let full = reference[(edit_at + i) * 2];
-        if i >= ramp {
+        if i < latency {
+            // Mixed before the change: the old gain, exactly.
+            assert_eq!(f[0], full, "frame {i} before the change is heard");
+        } else if i >= latency + ramp {
             assert!((f[0] - full * g).abs() <= 1e-6, "frame {i} after the ramp");
         } else {
             // Inside the ramp: between the old and the new gain.

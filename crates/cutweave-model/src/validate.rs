@@ -9,10 +9,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::{
-    CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, FolderId, GroupId, Item, ItemId,
-    MAX_FOLDER_DEPTH, MAX_SAFE_FLICKS, MediaId, MediaKind, Project, PropId, PropRef, Sequence,
-    SequenceFormat, SequenceId, Time, TrackId, TrackKind, folder_name_key, folder_name_problem,
-    media_name_problem,
+    CURRENT_SCHEMA_VERSION, Clip, CollectionId, CollectionKind, Custom, Duration, EntityKind,
+    FolderId, GroupId, Item, ItemId, MAX_COLLECTION_MEMBERS, MAX_COLLECTIONS, MAX_FOLDER_DEPTH,
+    MAX_SAFE_FLICKS, MediaId, MediaKind, Project, PropId, PropRef, RATINGS, Sequence,
+    SequenceFormat, SequenceId, Time, TrackId, TrackKind, collection_name_key,
+    collection_name_problem, folder_name_key, folder_name_problem, media_name_problem,
+    note_problem, tags_problem,
 };
 
 /// Largest canvas side accepted by validation.
@@ -241,6 +243,26 @@ pub enum Invariant {
         /// The name of `second`.
         name: String,
     },
+    /// A collection that breaks ADR-0036: a bad name, too many members or a repeated one, a
+    /// smart filter that cannot be used or that names a collection, or more collections than
+    /// allowed. (A member that names no asset is allowed.)
+    #[error("collection `{collection}` is invalid: {reason}")]
+    InvalidCollection {
+        /// The collection.
+        collection: CollectionId,
+        /// What is wrong.
+        reason: String,
+    },
+    /// Two collections whose names are equal ignoring case (ADR-0036).
+    #[error("collections `{first}` and `{second}` have the same name `{name}` (ignoring case)")]
+    DuplicateCollectionName {
+        /// The collection with the lower ID.
+        first: CollectionId,
+        /// Another collection with the same name.
+        second: CollectionId,
+        /// The name of `second`.
+        name: String,
+    },
     /// Plugin data under a key that is not a namespace (arch §4.3).
     #[error(
         "custom data key `{key}` at `{path}` is not a plugin namespace such as `com.example.plugin`"
@@ -263,7 +285,7 @@ fn display_cycle<T: std::fmt::Display>(cycle: &[T]) -> String {
 
 impl Project {
     /// Checks every document invariant and returns the first violation, in a deterministic
-    /// order (media, folders, then sequences, by ID).
+    /// order (media, folders, collections, then sequences, by ID).
     pub fn validate(&self) -> Result<(), Invariant> {
         match self.violations().into_iter().next() {
             Some(violation) => Err(violation),
@@ -289,6 +311,7 @@ impl Project {
         );
         self.check_media(&mut out);
         self.check_folders(&mut out);
+        self.check_collections(&mut out);
         let mut groups = BTreeMap::new();
         for (key, sequence) in &self.sequences {
             let path = format!("/sequences/{key}");
@@ -444,10 +467,35 @@ impl Project {
                     Some(_) => {}
                 }
             }
+            match (media.kind, &media.image_sequence) {
+                (MediaKind::ImageSequence, None) => {
+                    out.push(invalid(
+                        "image_sequence media needs its image_sequence description",
+                    ));
+                }
+                (MediaKind::ImageSequence, Some(run)) => {
+                    if let Some(reason) = run.problem() {
+                        out.push(invalid(reason));
+                    }
+                }
+                (_, Some(_)) => out.push(invalid(
+                    "only image_sequence media may have an image_sequence description",
+                )),
+                (_, None) => {}
+            }
             if !matches!(media.probe.rotation, 0 | 90 | 180 | 270) {
                 out.push(invalid("probe rotation must be 0, 90, 180 or 270"));
             }
             if let Some(reason) = media.name.as_deref().and_then(media_name_problem) {
+                out.push(invalid(reason));
+            }
+            if let Some(reason) = tags_problem(&media.tags) {
+                out.push(invalid(reason));
+            }
+            if media.rating.is_some_and(|r| !RATINGS.contains(&r)) {
+                out.push(invalid("a rating must be 1 to 5"));
+            }
+            if let Some(reason) = media.note.as_deref().and_then(note_problem) {
                 out.push(invalid(reason));
             }
             if let Some(folder) = media.folder
@@ -507,6 +555,69 @@ impl Project {
             check_custom(&path, &folder.custom, out);
         }
         self.check_folder_tree(out);
+    }
+
+    /// ADR-0036: keys match IDs, names are valid and unique ignoring case, a manual collection
+    /// has at most `MAX_COLLECTION_MEMBERS` members without repeats (a member need not exist),
+    /// a smart filter is usable and names no collection, and there are at most
+    /// `MAX_COLLECTIONS`.
+    fn check_collections(&self, out: &mut Vec<Invariant>) {
+        use std::collections::btree_map::Entry;
+
+        let mut names: BTreeMap<String, CollectionId> = BTreeMap::new();
+        for (index, (key, collection)) in self.collections.iter().enumerate() {
+            let invalid = |reason: &str| Invariant::InvalidCollection {
+                collection: *key,
+                reason: reason.to_owned(),
+            };
+            if *key != collection.id {
+                out.push(Invariant::KeyMismatch {
+                    path: "/collections".into(),
+                    key: key.to_string(),
+                    id: collection.id.to_string(),
+                });
+            }
+            if index == MAX_COLLECTIONS {
+                out.push(invalid("a project has at most 1000 collections"));
+            }
+            if let Some(reason) = collection_name_problem(&collection.name) {
+                out.push(invalid(reason));
+            }
+            match names.entry(collection_name_key(&collection.name)) {
+                Entry::Vacant(slot) => {
+                    slot.insert(*key);
+                }
+                Entry::Occupied(first) => out.push(Invariant::DuplicateCollectionName {
+                    first: *first.get(),
+                    second: *key,
+                    name: collection.name.clone(),
+                }),
+            }
+            match &collection.kind {
+                CollectionKind::Manual { media } => {
+                    if media.len() > MAX_COLLECTION_MEMBERS {
+                        out.push(invalid("a collection has at most 10000 members"));
+                    }
+                    let distinct: BTreeSet<&MediaId> = media.iter().collect();
+                    if distinct.len() != media.len() {
+                        out.push(invalid("a collection must not list an asset twice"));
+                    }
+                }
+                CollectionKind::Smart { filter } => {
+                    if let Some((pointer, reason)) = filter.problem() {
+                        out.push(invalid(&format!(
+                            "its filter is invalid at `{pointer}`: {reason}"
+                        )));
+                    }
+                    if filter.collection.is_some() {
+                        out.push(invalid(
+                            "the filter of a smart collection must not name a collection",
+                        ));
+                    }
+                }
+            }
+            check_custom(&format!("/collections/{key}"), &collection.custom, out);
+        }
     }
 
     /// Walks every folder up to the top level once: reports each cycle once and every folder

@@ -1,0 +1,282 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.import_frame",
+    "summary": "Save the frame the Preview or a video asset shows at a time as a picture in the bin",
+    "kind": "engine",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "sequence",
+              "description": "The frame the Preview shows: the sequence the editor shows, composited."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "media": {
+                  "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                  "type": "string",
+                  "pattern": "^med_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "media"
+              ],
+              "additionalProperties": false,
+              "description": "The frame the Source viewer shows for this video or image-sequence asset, at its own\nsize."
+            }
+          ],
+          "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video or image sequence on its own)."
+        },
+        "at": {
+          "description": "The time of the frame: flicks, \"2.5s\", \"f:60\" or a timecode.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            }
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The name the bin shows (default: the source's name and the timecode).",
+          "default": null
+        },
+        "folder": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "Bin folder (default: top level).",
+          "default": null
+        }
+      },
+      "required": [
+        "source",
+        "at"
+      ],
+      "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video or image-sequence asset (`source: {\"media\": id}`) at time `at` as a PNG\npicture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
+      "title": "MediaImportFrame"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The picture's asset; the existing one when the same picture was already in the project."
+        },
+        "path": {
+          "type": "string",
+          "description": "Absolute path of the PNG the asset points at."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name the bin shows for it."
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Picture width in px."
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Picture height in px."
+        },
+        "time": {
+          "description": "The time that was rendered: of the sequence, or of the source.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "duplicate": {
+          "type": "boolean",
+          "description": "`true` when the same picture was already in the project and nothing was added."
+        },
+        "job_ids": {
+          "type": "array",
+          "items": {
+            "description": "A job id: `^job_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$"
+          },
+          "description": "Background analysis jobs queued for the new asset (wait with `job.wait`)."
+        }
+      },
+      "required": [
+        "media_id",
+        "path",
+        "name",
+        "width",
+        "height",
+        "time",
+        "duplicate",
+        "job_ids"
+      ],
+      "description": "Result of `media.import_frame`.",
+      "title": "MediaImportFrameOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "source": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "sequence",
+            "description": "The frame the Preview shows: the sequence the editor shows, composited."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "media": {
+                "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^med_[0-9a-f]{32}$"
+              }
+            },
+            "required": [
+              "media"
+            ],
+            "additionalProperties": false,
+            "description": "The frame the Source viewer shows for this video or image-sequence asset, at its own\nsize."
+          }
+        ],
+        "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video or image sequence on its own)."
+      },
+      "at": {
+        "description": "The time of the frame: flicks, \"2.5s\", \"f:60\" or a timecode.",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          }
+        ]
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The name the bin shows (default: the source's name and the timecode).",
+        "default": null
+      },
+      "folder": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "Bin folder (default: top level).",
+        "default": null
+      }
+    },
+    "required": [
+      "source",
+      "at"
+    ],
+    "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video or image-sequence asset (`source: {\"media\": id}`) at time `at` as a PNG\npicture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
+    "title": "MediaImportFrame"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media_id": {
+        "type": "string",
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The picture's asset; the existing one when the same picture was already in the project."
+      },
+      "path": {
+        "type": "string",
+        "description": "Absolute path of the PNG the asset points at."
+      },
+      "name": {
+        "type": "string",
+        "description": "The name the bin shows for it."
+      },
+      "width": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Picture width in px."
+      },
+      "height": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Picture height in px."
+      },
+      "time": {
+        "description": "The time that was rendered: of the sequence, or of the source.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "duplicate": {
+        "type": "boolean",
+        "description": "`true` when the same picture was already in the project and nothing was added."
+      },
+      "job_ids": {
+        "type": "array",
+        "items": {
+          "description": "A job id: `^job_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{32}$"
+        },
+        "description": "Background analysis jobs queued for the new asset (wait with `job.wait`)."
+      }
+    },
+    "required": [
+      "media_id",
+      "path",
+      "name",
+      "width",
+      "height",
+      "time",
+      "duplicate",
+      "job_ids"
+    ],
+    "description": "Result of `media.import_frame`.",
+    "title": "MediaImportFrameOutput"
+  }
+}

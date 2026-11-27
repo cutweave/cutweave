@@ -14,8 +14,10 @@ import { i18n } from "./i18n/index.ts";
 import { MathStartupError } from "./math/MathStartupError.tsx";
 import { startMath } from "./math/startup.ts";
 import { binStore } from "./media/binStore.ts";
+import { startHealthWiring } from "./media/health.ts";
 import { mediaStore } from "./media/mediaStore.ts";
 import { startMediaHttp } from "./media/mediaWiring.ts";
+import { startProxyWiring } from "./media/proxies.ts";
 import { migrateLegacyView } from "./prefs/legacy.ts";
 import { preferences, prefsStore } from "./prefs/prefsStore.ts";
 import { desktopFromWindow } from "./session/desktop.ts";
@@ -118,6 +120,17 @@ async function boot(): Promise<void> {
     });
     // Real thumbnails, filmstrips and waveforms once the engine is up and has media (WP-1I.03).
     startMediaHttp({ bridge, engine: engineStore, doc: docStore, jobs: jobStore });
+    // Which media files are missing, asked again when a project opens or the window is back
+    // (WP-2F.03); a project that opens with missing media shows the relink dialog.
+    startHealthWiring({ engine: engineStore, doc: docStore, session: sessionStore, window });
+    // Where each video's proxy is, for the badges on the bin's cards (WP-2F.03b).
+    startProxyWiring({
+      engine: engineStore,
+      doc: docStore,
+      session: sessionStore,
+      jobs: jobStore,
+      window,
+    });
     // The e2e suites drive the editor's connection; only when the desktop app enables its hooks.
     void installTestHandleIfEnabled(appBridgeFromWindow(), runtime, stores);
   }

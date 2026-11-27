@@ -9,6 +9,311 @@ expression: text
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Measures the audio of a sequence over a range, mixed as an export would be (track gain,\nmute and solo, the master limiter at −1 dBTP unless `limiter` is false): sample peak, true\npeak (dBTP), RMS (dBFS, AES17: a sine reads its peak level), integrated loudness (LUFS),\nthe loudest momentary and short-term loudness and the loudness range of the master, and\nthe same levels (without momentary, short-term and range) for every audio track\n(post-fader). Silent values are null. Read-only; it decodes and mixes the whole range before\nit answers, so a long range takes a while.",
+        "properties": {
+          "in": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode (default: 0)."
+          },
+          "limiter": {
+            "default": null,
+            "description": "Measure after the master limiter, as an export does (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "out": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "End, exclusive, at most the sequence end (default: the sequence end)."
+          },
+          "sequence": {
+            "default": null,
+            "description": "Sequence; optional when the project has one.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "GetLevels",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "audio_get_levels",
+      "name": "audio.get_levels",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `audio.get_levels`.",
+        "properties": {
+          "in": {
+            "description": "Range start (sequence time, flicks).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "limiter": {
+            "description": "Whether the master limiter was on (as in an export).",
+            "type": "boolean"
+          },
+          "limiter_reduction_db": {
+            "description": "The deepest gain reduction of the master limiter in dB (0: it never limited).",
+            "format": "double",
+            "type": "number"
+          },
+          "master": {
+            "additionalProperties": false,
+            "description": "The master output.",
+            "properties": {
+              "loudness_range_lu": {
+                "description": "Loudness range in LU (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_integrated": {
+                "default": null,
+                "description": "Integrated loudness in LUFS; null when everything is below the −70 LUFS gate.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_momentary_max": {
+                "description": "The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_short_term_max": {
+                "description": "The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "peak_db": {
+                "default": null,
+                "description": "Sample peak in dBFS (the louder channel); null when silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "rms_db": {
+                "default": null,
+                "description": "RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null\nwhen silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "true_peak_db": {
+                "default": null,
+                "description": "True peak in dBTP (4× oversampled; the louder channel); null when silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "peak_db",
+              "true_peak_db",
+              "rms_db",
+              "lufs_integrated"
+            ],
+            "type": "object"
+          },
+          "out": {
+            "description": "Range end, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The measured sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "source_errors": {
+            "description": "Clips whose audio could not be decoded (measured as silence).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tracks": {
+            "description": "The audio tracks with clips in the range, top to bottom (post-fader).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One track bus's levels (post-fader).",
+              "properties": {
+                "levels": {
+                  "additionalProperties": false,
+                  "description": "Its levels after its gain, pan, mute and solo.",
+                  "properties": {
+                    "loudness_range_lu": {
+                      "description": "Loudness range in LU (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_integrated": {
+                      "default": null,
+                      "description": "Integrated loudness in LUFS; null when everything is below the −70 LUFS gate.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_momentary_max": {
+                      "description": "The loudest momentary loudness (400 ms), sampled every 100 ms, in LUFS (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "lufs_short_term_max": {
+                      "description": "The loudest short-term loudness (3 s), sampled every 100 ms, in LUFS (master only).",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "peak_db": {
+                      "default": null,
+                      "description": "Sample peak in dBFS (the louder channel); null when silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "rms_db": {
+                      "default": null,
+                      "description": "RMS in dBFS on the AES17 scale (a sine reads its peak level), over both channels; null\nwhen silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "true_peak_db": {
+                      "default": null,
+                      "description": "True peak in dBTP (4× oversampled; the louder channel); null when silent.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "peak_db",
+                    "true_peak_db",
+                    "rms_db",
+                    "lufs_integrated"
+                  ],
+                  "type": "object"
+                },
+                "track": {
+                  "description": "The audio track.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "track",
+                "levels"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sequence",
+          "in",
+          "out",
+          "limiter",
+          "master",
+          "tracks",
+          "limiter_reduction_db",
+          "source_errors"
+        ],
+        "title": "GetLevelsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Measure peak, true peak, RMS and LUFS loudness of a sequence's mix (and each track) over a range",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {
@@ -7616,6 +7921,14 @@ expression: text
               "null"
             ]
           },
+          "allow_offline": {
+            "default": null,
+            "description": "Export although media files are missing (a \"media offline\" slate), as in export.start.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "collision": {
             "anyOf": [
               {
@@ -11450,7 +11763,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or a name template ending in the container's extension (.mp4;\n.mov for ProRes) with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
+        "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or a name template ending in the container's extension (.mp4;\n.mov for ProRes) with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space, and with `Invalid`\nat `/media/<id>` when a clip in the range plays a media file that is missing, unless\n`allow_offline` is true (such clips then show a \"media offline\" slate and are silent).",
         "properties": {
           "advanced": {
             "default": null,
@@ -11468,6 +11781,14 @@ expression: text
             },
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "allow_offline": {
+            "default": null,
+            "description": "Export although media files are missing: their clips show a \"media offline\" slate and\nare silent (default false: fails with `Invalid` at `/media/<id>` naming them).",
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -15267,6 +15588,11 @@ expression: text
                 "const": "proxy",
                 "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                 "type": "string"
+              },
+              {
+                "const": "collect",
+                "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
+                "type": "string"
               }
             ]
           },
@@ -15429,6 +15755,11 @@ expression: text
                     "const": "proxy",
                     "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                     "type": "string"
+                  },
+                  {
+                    "const": "collect",
+                    "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
+                    "type": "string"
                   }
                 ]
               },
@@ -15554,6 +15885,11 @@ expression: text
                     {
                       "const": "proxy",
                       "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "collect",
+                      "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
                       "type": "string"
                     }
                   ]
@@ -15761,6 +16097,11 @@ expression: text
                 "const": "proxy",
                 "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                 "type": "string"
+              },
+              {
+                "const": "collect",
+                "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
+                "type": "string"
               }
             ]
           },
@@ -15967,6 +16308,11 @@ expression: text
               {
                 "const": "proxy",
                 "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
+                "type": "string"
+              },
+              {
+                "const": "collect",
+                "description": "Copying a project's files into another folder (WP-2F.04): disk work, no decoding.",
                 "type": "string"
               }
             ]
@@ -17918,6 +18264,149 @@ expression: text
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Adds tags to media assets. A tag is 1 to 64 characters without commas or control characters\n(trimmed); two tags are the same when they are equal ignoring case and accents, and an\nasset that already has a tag keeps its spelling. An asset holds at most 64 tags. Adding a\ntag an asset already has changes nothing, so the call can be repeated.",
+        "properties": {
+          "media": {
+            "description": "The assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "description": "The tags to add (1..=16).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media",
+          "tags"
+        ],
+        "title": "MediaAddTags",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_add_tags",
+      "name": "media.add_tags",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add tags to media assets (idempotent)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Adds assets to the end of a manual collection, in the order given. An asset already on it\nstays where it is, so the call can be repeated. A collection holds at most 10,000 members.\nFails with `Invalid` for a smart collection, whose members come from its filter.",
+        "properties": {
+          "collection": {
+            "description": "The collection (manual).",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "media": {
+            "description": "The assets to add (at least one, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collection",
+          "media"
+        ],
+        "title": "MediaAddToCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_add_to_collection",
+      "name": "media.add_to_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.add_to_collection`.",
+        "properties": {
+          "added": {
+            "description": "The assets that joined it, in order (those already on it are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "members": {
+            "description": "How many members it has now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection_id",
+          "added",
+          "members"
+        ],
+        "title": "MediaAddedToCollection",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add media assets to a manual collection (idempotent)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": true
       },
       "input_schema": {
@@ -18017,13 +18506,27 @@ expression: text
               "type": "object"
             },
             "type": "array"
+          },
+          "proxy_jobs": {
+            "description": "How many proxy jobs run at once (one while an export runs).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proxy_size": {
+            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "folder",
           "kinds",
           "decode_hw",
-          "frame_cache_bytes"
+          "frame_cache_bytes",
+          "proxy_size",
+          "proxy_jobs"
         ],
         "title": "MediaCacheStatusOutput",
         "type": "object"
@@ -18351,6 +18854,255 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Creates a collection of media: a named list an asset can be on without leaving its folder.\n`kind` is `{\"type\": \"manual\", \"media\": [...]}` (the members, in order; may be empty or left\nout) or `{\"type\": \"smart\", \"filter\": {...}}` (a saved `media.list` filter whose matches are\nthe members, always current; it cannot name a collection). The name must be new, ignoring\ncase. A project holds at most 1,000 collections and a manual one at most 10,000 members.",
+        "properties": {
+          "kind": {
+            "description": "Manual (members) or smart (a filter).",
+            "oneOf": [
+              {
+                "description": "A list of assets, kept in the order they were added.",
+                "properties": {
+                  "media": {
+                    "default": [],
+                    "description": "The members, without repeats. One that names no asset is skipped by queries and\ndropped by the next edit of the collection.",
+                    "items": {
+                      "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "const": "manual",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A saved search: the assets that pass the filter, computed when asked.",
+                "properties": {
+                  "filter": {
+                    "additionalProperties": false,
+                    "description": "The filter. It may not name a collection.",
+                    "properties": {
+                      "collection": {
+                        "description": "On this collection.",
+                        "pattern": "^col_[0-9a-f]{32}$",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "folder": {
+                        "description": "Only this bin folder.",
+                        "pattern": "^fld_[0-9a-f]{32}$",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "kinds": {
+                        "description": "Only these kinds.",
+                        "items": {
+                          "description": "What a [`MediaAsset`] is.",
+                          "oneOf": [
+                            {
+                              "const": "video",
+                              "description": "A video file (may also carry audio).",
+                              "type": "string"
+                            },
+                            {
+                              "const": "audio",
+                              "description": "An audio-only file.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "image",
+                              "description": "A still image (no duration).",
+                              "type": "string"
+                            },
+                            {
+                              "const": "image_sequence",
+                              "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sequence_ref",
+                              "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "max_duration": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                                "type": "string"
+                              }
+                            ],
+                            "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Longest length (flicks), inclusive."
+                      },
+                      "min_duration": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                                "type": "string"
+                              }
+                            ],
+                            "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Shortest length (flicks), inclusive; stills never match a bound."
+                      },
+                      "min_rating": {
+                        "description": "Rated at least this (1-5).",
+                        "format": "uint8",
+                        "maximum": 5,
+                        "minimum": 1,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "problems": {
+                        "description": "`true`: only files nothing can be read from (no streams).",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "recursive": {
+                        "description": "With subfolders (default: true without folder).",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "tags": {
+                        "description": "Has all these tags.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "text": {
+                        "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "used": {
+                        "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "smart",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "filter"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "name": {
+            "description": "Its name: 1 to 255 characters without control characters (trimmed), unique ignoring\ncase.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "MediaCreateCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_create_collection",
+      "name": "media.create_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.create_collection` and `media.rename_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id",
+          "name"
+        ],
+        "title": "CollectionNamed",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Create a manual or smart (saved filter) collection of media",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Creates a folder in the media bin, at the top level or inside `parent` (at most 32 levels\ndeep). Without a name it is \"New folder\" (or \"New folder 2\", … when taken). A name that a\nsibling already has, ignoring case, fails with `Invalid` unless `on_conflict` is `rename`.",
         "properties": {
           "name": {
@@ -18448,7 +19200,57 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses, and moves the used assets to the deleted folder's parent. Timelines and files on disk\nnever change; one undo restores everything.",
+        "description": "Deletes a collection. Its assets stay in the project, in their folders and on their\ntimelines; only the list goes.",
+        "properties": {
+          "collection": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection"
+        ],
+        "title": "MediaDeleteCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_delete_collection",
+      "name": "media.delete_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.delete_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The deleted collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id"
+        ],
+        "title": "CollectionDeleted",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete a collection of media (the assets stay)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses (taking them off every manual collection), and moves the used assets to the deleted\nfolder's parent. Timelines and files on disk never change; one undo restores everything.",
         "properties": {
           "contents": {
             "description": "`move_up` (lift the contents one level) or `remove` (remove the unused media in it).",
@@ -18631,7 +19433,7 @@ expression: text
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -18800,11 +19602,131 @@ expression: text
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the media whose file is not where the project says (moved, renamed, deleted or on a\ndrive that is not connected). With `verify` it also reads every file that is there and\nreports the ones whose content is no longer what was imported as `changed`. An image\nsequence is `missing` when its first picture is gone and `incomplete` when the first is\nthere but other pictures of the run are not; `missing_frames` counts them. Relink them\nwith `media.relink_folder` or `media.relink`.",
+        "properties": {
+          "verify": {
+            "description": "Also read the files that exist and report changed content (slower; default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaFindMissing",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_find_missing",
+      "name": "media.find_missing",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.find_missing`.",
+        "properties": {
+          "checked": {
+            "description": "The number of media files that were checked.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missing": {
+            "description": "The assets whose file is missing or changed and the incomplete image sequences, by id.",
+            "items": {
+              "additionalProperties": false,
+              "description": "An asset whose file is missing or changed, or an image sequence with pictures gone.",
+              "properties": {
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "missing_frames": {
+                  "description": "For an image sequence: how many of its pictures are gone, the first one included (the\nnumbers that had no file at import are not counted). Absent for other media.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "description": "The name the bin shows.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Where the project says its file is.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "description": "What is wrong: `missing`, `changed` or `incomplete`.",
+                  "oneOf": [
+                    {
+                      "const": "ok",
+                      "description": "The file is where the project says.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "missing",
+                      "description": "There is no readable file at the asset's path.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "changed",
+                      "description": "There is a file, but its content is not what was imported (`verify` only).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "incomplete",
+                      "description": "An image sequence whose first picture is there while other pictures of the run are\ngone (`missing_frames` says how many).",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "media_id",
+                "name",
+                "path",
+                "status",
+                "missing_frames"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "missing",
+          "checked"
+        ],
+        "title": "MediaFindMissingOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the media whose file is missing (or, with verify, changed) on this computer",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Makes proxies of video assets now, whatever the policy: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
+        "description": "Makes proxies of video assets now, whatever the policy and their mode: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
         "properties": {
           "media": {
             "description": "The video assets (1..=256, no repeats).",
@@ -18842,7 +19764,7 @@ expression: text
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -19015,8 +19937,16 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.\n\nA path may also be a folder (WP-2F.09): the engine imports the files it can read inside it\n(up to 16 levels down, no links, no hidden files, at most 2,000 files per call; more fails\nwith `Invalid`), counts the rest in `skipped`, and with `keep_structure` (default true)\ncreates a bin folder for each directory that holds new media, named after it, inside\n`folder`. One undo removes the media and those folders; files already in the project stay\nwhere they are.",
+        "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.\n\nA path may also be a folder (WP-2F.09): the engine imports the files it can read inside it\n(up to 16 levels down, no links, no hidden files, at most 2,000 files per call; more fails\nwith `Invalid`), counts the rest in `skipped`, and with `keep_structure` (default true)\ncreates a bin folder for each directory that holds new media, named after it, inside\n`folder`. One undo removes the media and those folders; files already in the project stay\nwhere they are.\n\nWith `copy_to_project` (WP-2F.04c) each new file is first copied into the project's\n`media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from\nan imported folder keeps its place in that folder's tree) and the asset points at the copy,\nso the project keeps working when the original moves. The copy is compared with the\noriginal before it is used. A file already inside the project folder is not copied, and\nneither is one whose content the project already has (it is returned as a duplicate). The\ncall fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it\nhas no folder) or when the files do not fit on its drive; nothing is copied then. A file\nthat cannot be copied is listed in `failed`. Undoing the import removes the assets; the\ncopied files stay on disk (undo never deletes a file).",
         "properties": {
+          "copy_to_project": {
+            "default": null,
+            "description": "Copy each new file into the project's `media/` folder first (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "folder": {
             "default": null,
             "description": "Bin folder (default: top level).",
@@ -19155,6 +20085,11 @@ expression: text
                       "type": "string"
                     },
                     {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
                       "const": "sequence_ref",
                       "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                       "type": "string"
@@ -19256,6 +20191,728 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Import media files: probe and register them now, return media ids and analysis job ids",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Saves the frame the Preview shows (`source: \"sequence\"`: the sequence the editor shows) or\nthe frame of a video or image-sequence asset (`source: {\"media\": id}`) at time `at` as a PNG\npicture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`\nat that time. The file goes into the project's `generated/frames/` folder, named after the\nnew asset; `name` is the name the bin shows (default: the source's name and the timecode)\nand `folder` the bin folder. One undo step removes the asset; the file stays. Fails with\n`Invalid` while the project has never been saved (it has no folder yet: save it first),\nand with `Unsupported` on an engine without a renderer.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "The time of the frame: flicks, \"2.5s\", \"f:60\" or a timecode."
+          },
+          "folder": {
+            "default": null,
+            "description": "Bin folder (default: top level).",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "default": null,
+            "description": "The name the bin shows (default: the source's name and the timecode).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "`\"sequence\"` (the Preview) or `{\"media\": id}` (a video or image sequence on its own).",
+            "oneOf": [
+              {
+                "const": "sequence",
+                "description": "The frame the Preview shows: the sequence the editor shows, composited.",
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The frame the Source viewer shows for this video or image-sequence asset, at its own\nsize.",
+                "properties": {
+                  "media": {
+                    "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+                    "pattern": "^med_[0-9a-f]{32}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "media"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "at"
+        ],
+        "title": "MediaImportFrame",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_import_frame",
+      "name": "media.import_frame",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.import_frame`.",
+        "properties": {
+          "duplicate": {
+            "description": "`true` when the same picture was already in the project and nothing was added.",
+            "type": "boolean"
+          },
+          "height": {
+            "description": "Picture height in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job_ids": {
+            "description": "Background analysis jobs queued for the new asset (wait with `job.wait`).",
+            "items": {
+              "description": "A job id: `^job_[0-9a-f]{32}$`.",
+              "pattern": "^job_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "media_id": {
+            "description": "The picture's asset; the existing one when the same picture was already in the project.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name the bin shows for it.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the PNG the asset points at.",
+            "type": "string"
+          },
+          "time": {
+            "description": "The time that was rendered: of the sequence, or of the source.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "width": {
+            "description": "Picture width in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_id",
+          "path",
+          "name",
+          "width",
+          "height",
+          "time",
+          "duplicate",
+          "job_ids"
+        ],
+        "title": "MediaImportFrameOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Save the frame the Preview or a video asset shows at a time as a picture in the bin",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Imports pictures as stills and places them one after the other on a video track, each\n`per_image` long (default: the project's still duration), as one undo step. Pictures whose\ncontent is already in the project reuse that asset. Files that cannot be read or are not\nstill pictures are listed in `failed` and left out; with no picture at all the call fails\nwith `Invalid`. `order` is `given` (default), `name` or `name_numeric`. The pictures go to\n`track` (default: the main video track, else the first unlocked video track) of `sequence`\n(optional when the project has one), starting at `at` (default: the end of that track). On\nthe magnetic main track what is after `at` moves later; on another track the range must be\nfree. Agents and headless callers may only import from the project folder and user-approved\nfolders.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where the first picture starts (default: the end of the track)."
+          },
+          "files": {
+            "description": "Absolute paths of the pictures (1..=256, no repeats).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "description": "The order the pictures of a slideshow are placed in.",
+                "oneOf": [
+                  {
+                    "const": "given",
+                    "description": "As listed in `files`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "name",
+                    "description": "By file name, ignoring case.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "name_numeric",
+                    "description": "By file name, ignoring case, numbers compared by value (`img2` before `img10`).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`given` (default), `name` or `name_numeric`."
+          },
+          "per_image": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How long each picture stays, `> 0` (default: the project's still duration)."
+          },
+          "sequence": {
+            "default": null,
+            "description": "The sequence; optional when the project has one.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track": {
+            "default": null,
+            "description": "A video track (default: the main video track, else the first unlocked one).",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "MediaImportImagesAsSlideshow",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_import_images_as_slideshow",
+      "name": "media.import_images_as_slideshow",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.import_images_as_slideshow`.",
+        "properties": {
+          "at": {
+            "description": "Where the first picture starts (snapped to the frame grid).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "clips": {
+            "description": "The new clips, in slideshow order.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "end": {
+            "description": "Where the last picture ends.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "failed": {
+            "description": "The files that were left out: unreadable, or not a still picture.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A file that was not imported (no asset was created for it).",
+              "properties": {
+                "code": {
+                  "description": "Machine-readable reason.",
+                  "oneOf": [
+                    {
+                      "const": "not_found",
+                      "description": "There is no readable file at the path.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unsupported",
+                      "description": "The file holds no playable audio or video.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "timed_out",
+                      "description": "Probing took longer than the per-file timeout.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "io",
+                      "description": "Reading the file failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "invalid",
+                      "description": "The probe result cannot be registered (for example a zero duration).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "error": {
+                  "description": "Human-readable reason.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The path as requested.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "code",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "job_ids": {
+            "description": "Background analysis jobs queued for the new assets (wait with `job.wait`).",
+            "items": {
+              "description": "A job id: `^job_[0-9a-f]{32}$`.",
+              "pattern": "^job_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "media": {
+            "description": "One entry per placed picture, in slideshow order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One imported file.",
+              "properties": {
+                "duplicate": {
+                  "description": "`true` when the content was already in the project and nothing was added.",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "What the asset is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset; an existing one if the same content was imported before.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The path as requested.",
+                  "type": "string"
+                },
+                "proxy": {
+                  "description": "Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is\nalready in the cache.",
+                  "oneOf": [
+                    {
+                      "const": "none",
+                      "description": "None is made (the policy does not want one, or the file cannot have one).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queued",
+                      "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ready",
+                      "description": "One is already in the cache (the same content was imported before).",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "media_id",
+                "kind",
+                "duplicate",
+                "proxy"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "media_ids": {
+            "description": "The assets of `media`, in the same order (a duplicate names the existing asset).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "per_image": {
+            "description": "How long each picture stays (a whole number of frames).",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The sequence the pictures went into.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "track": {
+            "description": "The track they are on.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "at",
+          "per_image",
+          "end",
+          "clips",
+          "media",
+          "media_ids",
+          "failed",
+          "job_ids"
+        ],
+        "title": "MediaSlideshowOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Import pictures as stills and place them one after the other on a track",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Imports a numbered run of pictures (`shot_0001.png`, `shot_0002.png`, …) as one asset that\nplays like video (ADR-0035). `path` is one file of the run, or the folder that holds it:\nthe run is every file of that folder whose name differs only in the number at its end.\nFewer than two pictures is `Invalid` (use `media.import` for a still; it never guesses a\nsequence). Only the first picture is read, so a long run imports at once; the files are\nreferenced, not copied.\n\nWith `copy_to_project` every picture of the run is first copied into the project's\n`media/` folder, all into one folder (`media/<source folder name>/`, or `<name> (2)` when a\nname there is taken by another file) under its own file name, and the asset points at the\ncopy, so the project keeps working when the originals move. Each copy is compared with its\noriginal. A run already inside the project folder is not copied, and neither is one the\nproject already has (it is returned as a duplicate). The call fails with `Invalid` at\n`/copy_to_project` when the project has not been saved yet (it has no folder) or when the\npictures do not fit on its drive, and at `/path` when a picture cannot be copied; nothing\nis imported then. Undoing the import removes the asset; the copied files stay on disk.\n\nNumbers without a file are allowed: they are listed in `image_sequence.missing`, named in\n`warnings`, and each shows the picture before it. The frame rate is `fps`, else the frame\nrate of the sequence the editor shows, else 30; it is stored on the asset. The asset goes\non video tracks only (it has no sound). One undo removes it. Agents and headless callers\nmay only import from the project folder and user-approved folders.",
+        "properties": {
+          "copy_to_project": {
+            "default": null,
+            "description": "Copy every picture of the run into the project's `media/` folder first (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "folder": {
+            "default": null,
+            "description": "Bin folder (default: top level).",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fps": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Frames per second, as a fraction (`{\"num\": 24000, \"den\": 1001}`). Default: the frame\nrate of the sequence the editor shows, 30 without one.",
+            "properties": {
+              "den": {
+                "description": "Seconds.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "num": {
+                "description": "Frames.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Absolute path of one picture of the run, or of the folder that holds the run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "MediaImportSequence",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_import_sequence",
+      "name": "media.import_sequence",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.import_sequence`.",
+        "properties": {
+          "duplicate": {
+            "description": "`true` when the run was already in the project and nothing was added.",
+            "type": "boolean"
+          },
+          "image_sequence": {
+            "description": "The run as stored on the asset: pattern, first number, count, frame rate and the\nnumbers that have no file.",
+            "properties": {
+              "count": {
+                "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "first": {
+                "description": "The number of the first file.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "fps": {
+                "additionalProperties": false,
+                "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "missing": {
+                "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                "items": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "pattern": {
+                "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "pattern",
+              "first",
+              "count",
+              "fps",
+              "missing"
+            ],
+            "type": "object"
+          },
+          "job_ids": {
+            "description": "Background analysis jobs queued for the new asset (wait with `job.wait`).",
+            "items": {
+              "description": "A job id: `^job_[0-9a-f]{32}$`.",
+              "pattern": "^job_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "description": "`image_sequence`.",
+            "oneOf": [
+              {
+                "const": "video",
+                "description": "A video file (may also carry audio).",
+                "type": "string"
+              },
+              {
+                "const": "audio",
+                "description": "An audio-only file.",
+                "type": "string"
+              },
+              {
+                "const": "image",
+                "description": "A still image (no duration).",
+                "type": "string"
+              },
+              {
+                "const": "image_sequence",
+                "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                "type": "string"
+              },
+              {
+                "const": "sequence_ref",
+                "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                "type": "string"
+              }
+            ]
+          },
+          "media_id": {
+            "description": "The asset; an existing one if the same run was imported before.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the first picture of the run, where it was found (with\n`copy_to_project` the asset points at the copy in the project folder).",
+            "type": "string"
+          },
+          "proxy": {
+            "description": "Whether a proxy was queued for it, or is already in the cache.",
+            "oneOf": [
+              {
+                "const": "none",
+                "description": "None is made (the policy does not want one, or the file cannot have one).",
+                "type": "string"
+              },
+              {
+                "const": "queued",
+                "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                "type": "string"
+              },
+              {
+                "const": "ready",
+                "description": "One is already in the cache (the same content was imported before).",
+                "type": "string"
+              }
+            ]
+          },
+          "warnings": {
+            "description": "One sentence per stretch of missing numbers; empty when the run has no gaps.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media_id",
+          "kind",
+          "duplicate",
+          "path",
+          "image_sequence",
+          "warnings",
+          "job_ids",
+          "proxy"
+        ],
+        "title": "MediaImportSequenceOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Import a numbered run of pictures as one image sequence that plays like video",
       "undoable": false,
       "view": false
     },
@@ -19460,7 +21117,7 @@ expression: text
               },
               {
                 "const": "auto",
-                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
                 "type": "string"
               },
               {
@@ -19645,6 +21302,71 @@ expression: text
             "pattern": "^fld_[0-9a-f]{32}$",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "image_sequence": {
+            "default": null,
+            "description": "For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`\nthe picture with the run's duration and frame rate; the asset's kind is\n`image_sequence`. Absent for every other file.",
+            "properties": {
+              "count": {
+                "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "first": {
+                "description": "The number of the first file.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "fps": {
+                "additionalProperties": false,
+                "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "missing": {
+                "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                "items": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "pattern": {
+                "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "pattern",
+              "first",
+              "count",
+              "fps",
+              "missing"
+            ],
+            "type": [
+              "object",
               "null"
             ]
           },
@@ -20004,6 +21726,11 @@ expression: text
                 "type": "string"
               },
               {
+                "const": "image_sequence",
+                "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                "type": "string"
+              },
+              {
                 "const": "sequence_ref",
                 "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                 "type": "string"
@@ -20068,6 +21795,71 @@ expression: text
                       "pattern": "^fld_[0-9a-f]{32}$",
                       "type": [
                         "string",
+                        "null"
+                      ]
+                    },
+                    "image_sequence": {
+                      "default": null,
+                      "description": "For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`\nthe picture with the run's duration and frame rate; the asset's kind is\n`image_sequence`. Absent for every other file.",
+                      "properties": {
+                        "count": {
+                          "description": "How many numbers the run covers, from `first` (missing ones included); at least 2.",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "first": {
+                          "description": "The number of the first file.",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "fps": {
+                          "additionalProperties": false,
+                          "description": "The frame rate chosen at import; changing the app setting never changes it.",
+                          "properties": {
+                            "den": {
+                              "description": "Seconds.",
+                              "maximum": 4294967295,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "num": {
+                              "description": "Frames.",
+                              "maximum": 4294967295,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "num",
+                            "den"
+                          ],
+                          "type": "object"
+                        },
+                        "missing": {
+                          "description": "The numbers with no file at import time, ascending. A missing frame shows the last\npicture before it.",
+                          "items": {
+                            "format": "uint32",
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "pattern": {
+                          "description": "The file name with the counter as `%0Nd` (zero-padded to `N` digits) or `%d`\n(`shot_%04d.exr`); a literal `%` is written `%%`. A name, not a path: the files are in\nthe directory of `path_abs`.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pattern",
+                        "first",
+                        "count",
+                        "fps",
+                        "missing"
+                      ],
+                      "type": [
+                        "object",
                         "null"
                       ]
                     },
@@ -20463,6 +22255,11 @@ expression: text
                       "type": "string"
                     },
                     {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
                       "const": "sequence_ref",
                       "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                       "type": "string"
@@ -20500,6 +22297,235 @@ expression: text
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Points one media asset at a file: the same file after it was moved or renamed, or another\nfile to use in its place. A replacement must be the same kind of media (video, audio or\nimage) and at least as long as the original, so every clip that uses the asset stays valid;\nthe asset then takes the new file's content hash and probe results. Fails with `Invalid` at\n`/path` when the file cannot be read or cannot stand in. One undo step puts the old path\nback. Agents and headless callers may only name files inside the project folder and the\nfolders the user approved.\n\nFor an image sequence, `path` is any picture of the run at its new place, or the folder\nthat holds it: the asset is pointed at the run there, which must have every picture (same\nfile names, same numbers; `Invalid` at `/path` says how many are not there). `to` is the\nfirst picture.",
+        "properties": {
+          "media": {
+            "description": "The asset (a file, not a compound clip).",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the file to use (for an image sequence: one of its pictures at the\nnew place, or the folder they are in).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media",
+          "path"
+        ],
+        "title": "MediaRelink",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_relink",
+      "name": "media.relink",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "One asset that was pointed at a file.",
+        "properties": {
+          "from": {
+            "description": "Where the document said its file was.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matched_by": {
+            "description": "How the file was recognized.",
+            "oneOf": [
+              {
+                "const": "hash",
+                "description": "Its content hash is the asset's: the same file, moved or renamed.",
+                "type": "string"
+              },
+              {
+                "const": "name",
+                "description": "Other bytes with the asset's file name, kind and duration (`media.relink_folder`).",
+                "type": "string"
+              },
+              {
+                "const": "chosen",
+                "description": "The caller named it (`media.relink`) and its content differs from what was imported.",
+                "type": "string"
+              }
+            ]
+          },
+          "media_id": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "to": {
+            "description": "Where it is now.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id",
+          "from",
+          "to",
+          "matched_by"
+        ],
+        "title": "Relinked",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Point a media asset at a file (the moved original, or a replacement)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Searches a folder for the files of missing media and points each asset at its file, all in\none undo step. A file is recognized by its content, so moved and renamed files are found;\nan asset whose content is nowhere in the folder takes the one file with its name, kind and\nduration, if there is exactly one. Assets whose file is where the project says are left\nalone. An image sequence is found as a whole: by the file name of its first picture, in a\nfolder that holds every picture of the run (an incomplete run is passed over), by content\nwhen the pictures are the same and else when it is the only such run. Reads at most 2,000\nfiles per call (16 levels down, no links, no hidden files).\nAgents and headless callers may only search the project folder and the folders the user\napproved (`Invalid` at `/folder` otherwise).",
+        "properties": {
+          "folder": {
+            "description": "Absolute path of the folder on disk to search.",
+            "type": "string"
+          },
+          "media": {
+            "default": null,
+            "description": "Only relink these assets (1..=256, no repeats); absent: every missing asset.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "recursive": {
+            "default": null,
+            "description": "Also search the folders inside it (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "folder"
+        ],
+        "title": "MediaRelinkFolder",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_relink_folder",
+      "name": "media.relink_folder",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.relink_folder`.",
+        "properties": {
+          "relinked": {
+            "description": "The assets whose file was found, by asset id.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One asset that was pointed at a file.",
+              "properties": {
+                "from": {
+                  "description": "Where the document said its file was.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "matched_by": {
+                  "description": "How the file was recognized.",
+                  "oneOf": [
+                    {
+                      "const": "hash",
+                      "description": "Its content hash is the asset's: the same file, moved or renamed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "name",
+                      "description": "Other bytes with the asset's file name, kind and duration (`media.relink_folder`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "chosen",
+                      "description": "The caller named it (`media.relink`) and its content differs from what was imported.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "Where it is now.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "media_id",
+                "from",
+                "to",
+                "matched_by"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "scanned": {
+            "description": "The number of files that were read (an image sequence's run counts once).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "still_missing": {
+            "description": "The assets (of `media`, or of the project) that are still missing or incomplete.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "description": "The folder holds more files than one call reads (2,000): run it on its subfolders.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "relinked",
+          "still_missing",
+          "scanned",
+          "truncated"
+        ],
+        "title": "MediaRelinkFolderOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Find the files of missing media in a folder (by content, then name) and relink them",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
@@ -20507,7 +22533,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Removes a media asset from the project (the file on disk is untouched). Fails with\n`Invalid` while any clip uses it; delete those clips first.",
+        "description": "Removes a media asset from the project (the file on disk is untouched) and takes it off\nevery manual collection. Fails with `Invalid` while any clip uses it; delete those clips\nfirst.",
         "properties": {
           "id": {
             "description": "The asset to remove.",
@@ -20545,6 +22571,149 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Remove an unused media asset from the project",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Takes assets off a manual collection; the assets themselves stay in the project. An asset\nthat is not on it is ignored, so the call can be repeated. Fails with `Invalid` for a smart\ncollection, whose members come from its filter.",
+        "properties": {
+          "collection": {
+            "description": "The collection (manual).",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "media": {
+            "description": "The assets to take off (at least one, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collection",
+          "media"
+        ],
+        "title": "MediaRemoveFromCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_remove_from_collection",
+      "name": "media.remove_from_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.remove_from_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "members": {
+            "description": "How many members it has now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "description": "The assets that left it (those that were not on it are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collection_id",
+          "removed",
+          "members"
+        ],
+        "title": "MediaRemovedFromCollection",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Take media assets off a manual collection (the assets stay; idempotent)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes tags from media assets, matching them ignoring case and accents. Removing a tag an\nasset does not have changes nothing, so the call can be repeated.",
+        "properties": {
+          "media": {
+            "description": "The assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "description": "The tags to remove (1..=16).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media",
+          "tags"
+        ],
+        "title": "MediaRemoveTags",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_remove_tags",
+      "name": "media.remove_tags",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Remove tags from media assets (idempotent)",
       "undoable": true,
       "view": false
     },
@@ -20628,6 +22797,66 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Renames a collection. Fails with `Invalid` when another collection has the name, ignoring\ncase (changing only the case of its own name is fine).",
+        "properties": {
+          "collection": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "The new name: 1 to 255 characters without control characters (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection",
+          "name"
+        ],
+        "title": "MediaRenameCollection",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_rename_collection",
+      "name": "media.rename_collection",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.create_collection` and `media.rename_collection`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id",
+          "name"
+        ],
+        "title": "CollectionNamed",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rename a collection of media",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the\nname, ignoring case (changing only the case of the folder's own name is fine).",
         "properties": {
           "folder": {
@@ -20676,6 +22905,64 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Rename a folder of the media bin",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Renames a tag on every asset that has it, as one undo step. `from` is matched ignoring case\nand accents; afterwards each of those assets carries `to` exactly as given (an asset that\nhad both keeps one). Renaming to another spelling of the same tag (`interview` to\n`Interview`) respells it. When no asset has `from`, nothing changes.",
+        "properties": {
+          "from": {
+            "description": "The tag to rename.",
+            "type": "string"
+          },
+          "to": {
+            "description": "Its new name: 1 to 64 characters without commas or control characters (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "MediaRenameTag",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_rename_tag",
+      "name": "media.rename_tag",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rename a tag on every media asset that has it",
       "undoable": true,
       "view": false
     },
@@ -20835,13 +23122,27 @@ expression: text
               "type": "object"
             },
             "type": "array"
+          },
+          "proxy_jobs": {
+            "description": "How many proxy jobs run at once (one while an export runs).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proxy_size": {
+            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "folder",
           "kinds",
           "decode_hw",
-          "frame_cache_bytes"
+          "frame_cache_bytes",
+          "proxy_size",
+          "proxy_jobs"
         ],
         "title": "MediaCacheStatusOutput",
         "type": "object"
@@ -20850,6 +23151,216 @@ expression: text
       "secret_fields": [],
       "summary": "Set the cache limits and the memory for decoded frames",
       "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Replaces the filter of a smart collection (the same filter `media.list` takes; it cannot\nname a collection). Fails with `Invalid` for a manual collection.",
+        "properties": {
+          "collection": {
+            "description": "The collection (smart).",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "filter": {
+            "additionalProperties": false,
+            "description": "The new filter.",
+            "properties": {
+              "collection": {
+                "description": "On this collection.",
+                "pattern": "^col_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "folder": {
+                "description": "Only this bin folder.",
+                "pattern": "^fld_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kinds": {
+                "description": "Only these kinds.",
+                "items": {
+                  "description": "What a [`MediaAsset`] is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "max_duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Longest length (flicks), inclusive."
+              },
+              "min_duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Shortest length (flicks), inclusive; stills never match a bound."
+              },
+              "min_rating": {
+                "description": "Rated at least this (1-5).",
+                "format": "uint8",
+                "maximum": 5,
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "problems": {
+                "description": "`true`: only files nothing can be read from (no streams).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "recursive": {
+                "description": "With subfolders (default: true without folder).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "tags": {
+                "description": "Has all these tags.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "text": {
+                "description": "Terms that must all occur in the name, tags or note, ignoring case and accents.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "used": {
+                "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "collection",
+          "filter"
+        ],
+        "title": "MediaSetCollectionFilter",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_collection_filter",
+      "name": "media.set_collection_filter",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_collection_filter`.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection.",
+            "pattern": "^col_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "members": {
+            "description": "How many assets pass the new filter now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection_id",
+          "members"
+        ],
+        "title": "CollectionFilterSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Replace the filter of a smart collection of media",
+      "undoable": true,
       "view": false
     },
     {
@@ -20920,6 +23431,1039 @@ expression: text
       "scope": "ui",
       "secret_fields": [],
       "summary": "Choose hardware or software decoding for the preview",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Records where a media file is now. Internal plumbing of `media.relink` and\n`media.relink_folder`, which check the file first: this command only writes the path, and\nthe content hash and probe results when the file's content is not what was imported. The\nproject-relative path is dropped (it named the old place) and recomputed when the project is\nsaved. For an image sequence the path is the first picture of the run at its new place.",
+        "properties": {
+          "content_hash": {
+            "default": null,
+            "description": "The file's content hash, when it differs from the asset's.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media": {
+            "description": "The asset (a file, not a compound clip).",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the file.",
+            "type": "string"
+          },
+          "probe": {
+            "default": null,
+            "description": "What probing the file found, when its content differs from the asset's.",
+            "properties": {
+              "audio": {
+                "additionalProperties": false,
+                "description": "Main audio stream format, if any.",
+                "properties": {
+                  "channels": {
+                    "description": "Channel count.",
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "rate": {
+                    "description": "Samples per second.",
+                    "maximum": 352800000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "rate",
+                  "channels"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "color": {
+                "additionalProperties": false,
+                "description": "Color tags of the main video stream.",
+                "properties": {
+                  "matrix": {
+                    "description": "YUV matrix coefficients.",
+                    "examples": [
+                      "gbr",
+                      "bt709",
+                      "fcc",
+                      "bt470bg",
+                      "smpte170m",
+                      "smpte240m",
+                      "ycgco",
+                      "bt2020nc",
+                      "bt2020c",
+                      "ictcp"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "primaries": {
+                    "description": "Color primaries.",
+                    "examples": [
+                      "bt709",
+                      "bt470m",
+                      "bt470bg",
+                      "smpte170m",
+                      "smpte240m",
+                      "film",
+                      "bt2020",
+                      "smpte428",
+                      "smpte431",
+                      "smpte432",
+                      "ebu3213"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "range": {
+                    "anyOf": [
+                      {
+                        "description": "Sample range of a video stream.",
+                        "oneOf": [
+                          {
+                            "const": "limited",
+                            "description": "Limited (\"TV\", 16–235 for 8-bit luma).",
+                            "type": "string"
+                          },
+                          {
+                            "const": "full",
+                            "description": "Full (\"PC\", 0–255).",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Sample range."
+                  },
+                  "transfer": {
+                    "description": "Transfer characteristics.",
+                    "examples": [
+                      "bt709",
+                      "gamma22",
+                      "gamma28",
+                      "smpte170m",
+                      "smpte240m",
+                      "linear",
+                      "iec61966-2-1",
+                      "bt2020-10",
+                      "bt2020-12",
+                      "smpte2084",
+                      "arib-std-b67"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Playable length, if known (images have none)."
+              },
+              "fps": {
+                "additionalProperties": false,
+                "description": "Frame rate of the main video stream, if constant or nominal.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rotation": {
+                "description": "Display rotation in degrees clockwise: 0, 90, 180 or 270.",
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "streams": {
+                "description": "Streams in container order.",
+                "items": {
+                  "description": "One stream of a media file.",
+                  "properties": {
+                    "channels": {
+                      "description": "Channel count (audio).",
+                      "format": "uint16",
+                      "maximum": 65535,
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "codec": {
+                      "description": "Codec name (FFmpeg naming, e.g. `h264`, `aac`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "height": {
+                      "description": "Coded height in pixels (video).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "index": {
+                      "description": "Index in the container.",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "description": "Stream kind.",
+                      "oneOf": [
+                        {
+                          "const": "video",
+                          "description": "Pictures.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "audio",
+                          "description": "Sound.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "subtitle",
+                          "description": "Subtitles or captions.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "data",
+                          "description": "Timed metadata or other data.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attachment",
+                          "description": "Attached files (fonts, cover art).",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "description": "Language tag (e.g. `eng`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "pixel_format": {
+                      "description": "Pixel format (FFmpeg naming, e.g. `yuv420p10le`; video).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "description": "Codec profile (e.g. `High`, `Main 10`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sample_rate": {
+                      "description": "Sample rate (audio).",
+                      "maximum": 352800000,
+                      "minimum": 1,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "width": {
+                      "description": "Coded width in pixels (video).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "vfr": {
+                "description": "Variable frame rate: times map through the frame index, never through `fps` (arch §4.1).",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "streams",
+              "vfr",
+              "rotation",
+              "color"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "path"
+        ],
+        "title": "MediaSetLocation",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "hidden",
+      "mcp_tool": null,
+      "name": "media.set_location",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_location`.",
+        "properties": {
+          "media_id": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id"
+        ],
+        "title": "MediaLocationSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Record where a media file is now (used by relink)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets the note of a media asset: plain text of at most 2,000 characters (line breaks and\ntabs allowed, other control characters not; space around it is trimmed). Without `note`, or\nwith a blank one, the note is removed.",
+        "properties": {
+          "media": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "note": {
+            "default": null,
+            "description": "The note; absent, null or blank: no note.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaSetNote",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_note",
+      "name": "media.set_note",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_note`.",
+        "properties": {
+          "has_note": {
+            "description": "Whether it has a note now.",
+            "type": "boolean"
+          },
+          "media_id": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id",
+          "has_note"
+        ],
+        "title": "MediaNoteSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set or clear the note of a media asset",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets how proxies are made on this computer: their size (the longest side: 540, 720 or 960\npixels) and how many proxy jobs run at once (1 to 8; one while an export runs). A new size\napplies to proxies made from now on: generations of the old size stop, the open project's\nwanted proxies are queued at the new one, and ready proxies of other sizes stay in the cache\nunused until its limit removes them. Not undoable, not journaled, never marks the project\ndirty; UI credential only (the desktop app applies the person's machine preferences).",
+        "properties": {
+          "jobs": {
+            "default": null,
+            "description": "Proxy jobs at once, 1 to 8. Left out: unchanged.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "size": {
+            "default": null,
+            "description": "The longest side of new proxies in pixels: 540, 720 or 960. Left out: unchanged.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaSetProxyConfig",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_config",
+      "name": "media.set_proxy_config",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "What `media.cache_status` and `media.set_cache_config` report.",
+        "properties": {
+          "decode_hw": {
+            "description": "The hardware decoding policy in force.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "A verified hardware decoder when the machine has one for the stream (the default).",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "Software decoding only.",
+                "type": "string"
+              }
+            ]
+          },
+          "folder": {
+            "description": "The folder the caches live in (`--cache-dir`, else the OS cache folder); `null` when\nthe engine has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_cache_bytes": {
+            "description": "Bytes of decoded frames the RAM frame cache may hold.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kinds": {
+            "description": "Each disk cache, in a fixed order (thumbnails, waveforms, proxies).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One disk cache's usage and limit.",
+              "properties": {
+                "bytes": {
+                  "description": "Bytes it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "entries": {
+                  "description": "Entries it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "description": "Which cache.",
+                  "oneOf": [
+                    {
+                      "const": "thumbnails",
+                      "description": "Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "waveforms",
+                      "description": "Waveform pyramids (one file per audio stream).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "proxies",
+                      "description": "Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing\nthem makes the preview use the originals; `media.generate_proxy` makes them again.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "limit_bytes": {
+                  "description": "Bytes it may hold before the least recently used entries are deleted.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "bytes",
+                "limit_bytes",
+                "entries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "proxy_jobs": {
+            "description": "How many proxy jobs run at once (one while an export runs).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proxy_size": {
+            "description": "The longest side, in pixels, of the proxies made from now on (540, 720 or 960).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "folder",
+          "kinds",
+          "decode_hw",
+          "frame_cache_bytes",
+          "proxy_size",
+          "proxy_jobs"
+        ],
+        "title": "MediaCacheStatusOutput",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "Set the proxy size and how many proxy jobs run at once",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets whether video assets get a proxy, whatever the project's policy says: `force` makes\none, `off` makes none and the preview does not use one that exists (it stays in the cache),\n`auto` follows the policy again. The mode is saved in the project, one undo step for all\nthe assets named.",
+        "properties": {
+          "media": {
+            "description": "The video assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "description": "`auto` (follow the project's policy), `force` or `off`.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "As the project's policy decides. The default.",
+                "type": "string"
+              },
+              {
+                "const": "force",
+                "description": "One is made whatever the policy.",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "None is made, and the preview does not use one that exists.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "mode"
+        ],
+        "title": "MediaSetProxyMode",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_mode",
+      "name": "media.set_proxy_mode",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_proxy_mode`.",
+        "properties": {
+          "media": {
+            "description": "The assets, in request order.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "description": "Their mode now.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "As the project's policy decides. The default.",
+                "type": "string"
+              },
+              {
+                "const": "force",
+                "description": "One is made whatever the policy.",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "None is made, and the preview does not use one that exists.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "mode"
+        ],
+        "title": "ProxyModeSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set whether video assets get a proxy whatever the policy: auto, force or off",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Chooses which of the project's video gets proxies automatically: `off` (none), `auto`\n(video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than\n60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then\nqueues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).\nAn asset's own mode (`media.set_proxy_mode`) wins over the policy.",
+        "properties": {
+          "policy": {
+            "description": "`off`, `auto` or `all`.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "title": "MediaSetProxyPolicy",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_proxy_policy",
+      "name": "media.set_proxy_policy",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_proxy_policy`.",
+        "properties": {
+          "policy": {
+            "description": "The project's policy now.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          },
+          "previous": {
+            "description": "What it was before.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "policy",
+          "previous"
+        ],
+        "title": "ProxyPolicySet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Choose which of the project's video gets proxies automatically: off, auto or all",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Rates media assets from 1 to 5 stars, or clears their rating without `rating`.",
+        "properties": {
+          "media": {
+            "description": "The assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rating": {
+            "default": null,
+            "description": "Whole stars, 1 to 5; absent or null: unrated.",
+            "format": "uint8",
+            "maximum": 5,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaSetRating",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_rating",
+      "name": "media.set_rating",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the tag and rating commands.",
+        "properties": {
+          "changed": {
+            "description": "The assets that changed (those that already were as asked are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "MediaTagged",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rate media assets 1 to 5 stars, or clear the rating",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Bundles the project for storage or a handover: the project document, every media file it\nuses (under `media/`), its `generated/` folder, and a file list `archive.json` with the size\nand SHA-256 of every file. `format: \"folder\"` writes a project folder at `dest`;\n`format: \"zip\"` writes one `.zip` file at `dest` (the name must end in `.zip`) that holds\nthat folder, uncompressed, with Zip64 for large files. Proxies and caches are left out. The\nopen project and its files are not changed. Returns a background job; the archive is\ncomplete when the job succeeds: the zip gets its name only after it was read back and\ncompared with the file list, so a cancelled or failed run leaves no `.zip`. A folder\narchive that was cancelled continues when called again with the same folder. Fails with\n`Invalid` at `/dest` when the files do not fit on the drive, the folder already holds a\nproject or the `.zip` already exists, and at `/media` when a media file is missing (relink\nit first). `project.collect_estimate` with the same folder says what would be bundled.\nAgents and headless callers may only archive into folders the user approved.",
+        "properties": {
+          "dest": {
+            "description": "Absolute path of the archive: for `folder` a new or empty folder (or the folder of an\ninterrupted archive of this project), for `zip` a `.zip` file that does not exist yet.",
+            "type": "string"
+          },
+          "format": {
+            "description": "`folder` (a project folder with `archive.json`) or `zip` (one `.zip` holding it).",
+            "oneOf": [
+              {
+                "const": "folder",
+                "description": "A folder: the collected project plus `archive.json`.",
+                "type": "string"
+              },
+              {
+                "const": "zip",
+                "description": "One `.zip` file holding that folder (stored entries, Zip64 when needed).",
+                "type": "string"
+              }
+            ]
+          },
+          "include_generated": {
+            "default": null,
+            "description": "Also bundle the project's `generated/` folder (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trim_unused": {
+            "default": null,
+            "description": "Leave out the media no timeline uses (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dest",
+          "format"
+        ],
+        "title": "ProjectArchive",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_archive",
+      "name": "project.archive",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.archive`.",
+        "properties": {
+          "estimate": {
+            "additionalProperties": false,
+            "description": "What it bundles; `dest` is the folder or the `.zip` file.",
+            "properties": {
+              "bytes": {
+                "description": "Their size in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "dest": {
+                "description": "The folder the copy goes into.",
+                "type": "string"
+              },
+              "enough_space": {
+                "description": "Whether the files fit (true when the free space cannot be told).",
+                "type": "boolean"
+              },
+              "files": {
+                "description": "The media files to copy.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "free_bytes": {
+                "description": "Free bytes on the destination drive, when it can be told.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "missing": {
+                "description": "Media whose file is missing, and image sequences with pictures that are gone: relink\nthem first (`media.relink_folder`).",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A media file a collect cannot read.",
+                  "properties": {
+                    "media_id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "missing_frames": {
+                      "description": "For an image sequence: how many of its pictures are gone, the first one included (the\nnumbers that had no file at import are not counted). Absent for other media.",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "description": "The name the bin shows.",
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Where the project says its file is (for an image sequence: its first picture).",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "media_id",
+                    "name",
+                    "path",
+                    "missing_frames"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "trimmed": {
+                "description": "Media left out because no timeline uses them (`trim_unused`).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dest",
+              "files",
+              "bytes",
+              "free_bytes",
+              "enough_space",
+              "missing",
+              "trimmed"
+            ],
+            "type": "object"
+          },
+          "job_id": {
+            "description": "The archive job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "estimate"
+        ],
+        "title": "ProjectArchiveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Bundle the project, its media and a checked file list into a folder or a zip (a job)",
       "undoable": false,
       "view": false
     },
@@ -21093,6 +24637,349 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Close the open project (saving first if asked or if autosave is on)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Makes a self-contained copy of the project in another folder: the project document and\nevery media file it uses (under `media/`), with the copy's document pointing at the copied\nfiles, so the folder opens on any computer. The open project and its files are not changed.\nReturns a background job; the copy is complete when the job succeeds (the document is\nwritten last). Each copied file is compared with its original. Calling it again with the\nsame folder after a cancel or a crash continues without copying finished files again.\nFails with `Invalid` at `/dest` when the files do not fit on the drive or the folder\nalready holds a project, and at `/media` when a media file is missing (relink it first).\nAn image sequence is copied whole, every picture under its own name in one folder; a\npicture that is gone counts as a missing file.\nAgents and headless callers may only collect into folders the user approved.",
+        "properties": {
+          "dest": {
+            "description": "Absolute path of the folder to collect into: a new or empty folder, or the folder of\nan interrupted collect of this project.",
+            "type": "string"
+          },
+          "include_generated": {
+            "default": null,
+            "description": "Also copy the project's `generated/` folder (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "description": "Where collected media go.",
+                "oneOf": [
+                  {
+                    "const": "copy_all",
+                    "description": "Every media file goes under `media/` (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "copy_external_only",
+                    "description": "Files inside the project folder keep their place relative to it; only the others go\nunder `media/`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where media go: `copy_all` (default, everything under `media/`) or\n`copy_external_only` (files inside the project folder keep their place)."
+          },
+          "trim_unused": {
+            "default": null,
+            "description": "Leave out the media no timeline uses (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dest"
+        ],
+        "title": "ProjectCollect",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_collect",
+      "name": "project.collect",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.collect`.",
+        "properties": {
+          "estimate": {
+            "additionalProperties": false,
+            "description": "What it copies.",
+            "properties": {
+              "bytes": {
+                "description": "Their size in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "dest": {
+                "description": "The folder the copy goes into.",
+                "type": "string"
+              },
+              "enough_space": {
+                "description": "Whether the files fit (true when the free space cannot be told).",
+                "type": "boolean"
+              },
+              "files": {
+                "description": "The media files to copy.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "free_bytes": {
+                "description": "Free bytes on the destination drive, when it can be told.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "missing": {
+                "description": "Media whose file is missing, and image sequences with pictures that are gone: relink\nthem first (`media.relink_folder`).",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A media file a collect cannot read.",
+                  "properties": {
+                    "media_id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "missing_frames": {
+                      "description": "For an image sequence: how many of its pictures are gone, the first one included (the\nnumbers that had no file at import are not counted). Absent for other media.",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "description": "The name the bin shows.",
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Where the project says its file is (for an image sequence: its first picture).",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "media_id",
+                    "name",
+                    "path",
+                    "missing_frames"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "trimmed": {
+                "description": "Media left out because no timeline uses them (`trim_unused`).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dest",
+              "files",
+              "bytes",
+              "free_bytes",
+              "enough_space",
+              "missing",
+              "trimmed"
+            ],
+            "type": "object"
+          },
+          "job_id": {
+            "description": "The copy job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "estimate"
+        ],
+        "title": "ProjectCollectOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Copy the project and all its media into one folder that opens anywhere (a job)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Says what `project.collect` with the same params would copy: how many media files, how many\nbytes, the free space on the destination drive and whether the files fit, and which media\ncannot be copied because their file is missing (an image sequence counts every picture, and\nis listed with `missing_frames` when some are gone). Changes nothing.",
+        "properties": {
+          "dest": {
+            "description": "Absolute path of the folder to collect into: a new or empty folder, or the folder of\nan interrupted collect of this project.",
+            "type": "string"
+          },
+          "include_generated": {
+            "description": "Also copy the project's `generated/` folder (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "description": "Where collected media go.",
+                "oneOf": [
+                  {
+                    "const": "copy_all",
+                    "description": "Every media file goes under `media/` (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "copy_external_only",
+                    "description": "Files inside the project folder keep their place relative to it; only the others go\nunder `media/`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where media go: `copy_all` (default, everything under `media/`) or\n`copy_external_only` (files inside the project folder keep their place)."
+          },
+          "trim_unused": {
+            "description": "Leave out the media no timeline uses (default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dest"
+        ],
+        "title": "ProjectCollectEstimate",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_collect_estimate",
+      "name": "project.collect_estimate",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.collect_estimate`.",
+        "properties": {
+          "bytes": {
+            "description": "Their size in bytes.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dest": {
+            "description": "The folder the copy goes into.",
+            "type": "string"
+          },
+          "enough_space": {
+            "description": "Whether the files fit (true when the free space cannot be told).",
+            "type": "boolean"
+          },
+          "files": {
+            "description": "The media files to copy.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "free_bytes": {
+            "description": "Free bytes on the destination drive, when it can be told.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "missing": {
+            "description": "Media whose file is missing, and image sequences with pictures that are gone: relink\nthem first (`media.relink_folder`).",
+            "items": {
+              "additionalProperties": false,
+              "description": "A media file a collect cannot read.",
+              "properties": {
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "missing_frames": {
+                  "description": "For an image sequence: how many of its pictures are gone, the first one included (the\nnumbers that had no file at import are not counted). Absent for other media.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "description": "The name the bin shows.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Where the project says its file is (for an image sequence: its first picture).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "media_id",
+                "name",
+                "path",
+                "missing_frames"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "trimmed": {
+            "description": "Media left out because no timeline uses them (`trim_unused`).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dest",
+          "files",
+          "bytes",
+          "free_bytes",
+          "enough_space",
+          "missing",
+          "trimmed"
+        ],
+        "title": "CollectEstimate",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Say what collecting the project would copy and whether it fits on the drive",
       "undoable": false,
       "view": false
     },
@@ -21427,6 +25314,58 @@ expression: text
           "name": {
             "description": "Project name (1..=200 characters).",
             "type": "string"
+          },
+          "proxy_policy": {
+            "anyOf": [
+              {
+                "description": "When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache\nstate of each computer; the policy is the editor's intent and travels with the project.",
+                "oneOf": [
+                  {
+                    "const": "off",
+                    "description": "Never automatically (`media.generate_proxy` still makes one).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "auto",
+                    "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "all",
+                    "description": "For every video file.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting."
+          },
+          "still_duration": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How long a still image is when it is placed without a length (up to one hour); absent:\nfive seconds. The editor passes the person's \"Still image duration\" setting."
           }
         },
         "required": [
@@ -21524,7 +25463,7 @@ expression: text
             ]
           },
           "missing_media": {
-            "description": "Media whose file was found at neither its absolute nor its project-relative path.",
+            "description": "Media whose file was found at neither its absolute nor its project-relative path, and\nimage sequences with pictures of their run gone (`media.find_missing` tells which).",
             "items": {
               "description": "A Media id: `^med_[0-9a-f]{32}$`.",
               "pattern": "^med_[0-9a-f]{32}$",

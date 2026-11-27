@@ -1,6 +1,6 @@
 {
   "meta": {
-    "schema_version": 2,
+    "schema_version": 3,
     "name": "Invalid fixture",
     "created": null,
     "app_version": null

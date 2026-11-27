@@ -60,16 +60,18 @@ use cutweave_commands::{
 use cutweave_jobs::{ExportQueue, JobManager};
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
+    audio::{LevelReading, LevelsAnalyzer, LevelsCtx, LevelsMeasured, LevelsRequest},
     export::{
         ExportCtx, ExportPlan,
         presets::{PresetCtx, PresetStore},
     },
     media::{
-        FakeProbe, ImportCtx, MediaRegister, MediaRegisterTree, MediaRegistered, MediaSink,
-        MediaTreeRegistered, proxy::ProxyCall,
+        FakeProbe, FrameRegistered, ImportCtx, ImportPolicy, MediaRegister, MediaRegisterTree,
+        MediaRegistered, MediaSetLocation, MediaSink, MediaTreeRegistered, RelinkCtx, RelinkSink,
+        SlideshowBatch, SlideshowPlaced, SlideshowSteps, place_slideshow, proxy::ProxyCall,
     },
     testing::{
-        self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
+        self, AGENT_LABEL, FakeFrames, JsonMirror, analyzer, arb_command_from, check_invariants,
         check_linked_edit, fake_probe, job_manager, replay_events,
     },
 };
@@ -91,10 +93,11 @@ const REGRESSIONS: &str = concat!(
     "/proptest-regressions/registry_props.txt"
 );
 /// Sequences of the deterministic coverage run. Each new command shifts the fixed seed's
-/// stream; at 48 the export queue and lock commands dropped coverage to 93%. Commands whose
+/// stream; at 48 the export queue and lock commands dropped coverage to 93%, and at 128 the
+/// three import commands of ADR-0035 dropped it to 94.3%. Commands whose
 /// preconditions are rare (keyframes to move, a proxy to delete) want strategies that set
 /// them up rather than more cases (issue #184).
-const COVERAGE_CASES: u32 = 128;
+const COVERAGE_CASES: u32 = 160;
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| Arc::new(testing::registry()));
 
@@ -336,6 +339,139 @@ impl MediaSink for ImportSink {
             }
         }
     }
+
+    fn slideshow(&mut self, batch: SlideshowBatch) -> Result<SlideshowPlaced, CmdError> {
+        let mut s = self.state.lock().unwrap();
+        let tx = s.begin_tx(&self.ctx, TxKind::Batch, "Import slideshow")?.id;
+        let mut steps = TxSteps {
+            state: &mut s,
+            ctx: &self.ctx,
+            tx,
+        };
+        match place_slideshow(&mut steps, &batch) {
+            Ok(placed) => {
+                if let Err(e) = s.commit_tx(&self.ctx, tx) {
+                    let _ = s.cancel_tx(&self.ctx, tx);
+                    return Err(e);
+                }
+                Ok(placed)
+            }
+            Err(e) => {
+                s.cancel_tx(&self.ctx, tx).unwrap();
+                Err(e)
+            }
+        }
+    }
+
+    fn register_frame(
+        &mut self,
+        register: MediaRegister,
+        name: String,
+    ) -> Result<FrameRegistered, CmdError> {
+        let mut s = self.state.lock().unwrap();
+        let tx = s
+            .begin_tx(&self.ctx, TxKind::Batch, "Add frame to media bin")?
+            .id;
+        let mut steps = TxSteps {
+            state: &mut s,
+            ctx: &self.ctx,
+            tx,
+        };
+        let done = steps
+            .run::<MediaRegistered>("media.register", &register)
+            .and_then(|registered| {
+                if registered.created {
+                    steps.run::<Value>(
+                        "media.rename",
+                        &json!({"media": registered.media_id, "name": name}),
+                    )?;
+                }
+                Ok(registered)
+            });
+        match done {
+            Ok(registered) => {
+                if let Err(e) = s.commit_tx(&self.ctx, tx) {
+                    let _ = s.cancel_tx(&self.ctx, tx);
+                    return Err(e);
+                }
+                let media = &s.doc().media[&registered.media_id];
+                Ok(FrameRegistered {
+                    registered,
+                    path: media.path_abs.clone().unwrap_or_default(),
+                    name: cutweave_ops::media::asset_name(media).into_owned(),
+                })
+            }
+            Err(e) => {
+                s.cancel_tx(&self.ctx, tx).unwrap();
+                Err(e)
+            }
+        }
+    }
+}
+
+/// The document commands of an import that is more than registrations, submitted into one open
+/// transaction of the importing actor (as the engine does).
+struct TxSteps<'a> {
+    state: &'a mut DocState,
+    ctx: &'a ActorCtx,
+    tx: cutweave_commands::TxId,
+}
+
+impl TxSteps<'_> {
+    fn run<T: serde::de::DeserializeOwned>(
+        &mut self,
+        name: &str,
+        params: &impl serde::Serialize,
+    ) -> Result<T, CmdError> {
+        let params = serde_json::to_value(params).unwrap();
+        let submit = Submit::new(self.ctx.clone(), name, params).in_tx(self.tx);
+        let applied = self.state.submit(submit)?;
+        Ok(serde_json::from_value(applied.output).unwrap())
+    }
+}
+
+impl SlideshowSteps for TxSteps<'_> {
+    fn doc(&self) -> Project {
+        self.state.doc().clone()
+    }
+
+    fn register(&mut self, register: &MediaRegister) -> Result<MediaRegistered, CmdError> {
+        self.run("media.register", register)
+    }
+
+    fn insert(
+        &mut self,
+        insert: &cutweave_ops::timeline::TimelineInsert,
+    ) -> Result<cutweave_ops::timeline::TimelineInsertOutput, CmdError> {
+        self.run("timeline.insert", insert)
+    }
+}
+
+/// The relink commands' sink: `media.set_location` for each asset in one transaction on a
+/// connection of its own, as the engine does.
+struct RelinkTx {
+    state: Arc<Mutex<DocState>>,
+    ctx: ActorCtx,
+}
+
+impl RelinkSink for RelinkTx {
+    fn relocate(&mut self, batch: Vec<MediaSetLocation>) -> Result<(), CmdError> {
+        let mut s = self.state.lock().unwrap();
+        let tx = s.begin_tx(&self.ctx, TxKind::Batch, "Relink media")?.id;
+        for set in &batch {
+            let params = serde_json::to_value(set).unwrap();
+            let submit = Submit::new(self.ctx.clone(), "media.set_location", params).in_tx(tx);
+            if let Err(e) = s.submit(submit) {
+                s.cancel_tx(&self.ctx, tx).unwrap();
+                return Err(e);
+            }
+        }
+        if let Err(e) = s.commit_tx(&self.ctx, tx) {
+            let _ = s.cancel_tx(&self.ctx, tx);
+            return Err(e);
+        }
+        Ok(())
+    }
 }
 
 struct Harness<'s> {
@@ -490,7 +626,7 @@ impl<'s> Harness<'s> {
         }
     }
 
-    fn import(&self, ctx: &ActorCtx, params: &Value) -> Result<Value, CmdError> {
+    fn import(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let importer = if *ctx.actor() == cutweave_commands::Actor::User {
             ActorCtx::ui(ConnId::new(1001))
         } else {
@@ -500,10 +636,13 @@ impl<'s> Harness<'s> {
             state: Arc::clone(&self.state),
             ctx: importer,
         };
+        // `media.import_frame` takes its frames from a store that sees the live document.
+        let frames = Arc::new(FakeFrames::new(self.lock().doc().clone()));
         let mut ctx_any = ImportCtx::new(Arc::new(fake_probe()), Box::new(sink))
-            .with_analysis(analyzer(&self.jobs));
+            .with_analysis(analyzer(&self.jobs))
+            .with_frames(frames);
         self.registry
-            .invoke_engine_json("media.import", params.clone(), &mut ctx_any, ctx.access())
+            .invoke_engine_json(name, params.clone(), &mut ctx_any, ctx.access())
     }
 
     /// Runs `export.start` against the committed document (the starter queues nothing).
@@ -529,6 +668,53 @@ impl<'s> Harness<'s> {
         let mut call = ProxyCall {
             service: Some(Arc::new(testing::NoProxies)),
             doc: self.lock().snapshot().doc.clone(),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
+    /// Runs a collect command (WP-2F.04) against the committed document and a disk that
+    /// holds nothing: the open document never changes.
+    fn collect(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut call = cutweave_ops::project::collect::CollectCtx {
+            doc: self.lock().committed_snapshot().doc.clone(),
+            project_root: None,
+            allowed_roots: None,
+            jobs: self.jobs.clone(),
+            host: Arc::new(testing::NoDisk),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
+    /// Runs a relink command (WP-2F.03) against a disk that holds the import files; what it
+    /// finds is committed in one transaction on a connection of its own.
+    fn relink(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let relinker = if *ctx.actor() == cutweave_commands::Actor::User {
+            ActorCtx::ui(ConnId::new(1003))
+        } else {
+            ActorCtx::agent(ConnId::new(1004), AGENT_LABEL).unwrap()
+        };
+        let mut call = RelinkCtx {
+            doc: self.lock().snapshot().doc.clone(),
+            prober: Arc::new(fake_probe()),
+            files: Arc::new(testing::fake_files()),
+            sink: Some(Box::new(RelinkTx {
+                state: Arc::clone(&self.state),
+                ctx: relinker,
+            })),
+            policy: ImportPolicy::default(),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
+    /// Runs `audio.get_levels` (WP-2E.02) against an analyzer that hears silence: measuring
+    /// never changes the document.
+    fn levels(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut call = LevelsCtx {
+            snapshot: Arc::new(self.lock().snapshot()),
+            analyzer: Some(Arc::new(Silence)),
         };
         self.registry
             .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
@@ -621,7 +807,7 @@ impl<'s> Harness<'s> {
         };
         let result = match context {
             Some(c) if c == TypeId::of::<ImportCtx>() => {
-                self.import(ctx, params).map(|output| Done {
+                self.import(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })
@@ -646,6 +832,24 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<ProxyCall>() => {
                 self.proxy(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<cutweave_ops::project::collect::CollectCtx>() => {
+                self.collect(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<RelinkCtx>() => {
+                self.relink(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<LevelsCtx>() => {
+                self.levels(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })
@@ -1052,4 +1256,20 @@ fn split_then_delete_then_undo_chain_restores_every_step() {
         doc = apply_patch(&doc, inv).unwrap();
     }
     assert_eq!(doc, initial);
+}
+
+/// The level analyzer of the harness: every mix is silent (no decoders here).
+struct Silence;
+
+impl LevelsAnalyzer for Silence {
+    fn analyze(&self, doc: &Project, request: &LevelsRequest) -> Result<LevelsMeasured, CmdError> {
+        assert!(doc.sequences.contains_key(&request.sequence));
+        assert!(request.start < request.end);
+        Ok(LevelsMeasured {
+            master: LevelReading::default(),
+            tracks: Vec::new(),
+            limiter_reduction_db: 0.0,
+            source_errors: 0,
+        })
+    }
 }

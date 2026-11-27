@@ -180,6 +180,43 @@ export const mediaCards = (page: Page): Locator =>
   page.getByRole("listbox", { name: "Media files" }).getByRole("option");
 export const mediaCard = (page: Page, name: string): Locator =>
   mediaCards(page).filter({ hasText: name });
+/** The bin's sidebar (WP-2F.06c): the folder tree and the collections. */
+export const binSidebar = (page: Page): Locator =>
+  page.getByRole("complementary", { name: "Folders and collections" });
+
+/**
+ * Shows the bin's sidebar with its toolbar button, unless it is showing. In a narrow media panel
+ * it opens over the grid and closes again once a row is opened, so a flow asks for it each time
+ * it needs it.
+ */
+export async function showBinSidebar(page: Page): Promise<Locator> {
+  const side = binSidebar(page);
+  if (!(await side.isVisible())) {
+    await page.getByRole("button", { name: "Show folders and collections" }).click();
+  }
+  await expect(side).toBeVisible();
+  return side;
+}
+
+/** Hides the bin's sidebar with its toolbar button, unless it is hidden already. */
+export async function hideBinSidebar(page: Page): Promise<void> {
+  const side = binSidebar(page);
+  if (await side.isVisible()) {
+    await page.getByRole("button", { name: "Hide folders and collections" }).click();
+  }
+  await expect(side).toBeHidden();
+}
+
+/**
+ * Drags a bin tile onto a row of the sidebar, holding the tile near its right edge: over a narrow
+ * panel the sidebar covers the tile's left part.
+ */
+export async function dragTileToSidebar(tile: Locator, row: Locator): Promise<void> {
+  const box = await tile.boundingBox();
+  if (box === null) throw new Error("the tile is not on screen");
+  await tile.dragTo(row, { sourcePosition: { x: box.width - 16, y: box.height / 2 } });
+}
+
 export const timelineCanvas = (page: Page): Locator =>
   page.getByRole("application", { name: "Timeline" });
 export const timelineTools = (page: Page): Locator =>
@@ -693,6 +730,7 @@ export async function openSettingsPage(
   name:
     | "General"
     | "Appearance"
+    | "Editing"
     | "Media and import"
     | "Export"
     | "Saving and backups"

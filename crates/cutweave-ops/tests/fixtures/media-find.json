@@ -12,7 +12,10 @@
           "duration": 8467200000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000002",
@@ -22,7 +25,10 @@
           "duration": 130536000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000003",
@@ -32,7 +38,10 @@
           "duration": 7056000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000004",
@@ -42,7 +51,10 @@
           "duration": 7055999999,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000005",
@@ -52,7 +64,10 @@
           "duration": 42336000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000006",
@@ -62,7 +77,10 @@
           "duration": null,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000007",
@@ -72,7 +90,10 @@
           "duration": null,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000008",
@@ -82,7 +103,10 @@
           "duration": 211680000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000009",
@@ -92,7 +116,10 @@
           "duration": 5644800000,
           "streams": 0,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_0190000000007000800000000000000a",
@@ -102,7 +129,10 @@
           "duration": 43041600000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_0190000000007000800000000000000b",
@@ -112,7 +142,10 @@
           "duration": 8467200000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_0190000000007000800000000000000c",
@@ -122,7 +155,10 @@
           "duration": null,
           "streams": 0,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_0190000000007000800000000000000d",
@@ -132,7 +168,10 @@
           "duration": 212385600000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_0190000000007000800000000000000e",
@@ -142,9 +181,13 @@
           "duration": 2822400000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         }
       ],
+      "collections": [],
       "folders": [],
       "sequences": [
         [
@@ -162,6 +205,7 @@
     {
       "name": "empty",
       "media": [],
+      "collections": [],
       "folders": [],
       "sequences": [
         []
@@ -178,7 +222,10 @@
           "duration": 3528000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000001",
@@ -188,7 +235,10 @@
           "duration": 3528000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000002",
@@ -198,7 +248,10 @@
           "duration": 3528000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000004",
@@ -208,9 +261,13 @@
           "duration": 3528000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         }
       ],
+      "collections": [],
       "folders": [],
       "sequences": [
         []
@@ -227,7 +284,10 @@
           "duration": 3528000000,
           "streams": 1,
           "name": "Opening",
-          "folder": "fld_0190000000007000a000000000000001"
+          "folder": "fld_0190000000007000a000000000000001",
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000002",
@@ -237,7 +297,10 @@
           "duration": 4233600000,
           "streams": 1,
           "name": null,
-          "folder": "fld_0190000000007000a000000000000002"
+          "folder": "fld_0190000000007000a000000000000002",
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000003",
@@ -247,7 +310,10 @@
           "duration": 4939200000,
           "streams": 1,
           "name": "Thème",
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000004",
@@ -257,7 +323,10 @@
           "duration": 5644800000,
           "streams": 1,
           "name": "interview wide",
-          "folder": "fld_0190000000007000a000000000000002"
+          "folder": "fld_0190000000007000a000000000000002",
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000005",
@@ -267,7 +336,10 @@
           "duration": null,
           "streams": 1,
           "name": null,
-          "folder": "fld_0190000000007000a000000000000003"
+          "folder": "fld_0190000000007000a000000000000003",
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000006",
@@ -277,7 +349,10 @@
           "duration": 6350400000,
           "streams": 1,
           "name": "A-roll",
-          "folder": "fld_0190000000007000a000000000000003"
+          "folder": "fld_0190000000007000a000000000000003",
+          "tags": [],
+          "rating": null,
+          "note": null
         },
         {
           "id": "med_01900000000070008000000000000007",
@@ -287,9 +362,13 @@
           "duration": 7056000000,
           "streams": 1,
           "name": null,
-          "folder": null
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
         }
       ],
+      "collections": [],
       "folders": [
         {
           "id": "fld_0190000000007000a000000000000001",
@@ -311,6 +390,239 @@
         [
           "med_01900000000070008000000000000001",
           "med_01900000000070008000000000000004"
+        ]
+      ]
+    },
+    {
+      "name": "tagged",
+      "media": [
+        {
+          "id": "med_01900000000070008000000000000001",
+          "kind": "video",
+          "path_abs": "/t/A001.mp4",
+          "path_rel": null,
+          "duration": 84672000000,
+          "streams": 1,
+          "name": null,
+          "folder": "fld_0190000000007000a000000000000001",
+          "tags": [
+            "Café",
+            "interview"
+          ],
+          "rating": 5,
+          "note": "Best answer at 01:10. Naïve question first."
+        },
+        {
+          "id": "med_01900000000070008000000000000002",
+          "kind": "video",
+          "path_abs": "/t/A002.mp4",
+          "path_rel": null,
+          "duration": 42336000000,
+          "streams": 1,
+          "name": null,
+          "folder": "fld_0190000000007000a000000000000001",
+          "tags": [
+            "interview"
+          ],
+          "rating": 3,
+          "note": null
+        },
+        {
+          "id": "med_01900000000070008000000000000003",
+          "kind": "video",
+          "path_abs": "/t/B001 cafe.mp4",
+          "path_rel": null,
+          "duration": 211680000000,
+          "streams": 1,
+          "name": null,
+          "folder": null,
+          "tags": [
+            "b-roll",
+            "Wide"
+          ],
+          "rating": 4,
+          "note": null
+        },
+        {
+          "id": "med_01900000000070008000000000000004",
+          "kind": "video",
+          "path_abs": "/t/A003.mp4",
+          "path_rel": null,
+          "duration": 63504000000,
+          "streams": 1,
+          "name": null,
+          "folder": null,
+          "tags": [
+            "Interview",
+            "wide"
+          ],
+          "rating": null,
+          "note": "Out of focus\nuse the audio only"
+        },
+        {
+          "id": "med_01900000000070008000000000000005",
+          "kind": "audio",
+          "path_abs": "/t/interview room tone.wav",
+          "path_rel": null,
+          "duration": 141120000000,
+          "streams": 1,
+          "name": null,
+          "folder": null,
+          "tags": [
+            "INTERVIEW"
+          ],
+          "rating": 1,
+          "note": null
+        },
+        {
+          "id": "med_01900000000070008000000000000006",
+          "kind": "video",
+          "path_abs": "/t/A004.mp4",
+          "path_rel": null,
+          "duration": 43041600000,
+          "streams": 1,
+          "name": null,
+          "folder": null,
+          "tags": [
+            "interview",
+            "keep"
+          ],
+          "rating": 2,
+          "note": "ÉCLAIR in the background"
+        },
+        {
+          "id": "med_01900000000070008000000000000007",
+          "kind": "image",
+          "path_abs": "/t/poster.png",
+          "path_rel": null,
+          "duration": null,
+          "streams": 1,
+          "name": null,
+          "folder": null,
+          "tags": [
+            "keep"
+          ],
+          "rating": 5,
+          "note": null
+        },
+        {
+          "id": "med_01900000000070008000000000000008",
+          "kind": "video",
+          "path_abs": "/t/untagged.mp4",
+          "path_rel": null,
+          "duration": 423360000000,
+          "streams": 1,
+          "name": null,
+          "folder": null,
+          "tags": [],
+          "rating": null,
+          "note": null
+        },
+        {
+          "id": "med_01900000000070008000000000000009",
+          "kind": "video",
+          "path_abs": "/t/A005.mp4",
+          "path_rel": null,
+          "duration": 424065600000,
+          "streams": 1,
+          "name": null,
+          "folder": "fld_0190000000007000a000000000000002",
+          "tags": [
+            "interview",
+            "日本語"
+          ],
+          "rating": 4,
+          "note": "wide shot"
+        }
+      ],
+      "collections": [
+        {
+          "id": "col_0190000000007000b000000000000001",
+          "name": "Selects",
+          "kind": {
+            "type": "manual",
+            "media": [
+              "med_01900000000070008000000000000009",
+              "med_01900000000070008000000000000003",
+              "med_01900000000070008000000000000063",
+              "med_01900000000070008000000000000001"
+            ]
+          }
+        },
+        {
+          "id": "col_0190000000007000b000000000000002",
+          "name": "Empty",
+          "kind": {
+            "type": "manual",
+            "media": []
+          }
+        },
+        {
+          "id": "col_0190000000007000b000000000000003",
+          "name": "Unused long interviews",
+          "kind": {
+            "type": "smart",
+            "filter": {
+              "kinds": [
+                "video"
+              ],
+              "min_duration": 42336000001,
+              "tags": [
+                "interview"
+              ],
+              "used": false
+            }
+          }
+        },
+        {
+          "id": "col_0190000000007000b000000000000004",
+          "name": "Day 1 and below, rated",
+          "kind": {
+            "type": "smart",
+            "filter": {
+              "folder": "fld_0190000000007000a000000000000001",
+              "recursive": true,
+              "min_rating": 4
+            }
+          }
+        },
+        {
+          "id": "col_0190000000007000b000000000000005",
+          "name": "Wide in words",
+          "kind": {
+            "type": "smart",
+            "filter": {
+              "text": "wide"
+            }
+          }
+        },
+        {
+          "id": "col_0190000000007000b000000000000006",
+          "name": "Gone folder",
+          "kind": {
+            "type": "smart",
+            "filter": {
+              "folder": "fld_0190000000007000a00000000000004d"
+            }
+          }
+        }
+      ],
+      "folders": [
+        {
+          "id": "fld_0190000000007000a000000000000001",
+          "name": "Day 1",
+          "parent": null
+        },
+        {
+          "id": "fld_0190000000007000a000000000000002",
+          "name": "Day 2",
+          "parent": "fld_0190000000007000a000000000000001"
+        }
+      ],
+      "sequences": [
+        [
+          "med_01900000000070008000000000000004",
+          "med_01900000000070008000000000000007"
         ]
       ]
     }
@@ -972,6 +1284,511 @@
       "sort": null,
       "ids": [],
       "matched": 0
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": [
+          "interview"
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 6
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": [
+          "INTERVIEW",
+          "wide"
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": [
+          " cafe "
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": [
+          "inter"
+        ]
+      },
+      "sort": null,
+      "ids": [],
+      "matched": 0
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": [
+          "日本語"
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": []
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000008",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 9
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": [
+          "keep"
+        ],
+        "kinds": [
+          "image"
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "min_rating": 1
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 7
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "min_rating": 4
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 4
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "min_rating": 5
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "min_rating": 3,
+        "tags": [
+          "interview"
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 3
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "min_rating": 2,
+        "used": true
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "cafe"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000003"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "interview"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 6
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "wide"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 3
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "naive A001"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "eclair keep mp4"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000006"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "focus audio"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "interview room"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000005"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "wide zzz"
+      },
+      "sort": null,
+      "ids": [],
+      "matched": 0
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "日本"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "only\tUSE"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "text": "interview",
+        "tags": [
+          "wide"
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000001"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 3
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000002"
+      },
+      "sort": null,
+      "ids": [],
+      "matched": 0
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000003"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 3
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000004"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000005"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 3
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000006"
+      },
+      "sort": null,
+      "ids": [],
+      "matched": 0
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000001",
+        "kinds": [
+          "video"
+        ],
+        "min_rating": 5
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000003",
+        "text": "a00"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 3
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000003",
+        "folder": "fld_0190000000007000a000000000000001",
+        "recursive": true
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000004",
+        "used": false
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000005",
+        "tags": [
+          "interview"
+        ]
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "collection": "col_0190000000007000b000000000000001"
+      },
+      "sort": {
+        "by": "name",
+        "order": "desc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000009",
+        "med_01900000000070008000000000000001"
+      ],
+      "matched": 3,
+      "limit": 2,
+      "pages": [
+        [
+          "med_01900000000070008000000000000003",
+          "med_01900000000070008000000000000009"
+        ],
+        [
+          "med_01900000000070008000000000000001"
+        ]
+      ]
+    },
+    {
+      "document": "tagged",
+      "filter": {
+        "tags": [
+          "interview"
+        ]
+      },
+      "sort": {
+        "by": "duration",
+        "order": "asc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000009"
+      ],
+      "matched": 6,
+      "limit": 4,
+      "pages": [
+        [
+          "med_01900000000070008000000000000002",
+          "med_01900000000070008000000000000006",
+          "med_01900000000070008000000000000004",
+          "med_01900000000070008000000000000001"
+        ],
+        [
+          "med_01900000000070008000000000000005",
+          "med_01900000000070008000000000000009"
+        ]
+      ]
     },
     {
       "document": "empty",

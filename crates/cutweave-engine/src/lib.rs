@@ -27,6 +27,7 @@
 
 pub mod agents;
 pub mod autosave;
+mod collect;
 pub mod config;
 #[cfg(feature = "testing")]
 pub mod determinism;
@@ -35,16 +36,19 @@ pub mod dispatch;
 mod engine;
 pub mod events;
 pub mod export;
+mod frame_import;
 pub mod full;
 mod import;
 pub mod journal;
 pub mod launch;
+pub mod levels;
 pub mod logging;
 pub mod mcp_backend;
 pub mod media_cache;
 pub mod media_caps;
 pub mod media_http;
 pub mod project_io;
+mod relink;
 pub mod rpc_backend;
 pub mod session;
 mod startup;
@@ -67,8 +71,8 @@ pub use media_http::media_mounts;
 pub use rpc_backend::rpc_mounts;
 pub use session::{ProjectStatus, RecoveryInfo, SessionState};
 pub use subsystems::{
-    CoreOnly, DEGRADED_EVENT, EngineLink, REVERSE_SLOW_EVENT, SUBSYSTEM_EVENTS, SubsystemCall,
-    SubsystemError, SubsystemEvents, SubsystemHost, SubsystemKind, Subsystems,
+    CoreOnly, DEGRADED_EVENT, EngineLink, METERS_EVENT, REVERSE_SLOW_EVENT, SUBSYSTEM_EVENTS,
+    SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost, SubsystemKind, Subsystems,
 };
 
 /// Returns the crate name.
@@ -114,6 +118,9 @@ mod tests {
             "media.set_cache_config",
             "media.clear_cache",
             "media.set_decode_policy",
+            "media.set_proxy_config",
+            "media.set_proxy_policy",
+            "media.set_proxy_mode",
         ] {
             assert!(registry.get(name).is_some(), "{name} is not registered");
         }

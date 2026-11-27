@@ -1,0 +1,71 @@
+{
+  "description": "Tags, ratings, notes and collections (WP-2F.06a, ADR-0036): tag, rate and annotate media, rename a tag, build a manual and a smart collection, change them, remove an asset that is on a collection, and read everything back through media.list, media.list_tags and media.list_collections. The failing steps come last (a failed call takes a transaction ID on MCP and none on the CLI, so nothing that mints an ID may follow one).",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Tags" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.mov" }, { "$media": "c.wav" }, { "$media": "d.png" }] } },
+    {
+      "cmd": "media.add_tags",
+      "args": { "media": [{ "$ref": "steps[1].output.media_ids[0]" }, { "$ref": "steps[1].output.media_ids[1]" }], "tags": [" Interview ", "Café"] }
+    },
+    {
+      "cmd": "media.add_tags",
+      "args": { "media": [{ "$ref": "steps[1].output.media_ids[1]" }, { "$ref": "steps[1].output.media_ids[2]" }], "tags": ["interview", "b-roll"] }
+    },
+    { "cmd": "media.remove_tags", "args": { "media": [{ "$ref": "steps[1].output.media_ids[1]" }], "tags": ["CAFE", "absent"] } },
+    { "cmd": "media.rename_tag", "args": { "from": "b-roll", "to": "B-roll" } },
+    {
+      "batch": [
+        { "cmd": "media.set_rating", "args": { "media": [{ "$script": "steps[1].output.media_ids[0]" }, { "$script": "steps[1].output.media_ids[2]" }], "rating": 4 } },
+        { "cmd": "media.set_note", "args": { "media": { "$script": "steps[1].output.media_ids[0]" }, "note": "Good take.\nUse the second half." } }
+      ]
+    },
+    { "cmd": "media.set_rating", "args": { "media": [{ "$ref": "steps[1].output.media_ids[2]" }] } },
+    {
+      "cmd": "media.create_collection",
+      "args": { "name": "Selects", "kind": { "type": "manual", "media": [{ "$ref": "steps[1].output.media_ids[3]" }, { "$ref": "steps[1].output.media_ids[0]" }] } }
+    },
+    {
+      "cmd": "media.create_collection",
+      "args": { "name": "Unused interviews", "kind": { "type": "smart", "filter": { "kinds": ["video"], "tags": ["interview"], "used": false } } }
+    },
+    {
+      "cmd": "media.add_to_collection",
+      "args": { "collection": { "$ref": "steps[8].output.collection_id" }, "media": [{ "$ref": "steps[1].output.media_ids[2]" }, { "$ref": "steps[1].output.media_ids[0]" }] }
+    },
+    { "cmd": "media.remove_from_collection", "args": { "collection": { "$ref": "steps[8].output.collection_id" }, "media": [{ "$ref": "steps[1].output.media_ids[3]" }] } },
+    { "cmd": "media.rename_collection", "args": { "collection": { "$ref": "steps[8].output.collection_id" }, "name": "Best takes" } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0
+      }
+    },
+    { "cmd": "media.list", "args": { "filter": { "collection": { "$ref": "steps[9].output.collection_id" } } } },
+    { "cmd": "media.set_collection_filter", "args": { "collection": { "$ref": "steps[9].output.collection_id" }, "filter": { "tags": ["interview"], "min_rating": 4 } } },
+    { "cmd": "media.remove", "args": { "id": { "$ref": "steps[1].output.media_ids[2]" } } },
+    { "cmd": "media.list_tags" },
+    { "cmd": "media.list_collections" },
+    { "cmd": "media.list", "args": { "filter": { "tags": ["interview"], "text": "cafe" }, "include": ["note"] } },
+    { "cmd": "media.list", "args": { "filter": { "collection": { "$ref": "steps[8].output.collection_id" } } } },
+    { "cmd": "media.list", "args": { "filter": { "collection": { "$ref": "steps[9].output.collection_id" }, "min_rating": 1 } } },
+    { "cmd": "media.delete_collection", "args": { "collection": { "$ref": "steps[9].output.collection_id" } } },
+    { "cmd": "edit.undo" },
+    { "cmd": "media.list_collections" },
+    { "cmd": "media.add_tags", "args": { "media": [{ "$ref": "steps[1].output.media_ids[0]" }], "tags": ["a,b"] }, "expect": { "error": "invalid" } },
+    { "cmd": "media.set_rating", "args": { "media": [{ "$ref": "steps[1].output.media_ids[0]" }], "rating": 6 }, "expect": { "error": "invalid" } },
+    { "cmd": "media.create_collection", "args": { "name": "best TAKES", "kind": { "type": "manual" } }, "expect": { "error": "invalid" } },
+    {
+      "cmd": "media.create_collection",
+      "args": { "name": "Nested", "kind": { "type": "smart", "filter": { "collection": { "$ref": "steps[8].output.collection_id" } } } },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "media.add_to_collection",
+      "args": { "collection": { "$ref": "steps[9].output.collection_id" }, "media": [{ "$ref": "steps[1].output.media_ids[0]" }] },
+      "expect": { "error": "invalid" }
+    }
+  ]
+}

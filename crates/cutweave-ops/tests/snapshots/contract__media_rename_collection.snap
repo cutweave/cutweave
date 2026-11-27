@@ -1,0 +1,106 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.rename_collection",
+    "summary": "Rename a collection of media",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection."
+        },
+        "name": {
+          "type": "string",
+          "description": "The new name: 1 to 255 characters without control characters (trimmed)."
+        }
+      },
+      "required": [
+        "collection",
+        "name"
+      ],
+      "description": "Renames a collection. Fails with `Invalid` when another collection has the name, ignoring\ncase (changing only the case of its own name is fine).",
+      "title": "MediaRenameCollection"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "type": "string",
+          "pattern": "^col_[0-9a-f]{32}$",
+          "description": "The collection."
+        },
+        "name": {
+          "type": "string",
+          "description": "Its name (trimmed)."
+        }
+      },
+      "required": [
+        "collection_id",
+        "name"
+      ],
+      "description": "Result of `media.create_collection` and `media.rename_collection`.",
+      "title": "CollectionNamed"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection."
+      },
+      "name": {
+        "type": "string",
+        "description": "The new name: 1 to 255 characters without control characters (trimmed)."
+      }
+    },
+    "required": [
+      "collection",
+      "name"
+    ],
+    "description": "Renames a collection. Fails with `Invalid` when another collection has the name, ignoring\ncase (changing only the case of its own name is fine).",
+    "title": "MediaRenameCollection"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "collection_id": {
+        "type": "string",
+        "pattern": "^col_[0-9a-f]{32}$",
+        "description": "The collection."
+      },
+      "name": {
+        "type": "string",
+        "description": "Its name (trimmed)."
+      }
+    },
+    "required": [
+      "collection_id",
+      "name"
+    ],
+    "description": "Result of `media.create_collection` and `media.rename_collection`.",
+    "title": "CollectionNamed"
+  }
+}

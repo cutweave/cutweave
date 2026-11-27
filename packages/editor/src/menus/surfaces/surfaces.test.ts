@@ -7,7 +7,7 @@
 // walk over every table; axe on every opened menu.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Project } from "@cutweave/protocol";
+import type { MediaId, Project } from "@cutweave/protocol";
 import type { MenuEntry, MenuItem, MenuSubmenu } from "@cutweave/ui";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -19,9 +19,15 @@ import { engineStore } from "../../engine/engineStore.ts";
 import { i18n } from "../../i18n/index.ts";
 import { sectionsStore } from "../../inspector/sections.ts";
 import { forgetAppliedLayouts } from "../../layout/actions.ts";
-import { binStore } from "../../media/binStore.ts";
+import { binStore, initialBinState } from "../../media/binStore.ts";
 import { currentOpenFolder, folderUiStore } from "../../media/folderUi.ts";
+import { healthStore } from "../../media/health.ts";
+import { insertDurationStore } from "../../media/insertDuration.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
+import { proxyStore } from "../../media/proxies.ts";
+import { currentOpenCollection, openCollection, sidebarUiStore } from "../../media/sidebar.ts";
+import { commandCatalog } from "../../palette/catalog.ts";
+import { buildEntries } from "../../palette/entries.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { initialViewState, viewStore } from "../../state/viewStore.ts";
@@ -51,6 +57,7 @@ const CL = hex("itm", 4);
 const MED_V = hex("med", 1);
 const MED_A = hex("med", 2);
 const MED_U = hex("med", 3);
+const MED_I = hex("med", 4);
 
 const clip = (id: string, media: string, start: number, extra: object = {}) => ({
   kind: "clip",
@@ -739,6 +746,249 @@ describe("the bin menus", () => {
     expect(viewStore.getState().selection).toEqual([{ kind: "media", id: MED_V }]);
   });
 
+  it("offers Relink… only on a card whose file is missing, and it opens the relink dialog", async () => {
+    expect(menuFor("bin.card", { ids: [MED_V] }).items.map((i) => i.label)).not.toContain(
+      "Relink…",
+    );
+    healthStore.getState().setMissing([
+      {
+        media_id: MED_V as MediaId,
+        name: "interview.mp4",
+        path: "/old/interview.mp4",
+        status: "missing",
+        missing_frames: null,
+      },
+    ]);
+    try {
+      await menuFor("bin.card", { ids: [MED_V] }).choose("Relink…");
+      expect(healthStore.getState().dialogOpen).toBe(true);
+    } finally {
+      healthStore.getState().closeDialog();
+      healthStore.getState().setMissing([]);
+    }
+  });
+
+  it("regenerates and deletes proxies on video cards, as the catalog's proxy commands", async () => {
+    const proxy = (id: string, status: "ready" | "evicted") => ({
+      media_id: id as MediaId,
+      status,
+      wanted: true,
+      reason: null,
+      profile: "prores_proxy-960",
+      path: null,
+      bytes: null,
+      size: null,
+      job_id: null,
+      progress: null,
+      error: null,
+    });
+    // Sound has no proxies: the rows are not offered.
+    const sound = menuFor("bin.card", { ids: [MED_A] }).items.map((i) => i.label);
+    expect(sound).not.toContain("Regenerate proxies");
+    expect(sound).not.toContain("Delete proxies");
+    // A video the engine has not answered about yet: offered, not available.
+    expect(menuFor("bin.card", { ids: [MED_V] }).item("Regenerate proxies").disabled).toBe(true);
+    proxyStore.getState().set([proxy(MED_V, "ready"), proxy(MED_U, "evicted")]);
+    try {
+      expect(menuFor("bin.card", { ids: [MED_U] }).item("Delete proxies").disabledReason).toBe(
+        "There is no proxy to delete",
+      );
+      const engineCall = vi.fn(async (_name: string, _args: unknown) => ({
+        proxies: [],
+        policy: "auto",
+      }));
+      engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+      await menuFor("bin.card", { ids: [MED_V, MED_U] }).choose("Regenerate proxies");
+      await vi.waitFor(() =>
+        expect(engineCall).toHaveBeenCalledWith("media.generate_proxy", {
+          media: [MED_V, MED_U],
+        }),
+      );
+      expect(engineCall).toHaveBeenCalledWith("media.delete_proxy", { media: [MED_V] });
+      proxyStore.getState().set([proxy(MED_V, "ready"), proxy(MED_U, "evicted")]);
+      engineCall.mockClear();
+      await menuFor("bin.card", { ids: [MED_V, MED_U] }).choose("Delete proxies");
+      await vi.waitFor(() =>
+        expect(engineCall).toHaveBeenCalledWith("media.delete_proxy", { media: [MED_V] }),
+      );
+    } finally {
+      proxyStore.getState().set([]);
+    }
+  });
+
+  it("offers Duration… on one image card, and the next insert of that card carries the length", async () => {
+    const base = project();
+    const withPicture = {
+      ...base,
+      media: { ...base.media, [MED_I]: asset(MED_I, "image", "photo.png", 0) },
+    } as unknown as Project;
+    docStore.setState({ project: withPicture });
+    try {
+      // Not on video or sound, and not for several pictures at once.
+      for (const id of [MED_V, MED_A]) {
+        expect(menuFor("bin.card", { ids: [id] }).items.map((i) => i.label)).not.toContain(
+          "Duration…",
+        );
+      }
+      // Without a choice the insert leaves the length to the engine (the project's duration).
+      await menuFor("bin.card", { ids: [MED_I] }).choose("Insert at playhead");
+      expect(call.mock.calls[0]?.[1]).not.toHaveProperty("duration");
+
+      await menuFor("bin.card", { ids: [MED_I], name: "photo.png" }).choose("Duration…");
+      expect(call).toHaveBeenCalledTimes(1);
+      expect(menuDialogStore.getState().dialog).toEqual({
+        kind: "insert-duration",
+        media: MED_I,
+        name: "photo.png",
+      });
+      // What the dialog does when the person agrees to 2.5 seconds.
+      insertDurationStore.getState().set(MED_I, 2.5 * F);
+      call.mockClear();
+      await menuFor("bin.card", { ids: [MED_I] }).choose("Insert at playhead");
+      expect(call).toHaveBeenCalledWith(
+        "timeline.insert",
+        expect.objectContaining({ media: MED_I, duration: 2.5 * F, overlap: "new_track" }),
+      );
+      expect(schemaProblems("timeline.insert", call.mock.calls[0]?.[1])).toEqual([]);
+      call.mockClear();
+      await menuFor("bin.card", { ids: [MED_I] }).choose("Append to timeline");
+      expect(call.mock.calls[0]?.[1]).toMatchObject({ duration: 2.5 * F });
+      // A choice is for that picture only.
+      call.mockClear();
+      await menuFor("bin.card", { ids: [MED_V] }).choose("Insert at playhead");
+      expect(call.mock.calls[0]?.[1]).not.toHaveProperty("duration");
+    } finally {
+      insertDurationStore.getState().reset();
+    }
+  });
+
+  it("sets an asset's own proxy mode from Proxy ▸ Auto, Always, Never, checked from the asset", async () => {
+    // Sound has no proxies: no submenu.
+    const sound = menuFor("bin.card", { ids: [MED_A] }).items.map((i) => i.label);
+    expect(sound).not.toContain("Always");
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    const proxy = m.menu.entries.find((e) => e.kind === "submenu" && e.label === "Proxy");
+    expect(proxy).toBeDefined();
+    // An asset without a mode follows the policy: Auto.
+    expect(["Auto", "Always", "Never"].map((label) => m.item(label).checked)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect(m.item("Always").choice).toBe("radio");
+    await m.choose("Always");
+    expect(call).toHaveBeenCalledWith("media.set_proxy_mode", { media: [MED_V], mode: "force" });
+    expect(schemaProblems("media.set_proxy_mode", call.mock.calls[0]?.[1])).toEqual([]);
+
+    // The mode as the document has it after the command.
+    const base = project();
+    const media = base.media as unknown as Record<string, Record<string, unknown>>;
+    docStore.setState({
+      project: {
+        ...base,
+        media: { ...media, [MED_V]: { ...media[MED_V], proxy_mode: "off" } },
+      } as unknown as Project,
+    });
+    const after = menuFor("bin.card", { ids: [MED_V] });
+    expect(["Auto", "Always", "Never"].map((label) => after.item(label).checked)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    // Several cards: one command for the videos among them; nothing is checked when they differ.
+    call.mockClear();
+    const many = menuFor("bin.card", { ids: [MED_V, MED_A, MED_U] });
+    expect(["Auto", "Always", "Never"].map((label) => many.item(label).checked)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    await many.choose("Auto");
+    expect(call).toHaveBeenCalledWith("media.set_proxy_mode", {
+      media: [MED_V, MED_U],
+      mode: "auto",
+    });
+  });
+
+  it("Add tag… opens the tag editor for the card, or for all the selected cards", async () => {
+    const one = menuFor("bin.card", { ids: [MED_V], name: "interview.mp4" });
+    expect(one.item("Add tag…").disabled).toBeUndefined();
+    await one.choose("Add tag…");
+    expect(menuDialogStore.getState().dialog).toEqual({ kind: "tags", media: [MED_V] });
+    // Opening the editor changes nothing: its chips and field send the commands.
+    expect(call).not.toHaveBeenCalled();
+    menuDialogStore.getState().close();
+    await menuFor("bin.card", { ids: [MED_V, MED_A, MED_U] }).choose("Add tag…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "tags",
+      media: [MED_V, MED_A, MED_U],
+    });
+    menuDialogStore.getState().close();
+  });
+
+  it("Set rating ▸ None, 1 to 5 stars rates the cards with one media.set_rating, checked from the assets", async () => {
+    const labels = ["None", "1 star", "2 stars", "3 stars", "4 stars", "5 stars"];
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    const rating = m.menu.entries.find((e) => e.kind === "submenu" && e.label === "Set rating");
+    expect(rating).toBeDefined();
+    expect(
+      rating?.kind === "submenu" ? rating.items.map((i) => ("label" in i ? i.label : "")) : [],
+    ).toEqual(labels);
+    // An unrated asset: None is the checked one.
+    expect(labels.map((label) => m.item(label).checked)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(m.item("4 stars").choice).toBe("radio");
+    await m.choose("4 stars");
+    expect(call).toHaveBeenCalledExactlyOnceWith("media.set_rating", {
+      media: [MED_V],
+      rating: 4,
+    });
+    expect(schemaProblems("media.set_rating", call.mock.calls[0]?.[1])).toEqual([]);
+
+    // The rating as the document has it after the command.
+    const base = project();
+    const media = base.media as unknown as Record<string, Record<string, unknown>>;
+    docStore.setState({
+      project: {
+        ...base,
+        media: { ...media, [MED_V]: { ...media[MED_V], rating: 4 } },
+      } as unknown as Project,
+    });
+    expect(menuFor("bin.card", { ids: [MED_V] }).item("4 stars").checked).toBe(true);
+    expect(menuFor("bin.card", { ids: [MED_V] }).item("None").checked).toBe(false);
+
+    // Several cards: one command for all of them; nothing is checked while they differ.
+    call.mockClear();
+    const many = menuFor("bin.card", { ids: [MED_V, MED_A, MED_U] });
+    expect(labels.map((label) => many.item(label).checked)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    await many.choose("None");
+    expect(call).toHaveBeenCalledExactlyOnceWith("media.set_rating", {
+      media: [MED_V, MED_A, MED_U],
+      rating: null,
+    });
+    expect(schemaProblems("media.set_rating", call.mock.calls[0]?.[1])).toEqual([]);
+  });
+
+  it("Set rating is refused with its reason for more cards than one command takes", () => {
+    const ids = Array.from({ length: 257 }, (_, i) => hex("med", 1000 + i));
+    const row = menuFor("bin.card", { ids }).item("3 stars");
+    expect(row.disabled).toBe(true);
+    expect(row.disabledReason).toBe("Select 256 items or fewer");
+  });
+
   it("appends after the last clip of the sequence", async () => {
     await menuFor("bin.card", { ids: [MED_V] }).choose("Append to timeline");
     expect(call).toHaveBeenCalledWith("timeline.insert", {
@@ -797,6 +1047,32 @@ describe("the bin menus", () => {
 });
 
 describe("the other surfaces", () => {
+  it("offers Import as slideshow… in the bin and Add frame to media bin in the Preview (WP-2F.05d)", async () => {
+    const engineCall = vi.fn(async (_name: string, _args?: unknown) => ({
+      media_id: MED_V,
+      name: "Main 00:00:05:00",
+      duplicate: false,
+    }));
+    engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+    try {
+      expect(menuFor("bin.background").item("Import as slideshow…").disabled).toBeUndefined();
+      // The Preview's frame at the playhead: one catalog command, with arguments of its schema.
+      await menuFor("preview.canvas").choose("Add frame to media bin");
+      expect(engineCall).toHaveBeenCalledTimes(1);
+      expect(engineCall).toHaveBeenCalledWith("media.import_frame", {
+        source: "sequence",
+        at: 5 * F,
+      });
+      expect(schemaProblems("media.import_frame", engineCall.mock.calls[0]?.[1])).toEqual([]);
+      expect(toastStore.getState().notices.map((n) => n.title)).toEqual([
+        "Frame added to the media bin",
+      ]);
+      expect(menuFor("source.view").item("Add frame to media bin").disabled).toBeUndefined();
+    } finally {
+      engineStore.setState({ rpc: null, connection: "none" });
+    }
+  });
+
   it("collapses and expands every Inspector section", async () => {
     await menuFor("inspector.section", { name: "Clip" }).choose("Collapse all");
     expect(sectionsStore.getState().closed.size).toBeGreaterThan(3);
@@ -1112,6 +1388,7 @@ describe("accessibility", () => {
     "dock.tab": { ids: ["inspector"], name: "Inspector" },
     "bin.card": { ids: [MED_V], name: "interview.mp4" },
     "bin.chip": { ids: ["kind-video"], name: "Video" },
+    "bin.collection": { ids: [hex("col", 1)], name: "Picks" },
     "timeline.clip": { ids: [C1] },
     "timeline.edge": { ids: [C1] },
     "timeline.lane": { place: { time: 0, trackId: V1 } },
@@ -1319,5 +1596,231 @@ describe("layouts (WP-2C.08)", () => {
     const mixed = menuFor("bin.card", { ids: [MED_V, MED_A] }).item("Place side by side");
     expect(mixed.disabled).toBe(true);
     expect(mixed.disabledReason).toBe("Select 2 to 4 videos or images");
+  });
+});
+
+describe("collections (WP-2F.06c)", () => {
+  const PICKS = hex("col", 1);
+  const KEEPERS = hex("col", 2);
+  const ARCHIVE = hex("col", 3);
+  const FLD = hex("fld", 1);
+
+  /** Picks (manual: the interview), Keepers (smart: tag keep), Archive (manual, empty). */
+  const withCollections = () => {
+    const p = project() as unknown as Record<string, unknown>;
+    p.folders = { [FLD]: { id: FLD, name: "Interviews", parent: null, custom: {} } };
+    p.collections = {
+      [PICKS]: { id: PICKS, name: "Picks", kind: { type: "manual", media: [MED_V] }, custom: {} },
+      [KEEPERS]: {
+        id: KEEPERS,
+        name: "Keepers",
+        kind: { type: "smart", filter: { tags: ["keep"] } },
+        custom: {},
+      },
+      [ARCHIVE]: { id: ARCHIVE, name: "Archive", kind: { type: "manual" }, custom: {} },
+    };
+    docStore.setState({
+      status: "ready",
+      rev: 2,
+      committedRev: 2,
+      project: p as unknown as Project,
+    });
+  };
+
+  const engine = (result: unknown = {}) => {
+    const engineCall = vi.fn(async (_name: string, _args?: unknown) => result);
+    engineStore.setState({ rpc: { call: engineCall } as never, connection: "ready" });
+    return engineCall;
+  };
+
+  beforeEach(() => {
+    withCollections();
+    binStore.setState({ ...initialBinState });
+    sidebarUiStore.setState({ renaming: null, dropOver: null, overlay: false });
+  });
+  afterEach(() => {
+    engineStore.setState({ rpc: null, connection: "none" });
+    binStore.setState({ ...initialBinState });
+  });
+
+  const submenu = (m: ReturnType<typeof menuFor>, label: string) => {
+    const found = m.menu.entries.find((e) => e.kind === "submenu" && e.label === label);
+    return found?.kind === "submenu" ? found.items.map((i) => ("label" in i ? i.label : "")) : null;
+  };
+
+  it("a card has Add to collection ▸ with New collection… and the manual collections by name", () => {
+    const m = menuFor("bin.card", { ids: [MED_A] });
+    // A smart collection takes no members: it is not listed.
+    expect(submenu(m, "Add to collection")).toEqual(["New collection…", "Archive", "Picks"]);
+    expect(m.item("Archive").disabled).toBeUndefined();
+    expect(m.item("Picks").disabled).toBeUndefined();
+    // It sits with Rename, Move to…, Add tag… and Set rating.
+    const labels = m.menu.entries.map((e) => ("label" in e ? e.label : "|"));
+    expect(labels.indexOf("Add to collection")).toBe(labels.indexOf("Set rating") + 1);
+  });
+
+  it("adds the selected cards with one media.add_to_collection, only the ones it does not hold", async () => {
+    const engineCall = engine({ collection_id: PICKS, added: [MED_A, MED_U], members: 3 });
+    viewStore.getState().setSelection([
+      { kind: "media", id: MED_V },
+      { kind: "media", id: MED_A },
+      { kind: "media", id: MED_U },
+    ] as never);
+    await menuFor("bin.card", { ids: [MED_A] }).choose("Picks");
+    expect(engineCall).toHaveBeenCalledExactlyOnceWith("media.add_to_collection", {
+      collection: PICKS,
+      media: [MED_A, MED_U],
+    });
+    expect(schemaProblems("media.add_to_collection", engineCall.mock.calls[0]?.[1])).toEqual([]);
+    expect(toastStore.getState().notices.map((n) => n.title)).toEqual(["Added 2 items to Picks"]);
+  });
+
+  it("shows a collection that holds every chosen card as disabled, and says why", () => {
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    expect(m.item("Picks").disabled).toBe(true);
+    expect(m.item("Picks").disabledReason).toBe("Already in this collection");
+    expect(m.item("Archive").disabled).toBeUndefined();
+  });
+
+  it("New collection… asks for a name for a collection of the chosen cards", async () => {
+    await menuFor("bin.card", { ids: [MED_V, MED_U] }).choose("New collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "new-collection",
+      media: [MED_V, MED_U],
+      filter: null,
+    });
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("Remove from collection is there only while a manual collection is open", async () => {
+    const has = (m: ReturnType<typeof menuFor>) =>
+      m.items.some((i) => i.label === "Remove from collection");
+    expect(has(menuFor("bin.card", { ids: [MED_V] }))).toBe(false);
+    openCollection(KEEPERS as never);
+    expect(has(menuFor("bin.card", { ids: [MED_V] }))).toBe(false);
+    openCollection(PICKS as never);
+    const m = menuFor("bin.card", { ids: [MED_V] });
+    expect(m.item("Remove from collection").disabled).toBeUndefined();
+    await m.choose("Remove from collection");
+    expect(call).toHaveBeenCalledExactlyOnceWith("media.remove_from_collection", {
+      collection: PICKS,
+      media: [MED_V],
+    });
+    expect(schemaProblems("media.remove_from_collection", call.mock.calls[0]?.[1])).toEqual([]);
+    // Removing from the project is still its own row.
+    expect(m.item("Remove from project")).toBeDefined();
+  });
+
+  it("the bin's background offers New collection… always and Save as smart collection… with a filter on", async () => {
+    const plain = menuFor("bin.background");
+    expect(plain.item("New collection…").disabled).toBeUndefined();
+    expect(plain.items.some((i) => i.label === "Save as smart collection…")).toBe(false);
+    await plain.choose("New collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "new-collection",
+      media: [],
+      filter: null,
+    });
+    menuDialogStore.getState().close();
+
+    binStore.getState().toggleTag("keep");
+    binStore.getState().setUse("unused");
+    const filtered = menuFor("bin.background");
+    await filtered.choose("Save as smart collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "new-collection",
+      media: [],
+      filter: { used: false, tags: ["keep"] },
+    });
+    // Inside a collection there is nothing to save: a smart collection cannot name one.
+    openCollection(PICKS as never);
+    expect(
+      menuFor("bin.background").items.some((i) => i.label === "Save as smart collection…"),
+    ).toBe(false);
+  });
+
+  it("a collection row has its own menu: Open, Rename, Delete collection…", async () => {
+    const m = menuFor("bin.collection", { ids: [PICKS], name: "Picks" });
+    expect(m.menu.name).toBe("Collection actions for Picks");
+    expect(m.items.map((i) => i.label)).toEqual(["Open", "Rename", "Delete collection…"]);
+    expect(m.item("Delete collection…").variant).toBe("danger");
+    await m.choose("Open");
+    expect(currentOpenCollection()).toBe(PICKS);
+    await m.choose("Rename");
+    expect(sidebarUiStore.getState().renaming).toBe(PICKS);
+  });
+
+  it("Delete collection… asks when it lists something and deletes an empty one at once", async () => {
+    const engineCall = engine({ collection_id: ARCHIVE });
+    await menuFor("bin.collection", { ids: [PICKS] }).choose("Delete collection…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "delete-collection",
+      collection: PICKS,
+    });
+    expect(engineCall).not.toHaveBeenCalled();
+    menuDialogStore.getState().close();
+    await menuFor("bin.collection", { ids: [ARCHIVE] }).choose("Delete collection…");
+    expect(engineCall).toHaveBeenCalledExactlyOnceWith("media.delete_collection", {
+      collection: ARCHIVE,
+    });
+    expect(menuDialogStore.getState().dialog).toBeNull();
+  });
+
+  it("a smart collection has Update from current filters, which replaces its filter", async () => {
+    const engineCall = engine({ collection_id: KEEPERS, members: 1 });
+    const idle = menuFor("bin.collection", { ids: [KEEPERS], name: "Keepers" });
+    expect(idle.items.map((i) => i.label)).toEqual([
+      "Open",
+      "Rename",
+      "Update from current filters",
+      "Delete collection…",
+    ]);
+    expect(idle.item("Update from current filters").disabled).toBe(true);
+    expect(idle.item("Update from current filters").disabledReason).toBe(
+      "Search or set a filter first",
+    );
+
+    binStore.getState().setText("beach");
+    binStore.getState().openFolder("", FLD as never);
+    binStore.getState().setScope("folder");
+    await menuFor("bin.collection", { ids: [KEEPERS] }).choose("Update from current filters");
+    expect(engineCall).toHaveBeenCalledExactlyOnceWith("media.set_collection_filter", {
+      collection: KEEPERS,
+      filter: { text: "beach", folder: FLD, recursive: true },
+    });
+    expect(schemaProblems("media.set_collection_filter", engineCall.mock.calls[0]?.[1])).toEqual(
+      [],
+    );
+    expect(toastStore.getState().notices.map((n) => n.title)).toEqual([
+      "Updated Keepers from the current filters",
+    ]);
+
+    // With a collection open the bin's filters narrow that collection: nothing to store.
+    openCollection(PICKS as never);
+    const inside = menuFor("bin.collection", { ids: [KEEPERS] }).item(
+      "Update from current filters",
+    );
+    expect(inside.disabled).toBe(true);
+    expect(inside.disabledReason).toBe("Open All media or a folder first");
+  });
+
+  it("the palette lists New collection…, Add to collection… and Save as smart collection…", () => {
+    const entries = buildEntries({
+      services,
+      catalog: () => commandCatalog.getState().commands,
+      panels: () => [],
+      workspaceCommands: () => [],
+      settingsPages: () => [],
+      keys: () => ({ "engine.live": true, "project.readOnly": false, "selection.count": 0 }),
+      prefill: () => ({ items: [], playhead: 0 }),
+    });
+    const title = (command: string) => entries.find((e) => e.command === command)?.title;
+    expect(title("media.create_collection")).toBe("New collection…");
+    expect(title("media.add_to_collection")).toBe("Add to collection…");
+    expect(title("bin.save_smart_collection")).toBe("Save as smart collection…");
+    expect(entries.find((e) => e.command === "bin.save_smart_collection")?.kind).toBe("ui");
+    // The other menu commands stay out of the palette: they need a menu's target.
+    expect(entries.some((e) => e.command === "bin.add_to_collection")).toBe(false);
+    expect(entries.some((e) => e.command === "bin.open_collection")).toBe(false);
   });
 });

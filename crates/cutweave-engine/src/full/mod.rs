@@ -24,7 +24,9 @@
 //! - **Audio** ([`audio`]): the mixer over the current document's clips, on the output
 //!   `EngineConfig::audio` names (`CUTWEAVE_AUDIO` picks the device); when the device fails the
 //!   mixer plays on the null clock and `engine.degraded{subsystem: "audio"}` is sent.
-//!   `view.set{master_gain}` sets the master volume.
+//!   `view.set{master_gain}` sets the master volume. The mixer gets every audio track with its
+//!   bus (gain, mute, exclusive solo) and limits the master at −1 dBTP; `playback.meters` sends
+//!   the meters 30 times a second while playing (WP-2E.02).
 //! - **Playback**: per open document a `PlaybackEngine` (transport, render and status threads)
 //!   rendering through [`preview::PreviewSource`] into the preview ring (`Gui` mode: an RGBA8
 //!   ring announced in `rpc.hello`'s `shm` and the run-file, with its clock pump) or a null sink
@@ -102,8 +104,8 @@ use self::watch::{DocWatcher, Targets};
 use crate::config::{EngineMode, GpuConfig};
 use crate::export::{DecoderSources, ExportServices};
 use crate::media_cache::{
-    CacheControl, CacheKind, CacheKindStatus, CacheLimits, ClearedKind, DecodeHw,
-    MediaCacheStatusOutput,
+    CacheControl, CacheKind, CacheKindStatus, CacheLimits, ClearedKind, DEFAULT_PROXY_JOBS,
+    DEFAULT_PROXY_SIZE, DecodeHw, MediaCacheStatusOutput,
 };
 use crate::project_io::ProjectLayout;
 use crate::startup::Phases;
@@ -538,7 +540,7 @@ impl FullSubsystems {
             Box::new(NullSink::new(w, h))
         });
         let (audio, host): (Box<dyn AudioControl>, Arc<dyn HostClock>) = match &started.audio {
-            Audio::Output { output, mixer } => (
+            Audio::Output { output, mixer, .. } => (
                 Box::new(OutputAudio::new(Arc::clone(output), Arc::clone(mixer))),
                 Arc::new(SystemClock),
             ),
@@ -739,7 +741,8 @@ impl FullSubsystems {
         };
         phases.mark("caches");
         // Audio.
-        let (audio, degraded) = audio::start(&config.audio, host.audio, &self.inner.pcm)?;
+        let (audio, degraded) =
+            audio::start(&config.audio, host.audio, &self.inner.pcm, &host.events)?;
         if let Some(reason) = degraded {
             self.degrade(&host.events, "audio", &reason);
         }
@@ -768,12 +771,16 @@ impl FullCacheControl {
         lock(&self.inner.started).as_ref().map(|s| s.caches.clone())
     }
 
-    /// The proxy store, once the subsystems run (and have one).
-    fn proxy_store(&self) -> Option<Arc<cutweave_cache::proxy::ProxyStore>> {
+    /// The proxies, once the subsystems run (and make any).
+    fn proxies(&self) -> Option<Arc<FullProxies>> {
         lock(&self.inner.started)
             .as_ref()
-            .and_then(|s| s.proxies.as_ref())
-            .map(|p| Arc::clone(p.store()))
+            .and_then(|s| s.proxies.clone())
+    }
+
+    /// The proxy store, once the subsystems run (and have one).
+    fn proxy_store(&self) -> Option<Arc<cutweave_cache::proxy::ProxyStore>> {
+        self.proxies().map(|p| Arc::clone(p.store()))
     }
 }
 
@@ -796,6 +803,7 @@ fn bytes(n: usize) -> u64 {
 impl CacheControl for FullCacheControl {
     fn status(&self) -> MediaCacheStatusOutput {
         let caches = self.caches().unwrap_or_default();
+        let proxies = self.proxies();
         let mut kinds = Vec::new();
         if let Some(thumbs) = &caches.thumbs {
             let disk = thumbs.disk();
@@ -843,7 +851,30 @@ impl CacheControl for FullCacheControl {
                 DecodeHw::Auto
             },
             frame_cache_bytes: bytes(self.inner.frame_cache.budget()),
+            proxy_size: proxies
+                .as_ref()
+                .map_or(DEFAULT_PROXY_SIZE, |p| p.long_edge()),
+            proxy_jobs: proxies.as_ref().map_or(DEFAULT_PROXY_JOBS, |p| {
+                u32::try_from(p.job_slots()).unwrap_or(u32::MAX)
+            }),
         }
+    }
+
+    fn set_proxy_config(
+        &self,
+        size: Option<u32>,
+        jobs: Option<u32>,
+    ) -> Result<MediaCacheStatusOutput, CmdError> {
+        let proxies = self
+            .proxies()
+            .ok_or_else(|| CmdError::unsupported("this engine makes no proxies"))?;
+        if let Some(jobs) = jobs {
+            proxies.set_job_slots(usize::try_from(jobs).unwrap_or(1));
+        }
+        if let Some(size) = size {
+            proxies.set_long_edge(size);
+        }
+        Ok(self.status())
     }
 
     fn set_config(

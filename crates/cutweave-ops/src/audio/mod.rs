@@ -7,6 +7,8 @@
 //!   their own, for the UI and the CLI. Volume and pan are thin wrappers over `item.set_props`
 //!   (the same data: `audio.gain` and `audio.pan`, keyframed, auto-keyed at `at`).
 //! * [`AudioSetGain`] (`audio.set_gain`): one flat gain for the whole clip; keys are removed.
+//! * [`GetLevels`] (`audio.get_levels`, WP-2E.02): peak, true peak, RMS and loudness of a mix
+//!   over a range, measured by the engine ([`levels`]).
 //!
 //! Fades are stored on the clip as durations and curves (`audio.fade_in`, `audio.fade_out`).
 //! They are measured on the clip as placed, so trimming keeps their length. The commands keep
@@ -15,6 +17,13 @@
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Registry, RegistryError, Tx, command, wire};
 use cutweave_model::{Clip, Duration, Fade, FadeCurve, ItemId, Project, PropId, TimeInput};
+
+pub mod levels;
+
+pub use levels::{
+    GetLevels, GetLevelsOutput, LevelReading, LevelsAnalyzer, LevelsCtx, LevelsMeasured,
+    LevelsRequest, TrackLevels,
+};
 
 use crate::{
     item::{ItemProps, ItemSetProps, ItemSetPropsOutput, KeyedProp},
@@ -34,7 +43,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<AudioSetFade>()?
         .register::<AudioSetVolume>()?
         .register::<AudioSetPan>()?
-        .register::<AudioSetGain>()?;
+        .register::<AudioSetGain>()?
+        .register::<GetLevels>()?;
     Ok(())
 }
 

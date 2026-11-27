@@ -443,8 +443,11 @@ fn engines_without_an_encoder_refuse_exports_after_validating_them() {
     drop(conn);
     core.shutdown();
 
-    // A media backend without H.264: Unsupported too.
-    let plain = FakeBackend::new();
+    // A media backend without H.264: Unsupported too (it has the files: missing media would
+    // be refused first, WP-2F.03c).
+    let plain = fake
+        .clone()
+        .with_capabilities(FakeBackend::new().capabilities());
     let late = Arc::new(LateSource::default());
     let e = engine(
         dir.path(),

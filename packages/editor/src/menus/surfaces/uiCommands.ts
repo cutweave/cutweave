@@ -4,7 +4,13 @@
 // menu is a catalog command (`clip.split`, `track.set`...) named by the row itself, so the CLI and
 // MCP have the same call. A row that touches the OS is `host: true` and listed in
 // `host-actions-exempt.json`.
-import type { FolderId, MediaId, PreviewQuality, SelectionRef } from "@cutweave/protocol";
+import type {
+  CollectionId,
+  FolderId,
+  MediaId,
+  PreviewQuality,
+  SelectionRef,
+} from "@cutweave/protocol";
 import { engineStore } from "../../engine/engineStore.ts";
 import { exportController } from "../../export/useExport.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -13,15 +19,35 @@ import { applyLayout, placeAssets, swapLayout } from "../../layout/actions.ts";
 import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
 import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";
-import { currentOpenFolder, folderUiStore, openFolder } from "../../media/folderUi.ts";
+import { selectMediaCards } from "../../media/cards.ts";
+import {
+  addMediaToCollection,
+  openNewCollectionDialog,
+  openSaveSmartCollection,
+  requestCollectionDelete,
+  updateCollectionFromFilters,
+} from "../../media/collectionCommands.ts";
+import {
+  currentOpenFolder,
+  folderUiStore,
+  openFolder,
+  selectedTiles,
+} from "../../media/folderUi.ts";
 import { importMedia } from "../../media/import.ts";
 import { layoutStore, type MediaLayout } from "../../media/layoutStore.ts";
+import { deleteProxies, regenerateProxies } from "../../media/proxies.ts";
+import { openRelinkDialog } from "../../media/RelinkDialog.tsx";
 import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
+import { importPicked } from "../../media/sequence.ts";
+import { openCollection, sidebarUiStore } from "../../media/sidebar.ts";
+import { addShownFrameToBin, pickSlideshow } from "../../media/slideshowCommands.ts";
+import { openTagEditor } from "../../media/TagEditor.tsx";
 import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
 import { projectController } from "../../session/useProject.ts";
 import { openSettings } from "../../settings/settingsStore.ts";
+import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
 import { activeTimelineHost } from "../../timeline/activeHost.ts";
@@ -67,12 +93,19 @@ async function pickAndImport(what: "files" | "folders" = "files"): Promise<void>
   }
   const paths = pickedPaths(await pick().catch(() => null));
   if (paths.length === 0) return;
-  await importMedia(
-    { engine: engineStore, toasts: toastStore, t: tr() },
-    paths,
-    currentOpenFolder(),
-    { keepStructure: preferences.get("media.keep_structure") },
-  );
+  const deps = { engine: engineStore, toasts: toastStore, t: tr() };
+  const keepStructure = preferences.get("media.keep_structure");
+  const copyToProject = preferences.get("media.copy_on_import");
+  if (what === "folders") {
+    await importMedia(deps, paths, currentOpenFolder(), { keepStructure, copyToProject });
+    return;
+  }
+  // Picked files that are a numbered run of pictures are asked about first (WP-2F.05c).
+  await importPicked(deps, paths, currentOpenFolder(), {
+    keepStructure,
+    copyToProject,
+    fps: preferences.get("media.image_sequence_fps"),
+  });
 }
 
 const selectIds = (kind: SelectionRef["kind"], ids: readonly string[]): void => {
@@ -182,6 +215,124 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     icon: "folder-open",
     host: true,
     run: () => pickAndImport("folders"),
+  },
+  // The picker, then the app's dialog, then one `media.import_images_as_slideshow` (WP-2F.05d).
+  {
+    id: "bin.import_slideshow",
+    label: "contextMenu.command.mediaImportImagesAsSlideshow",
+    icon: "film",
+    host: true,
+    when: "engine.live",
+    run: () => pickSlideshow(),
+  },
+  // The frame on screen as a picture in the bin (WP-2F.05d): one `media.import_frame`.
+  {
+    id: "preview.add_frame_to_bin",
+    label: "contextMenu.command.mediaImportFrame",
+    icon: "image",
+    when: "engine.live",
+    run: async () => void (await addShownFrameToBin()),
+  },
+  {
+    id: "bin.relink",
+    label: "contextMenu.item.relink",
+    icon: "search",
+    run: () => openRelinkDialog(),
+  },
+  // Proxies (WP-2F.03b): the catalog's `media.generate_proxy` and `media.delete_proxy` for the
+  // cards the menu was opened on (the palette: the selected cards).
+  {
+    id: "bin.regenerate_proxies",
+    label: "contextMenu.item.regenerateProxies",
+    icon: "refresh-cw",
+    when: "engine.live",
+    run: async (args) => {
+      const media = arg<{ media?: MediaId[] }>(args).media ?? selectedTiles().media;
+      await regenerateProxies({ engine: engineStore, toasts: toastStore, t: tr() }, media);
+    },
+  },
+  {
+    id: "bin.delete_proxies",
+    label: "contextMenu.item.deleteProxies",
+    icon: "trash-2",
+    when: "engine.live",
+    run: async (args) => {
+      const media = arg<{ media?: MediaId[] }>(args).media ?? selectedTiles().media;
+      await deleteProxies({ engine: engineStore, toasts: toastStore, t: tr() }, media);
+    },
+  },
+  // Duration… (#215; ADR-0035, Decision 1): the length the next insert of an image card uses.
+  // It opens the dialog; the choice is UI state, and the insert sends it as `duration`.
+  {
+    id: "bin.insert_duration",
+    label: "contextMenu.item.insertDuration",
+    icon: "clock",
+    run: (args) => {
+      const media = arg<{ media?: MediaId }>(args).media ?? selectedTiles().media[0];
+      const card = selectMediaCards(docStore.getState().project).find((c) => c.id === media);
+      if (card?.kind !== "image") return;
+      menuDialogStore.getState().open({ kind: "insert-duration", media: card.id, name: card.name });
+    },
+  },
+  // Add tag… (WP-2F.06b): the tag editor for the cards the menu was opened on; each tag it adds
+  // or removes is one `media.add_tags` or `media.remove_tags`.
+  {
+    id: "bin.add_tag",
+    label: "contextMenu.item.addTag",
+    when: "engine.live",
+    run: (args) => openTagEditor(arg<{ media?: string[] }>(args).media),
+  },
+  // Collections (WP-2F.06c). Each change is one catalog command: `media.create_collection`,
+  // `media.add_to_collection`, `media.set_collection_filter`, `media.delete_collection`.
+  {
+    id: "bin.new_collection",
+    label: "contextMenu.item.newCollection",
+    icon: "plus",
+    when: "engine.live",
+    run: (args) => openNewCollectionDialog(arg<{ media?: string[] }>(args).media ?? []),
+  },
+  {
+    id: "bin.add_to_collection",
+    label: "contextMenu.item.addToCollection",
+    when: "engine.live",
+    run: async (args) => {
+      const { collection, media } = arg<{ collection: CollectionId; media: string[] }>(args);
+      await addMediaToCollection(collection, media);
+    },
+  },
+  {
+    id: "bin.save_smart_collection",
+    label: "contextMenu.item.saveSmartCollection",
+    icon: "search",
+    when: "engine.live",
+    run: () => openSaveSmartCollection(),
+  },
+  {
+    id: "bin.open_collection",
+    label: "contextMenu.item.openCollection",
+    run: (args) => openCollection(arg<{ collection: CollectionId }>(args).collection),
+  },
+  {
+    id: "bin.rename_collection",
+    label: "contextMenu.item.renameCollection",
+    run: (args) =>
+      sidebarUiStore.getState().startRename(arg<{ collection: CollectionId }>(args).collection),
+  },
+  {
+    id: "bin.update_collection_filter",
+    label: "contextMenu.item.updateCollection",
+    icon: "refresh-cw",
+    when: "engine.live",
+    run: async (args) =>
+      updateCollectionFromFilters(arg<{ collection: CollectionId }>(args).collection),
+  },
+  {
+    id: "bin.delete_collection",
+    label: "contextMenu.item.deleteCollection",
+    icon: "trash-2",
+    danger: true,
+    run: async (args) =>
+      requestCollectionDelete(arg<{ collection: CollectionId }>(args).collection),
   },
   {
     id: "bin.new_folder",
@@ -315,6 +466,8 @@ export const UI_COMMANDS: readonly UiCommand[] = [
       else if (chip === "duration") bin.setDuration(null);
       else if (chip === "use") bin.setUse(null);
       else if (chip === "problems") bin.setProblems(false);
+      else if (chip === "rating") bin.setMinRating(null);
+      else if (chip.startsWith("tag-")) bin.toggleTag(chip.slice("tag-".length));
     },
   },
   {

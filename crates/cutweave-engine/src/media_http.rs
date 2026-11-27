@@ -35,6 +35,7 @@ use cutweave_model::{
     FrameRate, MediaId, ProbeInfo, Rounding, SequenceId, StreamKind, Time, TimeInput,
 };
 use cutweave_render::encode::{DEFAULT_MAX_SIZE, ImageFormat, fit_within};
+use cutweave_render::geometry::quarter_turns;
 use cutweave_render::query::{MAX_FRAME_SIZE, MIN_MAX_SIZE, RenderFrame, render_frame};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -142,7 +143,9 @@ fn resolve(state: &MediaState, id: &str, expected: Option<&str>) -> Result<Resol
             )));
         }
     };
-    let reference = file.hash.map(|hash| MediaRef::new(file.path.clone(), hash));
+    let reference = file
+        .hash
+        .map(|hash| MediaRef::new(file.path.clone(), hash).with_rotation(file.probe.rotation));
     Ok(Resolved {
         file,
         reference,
@@ -275,15 +278,22 @@ struct PreparedFilmstrip {
     etag: Option<String>,
 }
 
-/// The tile width: `w`, narrowed so the tile is at most `h` high (the coded picture's aspect,
-/// as the tiles are drawn).
+/// The tile width: `w`, narrowed so the tile is at most `h` high (the aspect of the picture
+/// turned by the probe's display rotation, as the tiles are drawn).
 fn tile_width(probe: &ProbeInfo, w: u32, h: Option<u32>) -> u32 {
     let Some(h) = h else { return w };
     let size = probe
         .streams
         .iter()
         .find(|s| s.kind == StreamKind::Video)
-        .and_then(|s| Some((s.width?, s.height?)));
+        .and_then(|s| Some((s.width?, s.height?)))
+        .map(|(vw, vh)| {
+            if quarter_turns(probe.rotation) % 180 == 90 {
+                (vh, vw)
+            } else {
+                (vw, vh)
+            }
+        });
     match size {
         Some((vw, vh)) if vw > 0 && vh > 0 => {
             let fit = u64::from(h) * u64::from(vw) / u64::from(vh);
@@ -756,5 +766,20 @@ mod tests {
         assert_eq!(tile_width(&probe, 160, None), 160);
         assert_eq!(tile_width(&probe, 160, Some(45)), 80);
         assert_eq!(tile_width(&probe, 160, Some(4096)), 160);
+        // A quarter turn (a phone clip shot upright): the tiles are 1080 × 1920 pictures.
+        for rotation in [90, 270] {
+            let turned = ProbeInfo {
+                rotation,
+                ..probe.clone()
+            };
+            assert_eq!(tile_width(&turned, 160, None), 160);
+            assert_eq!(tile_width(&turned, 160, Some(160)), 90);
+            assert_eq!(tile_width(&turned, 160, Some(4096)), 160);
+        }
+        let upside_down = ProbeInfo {
+            rotation: 180,
+            ..probe.clone()
+        };
+        assert_eq!(tile_width(&upside_down, 160, Some(45)), 80);
     }
 }

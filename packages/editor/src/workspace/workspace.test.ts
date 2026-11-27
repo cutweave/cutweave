@@ -91,6 +91,7 @@ describe("the panel registry", () => {
       "inspector",
       "timeline",
       "history",
+      "exports",
     ]);
   });
 
@@ -190,6 +191,7 @@ describe("closing and reopening panels (WP-2H.01)", () => {
       Inspector: "false",
       Timeline: "true",
       History: "false",
+      Exports: "false",
     });
 
     await togglePanelInMenu(user, "Inspector");

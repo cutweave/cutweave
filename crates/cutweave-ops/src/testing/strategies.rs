@@ -11,8 +11,8 @@ use std::{sync::Arc, time::Duration};
 
 use cutweave_jobs::{JobConfig, JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
 use cutweave_model::{
-    EntityId, FolderId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo, Project,
-    SampleRate, SeededGen, SequenceId, TrackId, TrackKind, Vec2,
+    CollectionId, EntityId, FolderId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo,
+    Project, SampleRate, SeededGen, SequenceId, TrackId, TrackKind, Vec2,
 };
 use proptest::{
     collection::vec,
@@ -45,6 +45,134 @@ pub const IMPORT_PATHS: [&str; 6] = [
     "C:\\import\\voice.wav",
 ];
 
+/// The pictures [`fake_probe`] serves to `media.import_images_as_slideshow` (their names sort
+/// differently by name and by number).
+pub const SLIDE_PATHS: [&str; 4] = [
+    "/import/slides/img10.png",
+    "/import/slides/img2.png",
+    "/import/slides/Beach.png",
+    "C:\\import\\slides\\img1.png",
+];
+
+/// How many frames [`FakeFrames`] can store before it gives the last one again.
+const FRAME_SLOTS: u128 = 3;
+
+/// The id and the file of slot `n` of [`FakeFrames`]; [`fake_probe`] knows the files as
+/// pictures.
+fn frame_slot(n: u128) -> (MediaId, String) {
+    let id = MediaId::from_u128(0xF4A3_E000 + n);
+    (id, format!("/project/generated/frames/{id}.png"))
+}
+
+/// The frame store a harness gives `media.import_frame` (its engine has no renderer and no
+/// disk): it resolves the source and the time against `doc` the way the engine does, "writes"
+/// the next unused of a few fixed files, and records what was discarded.
+#[derive(Debug)]
+pub struct FakeFrames {
+    doc: Project,
+    discarded: std::sync::Mutex<Vec<String>>,
+}
+
+impl FakeFrames {
+    /// A store for the document `doc`.
+    #[must_use]
+    pub fn new(doc: Project) -> FakeFrames {
+        FakeFrames {
+            doc,
+            discarded: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The files that were discarded so far.
+    #[must_use]
+    pub fn discarded(&self) -> Vec<String> {
+        self.discarded
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl crate::media::FrameGrabber for FakeFrames {
+    fn grab(
+        &self,
+        source: crate::media::FrameOf,
+        at: cutweave_model::TimeInput,
+    ) -> Result<crate::media::GrabbedFrame, cutweave_commands::CmdError> {
+        use cutweave_commands::CmdError;
+        let (name, rate, size, length) = match source {
+            crate::media::FrameOf::Sequence => {
+                let sequence = self.doc.sequences.values().next().ok_or_else(|| {
+                    CmdError::invalid("/source", "the project has no sequence to take a frame of")
+                })?;
+                (
+                    sequence.name.clone(),
+                    sequence.format.frame_rate,
+                    (sequence.format.width, sequence.format.height),
+                    None,
+                )
+            }
+            crate::media::FrameOf::Media(id) => {
+                let asset =
+                    self.doc.media.get(&id).ok_or_else(|| {
+                        CmdError::not_found(cutweave_model::EntityKind::Media, id)
+                    })?;
+                if !crate::media::has_frames(asset.kind) {
+                    return Err(CmdError::invalid(
+                        "/source/media",
+                        format!("media {id} is not a video: it has no frame to take"),
+                    ));
+                }
+                (
+                    crate::media::asset_name(asset).into_owned(),
+                    asset.probe.fps.unwrap_or(FrameRate::FPS_30),
+                    (1920, 1080),
+                    asset.probe.duration,
+                )
+            }
+        };
+        let time = at
+            .resolve(Some(rate))
+            .map_err(|e| CmdError::invalid("/at", e.to_string()))?;
+        if time < cutweave_model::Time::ZERO
+            || length.is_some_and(|length| time.flicks() >= length.flicks())
+        {
+            return Err(CmdError::invalid("/at", "the time is outside the source"));
+        }
+        let slot = (0..FRAME_SLOTS)
+            .map(frame_slot)
+            .find(|(id, _)| !self.doc.media.contains_key(id))
+            .unwrap_or_else(|| frame_slot(FRAME_SLOTS - 1));
+        Ok(crate::media::GrabbedFrame {
+            media_id: slot.0,
+            path: slot.1,
+            width: size.0,
+            height: size.1,
+            time,
+            label: crate::media::frame_label(&name, time, rate),
+        })
+    }
+
+    fn discard(&self, frame: &crate::media::GrabbedFrame) {
+        self.discarded
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(frame.path.clone());
+    }
+}
+/// The pictures of the numbered run [`fake_probe`] serves to `media.import_sequence`
+/// (`shot_0004.png` is missing: a gap).
+pub const SEQUENCE_PATHS: [&str; 5] = [
+    "/import/render/shot_0001.png",
+    "/import/render/shot_0002.png",
+    "/import/render/shot_0003.png",
+    "/import/render/shot_0005.png",
+    "/import/render/shot_0006.png",
+];
+
+/// The folder of [`SEQUENCE_PATHS`].
+pub const SEQUENCE_FOLDER: &str = "/import/render";
+
 /// A file [`fake_probe`] cannot read: `media.import` reports it in `failed[]` (code
 /// `unsupported`) and imports the other files.
 pub const BROKEN_IMPORT_PATH: &str = "/import/notes.txt";
@@ -64,12 +192,17 @@ pub const CHECKPOINT_NAMES: [&str; 3] = ["alpha", "beta", "gamma"];
 /// The label of the second actor (`agent:prop`) the strategies name in history scopes.
 pub const AGENT_LABEL: &str = "prop";
 
-/// The prober a harness gives `media.import`: it knows [`IMPORT_PATHS`] and fails
-/// [`BROKEN_IMPORT_PATH`].
+/// The prober a harness gives `media.import`: it knows [`IMPORT_PATHS`], the pictures of
+/// [`SLIDE_PATHS`] and the files of [`FakeFrames`], and fails [`BROKEN_IMPORT_PATH`].
 #[must_use]
 pub fn fake_probe() -> FakeProbe {
     let [interview, broll, music, logo, take, voice] = IMPORT_PATHS;
-    FakeProbe::new()
+    let frames: Vec<String> = (0..FRAME_SLOTS).map(|n| frame_slot(n).1).collect();
+    SEQUENCE_PATHS
+        .iter()
+        .fold(FakeProbe::new(), |probe, picture| {
+            probe.with(picture, FakeProbe::image(picture))
+        })
         .with(interview, FakeProbe::video(interview, 20, true))
         .with(broll, FakeProbe::video(broll, 8, false))
         .with(music, FakeProbe::audio(music, 30))
@@ -83,6 +216,13 @@ pub fn fake_probe() -> FakeProbe {
                 reason: "no audio or video streams".to_owned(),
             },
         )
+        .with(SLIDE_PATHS[0], FakeProbe::image(SLIDE_PATHS[0]))
+        .with(SLIDE_PATHS[1], FakeProbe::image(SLIDE_PATHS[1]))
+        .with(SLIDE_PATHS[2], FakeProbe::image(SLIDE_PATHS[2]))
+        .with(SLIDE_PATHS[3], FakeProbe::image(SLIDE_PATHS[3]))
+        .with(&frames[0], FakeProbe::image(&frames[0]))
+        .with(&frames[1], FakeProbe::image(&frames[1]))
+        .with(&frames[2], FakeProbe::image(&frames[2]))
 }
 
 /// A job manager for a harness (the `job.*` commands' engine context): IDs from
@@ -214,6 +354,9 @@ pub(super) struct Pools {
     media: Vec<Med>,
     /// Media folders (ADR-0020).
     folders: Vec<FolderId>,
+    /// Collections of media (ADR-0036), and the manual ones among them.
+    collections: Vec<CollectionId>,
+    manual_collections: Vec<CollectionId>,
 }
 
 impl Pools {
@@ -273,6 +416,13 @@ impl Pools {
             })
             .collect();
         pools.folders = doc.folders.keys().copied().collect();
+        pools.collections = doc.collections.keys().copied().collect();
+        pools.manual_collections = doc
+            .collections
+            .values()
+            .filter(|c| matches!(c.kind, cutweave_model::CollectionKind::Manual { .. }))
+            .map(|c| c.id)
+            .collect();
         pools
     }
 
@@ -286,6 +436,22 @@ impl Pools {
 
     fn media_ids(&self) -> Vec<MediaId> {
         self.media.iter().map(|m| m.id).collect()
+    }
+
+    /// The media that can have proxies (video and image sequences), else every asset: the
+    /// proxy commands mostly name these, and sometimes one they refuse.
+    fn proxy_ids(&self) -> Vec<MediaId> {
+        let video: Vec<MediaId> = self
+            .media
+            .iter()
+            .filter(|m| matches!(m.kind, MediaKind::Video | MediaKind::ImageSequence))
+            .map(|m| m.id)
+            .collect();
+        if video.is_empty() {
+            self.media_ids()
+        } else {
+            video
+        }
     }
 }
 
@@ -323,14 +489,51 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         | "export.list_presets"
         | "export.list_encoders"
         | "export.queue"
-        | "media.list_folders" => (1, no_params()),
+        | "media.list_folders"
+        | "media.list_tags"
+        | "media.list_collections" => (1, no_params()),
+        "media.add_tags" => (if no_media { 1 } else { 3 }, media_tags(p)),
+        "media.remove_tags" => (1, media_tags(p)),
+        "media.rename_tag" => (1, media_rename_tag()),
+        "media.set_rating" => (if no_media { 1 } else { 2 }, media_set_rating(p)),
+        "media.set_note" => (if no_media { 1 } else { 2 }, media_set_note(p)),
+        "media.create_collection" => (
+            if p.collections.is_empty() { 4 } else { 2 },
+            media_create_collection(p),
+        ),
+        "media.rename_collection" => (1, media_rename_collection(p)),
+        "media.delete_collection" => (1, media_delete_collection(p)),
+        "media.add_to_collection" => (
+            if p.manual_collections.is_empty() {
+                1
+            } else {
+                3
+            },
+            media_collection_members(p),
+        ),
+        "media.remove_from_collection" => (1, media_collection_members(p)),
+        "media.set_collection_filter" => (1, media_set_collection_filter(p)),
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
         "media.register_tree" => (if no_media { 3 } else { 1 }, media_register_tree(p)),
         "media.import" => (if no_media { 4 } else { 2 }, media_import(p)),
+        "media.import_images_as_slideshow" => (2, media_slideshow(p)),
+        "media.import_frame" => (1, media_import_frame(p)),
+        "media.import_sequence" => (1, media_import_sequence(p)),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
+        "media.set_proxy_policy" => (1, proxy_policy()),
+        "media.set_proxy_mode" => (1, proxy_mode(p)),
+        "project.collect" | "project.collect_estimate" => (1, project_collect()),
+        "project.archive" => (1, project_archive()),
+        "media.set_location" => (1, media_set_location(p)),
+        "media.relink" => (1, media_relink(p)),
+        "media.relink_folder" => (1, media_relink_folder(p)),
+        "media.find_missing" => (
+            1,
+            prop_oneof![Just(json!({})), Just(json!({"verify": true}))].boxed(),
+        ),
         "media.create_folder" => (
             if p.folders.is_empty() { 4 } else { 2 },
             media_create_folder(p),
@@ -397,6 +600,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "audio.set_volume" => (edits.div_ceil(2), audio_set_volume(p)),
         "audio.set_pan" => (edits.div_ceil(2), audio_set_pan(p)),
         "audio.set_gain" => (edits.div_ceil(3), audio_set_gain(p)),
+        "audio.get_levels" => (1, audio_get_levels(p)),
         "keyframe.set" => (edits, keyframe_set(p)),
         "keyframe.delete" => (edits.div_ceil(3), keyframe_delete(p)),
         "keyframe.move" => (edits.div_ceil(3), keyframe_move(p)),
@@ -582,8 +786,17 @@ fn project_new() -> BoxedStrategy<Value> {
             json!({"width": width, "height": height, "frame_rate": frame_rate,
                    "sample_rate": sample_rate})
         });
-    let valid = (name(), option::of(format))
-        .prop_map(|(name, format)| json!({"name": name, "format": format}))
+    let still = option::of(prop_oneof![
+        Just(json!("3s")),
+        Just(json!("f:1")),
+        Just(json!("3600s")),
+    ]);
+    let policy = option::of(select(vec!["off", "auto", "all"]));
+    let valid = (name(), option::of(format), still, policy)
+        .prop_map(|(name, format, still, policy)| {
+            json!({"name": name, "format": format, "still_duration": still,
+                   "proxy_policy": policy})
+        })
         .boxed();
     let invalid = prop_oneof![
         bad_name().prop_map(|name| json!({"name": name})),
@@ -592,6 +805,9 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!({"name": "P", "format": {"frame_rate": {"num": 2000, "den": 1}}})),
         Just(json!({"name": "P", "format": {"frame_rate": {"num": 1001, "den": 7}}})),
         Just(json!({"name": "P", "format": {"sample_rate": 1234}})),
+        Just(json!({"name": "P", "still_duration": "0s"})),
+        Just(json!({"name": "P", "still_duration": "3601s"})),
+        Just(json!({"name": "P", "proxy_policy": "some"})),
     ]
     .boxed();
     mix(valid, invalid)
@@ -701,21 +917,162 @@ fn media_import(p: &Pools) -> BoxedStrategy<Value> {
         vec(select(IMPORT_PATHS.to_vec()), 1..=3),
         unreadable,
         option::weighted(0.3, one_of(p.folders.clone())),
+        // Absent and `false` both leave the files where they are.
+        option::weighted(0.2, Just(false)),
     )
-        .prop_map(|(paths, unreadable, folder)| {
+        .prop_map(|(paths, unreadable, folder, copy)| {
             let mut unique: Vec<&str> = Vec::new();
             for p in paths.into_iter().chain(unreadable) {
                 if !unique.contains(&p) {
                     unique.push(p);
                 }
             }
-            json!({"paths": unique, "folder": folder})
+            json!({"paths": unique, "folder": folder, "copy_to_project": copy})
         })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"paths": []})),
+        // The harness document is untitled: it has no folder to copy into (WP-2F.04c).
+        Just(json!({"paths": [IMPORT_PATHS[0]], "copy_to_project": true})),
         Just(json!({"paths": ["import/relative.mp4"]})),
         select(IMPORT_PATHS.to_vec()).prop_map(|p| json!({"paths": [p, p]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_slideshow(p: &Pools) -> BoxedStrategy<Value> {
+    let mut files = SLIDE_PATHS.to_vec();
+    // A still that `media.import` may have brought in already, a video (left out, in
+    // `failed`) and a file that cannot be read.
+    files.extend([IMPORT_PATHS[3], IMPORT_PATHS[0], BROKEN_IMPORT_PATH]);
+    let video: Vec<Trk> = p
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Video)
+        .cloned()
+        .collect();
+    let place = if video.is_empty() {
+        Just((Value::Null, Value::Null, Value::Null)).boxed()
+    } else {
+        (
+            select(video),
+            any::<bool>(),
+            option::weighted(0.5, 0..90_i64),
+            any::<(u8, u32)>(),
+        )
+            .prop_map(|(t, named, past_end, (form, jitter))| {
+                let at =
+                    past_end.map_or(Value::Null, |n| time_json(t.fpf, t.end + n, form, jitter));
+                if named {
+                    (json!(t.seq), json!(t.id), at)
+                } else {
+                    (Value::Null, Value::Null, Value::Null)
+                }
+            })
+            .boxed()
+    };
+    let valid = (
+        subsequence(files, 1..=4),
+        place,
+        option::weighted(0.5, prop_oneof![Just("f:1"), Just("2s"), Just("0.5s")]),
+        option::weighted(0.6, select(vec!["given", "name", "name_numeric"])),
+    )
+        .prop_map(|(files, (sequence, track, at), per_image, order)| {
+            json!({"files": files, "sequence": sequence, "track": track, "at": at,
+                   "per_image": per_image, "order": order})
+        })
+        .boxed();
+    let audio = p
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Audio)
+        .map_or(Value::Null, |t| json!(t.id));
+    let invalid = prop_oneof![
+        Just(json!({"files": []})),
+        Just(json!({"files": ["import/relative.png"]})),
+        Just(json!({"files": [SLIDE_PATHS[0], SLIDE_PATHS[0]]})),
+        Just(json!({"files": [BROKEN_IMPORT_PATH, IMPORT_PATHS[2]]})),
+        Just(json!({"files": [SLIDE_PATHS[0]], "per_image": "0s"})),
+        Just(json!({"files": [SLIDE_PATHS[1]], "order": "random"})),
+        Just(json!({"files": [SLIDE_PATHS[1]], "track": audio})),
+        fresh::<SequenceId>().prop_map(|s| json!({"files": [SLIDE_PATHS[2]], "sequence": s})),
+        fresh::<TrackId>().prop_map(|t| json!({"files": [SLIDE_PATHS[2]], "track": t})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_import_frame(p: &Pools) -> BoxedStrategy<Value> {
+    let videos: Vec<MediaId> = p
+        .media
+        .iter()
+        .filter(|m| crate::media::has_frames(m.kind))
+        .map(|m| m.id)
+        .collect();
+    let source = if videos.is_empty() {
+        Just(json!("sequence")).boxed()
+    } else {
+        prop_oneof![
+            2 => Just(json!("sequence")),
+            1 => select(videos).prop_map(|id| json!({"media": id})),
+        ]
+        .boxed()
+    };
+    let valid = (
+        source,
+        prop_oneof![Just(json!(0)), Just(json!("f:12")), Just(json!("1.5s"))],
+        option::weighted(0.4, name()),
+        option::weighted(0.3, one_of(p.folders.clone())),
+    )
+        .prop_map(|(source, at, name, folder)| {
+            json!({"source": source, "at": at, "name": name, "folder": folder})
+        })
+        .boxed();
+    let stills = p
+        .media
+        .iter()
+        .find(|m| !crate::media::has_frames(m.kind))
+        .map_or(json!("clip"), |m| json!({"media": m.id}));
+    let invalid = prop_oneof![
+        Just(json!({"source": "sequence", "at": "-1s"})),
+        Just(json!({"source": "preview", "at": 0})),
+        Just(json!({"source": stills, "at": 0})),
+        bad_name().prop_map(|name| json!({"source": "sequence", "at": 0, "name": name})),
+        fresh::<MediaId>().prop_map(|id| json!({"source": {"media": id}, "at": 0})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_import_sequence(p: &Pools) -> BoxedStrategy<Value> {
+    let mut places = SEQUENCE_PATHS.to_vec();
+    places.push(SEQUENCE_FOLDER);
+    let fps = prop_oneof![
+        3 => Just(Value::Null),
+        1 => Just(json!({"num": 24, "den": 1})),
+        1 => Just(json!({"num": 30000, "den": 1001})),
+    ];
+    let valid = (
+        select(places),
+        fps,
+        option::weighted(0.3, one_of(p.folders.clone())),
+        // Absent and `false` both leave the pictures where they are.
+        option::weighted(0.2, Just(false)),
+    )
+        .prop_map(|(path, fps, folder, copy)| {
+            json!({"path": path, "fps": fps, "folder": folder, "copy_to_project": copy})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"path": "import/render/shot_0001.png"})),
+        // A still is not a run, and a folder without one is not either.
+        Just(json!({"path": IMPORT_PATHS[3]})),
+        Just(json!({"path": "/import"})),
+        Just(json!({"path": "/import/render/shot_0004.png"})),
+        Just(json!({"path": SEQUENCE_PATHS[0], "fps": {"num": 0, "den": 1}})),
+        // The harness document is untitled: it has no folder to copy into (#215).
+        Just(json!({"path": SEQUENCE_PATHS[0], "copy_to_project": true})),
     ]
     .boxed();
     mix(valid, invalid)
@@ -726,23 +1083,269 @@ fn media_list(p: &Pools) -> BoxedStrategy<Value> {
         option::weighted(0.5, one_of(p.folders.clone())),
         option::of(any::<bool>()),
         option::weighted(0.2, select(vec!["clip", "Clip 1", "interview"])),
+        option::weighted(0.2, vec(tag(), 1..=2)),
+        option::weighted(0.2, 1..=5_u8),
+        option::weighted(0.3, one_of(p.collections.clone())),
     )
-        .prop_map(|(folder, recursive, text)| {
-            json!({"folder": folder, "recursive": recursive, "text": text})
+        .prop_map(|(folder, recursive, text, tags, min_rating, collection)| {
+            json!({"folder": folder, "recursive": recursive, "text": text, "tags": tags,
+                   "min_rating": min_rating, "collection": collection})
         });
     let valid = (
         option::of(1..=8_u32),
         option::of(one_of(p.media_ids())),
         option::weighted(0.4, filter),
+        any::<bool>(),
     )
-        .prop_map(
-            |(limit, cursor, filter)| json!({"limit": limit, "cursor": cursor, "filter": filter}),
-        )
+        .prop_map(|(limit, cursor, filter, note)| {
+            let include = if note { json!(["note"]) } else { Value::Null };
+            json!({"limit": limit, "cursor": cursor, "filter": filter, "include": include})
+        })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"limit": 0})),
         Just(json!({"limit": 501})),
         fresh::<FolderId>().prop_map(|folder| json!({"filter": {"folder": folder}})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+// ----- tags, ratings, notes and collections (WP-2F.06a, ADR-0036) -----------------------------
+
+/// Tags that clash often (ignoring case and accents) and cover Unicode and padding.
+const TAGS: [&str; 8] = [
+    "interview",
+    "Interview",
+    "b-roll",
+    "Café",
+    "cafe",
+    "  padded  ",
+    "Day 1",
+    "日本語",
+];
+
+fn tag() -> BoxedStrategy<String> {
+    select(TAGS.to_vec()).prop_map(str::to_owned).boxed()
+}
+
+fn bad_tag() -> BoxedStrategy<String> {
+    prop_oneof![
+        Just(String::new()),
+        Just("   ".to_owned()),
+        Just("a,b".to_owned()),
+        Just("tab\there".to_owned()),
+        Just("x".repeat(65)),
+    ]
+    .boxed()
+}
+
+/// A few distinct assets (sometimes one that does not exist).
+fn some_media(p: &Pools) -> BoxedStrategy<Vec<Value>> {
+    vec(one_of(p.media_ids()), 1..=3)
+        .prop_map(|media| {
+            let mut unique: Vec<Value> = Vec::new();
+            for m in media {
+                if !unique.contains(&m) {
+                    unique.push(m);
+                }
+            }
+            unique
+        })
+        .boxed()
+}
+
+/// `media.add_tags` and `media.remove_tags`.
+fn media_tags(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (some_media(p), vec(tag(), 1..=3))
+        .prop_map(|(media, tags)| json!({"media": media, "tags": tags}))
+        .boxed();
+    let invalid = prop_oneof![
+        (some_media(p), bad_tag()).prop_map(|(media, tag)| json!({"media": media, "tags": [tag]})),
+        some_media(p).prop_map(|media| json!({"media": media, "tags": []})),
+        Just(json!({"media": [], "tags": ["x"]})),
+        one_of(p.media_ids()).prop_map(|m| json!({"media": [m.clone(), m], "tags": ["x"]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename_tag() -> BoxedStrategy<Value> {
+    let valid = (tag(), tag())
+        .prop_map(|(from, to)| json!({"from": from, "to": to}))
+        .boxed();
+    let invalid = prop_oneof![
+        (tag(), bad_tag()).prop_map(|(from, to)| json!({"from": from, "to": to})),
+        (bad_tag(), tag()).prop_map(|(from, to)| json!({"from": from, "to": to})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_set_rating(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (some_media(p), option::weighted(0.8, 1..=5_u8))
+        .prop_map(|(media, rating)| json!({"media": media, "rating": rating}))
+        .boxed();
+    let invalid = prop_oneof![
+        (some_media(p), select(vec![0_u8, 6, 200]))
+            .prop_map(|(media, rating)| json!({"media": media, "rating": rating})),
+        Just(json!({"media": [], "rating": 3})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_set_note(p: &Pools) -> BoxedStrategy<Value> {
+    let note = prop_oneof![
+        Just("Good take.\nUse the second half.".to_owned()),
+        Just("  naïve mix  ".to_owned()),
+        Just("   ".to_owned()),
+    ];
+    let valid = (one_of(p.media_ids()), option::weighted(0.8, note))
+        .prop_map(|(media, note)| json!({"media": media, "note": note}))
+        .boxed();
+    let invalid = (
+        one_of(p.media_ids()),
+        prop_oneof![Just("bell\u{7}".to_owned()), Just("x".repeat(2001))],
+    )
+        .prop_map(|(media, note)| json!({"media": media, "note": note}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// Collection names that clash often (ignoring case).
+fn collection_name() -> BoxedStrategy<String> {
+    select(vec![
+        "Selects",
+        "selects",
+        "Best takes",
+        "  Padded  ",
+        "Unused interviews",
+        "Música",
+    ])
+    .prop_map(str::to_owned)
+    .boxed()
+}
+
+fn bad_collection_name() -> BoxedStrategy<String> {
+    prop_oneof![
+        Just(String::new()),
+        Just("line\nbreak".to_owned()),
+        Just("x".repeat(256)),
+    ]
+    .boxed()
+}
+
+/// A filter a smart collection can store (it names no collection).
+fn smart_filter(p: &Pools) -> BoxedStrategy<Value> {
+    (
+        option::weighted(0.4, vec(tag(), 1..=2)),
+        option::weighted(0.3, 1..=5_u8),
+        option::weighted(0.3, any::<bool>()),
+        option::weighted(0.3, select(vec!["video", "audio", "image"])),
+        option::weighted(0.2, one_of(p.folders.clone())),
+        option::weighted(0.2, select(vec!["clip", "interview", "naive"])),
+    )
+        .prop_map(|(tags, min_rating, used, kind, folder, text)| {
+            let mut filter = serde_json::Map::new();
+            let mut put = |key: &str, value: Value| {
+                if !value.is_null() {
+                    filter.insert(key.to_owned(), value);
+                }
+            };
+            put("tags", json!(tags));
+            put("min_rating", json!(min_rating));
+            put("used", json!(used));
+            put("kinds", kind.map_or(Value::Null, |k| json!([k])));
+            put("folder", json!(folder));
+            put("text", json!(text));
+            Value::Object(filter)
+        })
+        .boxed()
+}
+
+fn media_create_collection(p: &Pools) -> BoxedStrategy<Value> {
+    let kind = prop_oneof![
+        Just(json!({"type": "manual"})),
+        some_media(p).prop_map(|media| json!({"type": "manual", "media": media})),
+        smart_filter(p).prop_map(|filter| json!({"type": "smart", "filter": filter})),
+    ];
+    let valid = (collection_name(), kind)
+        .prop_map(|(name, kind)| json!({"name": name, "kind": kind}))
+        .boxed();
+    let invalid = prop_oneof![
+        bad_collection_name().prop_map(|name| json!({"name": name, "kind": {"type": "manual"}})),
+        one_of(p.collections.clone()).prop_map(|c| {
+            json!({"name": "Nested", "kind": {"type": "smart", "filter": {"collection": c}}})
+        }),
+        Just(json!({"name": "Bad filter", "kind": {"type": "smart", "filter": {"min_rating": 9}}})),
+        Just(json!({"name": "No kind"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename_collection(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.collections.clone()), collection_name())
+        .prop_map(|(collection, name)| json!({"collection": collection, "name": name}))
+        .boxed();
+    let invalid = (one_of(p.collections.clone()), bad_collection_name())
+        .prop_map(|(collection, name)| json!({"collection": collection, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn media_delete_collection(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = one_of(p.collections.clone())
+        .prop_map(|collection| json!({"collection": collection}))
+        .boxed();
+    let invalid = fresh::<CollectionId>()
+        .prop_map(|collection| json!({"collection": collection}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `media.add_to_collection` and `media.remove_from_collection`: mostly a manual collection.
+fn media_collection_members(p: &Pools) -> BoxedStrategy<Value> {
+    let manual = if p.manual_collections.is_empty() {
+        p.collections.clone()
+    } else {
+        p.manual_collections.clone()
+    };
+    let valid = (one_of(manual), some_media(p))
+        .prop_map(|(collection, media)| json!({"collection": collection, "media": media}))
+        .boxed();
+    let invalid = prop_oneof![
+        (one_of(p.collections.clone()), some_media(p))
+            .prop_map(|(collection, media)| json!({"collection": collection, "media": media})),
+        one_of(p.collections.clone()).prop_map(|c| json!({"collection": c, "media": []})),
+        (one_of(p.collections.clone()), one_of(p.media_ids()))
+            .prop_map(|(c, m)| json!({"collection": c, "media": [m.clone(), m]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_set_collection_filter(p: &Pools) -> BoxedStrategy<Value> {
+    let smart: Vec<CollectionId> = p
+        .collections
+        .iter()
+        .filter(|c| !p.manual_collections.contains(c))
+        .copied()
+        .collect();
+    let target = if smart.is_empty() {
+        p.collections.clone()
+    } else {
+        smart
+    };
+    let valid = (one_of(target), smart_filter(p))
+        .prop_map(|(collection, filter)| json!({"collection": collection, "filter": filter}))
+        .boxed();
+    let invalid = prop_oneof![
+        (one_of(p.collections.clone()), one_of(p.collections.clone()))
+            .prop_map(|(c, other)| json!({"collection": c, "filter": {"collection": other}})),
+        one_of(p.collections.clone())
+            .prop_map(|c| json!({"collection": c, "filter": {"tags": ["a,b"]}})),
     ]
     .boxed();
     mix(valid, invalid)
@@ -899,9 +1502,11 @@ fn media_remove(p: &Pools) -> BoxedStrategy<Value> {
 /// `{media: [ids]}` for the proxy commands (WP-2F.01): known or unknown assets, an empty or
 /// repeated list; `media.proxy_status` may leave the list out.
 fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
-    let valid = vec(one_of(p.media_ids()), 1..=3)
-        .prop_map(|ids| json!({ "media": ids }))
-        .boxed();
+    let valid = prop_oneof![
+        4 => one_of(p.proxy_ids()).prop_map(|id| json!({ "media": [id] })),
+        1 => vec(one_of(p.media_ids()), 1..=3).prop_map(|ids| json!({ "media": ids })),
+    ]
+    .boxed();
     let invalid = prop_oneof![
         Just(json!({ "media": [] })),
         one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id] })),
@@ -912,6 +1517,193 @@ fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
     } else {
         mix(valid, invalid)
     }
+}
+
+/// `media.set_proxy_policy` (ADR-0027): each policy, or a word that is none.
+fn proxy_policy() -> BoxedStrategy<Value> {
+    let valid = select(vec!["off", "auto", "all"])
+        .prop_map(|policy| json!({ "policy": policy }))
+        .boxed();
+    let invalid = prop_oneof![Just(json!({ "policy": "some" })), Just(json!({}))].boxed();
+    mix(valid, invalid)
+}
+
+/// `media.set_proxy_mode` (ADR-0027): a mode for known or unknown assets, an empty or repeated
+/// list.
+fn proxy_mode(p: &Pools) -> BoxedStrategy<Value> {
+    let mode = || select(vec!["auto", "force", "off"]);
+    let valid = prop_oneof![
+        4 => (one_of(p.proxy_ids()), mode())
+            .prop_map(|(id, mode)| json!({ "media": [id], "mode": mode })),
+        1 => (vec(one_of(p.media_ids()), 1..=3), mode())
+            .prop_map(|(ids, mode)| json!({ "media": ids, "mode": mode })),
+    ]
+    .boxed();
+    let invalid = prop_oneof![
+        mode().prop_map(|mode| json!({ "media": [], "mode": mode })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id], "mode": "off" })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id], "mode": "never" })),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// `project.collect` and its estimate: a destination no test writes media into (the
+/// harness's documents name files that do not exist, so a collect with media is refused).
+fn project_collect() -> BoxedStrategy<Value> {
+    let valid = (
+        option::of(select(vec!["copy_all", "copy_external_only"])),
+        option::of(any::<bool>()),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|(mode, trim, generated)| {
+            json!({"dest": "/collect/out", "mode": mode, "trim_unused": trim,
+                   "include_generated": generated})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"dest": "collect/relative"})),
+        Just(json!({"dest": "/collect/out", "mode": "everything"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// `project.archive`: like a collect, nothing is written (the harness's project write writes
+/// nothing, so the job ends before it makes a file).
+fn project_archive() -> BoxedStrategy<Value> {
+    let valid = (
+        select(vec![
+            ("folder", "/collect/archive"),
+            ("zip", "/collect/archive.zip"),
+        ]),
+        option::of(any::<bool>()),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|((format, dest), trim, generated)| {
+            json!({"dest": dest, "format": format, "trim_unused": trim,
+                   "include_generated": generated})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"dest": "collect/relative", "format": "folder"})),
+        Just(json!({"dest": "/collect/archive", "format": "zip"})),
+        Just(json!({"dest": "/collect/archive.zip", "format": "tar"})),
+        Just(json!({"dest": "/collect/archive"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// The engine's part of a collect in a harness: an unknown amount of free space, no project
+/// anywhere, and a project write that writes nothing.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoDisk;
+
+impl crate::project::collect::CollectHost for NoDisk {
+    fn free_space(&self, _folder: &std::path::Path) -> Option<u64> {
+        None
+    }
+
+    fn holds_project(&self, _folder: &std::path::Path) -> bool {
+        false
+    }
+
+    fn write_project(
+        &self,
+        folder: &std::path::Path,
+        _doc: &Project,
+    ) -> Result<std::path::PathBuf, String> {
+        Ok(folder.join("copy.cutweave"))
+    }
+
+    fn hasher(&self) -> Box<dyn crate::project::collect::ContentHasher> {
+        Box::new(NoHash)
+    }
+}
+
+/// The hasher of [`NoDisk`]: every file hashes to nothing.
+struct NoHash;
+
+impl crate::project::collect::ContentHasher for NoHash {
+    fn update(&mut self, _bytes: &[u8]) {}
+
+    fn finish(self: Box<Self>) -> String {
+        String::new()
+    }
+}
+
+/// `media.set_location`: an asset at a new path, sometimes with the content of another file.
+fn media_set_location(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.media_ids()),
+        0..40_u32,
+        option::weighted(0.3, 0..3_u8),
+    )
+        .prop_map(|(media, n, other)| match other {
+            None => json!({"media": media, "path": format!("/media/moved/{n}.mp4")}),
+            Some(kind) => {
+                let (path, probed) = probed_file(n, kind, 90, true);
+                json!({"media": media, "path": path, "probe": probed.probe,
+                       "content_hash": probed.content_hash})
+            }
+        })
+        .boxed();
+    let invalid = one_of(p.media_ids())
+        .prop_flat_map(|media| {
+            prop_oneof![
+                Just(json!({"media": media.clone(), "path": "moved/relative.mp4"})),
+                Just(json!({"media": media, "path": "/media/moved/a.mp4",
+                            "content_hash": "has space"})),
+            ]
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `media.relink`: an asset and one of the files the harness's disk holds, or one it does not.
+fn media_relink(p: &Pools) -> BoxedStrategy<Value> {
+    let path = prop_oneof![
+        8 => select(IMPORT_PATHS.to_vec()),
+        1 => Just(BROKEN_IMPORT_PATH),
+        1 => Just("/import/missing.mp4"),
+    ];
+    let valid = (one_of(p.media_ids()), path)
+        .prop_map(|(media, path)| json!({"media": media, "path": path}))
+        .boxed();
+    let invalid = one_of(p.media_ids())
+        .prop_map(|media| json!({"media": media, "path": "import/relative.mp4"}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `media.relink_folder`: the folder of [`IMPORT_PATHS`], for every missing asset or a few.
+fn media_relink_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let media = option::weighted(0.3, vec(one_of(p.media_ids()), 1..=3));
+    let valid = (media, option::of(any::<bool>()))
+        .prop_map(|(media, recursive)| match media {
+            None => json!({"folder": "/import", "recursive": recursive}),
+            Some(media) => json!({"folder": "/import", "recursive": recursive, "media": media}),
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"folder": "import"})),
+        Just(json!({"folder": "/not-a-folder"})),
+        Just(json!({"folder": "/import", "media": []})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// The disk a harness gives the relink commands: the files [`fake_probe`] knows.
+#[must_use]
+pub fn fake_files() -> crate::media::MemoryFiles {
+    IMPORT_PATHS
+        .iter()
+        .filter(|p| p.starts_with('/'))
+        .fold(crate::media::MemoryFiles::new(), |files, path| {
+            files.with_file(path)
+        })
 }
 
 // ----- sequences -----------------------------------------------------------------------------
@@ -1301,6 +2093,33 @@ fn timeline_list_markers(p: &Pools) -> BoxedStrategy<Value> {
     let invalid = fresh::<SequenceId>()
         .prop_map(|sequence| json!({"sequence": sequence}))
         .boxed();
+    mix(valid, invalid)
+}
+
+/// `audio.get_levels`: a sequence, sometimes a range and the limiter switch; sometimes a range
+/// that is empty or past the end, or an unknown sequence.
+fn audio_get_levels(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.seqs.clone()),
+        option::of(select(vec![("0s", "1s"), ("0.5s", "f:30"), ("f:0", "2s")])),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|(sequence, range, limiter)| {
+            let mut v = json!({"sequence": sequence, "limiter": limiter});
+            if let Some((start, end)) = range {
+                v["in"] = json!(start);
+                v["out"] = json!(end);
+            }
+            v
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        fresh::<SequenceId>().prop_map(|sequence| json!({"sequence": sequence})),
+        one_of(p.seqs.clone())
+            .prop_map(|sequence| json!({"sequence": sequence, "in": "2s", "out": "1s"})),
+        one_of(p.seqs.clone()).prop_map(|sequence| json!({"sequence": sequence, "out": "99999s"})),
+    ]
+    .boxed();
     mix(valid, invalid)
 }
 
@@ -2947,13 +3766,14 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         ])),
         option::of(any::<bool>()),
         option::of(select(vec!["rename", "overwrite", "fail"])),
+        option::of(any::<bool>()),
         option::weighted(0.4, advanced_block()),
     )
         .prop_map(
-            move |(sequence, range, preset, hw, overwrite, collision, advanced)| {
+            move |(sequence, range, preset, hw, overwrite, collision, allow_offline, advanced)| {
                 json!({"sequence": sequence, "path": to, "range": range, "preset": preset,
                        "hw": hw, "overwrite": overwrite, "collision": collision,
-                       "advanced": advanced})
+                       "allow_offline": allow_offline, "advanced": advanced})
             },
         )
         .boxed();
@@ -3178,6 +3998,7 @@ pub fn export_queue(jobs: &JobManager) -> cutweave_jobs::ExportQueue<ExportPlan>
         sequence: SequenceId::from_u128(1),
         path: std::env::temp_dir().join(EXPORT_FILE_NAME),
         overwrite: true,
+        allow_offline: false,
         start: cutweave_model::Time::ZERO,
         end: cutweave_model::Time::from_secs(1).unwrap_or(cutweave_model::Time::ZERO),
         width: 64,

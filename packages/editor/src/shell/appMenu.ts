@@ -28,6 +28,8 @@ export type AppCommand =
   | "save"
   | "saveAs"
   | "export"
+  | "collect"
+  | "archive"
   | "quit"
   | "undo"
   | "redo"
@@ -60,6 +62,8 @@ export const COMMAND_IDS: Readonly<Record<AppCommand, string>> = {
   save: "project.save",
   saveAs: "project.save_as",
   export: "export.start",
+  collect: "project.collect",
+  archive: "project.archive",
   quit: "app.quit",
   undo: "edit.undo",
   redo: "edit.redo",
@@ -279,6 +283,8 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
     command("saveAs", t("menu.saveAs"), live && !recovering),
     sep("file-2"),
     command("export", t("menu.export"), state.exportAvailable && live),
+    command("collect", t("menu.collect"), live && !recovering),
+    command("archive", t("menu.archive"), live && !recovering),
     sep("file-3"),
     // App preferences (the theme); the engine need not be connected.
     command("settings", t("menu.settings"), true),

@@ -6,12 +6,14 @@
 // All media (path captions, matching folders first) and in This folder; delete Interviews with
 // Keep media (through its context menu) and see its contents lifted; Ctrl+Z brings the folder
 // back; save, relaunch and reopen: the folders are there, and the bin opens where it was left.
+// On the way (WP-2F.06c) the bin's sidebar shows the folder tree, and a clip dragged onto a
+// folder's row there moves into that folder. Collections are flow F60.
 // A second test (WP-2F.09) imports an OS folder: Import folder… (the OS picker is stubbed) mirrors
 // its directories inside the open folder, says what it skipped, is one undo step, adds nothing
 // the second time, and with "Keep folder structure when importing folders" off lands flat. An OS
 // folder dragged in from the file manager is not driven here (Playwright cannot start an
 // OS-level drag, and the app gets no test hook); its drop path is covered in Vitest. Tags are
-// WP-2F.06 and extend this flow later.
+// flow F59 and collections flow F60.
 import { appendFileSync, copyFileSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
@@ -22,8 +24,10 @@ import {
   createProject,
   DEMO_FILES,
   dirtyDot,
+  dragTileToSidebar,
   editorCaughtUp,
   hasRealEngine,
+  hideBinSidebar,
   importWithButton,
   launchFlowApp,
   mediaCards,
@@ -33,6 +37,7 @@ import {
   profileDir,
   removeDir,
   shortcut,
+  showBinSidebar,
   snapshot,
   toast,
   type Workspace,
@@ -48,6 +53,8 @@ const crumbs = (page: Page) => page.getByRole("navigation", { name: "Media folde
 const crumb = (page: Page, name: string) => crumbs(page).getByRole("button", { name });
 const nameField = (page: Page) => page.getByRole("textbox", { name: "Folder name" });
 const sortedNames = async (page: Page) => (await names(page)).sort();
+const toolbarUndo = (page: Page): Locator =>
+  page.getByRole("toolbar", { name: "Project actions" }).getByRole("button", { name: /^Undo/ });
 
 /**
  * A copy of a demo file at `dest`, made unique by a few bytes at its end (the engine tells files
@@ -193,6 +200,31 @@ test.describe("F22 organize media in folders", () => {
       await expect(tile(page, "interview.mp4")).toBeVisible();
       await expect(crumb(page, "Media")).toHaveAttribute("aria-current", "page");
 
+      // The sidebar's folder tree (WP-2F.06c): the folders with their subfolders, the open place
+      // marked. A clip dragged onto a folder's row moves there, as onto the breadcrumb.
+      const side = await showBinSidebar(page);
+      const tree = side.getByRole("tree", { name: "Folders" });
+      await expect(tree.getByRole("treeitem")).toHaveText(["All media", "Interviews", "Day one"]);
+      await expect(tree.getByRole("treeitem", { name: "All media" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await snapshot(page, info, "sidebar folder tree");
+      await dragTileToSidebar(
+        tile(page, "music.wav"),
+        tree.getByRole("treeitem", { name: "Day one" }),
+      );
+      await expect(tile(page, "music.wav")).toBeHidden();
+      await expect(toolbarUndo(page)).toHaveAccessibleName("Undo Move media");
+      // A click on the row opens that folder: the clip is in it.
+      await (await showBinSidebar(page)).getByRole("treeitem", { name: "Day one" }).click();
+      await expect(crumb(page, "Day one")).toHaveAttribute("aria-current", "page");
+      await expect(tile(page, "music.wav")).toBeVisible();
+      await expect(mediaCards(page)).toHaveCount(3);
+      await (await showBinSidebar(page)).getByRole("treeitem", { name: "All media" }).click();
+      await expect(crumb(page, "Media")).toHaveAttribute("aria-current", "page");
+      await hideBinSidebar(page);
+
       // Search in All media: results are flat with the path under each name, and a folder whose
       // name matches comes first.
       const search = page.getByRole("searchbox", { name: "Search media" });
@@ -224,7 +256,7 @@ test.describe("F22 organize media in folders", () => {
       await snapshot(page, info, "folder menu");
       await folderMenu.getByRole("menuitem", { name: /^Delete folder/ }).click();
       const dialog = page.getByRole("dialog");
-      await expect(dialog).toContainText("Delete “Interviews” and its 2 media?");
+      await expect(dialog).toContainText("Delete “Interviews” and its 3 media?");
       await snapshot(page, info, "delete folder dialog");
       await dialog.getByRole("button", { name: "Keep media" }).click();
       await expect(dialog).toBeHidden();

@@ -23,6 +23,7 @@ export const INSPECTOR_SECTIONS = [
   "audio",
   "layout",
   "media",
+  "organize",
   "project",
   "sequence",
 ] as const;

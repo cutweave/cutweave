@@ -540,6 +540,35 @@ fn occluded_layers_are_never_decoded() {
     }
 }
 
+/// WP-2F.03c: the GPU draws the "media offline" slate for a layer whose file is gone, exactly
+/// as the CPU reference does (and so `render.frame` and exports).
+#[test]
+fn offline_media_renders_the_slate_like_the_cpu_reference() {
+    use crate::slate;
+    let _serial = serial();
+    let Some(mut c) = compositor() else { return };
+    let src = sources().with_offline(MediaId::from_u128(999));
+    let (w, h) = (slate::WIDTH, slate::HEIGHT);
+    let t = Target::rgba8(w, h);
+    // Full frame, 1:1: the output is the slate itself.
+    let full = scene(w, h, Color::rgb(200, 10, 10), vec![layer(1, 999, (w, h))]);
+    let f = c.render(&full, &src, t).unwrap();
+    assert_eq!(f.missing.len(), 1);
+    assert!(matches!(f.missing[0].1, crate::FrameError::Offline(_)));
+    let cmp = compare(f.image().unwrap(), &slate::image(), OutputTransfer::Srgb);
+    assert!(cmp.max_abs_diff <= 1, "{cmp}");
+    // Placed and scaled like the clip: half size, over another layer.
+    let mut pip = layer(2, 999, (w, h));
+    pip.transform.scale = Vec2::new(0.5, 0.5);
+    pip.transform.position = Vec2::new(0.2, -0.1);
+    pip.opacity = 0.8;
+    let stacked = scene(w, h, Color::BLACK, vec![layer(1, 10, (w, h)), pip]);
+    let got = c.render(&stacked, &src, t).unwrap();
+    let want = cpu(&stacked, &src, t);
+    let cmp = compare(got.image().unwrap(), &want, OutputTransfer::Srgb);
+    assert!(cmp.passes_reference(), "{cmp}");
+}
+
 #[test]
 fn missing_media_renders_the_rest_and_reports_the_item() {
     let _serial = serial();
@@ -759,5 +788,53 @@ fn informal_timings() {
                 );
             }
         }
+    }
+}
+
+/// WP-2F.05a: a large still (a 12-megapixel photo, transparent, taken with the camera turned)
+/// is uploaded and converted once; every later frame of its clip reuses the cached texture, so
+/// scrubbing or playing across a photo costs a draw, not a 48 MB upload.
+#[test]
+fn a_large_still_is_uploaded_once_and_reused_for_every_frame_of_its_clip() {
+    let _serial = serial();
+    let Some(mut c) = compositor() else { return };
+    let media = MediaId::from_u128(40);
+    let src = SyntheticSource::new().with(
+        media,
+        TestCard {
+            alpha: Alpha::RampX,
+            ..TestCard::new(
+                4000,
+                3000,
+                Pattern::ColorBars,
+                PixelFormat::Rgba8,
+                ColorTags::default(),
+            )
+        },
+    );
+    let mut photo = layer(1, 40, (4000, 3000));
+    photo.request.still = true;
+    photo.request.rotation = 90;
+    let at = |frame: i64| SceneDescription {
+        time: FrameRate::FPS_24.frame_to_time(frame).unwrap(),
+        ..scene(W, H, Color::rgb(30, 60, 90), vec![photo.clone()])
+    };
+    let target = Target::rgba8(W, H);
+    let first = c.render(&at(0), &src, target).unwrap();
+    assert_eq!(first.stats.decodes_run, 1, "{:?}", first.stats);
+    let first_image = first.into_image().unwrap();
+    // The picture is there, over the background (the left edge of the card is transparent,
+    // which the quarter turn puts at the top).
+    assert_ne!(first_image.pixel(W / 2, H - 4), [30, 60, 90, 255]);
+    for frame in [1, 2, 60, 119] {
+        let next = c.render(&at(frame), &src, target).unwrap();
+        assert_eq!(
+            (next.stats.decodes_run, next.stats.cache_hits),
+            (0, 1),
+            "frame {frame}: {:?}",
+            next.stats
+        );
+        assert_eq!(next.stats.textures_created, 0, "frame {frame}");
+        assert_eq!(next.into_image().unwrap(), first_image, "frame {frame}");
     }
 }

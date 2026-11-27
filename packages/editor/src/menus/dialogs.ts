@@ -5,6 +5,7 @@
 // what to do with a folder's contents and where to move tiles to. One
 // store, one component (`MenuDialogs.tsx`); the choice only opens it, and the dialog sends the one
 // command when the person agrees.
+import type { MediaFilter } from "@cutweave/protocol";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 
@@ -30,6 +31,25 @@ export type MenuDialog =
   | { readonly kind: "paste-attributes"; readonly from: string; readonly to: readonly string[] }
   // Replace clip… (WP-2A.11): which media takes the clip's place, and how long the clip stays.
   | { readonly kind: "replace-clip"; readonly item: string }
+  // Import as slideshow… (WP-2F.05d): seconds per picture and the order, for the files chosen.
+  | { readonly kind: "slideshow"; readonly files: readonly string[] }
+  // Duration… on an image card (#215): the length the next insert of that picture uses.
+  | { readonly kind: "insert-duration"; readonly media: string; readonly name: string }
+  // Add tag… on a bin card (WP-2F.06b): the tag editor for the assets chosen.
+  | { readonly kind: "tags"; readonly media: readonly string[] }
+  // Set rating from the command palette (WP-2F.06b): the stars for the assets chosen.
+  | { readonly kind: "rating"; readonly media: readonly string[] }
+  // New collection… and Save as smart collection… (WP-2F.06c): a name; with `filter` the
+  // collection is smart, else it is manual and `media` are its first members.
+  | {
+      readonly kind: "new-collection";
+      readonly media: readonly string[];
+      readonly filter: MediaFilter | null;
+    }
+  // Add to collection… from the command palette: which manual collection the assets go onto.
+  | { readonly kind: "add-to-collection"; readonly media: readonly string[] }
+  // Deleting a collection that lists something: a yes (the media stay).
+  | { readonly kind: "delete-collection"; readonly collection: string }
   // The folder picker of "Move to…" for the assets and folders chosen.
   | {
       readonly kind: "move-to";

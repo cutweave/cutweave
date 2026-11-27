@@ -1,0 +1,44 @@
+{
+  "description": "Slideshows and frames for the bin (WP-2F.05d, ADR-0035): media.import_images_as_slideshow imports pictures as stills and places them one after the other in one undo step (by name, a given length, a picture already in the project reused, a video left out and reported; then at the end of the track with the project's still duration), refuses a request without a picture or onto an audio track, and one undo removes a whole slideshow. media.import_frame is refused while the document has no project folder yet (it was never saved), on every surface alike.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Slideshow" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "b.png" }] } },
+    {
+      "cmd": "media.import_images_as_slideshow",
+      "args": {
+        "files": [{ "$media": "c.png" }, { "$media": "a.png" }, { "$media": "b.png" }, { "$media": "clip.mp4" }],
+        "per_image": "2s",
+        "order": "name"
+      }
+    },
+    {
+      "cmd": "media.import_images_as_slideshow",
+      "args": {
+        "files": [{ "$media": "img10.png" }, { "$media": "img2.png" }],
+        "order": "name_numeric",
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" }
+      }
+    },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" } } },
+    {
+      "cmd": "media.import_images_as_slideshow",
+      "args": { "files": [{ "$media": "clip.mp4" }, { "$media": "notes.txt" }] },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "media.import_images_as_slideshow",
+      "args": { "files": [{ "$media": "a.png" }], "track": { "$ref": "steps[0].output.audio_track" } },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "media.import_images_as_slideshow",
+      "args": { "files": [{ "$media": "a.png" }], "per_image": "1s", "at": "1s", "track": { "$ref": "steps[0].output.video_track" } },
+      "expect": { "error": "invalid" }
+    },
+    { "cmd": "media.import_frame", "args": { "source": "sequence", "at": "1s" }, "expect": { "error": "invalid" } },
+    { "cmd": "media.import_frame", "args": { "source": "sequence", "at": 0, "name": "  " }, "expect": { "error": "invalid" } },
+    { "cmd": "edit.undo" },
+    { "cmd": "media.list" }
+  ]
+}

@@ -14,6 +14,7 @@
 import { type ProjectStatus, RpcError } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import { activeDocument } from "../shell/windows.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
@@ -318,7 +319,13 @@ export class ProjectController {
           project: ProjectStatus;
         };
         this.#applyStatus(closed.project);
-        await this.#call("project.new", { name: target.name });
+        // Settings > Editing > Still image duration becomes the project's own (ADR-0035), and
+        // Settings > Media and import > Proxies for new projects its proxy policy (ADR-0027).
+        await this.#call("project.new", {
+          name: target.name,
+          still_duration: `${preferences.get("editing.still_duration")}s`,
+          proxy_policy: preferences.get("media.proxy_policy"),
+        });
         const saved = (await this.#call("project.save_as", { path: target.path })) as {
           path: string;
         };
@@ -404,17 +411,7 @@ export class ProjectController {
     migrated_from: number | null;
   }): void {
     const { t, toasts } = this.#deps;
-    const count = out.missing_media.length;
-    if (count > 0) {
-      toasts.getState().push({
-        tone: "warning",
-        title: t("projectUi.missingMediaTitle"),
-        message:
-          count === 1
-            ? t("projectUi.missingMediaOne")
-            : t("projectUi.missingMedia", { count: String(count) }),
-      });
-    }
+    // Missing media: the relink dialog says so (`media/health.ts`, WP-2F.03).
     if (out.migrated_from !== null) {
       toasts.getState().push({
         tone: "info",

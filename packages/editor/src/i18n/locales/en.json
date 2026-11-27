@@ -29,6 +29,8 @@
     "save": "Save",
     "saveAs": "Save as…",
     "export": "Export…",
+    "collect": "Collect files…",
+    "archive": "Archive project…",
     "settings": "Settings…",
     "exit": "Exit",
     "quit": "Quit",
@@ -75,6 +77,7 @@
     "pages": {
       "general": "General",
       "appearance": "Appearance",
+      "editing": "Editing",
       "media": "Media and import",
       "export": "Export",
       "shortcuts": "Keyboard shortcuts",
@@ -168,9 +171,31 @@
         "button": "Forget",
         "none": "None yet"
       },
+      "exportPreset": {
+        "label": "Default preset",
+        "description": "The preset the Export dialog starts at: the one you used last, or always this one.",
+        "keywords": "export, preset, platform, youtube, tiktok, instagram, reels, shorts, format, default",
+        "lastUsed": "The last one used"
+      },
+      "exportLastPreset": {
+        "label": "Last preset used",
+        "description": "The preset of the last export you started from the Export dialog.",
+        "keywords": "export, preset, recent, remembered, forget",
+        "button": "Forget preset",
+        "none": "No export started yet"
+      },
+      "exportFileName": {
+        "label": "File name",
+        "description": "How exported files are named. {project}, {sequence}, {date} and {preset} are filled in; the extension follows the preset.",
+        "keywords": "export, file name, filename, pattern, template, tokens, date, project, sequence",
+        "project": "My project",
+        "sequence": "Main",
+        "example": "Makes {{name}}",
+        "invalid": "A file name cannot hold \\ / : * ? \" < > |"
+      },
       "exportQuality": {
         "label": "Default quality",
-        "description": "The quality the Export dialog starts at. You can change it for one export.",
+        "description": "The quality the Export dialog starts at for the H.264 MP4 1080p preset; other presets start at their own. You can change it for one export.",
         "keywords": "export, bitrate, size, render, video, low, medium, high",
         "low": "Low",
         "medium": "Medium",
@@ -180,6 +205,17 @@
         "label": "Keep folder structure when importing folders",
         "description": "Importing a folder makes a bin folder for each of its folders that holds media. Off puts every file straight into the open folder.",
         "keywords": "import, folder, directory, structure, hierarchy, bin, subfolders, flat"
+      },
+      "copyOnImport": {
+        "label": "Copy imported files into the project folder",
+        "description": "Each file you import is copied into the project's media folder first, so the project keeps working when the original is moved or deleted. The project must be saved first. Undoing an import leaves the copy on disk.",
+        "keywords": "import, copy, collect, consolidate, project folder, media folder, self-contained, portable, external drive"
+      },
+      "stillDuration": {
+        "label": "Still image duration",
+        "description": "How long a photo or other still is when you place it on the timeline. New projects take this value; clips already on a timeline keep their length.",
+        "keywords": "image, photo, picture, still, length, default, seconds, new project",
+        "unit": "seconds"
       },
       "hoverScrub": {
         "label": "Preview video on hover",
@@ -370,6 +406,35 @@
         "since": "Connected at {{time}}",
         "last": "Last: {{command}} at {{time}}",
         "lastNone": "No command yet"
+      },
+      "imageSequenceFps": {
+        "label": "Frame rate for image sequences",
+        "description": "The frame rate a numbered run of pictures gets when you import it as an image sequence. Sequences you have already imported keep theirs.",
+        "keywords": "image sequence, frames, fps, frame rate, numbered pictures, render, time-lapse, png, exr, import",
+        "sequence": "The sequence's frame rate"
+      },
+      "proxiesLimit": {
+        "label": "Proxies",
+        "description": "Smaller copies of video that is slow to scrub. When the limit is reached, the proxies used longest ago are removed; the original files are never touched.",
+        "keywords": "proxy proxies cache limit size disk space storage"
+      },
+      "proxyJobs": {
+        "label": "Proxy jobs at once",
+        "description": "How many proxies are made at the same time. More finishes sooner and uses more of the computer. Only one runs while an export does.",
+        "keywords": "proxy proxies jobs background parallel concurrent cpu"
+      },
+      "proxyPolicy": {
+        "label": "Proxies for new projects",
+        "description": "Which video gets a proxy in a new project. Auto makes one for H.264 and HEVC video that is slow to scrub: larger than 1920 pixels, faster than 60 fps, or 10-bit HEVC.",
+        "keywords": "proxy proxies policy automatic new project scrub",
+        "off": "Off",
+        "auto": "Auto",
+        "all": "All video"
+      },
+      "proxySize": {
+        "label": "Proxy size",
+        "description": "The longest side of a proxy picture, in pixels. Smaller proxies scrub faster and take less space. A new size applies to proxies made from now on.",
+        "keywords": "proxy proxies size resolution 540p 720p 960p"
       }
     },
     "cache": {
@@ -384,7 +449,9 @@
       "cleared": "{{name}} cleared.",
       "clearFailed": "Could not clear {{name}}.",
       "clearedAll": "All caches cleared.",
-      "clearAllFailed": "Could not clear all caches."
+      "clearAllFailed": "Could not clear all caches.",
+      "proxies": "Proxies",
+      "clearProxies": "Clear proxies"
     },
     "performance": {
       "reading": "Reading…",
@@ -414,6 +481,8 @@
       "open": "File menu. Opens a project from disk.",
       "save": "File menu. Saves the project.",
       "saveAs": "File menu. Saves the project under a new name.",
+      "collect": "File menu. Copies the project and all its media into one folder.",
+      "archive": "File menu. Bundles the project, its media and a checked file list into one folder or zip file.",
       "export": "File menu. Opens the Export dialog once the timeline has clips.",
       "settings": "File menu. Opens Settings.",
       "quit": "File menu. Closes Cutweave.",
@@ -672,6 +741,7 @@
     "inspector": "Inspector",
     "timeline": "Timeline",
     "history": "History",
+    "exports": "Exports",
     "close": "Close panel",
     "closeNamed": "Close {{name}} panel"
   },
@@ -741,12 +811,16 @@
       "video": "Video",
       "audio": "Audio",
       "image": "Image",
-      "sequenceRef": "Sequence"
+      "sequenceRef": "Sequence",
+      "imageSequence": "Image sequence"
     },
     "card": {
       "fps": "{{fps}} fps",
       "play": "Play {{name}}",
-      "pause": "Pause {{name}}"
+      "pause": "Pause {{name}}",
+      "used": "Used",
+      "usedTipOne": "On a timeline: 1 clip uses it",
+      "usedTipMany": "On a timeline: {{count}} clips use it"
     },
     "layout": {
       "label": "Media layout",
@@ -776,7 +850,15 @@
       "useAny": "Any",
       "used": "On the timeline",
       "unused": "Not used",
-      "problems": "Only media with problems"
+      "problems": "Only media with problems",
+      "tagsHeading": "Tags",
+      "noTags": "No tags in this project",
+      "tagChip": "Tag: {{tag}}",
+      "ratingHeading": "Rating",
+      "ratingAny": "Any rating",
+      "ratingFrom": "{{count}} stars or more",
+      "ratingFromOne": "1 star or more",
+      "ratingFive": "5 stars"
     },
     "sort": {
       "button": "Sort",
@@ -800,7 +882,10 @@
     "status": {
       "analyzing": "Analyzing",
       "analysisFailed": "Analysis failed",
-      "broken": "Unreadable"
+      "broken": "Unreadable",
+      "offline": "Offline",
+      "changed": "Changed",
+      "incomplete": "{{count}} pictures missing"
     },
     "drop": {
       "title": "Drop to import",
@@ -886,6 +971,167 @@
       "deleteNote": "Keep media lifts everything into the parent folder. Files on disk are never touched, and Undo brings it all back.",
       "deleteAll": "Delete folder and media",
       "deleteKeep": "Keep media"
+    },
+    "sequence": {
+      "offerTitle": "Import as an image sequence?",
+      "offerBody": "You chose {{count}} numbered pictures, {{first}} to {{last}}.",
+      "offerNote": "As an image sequence, the numbered pictures in that folder become one item that plays like video. The files stay where they are.",
+      "asSequence": "Import as image sequence",
+      "asSeparate": "Import as separate pictures",
+      "cancel": "Cancel",
+      "working": "Importing an image sequence",
+      "doneTitle": "Image sequence imported",
+      "doneBody": "{{count}} pictures at {{fps}} fps.",
+      "duplicate": "This sequence was in the project already.",
+      "gapsTitle": "Some pictures are missing",
+      "gapsOne": "1 number in the run has no file. It shows the picture before it.",
+      "gapsMany": "{{count}} numbers in the run have no file. Each shows the picture before it.",
+      "failedTitle": "The image sequence was not imported"
+    },
+    "proxy": {
+      "ready": "Proxy",
+      "generating": "Proxy {{percent}}%",
+      "queued": "Proxy queued",
+      "evicted": "Proxy removed",
+      "incomplete": "Proxy incomplete",
+      "failed": {
+        "badge": "Proxy failed",
+        "generate": "Could not make the proxies",
+        "delete": "Could not delete the proxies"
+      },
+      "tip": {
+        "ready": "A proxy is ready: scrubbing uses this smaller copy. Exports always use the original file.",
+        "generating": "Cutweave is making a smaller copy for smooth scrubbing. You can keep editing.",
+        "queued": "A proxy will be made when the jobs before it finish.",
+        "failed": "The proxy could not be made. Right-click and choose Regenerate proxies to try again.",
+        "failedBecause": "The proxy could not be made: {{message}}. Right-click and choose Regenerate proxies to try again.",
+        "evicted": "The proxy was removed from the cache, so scrubbing uses the original file. Right-click and choose Regenerate proxies to make it again.",
+        "incomplete": "Making the proxy was stopped before the end. Regenerate proxies continues from where it stopped."
+      }
+    },
+    "slideshow": {
+      "title": "Import as slideshow",
+      "body": "{{count}} pictures go onto the timeline one after the other. Undo removes them in one step.",
+      "seconds": "Seconds per picture",
+      "order": "Order",
+      "orderGiven": "As selected",
+      "orderName": "By name",
+      "orderNumber": "By number",
+      "confirm": "Import",
+      "tooFewTitle": "Choose two or more pictures",
+      "tooFewBody": "A slideshow needs at least two pictures. Use Import… for a single one.",
+      "failed": "The slideshow was not imported",
+      "notPicture": "This file is not a still picture, so it was left out of the slideshow.",
+      "doneTitle": "Slideshow imported",
+      "doneBody": "{{count}} pictures are on the timeline."
+    },
+    "frame": {
+      "doneTitle": "Frame added to the media bin",
+      "doneBody": "{{name}} is in the media bin.",
+      "duplicateTitle": "This frame is already in the media bin",
+      "duplicateBody": "{{name}} shows the same picture.",
+      "failed": "The frame was not added"
+    },
+    "tags": {
+      "label": "Tags",
+      "field": "Add tag",
+      "suggestions": "Suggested tags",
+      "remove": "Remove tag {{tag}}",
+      "addToAll": "Add {{tag}} to all {{count}}",
+      "someOf": "{{count}} of {{total}}",
+      "titleOne": "Tags of {{name}}",
+      "titleMany": "Tags of {{count}} items",
+      "bodyMany": "A dashed tag is on only some of them. Every tag you add or remove is one step to undo.",
+      "bodyOne": "Every tag you add or remove is one step to undo.",
+      "done": "Done",
+      "tooLong": "Use 64 characters or fewer.",
+      "control": "A tag is one line, without tabs.",
+      "tooMany": "An item holds 64 tags at most.",
+      "addFailed": "Could not add the tag",
+      "removeFailed": "Could not remove the tag",
+      "onCard": "Tags: {{tags}}",
+      "more": "+{{count}}"
+    },
+    "rating": {
+      "label": "Rating",
+      "starOne": "1 star",
+      "starMany": "{{count}} stars",
+      "failed": "Could not set the rating",
+      "onCard": "Rated {{count}} of 5",
+      "titleOne": "Rating of {{name}}",
+      "titleMany": "Rating of {{count}} items",
+      "body": "Click a star to rate. Click the current star again to clear the rating.",
+      "mixed": "The selected items have different ratings."
+    },
+    "note": {
+      "label": "Note",
+      "placeholder": "Add a note",
+      "count": "{{count}} of 2,000",
+      "tooLong": "A note holds 2,000 characters at most.",
+      "failed": "Could not save the note"
+    },
+    "sidebar": {
+      "label": "Folders and collections",
+      "show": "Show folders and collections",
+      "hide": "Hide folders and collections",
+      "folders": "Folders",
+      "collections": "Collections",
+      "allMedia": "All media"
+    },
+    "collections": {
+      "defaultName": "New collection",
+      "newButton": "New collection",
+      "nameLabel": "Collection name",
+      "kindManual": "collection",
+      "kindSmart": "smart collection",
+      "rowLabelEmpty": "{{name}}, {{kind}}, empty",
+      "rowLabelOne": "{{name}}, {{kind}}, 1 item",
+      "rowLabelMany": "{{name}}, {{kind}}, {{count}} items",
+      "none": "No collections yet. Save a search as a smart collection, or add clips to a new one.",
+      "named": "{{name}}",
+      "createFailed": "Could not create the collection",
+      "renameFailed": "Could not rename {{name}}",
+      "deleteFailed": "Could not delete {{name}}",
+      "addFailed": "Could not add to the collection",
+      "removeFailed": "Could not remove from the collection",
+      "updateFailed": "Could not update the collection",
+      "addedNone": "Already in {{name}}",
+      "addedOne": "Added 1 item to {{name}}",
+      "addedMany": "Added {{count}} items to {{name}}",
+      "updated": "Updated {{name}} from the current filters",
+      "saved": "Saved {{name}}. It is in the sidebar of the media bin.",
+      "reasonInCollection": "Open All media or a folder first",
+      "reasonNoFilter": "Search or set a filter first",
+      "reasonAlreadyIn": "Already in this collection",
+      "sortFixed": "A collection keeps the order its clips were added in",
+      "saveSmart": "Save as smart collection…",
+      "emptyTitle": "This collection is empty",
+      "emptyManual": "Drag clips onto it in the sidebar, or use Add to collection in a clip's menu.",
+      "emptySmart": "No media matches its filter right now.",
+      "newTitle": "New collection",
+      "newBody": "A collection is a list of clips from any folder. Each clip stays in its folder.",
+      "newBodyOne": "The selected item goes into it and stays in its folder.",
+      "newBodyMany": "The {{count}} selected items go into it and stay in their folders.",
+      "smartTitle": "Save as smart collection",
+      "smartBody": "It lists what matches the current search and filters, and stays up to date.",
+      "create": "Create",
+      "save": "Save",
+      "cancel": "Cancel",
+      "taken": "A collection has this name already.",
+      "tooLong": "Use 255 characters or fewer.",
+      "control": "A name is one line, without tabs.",
+      "addTitleOne": "Add 1 item to a collection",
+      "addTitleMany": "Add {{count}} items to a collection",
+      "addBody": "The items stay in their folders.",
+      "addListLabel": "Collections",
+      "addConfirm": "Add",
+      "addNew": "New collection…",
+      "addNone": "There is no collection yet.",
+      "deleteTitle": "Delete the collection {{name}}?",
+      "deleteBodyOne": "It lists 1 item.",
+      "deleteBodyMany": "It lists {{count}} items.",
+      "deleteNote": "The media stay in the project and in their folders. Undo brings the collection back.",
+      "deleteConfirm": "Delete collection"
     }
   },
   "preview": {
@@ -1017,7 +1263,8 @@
         "video": "Video",
         "audio": "Audio",
         "image": "Image",
-        "sequence": "Sequence"
+        "sequence": "Sequence",
+        "imageSequence": "Image sequence"
       },
       "duration": "Duration",
       "resolution": "Resolution",
@@ -1032,7 +1279,8 @@
         "play": "Play {{name}}",
         "pause": "Pause {{name}}"
       },
-      "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up."
+      "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up.",
+      "organize": "Rating, tags and note"
     },
     "groups": {
       "transform": "Transform",
@@ -1244,7 +1492,18 @@
       "open": "Open History…"
     },
     "applyLayout": "Apply layout",
-    "placeLayout": "Place side by side"
+    "placeLayout": "Place side by side",
+    "tagAdd": "Add tag",
+    "tagRemove": "Remove tag",
+    "tagRename": "Rename tag",
+    "rating": "Set rating",
+    "note": "Edit note",
+    "collectionCreate": "New collection",
+    "collectionRename": "Rename collection",
+    "collectionDelete": "Delete collection",
+    "collectionAdd": "Add to collection",
+    "collectionRemove": "Remove from collection",
+    "collectionFilter": "Update smart collection"
   },
   "mathStartup": {
     "versionTitle": "Cutweave can't start: its math module is out of date",
@@ -1317,9 +1576,6 @@
       "title": "Changes restored",
       "body": "{{count}} unsaved edits are back. They are not saved to the project file yet."
     },
-    "missingMedia": "{{count}} media files are offline. Relink them to keep editing.",
-    "missingMediaOne": "1 media file is offline. Relink it to keep editing.",
-    "missingMediaTitle": "Media offline",
     "migratedTitle": "Project updated",
     "migrated": "{{name}} was converted from format {{from}}. Saving writes the new format.",
     "autosaveFailedTitle": "Autosave failed",
@@ -1335,6 +1591,82 @@
       "refused": "{{agent}} tried to open {{name}}, but {{current}} has unsaved changes. Save them, then ask the agent again.",
       "failed": "{{agent}} could not open {{name}}. The engine said: {{message}}"
     }
+  },
+  "relink": {
+    "title": {
+      "none": "All media found",
+      "one": "1 media file is missing",
+      "many": "{{count}} media files are missing"
+    },
+    "hint": "The files were moved, renamed or are on a drive that is not connected. Choose the folder they are in now: Cutweave recognizes them by content, even when they were renamed.",
+    "allFound": "Every file is where the project expects it. Undo puts the old locations back.",
+    "listLabel": "Missing media",
+    "searchFolder": "Search a folder…",
+    "searching": "Searching…",
+    "later": "Not now",
+    "done": "Done",
+    "locateFile": "Choose the file for {{name}}",
+    "result": {
+      "none": "None of the missing files are in that folder.",
+      "one": "Found 1 file.",
+      "many": "Found {{count}} files.",
+      "truncated": "The folder holds more files than one search reads. Search its subfolders one at a time."
+    },
+    "failed": {
+      "folder": "Could not search that folder",
+      "file": "Could not use that file"
+    }
+  },
+  "collect": {
+    "title": "Collect files",
+    "hint": "Copies the project and every media file it uses into one folder that opens on any computer. This project and its files stay as they are.",
+    "name": "Folder name",
+    "location": "Location",
+    "locationNone": "Choose where to put the folder",
+    "choose": "Choose…",
+    "trimUnused": "Only media used on a timeline",
+    "needFolder": "Choose a location and a folder name.",
+    "estimating": "Checking the files…",
+    "estimate": "{{count}} media files, {{size}}.",
+    "estimateOne": "1 media file, {{size}}.",
+    "free": "{{free}} free on that drive.",
+    "noSpace": "Not enough space: the media take {{size}} and that drive has {{free}} free. Choose another location.",
+    "missingOne": "The file of {{name}} is missing. Relink it first.",
+    "missingMany": "{{count}} media files are missing. Relink them first.",
+    "cancel": "Cancel",
+    "start": "Collect",
+    "runningTitle": "Collecting files",
+    "doneTitle": "Files collected",
+    "doneBody": "The copy is in {{path}}.",
+    "cancelledBody": "Stopped. The files copied so far are kept: Continue picks up where it stopped.",
+    "hide": "Hide",
+    "close": "Close",
+    "continue": "Continue",
+    "reveal": "Show the folder",
+    "jobLabel": "Collect progress",
+    "jobName": "Collecting {{name}}"
+  },
+  "archive": {
+    "title": "Archive project",
+    "hint": "Bundles the project, every media file it uses and a list of all files with their checksums (archive.json) into one folder or one zip file, to store or hand over. This project and its files stay as they are.",
+    "name": "Archive name",
+    "locationNone": "Choose where to put the archive",
+    "format": "Format",
+    "formatFolder": "Folder",
+    "formatZip": "Zip file",
+    "needPlace": "Choose a location and a name.",
+    "start": "Archive",
+    "runningTitle": "Archiving the project",
+    "doneTitle": "Project archived",
+    "doneBodyFolder": "The archive is the folder {{path}}. Every file was checked against the list in archive.json.",
+    "doneBodyZip": "The archive is the file {{path}}. Every file in it was checked against the list in archive.json.",
+    "cancelledBodyFolder": "Stopped. The files copied so far are kept: Continue picks up where it stopped.",
+    "cancelledBodyZip": "Stopped. No zip file was made.",
+    "again": "Start again",
+    "revealFolder": "Show the folder",
+    "revealFile": "Show the file",
+    "jobLabel": "Archive progress",
+    "jobName": "Archiving {{name}}"
   },
   "timeline": {
     "toolbarLabel": "Timeline tools",
@@ -1454,13 +1786,55 @@
   },
   "export": {
     "title": "Export video",
-    "description": "Writes the whole timeline to one MP4 file.",
+    "description": "Choose a preset, what to export and where the file goes.",
+    "loading": "Loading the presets…",
     "output": "Save to",
     "outputPlaceholder": "Choose where to save the file",
     "choose": "Choose…",
     "preset": "Preset",
-    "presetValue": "MP4 H.264 1080p",
-    "sequence": "The timeline is {{width}} × {{height}} at {{fps}} fps. The preset fits it into 1080p and never enlarges it.",
+    "presets": {
+      "match": "For this {{ratio}} sequence",
+      "general": "General",
+      "user": "Your presets",
+      "unavailable": "{{name}} (not in this build)"
+    },
+    "summary": {
+      "label": "What the file will be",
+      "size": "{{width}} × {{height}}",
+      "fps": "{{fps}} fps",
+      "length": "Length {{length}}",
+      "about": "about {{size}}",
+      "upTo": "up to about {{size}}",
+      "noEstimate": "size depends on the picture"
+    },
+    "warnings": {
+      "label": "Platform notes",
+      "aspect": "Fits with bars: {{preset}} is {{presetRatio}} and this sequence is {{seqRatio}}. The file keeps the sequence's shape at {{width}} × {{height}}, so players show it with bars.",
+      "duration": "{{platform}} takes videos up to {{limit}}; this export is {{length}}. You can still export it.",
+      "size": "The file would be about {{size}}; {{platform}} takes files up to {{limit}}.",
+      "fps": "{{platform}} takes at most {{max}} fps, so the file uses {{fps}} fps.",
+      "software": "An advanced setting needs the software encoder, so this export does not use the hardware one."
+    },
+    "files": "{{count}} files",
+    "range": {
+      "label": "Export",
+      "sequence": "Whole sequence",
+      "inOut": "In to out",
+      "custom": "Custom",
+      "markers": "Markers",
+      "start": "Start",
+      "end": "End",
+      "pairs": "Each file",
+      "duration": "Marker's length",
+      "toNext": "To the next marker",
+      "makesNone": "No marker makes a file this way.",
+      "makesOne": "Makes 1 file.",
+      "makesMany": "Makes {{count}} files, one per marker.",
+      "template": "Each file's name fills in {seq}, {marker_label} and {n}.",
+      "folder": "A folder: the files are named {seq}_{marker_label}_{n}.",
+      "noInOut": "To export in to out, set in and out points on the timeline first.",
+      "noMarkers": "To export by markers, add markers first."
+    },
     "width": "Width",
     "height": "Height",
     "fps": "Frame rate",
@@ -1469,8 +1843,48 @@
     "low": "Low",
     "medium": "Medium",
     "high": "High",
-    "range": "Range",
-    "rangeAll": "Entire timeline",
+    "bitrate": "Bitrate",
+    "bitrateValue": "{{mbps}} Mb/s, set by the preset",
+    "advanced": "Advanced",
+    "options": {
+      "title": "Encoder settings",
+      "reset": "Use the preset's",
+      "video": "Video",
+      "rateControl": "Rate control",
+      "mode": "Mode",
+      "crf": "Quality (CRF)",
+      "bitrate": "Bitrate",
+      "maxBitrate": "Peak bitrate",
+      "buffer": "Buffer",
+      "gop": "Keyframes",
+      "keyint": "Interval (frames)",
+      "keyintSeconds": "Interval (seconds)",
+      "keyintMin": "Shortest interval",
+      "bframes": "B-frames",
+      "closedGop": "Closed GOP",
+      "scenecut": "Keyframe at scene cuts",
+      "speed": "Encoder speed",
+      "tune": "Tune",
+      "profile": "Profile",
+      "level": "Level",
+      "pixFmt": "Pixel format",
+      "threads": "Threads",
+      "color": "Color tags",
+      "primaries": "Primaries",
+      "transfer": "Transfer",
+      "matrix": "Matrix",
+      "colorRange": "Range",
+      "tagOnly": "Tag only",
+      "audio": "Audio",
+      "audioCodec": "Codec",
+      "audioBitrate": "Bitrate",
+      "sampleRate": "Sample rate",
+      "channels": "Channels",
+      "mono": "Mono",
+      "stereo": "Stereo",
+      "limited": "Limited",
+      "full": "Full"
+    },
     "hardware": "Use hardware encoder",
     "hardwareChecking": "Checking this computer's encoders…",
     "hardwareFound": "Found {{names}}. Faster than software.",
@@ -1478,22 +1892,45 @@
     "hardwareAuto": "Uses a hardware encoder when this computer has one.",
     "hardwareOff": "Software only: slower, works on any computer.",
     "start": "Export",
+    "addToQueue": "Add to queue",
     "starting": "Starting…",
     "cancel": "Cancel",
     "errors": {
       "path": "Choose where to save the file.",
       "pathFull": "Type the full path of the file, or use Choose…",
-      "pathExtension": "The file name must end in .mp4.",
+      "pathExtension": "The file name must end in {{ext}}.",
       "width": "Width must be an even number from 16 to 8192.",
       "height": "Height must be an even number from 16 to 8192.",
       "fps": "Frame rate must be above 0 and at most 240.",
+      "range": "Type a start and an end inside the sequence, the end after the start.",
+      "noRegions": "No marker makes a file this way. Choose the other kind of marker range.",
+      "empty": "There is nothing to export in this range.",
+      "unsupported": "This build cannot export this preset yet: {{reason}}",
+      "refused": "{{message}}",
+      "presets": "The engine did not list its presets. Close this and try again.",
+      "engine": "The engine is not available.",
       "start": "The export did not start: {{message}}"
     },
     "exists": {
+      "label": "If the file exists",
+      "ask": "Ask first",
+      "rename": "Keep both (add a number)",
+      "overwrite": "Replace it",
       "title": "Replace {{name}}?",
       "body": "A file with that name is already there. Replacing it cannot be undone.",
       "back": "Back",
       "replace": "Replace"
+    },
+    "offline": {
+      "one": "{{name}} is missing. Its clips would show a \"Media offline\" card in the video and stay silent.",
+      "many": "{{count}} media files are missing. Their clips would show a \"Media offline\" card in the video and stay silent.",
+      "anyway": "Export anyway"
+    },
+    "queued": {
+      "title": "Added to the export queue",
+      "message": "{{name}} exports when its turn comes.",
+      "sized": "{{name}} exports when its turn comes (about {{size}}).",
+      "show": "Show queue"
     },
     "progress": {
       "title": "Exporting {{name}}",
@@ -1501,6 +1938,7 @@
       "starting": "Starting…",
       "fps": "{{fps}} fps",
       "eta": "about {{eta}} left",
+      "estimate": "The file will be about {{size}}.",
       "hint": "You can hide this and keep editing. The export continues.",
       "hide": "Hide",
       "cancel": "Cancel export",
@@ -1513,6 +1951,7 @@
     },
     "done": {
       "title": "Export complete",
+      "files": "{{count}} files, the first {{name}}",
       "reveal": "Reveal in folder"
     },
     "failed": {
@@ -1526,6 +1965,44 @@
     "lost": {
       "title": "Export stopped",
       "message": "The engine restarted. Start the export again."
+    }
+  },
+  "exportQueue": {
+    "list": "Exports",
+    "count": "{{count}} waiting",
+    "pausedCount": "Paused, {{count}} waiting",
+    "pause": "Pause the queue",
+    "resume": "Resume the queue",
+    "clearFinished": "Remove finished exports from the list",
+    "unavailable": "The engine did not list the export queue.",
+    "emptyTitle": "No exports yet",
+    "emptyBody": "Exports you start or add to the queue show here, with their progress.",
+    "row": "{{name}}, {{state}}",
+    "progress": "Progress of {{name}}",
+    "error": "Failed: {{message}}",
+    "failed": "The export queue did not change",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "cancel": "Cancel export",
+    "retry": "Retry export",
+    "reveal": "Reveal file",
+    "remove": "Remove from list",
+    "state": {
+      "queued": "Waiting",
+      "running": "Exporting",
+      "succeeded": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "menu": {
+      "name": "Export actions for {{name}}",
+      "copyError": "Copy error",
+      "notRunning": "This export is not waiting or running",
+      "notFailed": "Only a failed or cancelled export can run again",
+      "cannotMove": "Only a waiting export moves, and not past the end",
+      "notDone": "The file is written when the export is done",
+      "noError": "This export has no error",
+      "notFinished": "Cancel the export first"
     }
   },
   "agentUi": {
@@ -1575,7 +2052,8 @@
       "notNumber": "Enter a number.",
       "notWhole": "Enter a whole number.",
       "notJson": "Enter valid JSON."
-    }
+    },
+    "needMedia": "Select media in the bin first."
   },
   "contextMenu": {
     "failed": "That did not work",
@@ -1630,6 +2108,10 @@
       "onlyOneToast": "No other notices",
       "layoutAssets": "Select 2 to 4 videos or images",
       "layoutSwap": "Apply a layout to the two clips first",
+      "noProxyMedia": "Only video has proxies",
+      "noProxyToDelete": "There is no proxy to delete",
+      "oneImage": "Select one picture",
+      "tooManyItems": "Select 256 items or fewer",
       "noInOut": "Set an in and out point first",
       "outAtStart": "The out point cannot be at the very start",
       "trackAtTop": "Already the top track",
@@ -1669,6 +2151,14 @@
       "viewSelect": "Select",
       "viewSetPlayhead": "Move playhead here",
       "itemApplyLayout": "Apply layout",
+      "mediaImportFrame": "Add frame to media bin",
+      "mediaImportImagesAsSlideshow": "Import as slideshow…",
+      "mediaSetProxyMode": "Set proxy mode",
+      "mediaAddTags": "Add tag…",
+      "mediaSetRating": "Set rating",
+      "mediaCreateCollection": "New collection…",
+      "mediaAddToCollection": "Add to collection…",
+      "mediaRemoveFromCollection": "Remove from collection",
       "timelineRippleDelete": "Ripple delete",
       "timelineRippleDeleteMany": "Ripple delete {{count}} clips",
       "timelineAddMarker": "Add marker",
@@ -1715,6 +2205,7 @@
       "history": "Undo and redo actions",
       "toast": "Notice actions",
       "engine": "Engine actions",
+      "binCollection": "Collection actions for {{name}}",
       "marker": "Marker actions for {{name}}"
     },
     "item": {
@@ -1753,6 +2244,7 @@
       "copyDiagnostics": "Copy diagnostics",
       "copySettingKey": "Copy setting key",
       "revealFile": "Reveal file",
+      "relink": "Relink…",
       "revealExplorer": "Reveal in Explorer",
       "revealFinder": "Reveal in Finder",
       "revealFiles": "Reveal in file manager",
@@ -1816,6 +2308,23 @@
       "swapLayout": "Swap",
       "placeSideBySide": "Place side by side",
       "placeAs": "Place as",
+      "regenerateProxies": "Regenerate proxies",
+      "deleteProxies": "Delete proxies",
+      "insertDuration": "Duration…",
+      "proxy": "Proxy",
+      "proxyAuto": "Auto",
+      "proxyAlways": "Always",
+      "proxyNever": "Never",
+      "addTag": "Add tag…",
+      "setRating": "Set rating",
+      "ratingNone": "None",
+      "addToCollection": "Add to collection",
+      "newCollection": "New collection…",
+      "saveSmartCollection": "Save as smart collection…",
+      "openCollection": "Open",
+      "renameCollection": "Rename",
+      "updateCollection": "Update from current filters",
+      "deleteCollection": "Delete collection…",
       "addMarkerHere": "Add marker here",
       "addMarkerAtPlayhead": "Add marker at playhead",
       "setInHere": "Set in point here",
@@ -1868,7 +2377,13 @@
         "flip": "Flip",
         "compositing": "Opacity and blend mode",
         "audio": "Volume, pan and fades"
-      }
+      },
+      "insertDurationTitle": "Duration of {{name}}",
+      "insertDurationBody": "How long this picture is the next time you put it on the timeline.",
+      "insertDurationSeconds": "Seconds",
+      "insertDurationSet": "Set duration",
+      "insertDurationDefault": "Use the project’s duration",
+      "insertDurationNote": "Clips already on the timeline keep their length. The choice lasts until you close Cutweave."
     },
     "diagnostics": {
       "connection": "Engine connection",

@@ -49,6 +49,22 @@ const GIB = 1_073_741_824;
 export const THUMBNAIL_LIMITS = [512 * MIB, 1 * GIB, 2 * GIB, 5 * GIB, 10 * GIB, 25 * GIB] as const;
 /** "Waveforms" cache limits, in bytes: 128 MiB to 2 GiB. */
 export const WAVEFORM_LIMITS = [128 * MIB, 256 * MIB, 512 * MIB, 1 * GIB, 2 * GIB] as const;
+/** "Proxies" cache limits (WP-2F.03b), in bytes: 10 GiB to 500 GiB. */
+export const PROXY_LIMITS = [
+  10 * GIB,
+  25 * GIB,
+  50 * GIB,
+  100 * GIB,
+  250 * GIB,
+  500 * GIB,
+] as const;
+/** "Proxy jobs at once" (WP-2F.03b). */
+export const PROXY_JOB_CHOICES = [1, 2, 3, 4] as const;
+/** "Proxy size" (WP-2F.03b): the longest side of a proxy picture, in pixels. */
+export const PROXY_SIZES = [540, 720, 960] as const;
+/** "Proxies for new projects" (WP-2F.03b, ADR-0027): never, for video that is slow to scrub, always. */
+export const PROXY_POLICIES = ["off", "auto", "all"] as const;
+export type ProxyPolicyChoice = (typeof PROXY_POLICIES)[number];
 /** "Memory for decoded frames": 0 is Auto (the smaller of 1 GiB and a quarter of the RAM). */
 export const FRAME_MEMORY_CHOICES = [0, 512 * MIB, 1 * GIB, 2 * GIB, 4 * GIB] as const;
 /** "Hardware decoding". */
@@ -64,6 +80,24 @@ export type ClientProfile = (typeof CLIENT_PROFILES)[number];
 
 /** The most folders "Folders agents can use" holds (the engine takes no more, WP-1J.05). */
 export const MAX_AGENT_FOLDERS = 64;
+
+/**
+ * The frame rate a new image sequence gets (WP-2F.05c, ADR-0035): the frame rate of the sequence
+ * the editor shows, or a fixed one. Stored on the asset at import; changing the setting never
+ * changes an imported sequence.
+ */
+export const IMAGE_SEQUENCE_FPS_CHOICES = [
+  "sequence",
+  "23.976",
+  "24",
+  "25",
+  "29.97",
+  "30",
+  "50",
+  "59.94",
+  "60",
+] as const;
+export type ImageSequenceFps = (typeof IMAGE_SEQUENCE_FPS_CHOICES)[number];
 
 /** The History panel lists its steps newest first or oldest first (#171). */
 export const HISTORY_ORDERS = ["oldest", "newest"] as const;
@@ -102,12 +136,22 @@ export interface PreferenceValues {
   "export.last_folder": string;
   "export.quality": ExportQualityChoice;
   "export.hw": ExportHwChoice;
+  // Export (WP-2G.04)
+  /** The preset File > Export… starts at; `""` is "the last one used". */
+  "export.preset": string;
+  /** The preset of the last export started from the dialog; `""` is none yet. */
+  "export.last_preset": string;
+  /** The file name pattern: `{project}`, `{sequence}`, `{date}` and `{preset}` are filled in. */
+  "export.filename": string;
   /** `""` is the OS cache folder. Main passes the value to the engine as `--cache-dir`. */
   "cache.folder": string;
   "cache.thumbnails_limit": (typeof THUMBNAIL_LIMITS)[number];
   "cache.waveforms_limit": (typeof WAVEFORM_LIMITS)[number];
+  "cache.proxies_limit": (typeof PROXY_LIMITS)[number];
   "performance.hw_decode": HwDecodeChoice;
   "performance.frame_memory": (typeof FRAME_MEMORY_CHOICES)[number];
+  /** How many proxies are made at the same time (one while an export runs). */
+  "performance.proxy_jobs": (typeof PROXY_JOB_CHOICES)[number];
   /** Notifications (WP-1J.05): a toast when an agent connects or disconnects. */
   "notify.agent_connected": boolean;
   /**
@@ -117,11 +161,22 @@ export interface PreferenceValues {
    */
   "agents.allowed_folders": readonly string[];
   "agents.client_profile": ClientProfile;
+  // Editing (WP-2F.05b, ADR-0035)
+  /** Seconds a still image gets in new projects when it is placed without a length. */
+  "editing.still_duration": number;
   // Media and import (WP-1M.14)
   /** Show a video's frames while the pointer moves across its card in the bin. */
   "media.hover_scrub": boolean;
   /** Folders in an import keep their directories as bin folders (WP-2F.09). */
   "media.keep_structure": boolean;
+  /** Imports copy each new file into the project's `media/` folder first (WP-2F.04c). */
+  "media.copy_on_import": boolean;
+  /** The frame rate of a new image sequence (WP-2F.05c); `"sequence"` is the sequence's own. */
+  "media.image_sequence_fps": ImageSequenceFps;
+  /** The proxy policy a new project starts with (WP-2F.03b, ADR-0027). */
+  "media.proxy_policy": ProxyPolicyChoice;
+  /** The longest side of the proxies this computer makes, in pixels. */
+  "media.proxy_size": (typeof PROXY_SIZES)[number];
   /** The History panel's sort order (#171), the person's, not the project's. */
   "history.order": HistoryOrder;
   // Keyboard shortcuts (WP-2H.05)
@@ -150,6 +205,11 @@ export type PreferenceDef =
   | { type: "path"; scope: PreferenceScope; default: string }
   /** A short map of remembered choices: ids to short words. */
   | { type: "record"; scope: PreferenceScope; default: Record<string, string> }
+  /**
+   * A short line of text: at most `max` characters, no control characters and, when `pattern`
+   * is given, matching it. The default is always accepted.
+   */
+  | { type: "text"; scope: PreferenceScope; default: string; max: number; pattern?: RegExp }
   /** Binding ids to the keys they have (see {@link ShortcutOverrides}). */
   | { type: "bindings"; scope: PreferenceScope; default: ShortcutOverrides }
   /**
@@ -164,6 +224,8 @@ export type PreferenceDef =
       writer?: "main";
     };
 
+/** The longest still duration, in seconds (one hour, the engine's limit for `project.new`). */
+export const STILL_DURATION_MAX = 3600;
 export const RECENT_COUNT_MAX = 25;
 /** The most bindings a person can change, keys per binding, and the length of one key. */
 export const MAX_SHORTCUT_OVERRIDES = 512;
@@ -176,6 +238,10 @@ const MAX_PATH_LENGTH = 4096;
 const MAX_RECORD_ENTRIES = 64;
 const RECORD_KEY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const MAX_RECORD_VALUE = 64;
+/** An export preset id (the engine's rule: lowercase letters, digits and `-`). */
+const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/;
+/** A file name pattern: no folder separator and nothing else a file name cannot hold. */
+const FILE_NAME_PATTERN = /^[^\\/:*?"<>|]+$/;
 
 export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "general.startup": { type: "enum", scope: "app", options: STARTUP_CHOICES, default: "empty" },
@@ -198,6 +264,16 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "export.last_folder": { type: "path", scope: "app", default: "" },
   "export.quality": { type: "enum", scope: "app", options: EXPORT_QUALITIES, default: "medium" },
   "export.hw": { type: "enum", scope: "app", options: EXPORT_HW_CHOICES, default: "auto" },
+  // Export (WP-2G.04): preset ids are the engine's (`export.list_presets`).
+  "export.preset": { type: "text", scope: "app", default: "", max: 64, pattern: PRESET_ID },
+  "export.last_preset": { type: "text", scope: "app", default: "", max: 64, pattern: PRESET_ID },
+  "export.filename": {
+    type: "text",
+    scope: "app",
+    default: "{project}",
+    max: 128,
+    pattern: FILE_NAME_PATTERN,
+  },
   // This computer (WP-1D.08): never exported, applied to the engine by the app.
   "cache.folder": { type: "path", scope: "machine", default: "" },
   "cache.thumbnails_limit": {
@@ -212,6 +288,12 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     options: WAVEFORM_LIMITS,
     default: 512 * MIB,
   },
+  "cache.proxies_limit": {
+    type: "enum",
+    scope: "machine",
+    options: PROXY_LIMITS,
+    default: 50 * GIB,
+  },
   "performance.hw_decode": {
     type: "enum",
     scope: "machine",
@@ -223,6 +305,12 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     scope: "machine",
     options: FRAME_MEMORY_CHOICES,
     default: 0,
+  },
+  "performance.proxy_jobs": {
+    type: "enum",
+    scope: "machine",
+    options: PROXY_JOB_CHOICES,
+    default: 2,
   },
   // Notifications and Agents and MCP (WP-1J.05).
   "notify.agent_connected": { type: "boolean", scope: "app", default: true },
@@ -239,9 +327,28 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     options: CLIENT_PROFILES,
     default: "standard",
   },
+  // Editing (WP-2F.05b, ADR-0035)
+  "editing.still_duration": {
+    type: "int",
+    scope: "app",
+    min: 1,
+    max: STILL_DURATION_MAX,
+    default: 5,
+  },
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
   "media.keep_structure": { type: "boolean", scope: "app", default: true },
+  "media.copy_on_import": { type: "boolean", scope: "app", default: false },
+  "media.image_sequence_fps": {
+    type: "enum",
+    scope: "app",
+    options: IMAGE_SEQUENCE_FPS_CHOICES,
+    default: "sequence",
+  },
+  // Proxies (WP-2F.03b): the policy is the app's and copied into new projects; the size is
+  // this computer's.
+  "media.proxy_policy": { type: "enum", scope: "app", options: PROXY_POLICIES, default: "auto" },
+  "media.proxy_size": { type: "enum", scope: "machine", options: PROXY_SIZES, default: 960 },
   // Keyboard shortcuts (WP-2H.05)
   "history.order": { type: "enum", scope: "app", options: HISTORY_ORDERS, default: "oldest" },
   "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },
@@ -336,6 +443,16 @@ function validateAgainst(def: PreferenceDef, value: unknown): Validation {
         clean[id] = choice;
       }
       return { ok: true, value: clean };
+    }
+    case "text": {
+      if (typeof value !== "string") return { ok: false, reason: "expected text" };
+      if (value === def.default) return { ok: true, value };
+      if (value.length > def.max || /\p{Cc}/u.test(value)) {
+        return { ok: false, reason: `expected at most ${def.max} characters on one line` };
+      }
+      return def.pattern === undefined || def.pattern.test(value)
+        ? { ok: true, value }
+        : { ok: false, reason: "has characters this setting cannot hold" };
     }
     case "bindings": {
       if (!isPlainObject(value)) return { ok: false, reason: "expected a list of shortcuts" };

@@ -15,7 +15,9 @@
 //! - drops the decoder pools and cached frames of media that were removed or relinked, and
 //!   their thumbnails and filmstrips (WP-1D.05 handoff);
 //! - asks for the proxies of long-GOP media that a clip now plays backwards, and warns while
-//!   they build (WP-2D.01b, [`FullProxies::reversed`]).
+//!   they build (WP-2D.01b, [`FullProxies::reversed`]);
+//! - queues the proxies the project wants after its proxy policy or an asset's proxy mode
+//!   changed (ADR-0027, [`FullProxies::reconcile`]): never a delete.
 //!
 //! It never takes an engine lock; [`DocWatcher::stop`] joins it.
 
@@ -82,12 +84,27 @@ impl Targets {
         // Not for the document playback attached to: `apply(_, None)` runs under the session
         // lock, and attaching reconciles the document's proxies (reversed clips too) on its
         // own thread.
-        if previous.is_some()
-            && let Some(proxies) = &self.proxies
-        {
-            proxies.reversed(doc);
+        if let (Some(previous), Some(proxies)) = (previous, &self.proxies) {
+            if proxy_wishes_changed(previous, doc) {
+                // Reconciling covers the reversed clips too.
+                proxies.reconcile(doc);
+            } else {
+                proxies.reversed(doc);
+            }
         }
     }
+}
+
+/// Whether the project's proxy policy or the proxy mode of one of its assets differs between
+/// `previous` and `doc` (ADR-0027).
+fn proxy_wishes_changed(previous: &Project, doc: &Project) -> bool {
+    previous.settings.proxy_policy != doc.settings.proxy_policy
+        || doc.media.values().any(|asset| {
+            previous
+                .media
+                .get(&asset.id)
+                .is_some_and(|before| before.proxy_mode != asset.proxy_mode)
+        })
 }
 
 /// The watcher thread of one document (see the module docs).

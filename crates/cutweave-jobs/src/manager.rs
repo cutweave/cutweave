@@ -62,9 +62,10 @@ pub struct JobConfig {
     pub decode_slots: usize,
     /// Concurrent [`Budget::Export`] jobs (default 1).
     pub export_slots: usize,
-    /// Concurrent [`Budget::Proxy`] jobs (default 2). While an export runs, only one proxy job
-    /// starts at a time: the export holds the other slots (a proxy job already running is not
-    /// stopped; the next one waits).
+    /// Concurrent [`Budget::Proxy`] jobs at the start (default 2;
+    /// [`JobManager::set_proxy_slots`] changes it while the manager runs). While an export
+    /// runs, only one proxy job starts at a time: the export holds the other slots (a proxy job
+    /// already running is not stopped; the next one waits).
     pub proxy_slots: usize,
     /// Capacity of the `job.progress` broadcast.
     pub event_capacity: usize,
@@ -149,7 +150,18 @@ struct Shared {
     decode: Arc<Semaphore>,
     export: Arc<Semaphore>,
     proxy: Arc<Semaphore>,
+    /// How many proxy jobs may run at once now, and the slots still to take back.
+    proxy_slots: Mutex<ProxySlots>,
     config: JobConfig,
+}
+
+/// The size of the proxy budget ([`JobManager::set_proxy_slots`]).
+struct ProxySlots {
+    /// Proxy jobs that may run at once.
+    target: usize,
+    /// Slots a lower target still has to take back: they were in use when it was set, and are
+    /// taken as their jobs end.
+    debt: usize,
 }
 
 impl Shared {
@@ -167,6 +179,42 @@ impl Shared {
             Budget::Decode => &self.decode,
             Budget::Export => &self.export,
             Budget::Proxy => &self.proxy,
+        }
+    }
+
+    fn proxy_slots(&self) -> MutexGuard<'_, ProxySlots> {
+        self.proxy_slots
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Sets how many proxy jobs may run at once (at least one). More: the waiting jobs start
+    /// at once. Fewer: running jobs finish undisturbed and their slots are not handed on.
+    fn set_proxy_slots(&self, slots: usize) {
+        let slots = slots.max(1);
+        let mut state = self.proxy_slots();
+        if slots > state.target {
+            let grow = slots - state.target;
+            let cancelled = grow.min(state.debt);
+            state.debt -= cancelled;
+            self.proxy.add_permits(grow - cancelled);
+        } else {
+            let shrink = state.target - slots;
+            state.debt += shrink - self.proxy.forget_permits(shrink);
+        }
+        state.target = slots;
+    }
+
+    /// Gives back proxy slots whose job ended, except those a lower target is still owed:
+    /// they are taken out of the budget instead (never handed to a waiting job).
+    fn release_proxy_slots(&self, mut permits: tokio::sync::OwnedSemaphorePermit) {
+        let mut state = self.proxy_slots();
+        let owed = state.debt.min(permits.num_permits());
+        if owed > 0
+            && let Some(taken) = permits.split(owed)
+        {
+            taken.forget();
+            state.debt -= owed;
         }
     }
 
@@ -432,7 +480,11 @@ async fn run(
     let result =
         tokio::task::spawn_blocking(move || panic::catch_unwind(AssertUnwindSafe(|| body(&ctx))))
             .await;
-    drop(permit);
+    if budget == Budget::Proxy {
+        shared.release_proxy_slots(permit);
+    } else {
+        drop(permit);
+    }
     drop(reserved);
     let (state, error) = match result {
         Ok(Ok(Ok(()))) => (JobState::Succeeded, None),
@@ -454,8 +506,9 @@ async fn run(
     shared.finish(id, state, error);
 }
 
-/// Holds the proxy slots an export takes while it runs: `proxy_slots - 1` of them, so at most
-/// one proxy job runs next to an export. The semaphore is fair, so once the reservation waits,
+/// Holds the proxy slots an export takes while it runs: all but one of those there are when it
+/// starts, so at most one proxy job runs next to an export (a budget raised while the export
+/// runs adds its new slots at once). The semaphore is fair, so once the reservation waits,
 /// proxy jobs queued after it wait too; a proxy job already running finishes undisturbed and its
 /// slot goes to the reservation. Dropping the guard (the export ended) gives the slots back, or
 /// stops waiting for them.
@@ -469,7 +522,7 @@ impl Drop for ProxyReservation {
 }
 
 fn reserve_proxy_slots(shared: &Arc<Shared>) -> ProxyReservation {
-    let wanted = shared.config.proxy_slots.max(1) - 1;
+    let wanted = shared.proxy_slots().target.max(1) - 1;
     let Ok(wanted) = u32::try_from(wanted) else {
         return ProxyReservation(None);
     };
@@ -478,6 +531,7 @@ fn reserve_proxy_slots(shared: &Arc<Shared>) -> ProxyReservation {
     }
     let (done, mut ended) = tokio::sync::oneshot::channel::<()>();
     let semaphore = Arc::clone(&shared.proxy);
+    let shared = Arc::clone(shared);
     tokio::spawn(async move {
         tokio::select! {
             biased;
@@ -485,7 +539,7 @@ fn reserve_proxy_slots(shared: &Arc<Shared>) -> ProxyReservation {
             permits = semaphore.acquire_many_owned(wanted) => {
                 if let Ok(permits) = permits {
                     let _ = ended.await;
-                    drop(permits);
+                    shared.release_proxy_slots(permits);
                 }
             }
         }
@@ -707,6 +761,10 @@ impl JobManagerBuilder {
             decode: Arc::new(Semaphore::new(config.decode_slots.max(1))),
             export: Arc::new(Semaphore::new(config.export_slots.max(1))),
             proxy: Arc::new(Semaphore::new(config.proxy_slots.max(1))),
+            proxy_slots: Mutex::new(ProxySlots {
+                target: config.proxy_slots.max(1),
+                debt: 0,
+            }),
             config,
         });
         Ok(JobManager {
@@ -750,10 +808,23 @@ impl JobManager {
         JobManager::builder().config(config).build()
     }
 
-    /// The sizes it runs with.
+    /// The sizes it started with.
     #[must_use]
     pub fn config(&self) -> &JobConfig {
         &self.shared.config
+    }
+
+    /// How many proxy jobs may run at once now.
+    #[must_use]
+    pub fn proxy_slots(&self) -> usize {
+        self.shared.proxy_slots().target
+    }
+
+    /// Sets how many proxy jobs may run at once (at least one; "Proxy jobs at once" in the
+    /// app's settings). With more, waiting jobs start at once; with fewer, running jobs finish
+    /// undisturbed and the next ones wait.
+    pub fn set_proxy_slots(&self, slots: usize) {
+        self.shared.set_proxy_slots(slots);
     }
 
     /// Queues a job. `body` runs on a blocking thread once every job in `spec.after`

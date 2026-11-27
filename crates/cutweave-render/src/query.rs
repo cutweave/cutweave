@@ -454,6 +454,24 @@ fn shoot(
     })
 }
 
+/// The frame of `sequence` at `t` at the full sequence size, with the pixels `render.frame`
+/// gives at that time (full quality, original media): what `media.import_frame` saves as a
+/// picture (ADR-0035). Unlike `render.frame` it has no size limit below the sequence's own.
+///
+/// # Errors
+/// `NotFound` for a sequence `doc` does not have; `Internal` when the frame cannot be
+/// evaluated, compiled or rendered.
+pub fn render_full_frame(
+    backend: &mut dyn FrameBackend,
+    doc: &Project,
+    sequence: SequenceId,
+    t: Time,
+) -> Result<Image, CmdError> {
+    let (id, seq) = resolve_sequence(doc, Some(sequence))?;
+    let size = (seq.format.width, seq.format.height);
+    Ok(shoot(backend, doc, id, t, size, Quality::FULL)?.image)
+}
+
 /// `render.frame` with an explicit backend.
 pub fn render_frame(
     backend: &mut dyn FrameBackend,

@@ -88,7 +88,7 @@ use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 
 use super::media::{CurrentDoc, MediaFile};
 use super::proxy::FullProxies;
-use crate::export::sources::{compositor_frame, compositor_target, media_identity};
+use crate::export::sources::{compositor_frame, compositor_target, frame_error, media_identity};
 
 /// Bytes of decoded pictures the read-back of one media item may hold while the preview reads
 /// it backwards (WP-2D.01b): 64 frames of 1080p 4:2:0, 16 of 4K.
@@ -170,8 +170,10 @@ impl std::fmt::Debug for MediaFrames {
     }
 }
 
+/// The compositor's error for a media-layer failure: offline when the file is not there
+/// ([`frame_error`]).
 fn unavailable(media: MediaId, e: &MediaError) -> FrameError {
-    FrameError::Unavailable(format!("media {media}: {e}"))
+    frame_error(media, e)
 }
 
 fn no_backend() -> FrameError {
@@ -566,6 +568,9 @@ struct Held {
     readback_used: u64,
     /// Bytes of the media's last picture for the compositor (0: none yet).
     frame_bytes: usize,
+    /// The last decode found the file gone (WP-2F.03c): playback shows the slate without
+    /// asking the media layer again; a paused frame, a seek or a scrub asks again.
+    offline: bool,
 }
 
 impl Held {
@@ -738,6 +743,7 @@ impl PreviewFrames {
             readback_stream: 0,
             readback_used: 0,
             frame_bytes: 0,
+            offline: false,
         })
     }
 }
@@ -934,6 +940,11 @@ impl FrameSource for PreviewRequest<'_> {
         let held = map
             .get_mut(&request.media)
             .ok_or_else(|| FrameError::Unavailable(format!("media {}", request.media)))?;
+        // Offline media during playback: the slate, with no lock, no allocation and no trip to
+        // a disk that may be slow to say "not there" (a drive that is not connected).
+        if held.offline && self.mode == DecodeMode::Sequential {
+            return Err(FrameError::Offline(request.media));
+        }
         let stream = request.stream.unwrap_or(0);
         let t = request_time(request);
         // Read backwards: a reversed clip, or the transport playing or scrubbing back (a jump
@@ -944,7 +955,9 @@ impl FrameSource for PreviewRequest<'_> {
         held.requested = Some(t);
         // Scrub frames try the proxy first, and so do playback frames read backwards
         // (WP-2D.01b).
-        if (request.proxy || (backward && self.mode == DecodeMode::Sequential))
+        // Offline media shows the slate even when it has a proxy (one picture per clip).
+        if !held.offline
+            && (request.proxy || (backward && self.mode == DecodeMode::Sequential))
             && let Some(frame) = self.proxy_frame(held, asset, t)
         {
             return Ok(frame);
@@ -992,6 +1005,8 @@ impl FrameSource for PreviewRequest<'_> {
         let held = map
             .get_mut(&request.media)
             .ok_or_else(|| FrameError::Unavailable(format!("media {}", request.media)))?;
-        alloc_scope::within(Scope::Media, || self.fetch(held, stream, t))
+        let fetched = alloc_scope::within(Scope::Media, || self.fetch(held, stream, t));
+        held.offline = matches!(fetched, Err(FrameError::Offline(_)));
+        fetched
     }
 }

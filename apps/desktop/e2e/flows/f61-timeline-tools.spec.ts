@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// F49 Timeline tools, selection and track headers (docs/user-flows.md, WP-2A.10): the razor from
+// F61 Timeline tools, selection and track headers (docs/user-flows.md, WP-2A.10): the razor from
 // the toolbar, V for the select tool, the zoom buttons, a marquee over two clips and their
 // sounds, the toolbar's linked-selection toggle (on, a drag of the picture moves its sound; off,
 // the picture moves alone), copy and paste onto another track, M, I and O, the lock button in a
@@ -85,7 +85,7 @@ function inLanes(g: TimelineGeometry, x: number): number {
   return Math.min(Math.max(x, g.box.x + g.headerWidth + 4), g.box.x + g.box.width - 4);
 }
 
-test.describe("F49 timeline tools, selection and track headers", () => {
+test.describe("F61 timeline tools, selection and track headers", () => {
   test.skip(!hasRealEngine, "cutweave-engine-serve is not built");
 
   test("razor, marquee, linked selection, paste on another track, markers, the lock, Esc, undo; every menu passes axe", async () => {

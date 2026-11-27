@@ -6,9 +6,10 @@ use proptest::prelude::*;
 use serde_json::json;
 
 use crate::{
-    Clip, Duration, FolderId, FrameRate, IdGen, InOut, MAX_SAFE_FLICKS, Marker, MarkerKind,
-    MediaAsset, MediaFolder, MediaKind, ProbeInfo, Project, SampleRate, SeededGen, Sequence,
-    SequenceFormat, Time, Timecode, Track, TrackKind, Vec2,
+    Clip, Collection, CollectionKind, Duration, FolderId, FrameRate, IdGen, InOut, MAX_SAFE_FLICKS,
+    Marker, MarkerKind, MediaAsset, MediaFilter, MediaFolder, MediaId, MediaKind, ProbeInfo,
+    Project, SampleRate, SeededGen, Sequence, SequenceFormat, Time, Timecode, Track, TrackKind,
+    Vec2,
 };
 
 /// Any representable [`Time`] (±(2⁵³ − 1) flicks).
@@ -284,6 +285,60 @@ fn organize(project: &mut Project, seed: u64, ids: &mut SeededGen) {
         if bits(40 + i, 1) == 1 {
             asset.name = Some(format!("Clip {i}"));
         }
+    }
+    annotate(project, seed, ids);
+}
+
+/// Gives some assets tags, a rating and a note, and adds up to two collections: a manual one
+/// (with one member that names no asset, which the stored form allows) and a smart one
+/// (ADR-0036). Derived from bits of `seed` the rest of the recipe does not read; the IDs are
+/// minted last.
+fn annotate(project: &mut Project, seed: u64, ids: &mut SeededGen) {
+    let bits = |shift: u32, mask: u64| (seed >> shift) & mask;
+    let media: Vec<MediaId> = project.media.keys().copied().collect();
+    for (i, id) in media.iter().enumerate() {
+        let i = u32::try_from(i).unwrap_or(0) % 4;
+        let Some(asset) = project.media.get_mut(id) else {
+            continue;
+        };
+        match bits(48 + 2 * i, 0b11) {
+            1 => asset.tags = vec!["b-roll".into()],
+            2 => asset.tags = vec!["Café".into(), "interview".into()],
+            3 => {
+                asset.tags = vec!["interview".into()];
+                asset.rating = Some(u8::try_from(1 + i).unwrap_or(1));
+            }
+            _ => {}
+        }
+        if bits(56 + i, 1) == 1 {
+            asset.note = Some(format!(
+                "Note {i}
+second line"
+            ));
+        }
+    }
+    let which = bits(60, 0b11);
+    if which & 1 == 1 {
+        let mut members: Vec<MediaId> = media.iter().rev().step_by(2).copied().collect();
+        members.push(MediaId::from_u128(0x5741_1e00));
+        let id = ids.mint();
+        project.collections.insert(
+            id,
+            Collection::new(id, "Selects", CollectionKind::Manual { media: members }),
+        );
+    }
+    if which & 2 == 2 {
+        let filter = MediaFilter {
+            kinds: Some(vec![MediaKind::Video]),
+            tags: Some(vec!["interview".into()]),
+            used: Some(false),
+            ..MediaFilter::default()
+        };
+        let id = ids.mint();
+        project.collections.insert(
+            id,
+            Collection::new(id, "Unused interviews", CollectionKind::Smart { filter }),
+        );
     }
 }
 

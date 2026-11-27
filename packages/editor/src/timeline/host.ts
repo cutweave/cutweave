@@ -41,6 +41,7 @@ import type { StoreApi } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
+import { insertDurationFor } from "../media/insertDuration.ts";
 import type { DocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId, selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import type { ToastStore } from "../state/toastStore.ts";
@@ -739,7 +740,7 @@ export class TimelineHost {
         this.#tx.begin(intent.gesture, intent.edit);
         return;
       case "update_tx":
-        this.#tx.update(intent.gesture, intent.command);
+        this.#tx.update(intent.gesture, this.#withStillLength(intent.command));
         return;
       case "commit_tx":
         this.#tx.commit(intent.gesture);
@@ -796,6 +797,15 @@ export class TimelineHost {
         });
         return;
     }
+  }
+
+  /** A still dropped from the bin keeps the length its card's "Duration…" chose (WP-2F.05). */
+  #withStillLength(command: MachineCommand): MachineCommand {
+    if (command.name !== "timeline.insert" || command.args.duration != null) return command;
+    const length = insertDurationFor(this.#deps.doc.getState().project, command.args.media);
+    return length === undefined
+      ? command
+      : { name: command.name, args: { ...command.args, duration: length } };
   }
 
   /** A one-shot machine command (split, delete, ripple delete, nudge): its own undo step. */

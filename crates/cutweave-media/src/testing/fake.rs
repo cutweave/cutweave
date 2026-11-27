@@ -49,6 +49,7 @@ use crate::backend::{
 use crate::cancel;
 use crate::encode::{InputCheck, output_color};
 use crate::path;
+use crate::sequence::{Segment, SequenceDecoder, SequenceSource};
 use crate::{
     AudioChunk, AudioFormat, CancelCheck, CancelToken, Capabilities, CodecSupport, FrameIndex,
     IndexEntry, MediaError, PixelFormat, Plane, ScanInfo, TimeBase, VideoFrame,
@@ -621,12 +622,71 @@ impl FakeBackend {
     }
 }
 
+impl FakeBackend {
+    /// The pictures of an image sequence (ADR-0035) whose first file is registered: its size,
+    /// layout and color, with the run's frame count and rate, every frame a keyframe. Frame `n`
+    /// carries `n` ([`fake_frame_number`]).
+    fn sequence_video(&self, sequence: &SequenceSource) -> Result<FakeVideo, MediaError> {
+        let first = sequence.first_file();
+        let mut video = self
+            .lookup(&first)?
+            .video
+            .ok_or_else(|| MediaError::NoStream {
+                path: path::display(&first),
+                kind: StreamKind::Video,
+                index: None,
+            })?;
+        video.frames = u64::from(sequence.run.count);
+        video.rate = sequence.run.fps;
+        video.gop = 1;
+        Ok(video)
+    }
+
+    fn video_decoder(
+        &self,
+        mut video: FakeVideo,
+        index: Arc<FrameIndex>,
+        opts: &DecodeOpts,
+    ) -> FakeVideoDecoder {
+        self.shared.decoders_opened.fetch_add(1, Ordering::Relaxed);
+        if let Some((width, height)) = opts.target_size.filter(|(w, h)| *w > 0 && *h > 0) {
+            video.width = width;
+            video.height = height;
+        }
+        let hw = self.pseudo_hw && opts.hw == crate::HwMode::Auto;
+        if hw {
+            self.shared
+                .hw_decoders_opened
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        FakeVideoDecoder {
+            hw,
+            format: opts.target_pixfmt.unwrap_or(video.format),
+            video,
+            index,
+            next: 0,
+            cost: self.frame_cost,
+            cancel: None,
+            shared: Arc::clone(&self.shared),
+        }
+    }
+}
+
 impl MediaBackend for FakeBackend {
     fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError> {
+        if let Some(sequence) = SequenceSource::parse(path) {
+            // The first file only.
+            let first = self.lookup(&sequence.first_file())?.probe()?;
+            return Ok(sequence.probe(first));
+        }
         self.lookup(path)?.probe()
     }
 
     fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError> {
+        if let Some(sequence) = SequenceSource::parse(path) {
+            // Computed, not scanned: `index_scans` does not count it.
+            return FakeMedia::video(self.sequence_video(&sequence)?).index(path);
+        }
         let index = self.lookup(path)?.index(path)?;
         self.shared.index_scans.fetch_add(1, Ordering::Relaxed);
         Ok(index)
@@ -637,8 +697,42 @@ impl MediaBackend for FakeBackend {
         p: &Path,
         opts: &DecodeOpts,
     ) -> Result<Box<dyn VideoDecoder>, MediaError> {
+        if let Some(sequence) = SequenceSource::parse(p) {
+            let video = self.sequence_video(&sequence)?;
+            let index = match &opts.index {
+                Some(index) => Arc::clone(index),
+                None => Arc::new(self.index_media(p)?),
+            };
+            if index.frame_count() as u64 != video.frames {
+                return Err(MediaError::Invalid {
+                    message: format!(
+                        "the frame index passed for `{}` is another file's",
+                        p.display()
+                    ),
+                });
+            }
+            // One segment over the whole run: the fake needs no files, and the sequence
+            // decoder maps a missing number to the picture before it.
+            let whole = Segment {
+                first: sequence.run.first,
+                count: sequence.run.count,
+            };
+            let (backend, opts, inner) = (self.clone(), opts.clone(), Arc::clone(&index));
+            return Ok(Box::new(SequenceDecoder::new(
+                sequence.run,
+                index,
+                vec![whole],
+                Box::new(move |_| {
+                    Ok(Box::new(backend.video_decoder(
+                        video.clone(),
+                        Arc::clone(&inner),
+                        &opts,
+                    )))
+                }),
+            )));
+        }
         let media = self.lookup(p)?;
-        let mut video = media.video.clone().ok_or_else(|| MediaError::NoStream {
+        let video = media.video.clone().ok_or_else(|| MediaError::NoStream {
             path: path::display(p),
             kind: StreamKind::Video,
             index: None,
@@ -655,27 +749,7 @@ impl MediaBackend for FakeBackend {
                 ),
             });
         }
-        self.shared.decoders_opened.fetch_add(1, Ordering::Relaxed);
-        if let Some((width, height)) = opts.target_size.filter(|(w, h)| *w > 0 && *h > 0) {
-            video.width = width;
-            video.height = height;
-        }
-        let hw = self.pseudo_hw && opts.hw == crate::HwMode::Auto;
-        if hw {
-            self.shared
-                .hw_decoders_opened
-                .fetch_add(1, Ordering::Relaxed);
-        }
-        Ok(Box::new(FakeVideoDecoder {
-            hw,
-            format: opts.target_pixfmt.unwrap_or(video.format),
-            video,
-            index,
-            next: 0,
-            cost: self.frame_cost,
-            cancel: None,
-            shared: Arc::clone(&self.shared),
-        }))
+        Ok(Box::new(self.video_decoder(video, index, opts)))
     }
 
     fn open_audio_decoder(
@@ -683,6 +757,14 @@ impl MediaBackend for FakeBackend {
         p: &Path,
         stream: Option<u32>,
     ) -> Result<Box<dyn AudioDecoder>, MediaError> {
+        if SequenceSource::parse(p).is_some() {
+            // An image sequence has no sound.
+            return Err(MediaError::NoStream {
+                path: path::display(p),
+                kind: StreamKind::Audio,
+                index: stream,
+            });
+        }
         let media = self.lookup(p)?;
         let no_stream = || MediaError::NoStream {
             path: path::display(p),

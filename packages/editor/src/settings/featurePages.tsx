@@ -2,7 +2,16 @@
 // The pages of features that already exist (WP-1M.13): Export, which the Export dialog starts
 // from, and Media and import. Keyboard shortcuts (WP-2H.05) is `shortcuts.tsx`.
 
-import { EXPORT_FOLDER_CHOICES, EXPORT_HW_CHOICES, EXPORT_QUALITIES } from "@cutweave/preferences";
+import {
+  EXPORT_FOLDER_CHOICES,
+  EXPORT_HW_CHOICES,
+  EXPORT_QUALITIES,
+  IMAGE_SEQUENCE_FPS_CHOICES,
+  PROXY_POLICIES,
+  PROXY_SIZES,
+  STILL_DURATION_MAX,
+} from "@cutweave/preferences";
+import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
 import { type ChoiceOption, registerSettingsPage, type SettingsPageDef } from "./registry.ts";
 import { registerShortcutsPage } from "./shortcuts.tsx";
 
@@ -21,6 +30,12 @@ const QUALITY_LABELS = {
 const HW_LABELS = {
   auto: "settings.rows.exportHw.auto",
   off: "settings.rows.exportHw.off",
+} as const;
+
+const PROXY_POLICY_LABELS = {
+  off: "settings.rows.proxyPolicy.off",
+  auto: "settings.rows.proxyPolicy.auto",
+  all: "settings.rows.proxyPolicy.all",
 } as const;
 
 const choices = <T extends string>(
@@ -86,6 +101,69 @@ const exportPage: SettingsPageDef = {
       keywords: "settings.rows.exportHw.keywords",
       control: { kind: "segmented", options: choices(EXPORT_HW_CHOICES, HW_LABELS) },
     },
+    // WP-2G.04: the preset and the file name the dialog starts at.
+    {
+      id: "export.preset",
+      key: "export.preset",
+      label: "settings.rows.exportPreset.label",
+      description: "settings.rows.exportPreset.description",
+      keywords: "settings.rows.exportPreset.keywords",
+      control: {
+        kind: "custom",
+        render: (ctx, id) => <DefaultPresetControl ctx={ctx} id={id} />,
+      },
+    },
+    {
+      id: "export.last_preset",
+      key: "export.last_preset",
+      label: "settings.rows.exportLastPreset.label",
+      description: "settings.rows.exportLastPreset.description",
+      keywords: "settings.rows.exportLastPreset.keywords",
+      noRowReset: true,
+      control: {
+        kind: "action",
+        label: "settings.rows.exportLastPreset.button",
+        run: (ctx) => ctx.client.reset(["export.last_preset"]),
+        disabled: (ctx) => ctx.values["export.last_preset"] === "",
+        status: (ctx) =>
+          ctx.values["export.last_preset"] === ""
+            ? ctx.t("settings.rows.exportLastPreset.none")
+            : ctx.values["export.last_preset"],
+      },
+    },
+    {
+      id: "export.filename",
+      key: "export.filename",
+      label: "settings.rows.exportFileName.label",
+      description: "settings.rows.exportFileName.description",
+      keywords: "settings.rows.exportFileName.keywords",
+      control: { kind: "custom", render: (ctx, id) => <FileNameControl ctx={ctx} id={id} /> },
+    },
+  ],
+};
+
+// ---- Editing (WP-2F.05b; more rows come with WP-2A.13) ------------------------------------------
+
+const editingPage: SettingsPageDef = {
+  id: "editing",
+  title: "settings.pages.editing",
+  icon: "scissors",
+  group: "preferences",
+  order: 30,
+  rows: [
+    {
+      id: "editing.still_duration",
+      key: "editing.still_duration",
+      label: "settings.rows.stillDuration.label",
+      description: "settings.rows.stillDuration.description",
+      keywords: "settings.rows.stillDuration.keywords",
+      control: {
+        kind: "number",
+        min: 1,
+        max: STILL_DURATION_MAX,
+        unit: "settings.rows.stillDuration.unit",
+      },
+    },
   ],
 };
 
@@ -114,11 +192,58 @@ const mediaPage: SettingsPageDef = {
       keywords: "settings.rows.keepStructure.keywords",
       control: { kind: "switch" },
     },
+    {
+      id: "media.copy_on_import",
+      key: "media.copy_on_import",
+      label: "settings.rows.copyOnImport.label",
+      description: "settings.rows.copyOnImport.description",
+      keywords: "settings.rows.copyOnImport.keywords",
+      control: { kind: "switch" },
+    },
+    {
+      id: "media.image_sequence_fps",
+      key: "media.image_sequence_fps",
+      label: "settings.rows.imageSequenceFps.label",
+      description: "settings.rows.imageSequenceFps.description",
+      keywords: "settings.rows.imageSequenceFps.keywords",
+      control: {
+        kind: "select",
+        // Frame rates are numbers: only "the sequence's frame rate" is a phrase to translate.
+        options: IMAGE_SEQUENCE_FPS_CHOICES.map((value) =>
+          value === "sequence"
+            ? { value, label: "settings.rows.imageSequenceFps.sequence" as const }
+            : { value, text: `${value} fps` },
+        ),
+      },
+    },
+    // Proxies (WP-2F.03b, ADR-0027): the policy new projects start with, and this computer's
+    // proxy size (applied by the engine).
+    {
+      id: "media.proxy_policy",
+      key: "media.proxy_policy",
+      label: "settings.rows.proxyPolicy.label",
+      description: "settings.rows.proxyPolicy.description",
+      keywords: "settings.rows.proxyPolicy.keywords",
+      control: { kind: "segmented", options: choices(PROXY_POLICIES, PROXY_POLICY_LABELS) },
+    },
+    {
+      id: "media.proxy_size",
+      key: "media.proxy_size",
+      label: "settings.rows.proxySize.label",
+      description: "settings.rows.proxySize.description",
+      keywords: "settings.rows.proxySize.keywords",
+      // "960p" is a size, not a phrase: nothing to translate.
+      control: {
+        kind: "select",
+        options: PROXY_SIZES.map((value) => ({ value, text: `${value}p` })),
+      },
+      applies: "engine",
+    },
   ],
 };
 
 /** The pages of this work package. */
-export const FEATURE_PAGES: readonly SettingsPageDef[] = [mediaPage, exportPage];
+export const FEATURE_PAGES: readonly SettingsPageDef[] = [editingPage, mediaPage, exportPage];
 
 /** Registers them (idempotent). */
 export function registerFeaturePages(): void {

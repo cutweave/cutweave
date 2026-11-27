@@ -84,6 +84,12 @@ export interface ImportOptions {
    * `media.keep_structure` setting). Only `false` is sent; the engine's default is on.
    */
   readonly keepStructure?: boolean;
+  /**
+   * Whether each new file is first copied into the project's `media/` folder (the caller passes
+   * the `media.copy_on_import` setting, WP-2F.04c). Only `true` is sent; the engine's default is
+   * off. An untitled project has no folder: the engine refuses and says to save it first.
+   */
+  readonly copyToProject?: boolean;
 }
 
 /** "1 file" / "214 files". */
@@ -159,6 +165,7 @@ export async function importMedia(
         paths: paths.slice(i, i + MAX_IMPORT_PATHS),
         ...(folder === null ? {} : { folder }),
         ...(options.keepStructure === false ? { keep_structure: false } : {}),
+        ...(options.copyToProject === true ? { copy_to_project: true } : {}),
       });
       for (const m of out.media) {
         if (m.duplicate) duplicates += 1;

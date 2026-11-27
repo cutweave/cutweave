@@ -292,6 +292,7 @@ async fn headless_agents_read_the_cache_status_but_cannot_change_the_caches() {
             json!({ "cmd": "media.set_cache_config", "args": { "frame_cache_bytes": 0 } }),
             json!({ "cmd": "media.clear_cache", "args": { "kinds": ["thumbnails"] } }),
             json!({ "cmd": "media.set_decode_policy", "args": { "hw": "off" } }),
+            json!({ "cmd": "media.set_proxy_config", "args": { "jobs": 1 } }),
         ] {
             let e = agent
                 .err("cutweave_execute", json!({ "steps": [step.clone()] }))

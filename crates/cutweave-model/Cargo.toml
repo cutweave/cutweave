@@ -28,6 +28,10 @@ thiserror.workspace = true
 # are bit-identical on every platform and in the wasm module (WP-2C.06). Platform libms differ in
 # the last bits. MIT; no dependencies; already in the lockfile (through num-traits and naga).
 libm = "0.2.16"
+# The fold that compares tags and matches media search (ADR-0036: case and accents ignored): NFD
+# decomposition and the combining-mark test. Pure Rust, no_std, wasm-clean; not a new crate in the
+# build (cutweave-ops used it for the same fold, which moved here with `MediaFilter`).
+unicode-normalization = "0.1"
 proptest = { workspace = true, optional = true }
 
 # Real UUIDv7 needs OS entropy and a wall clock, which wasm32-unknown-unknown lacks. There the

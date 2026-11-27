@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The `media` namespace (WP-1B.05, WP-1D.07; arch §5.1, §7): `media.register`,
-//! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
+//! `media.import`, `media.import_sequence` (WP-2F.05c, ADR-0035: [`sequence`]), `media.list`,
+//! `media.remove`, and the `media.indexed` /
 //! `media.analysis_failed` events of background analysis (which never mutates the document);
 //! the proxy commands of WP-2F.01 ([`proxy`]); the folders of the bin (WP-2F.07, ADR-0020:
-//! [`folders`]).
+//! [`folders`]); relinking missing media (WP-2F.03: [`relink`]); slideshows and frames saved
+//! to the bin (WP-2F.05d, ADR-0035: [`slideshow`], [`frame`]); tags, ratings, notes and
+//! collections (WP-2F.06a, ADR-0036: [`tags`], [`collections`]).
 //!
 //! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
 //! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
@@ -12,14 +15,22 @@
 //! queues background analysis jobs for the new assets ([`Analyzer`], [`AnalysisStage`]) and
 //! returns their `job_ids`, which callers await with `job.wait`. It runs against an
 //! [`ImportCtx`], so the engine decides how registrations are committed and who may read
-//! which folders.
+//! which folders. With `copy_to_project` (WP-2F.04c) each new file is first copied into the
+//! project's `media/` folder ([`on_import`](crate::project::collect::on_import)) and
+//! registered there.
 
 mod analysis;
+pub mod collections;
 mod find;
 pub mod folders;
+mod frame;
 mod policy;
 mod probe;
 pub mod proxy;
+pub mod relink;
+mod sequence;
+mod slideshow;
+pub mod tags;
 mod tree;
 mod walk;
 
@@ -31,16 +42,24 @@ use cutweave_commands::{
 };
 use cutweave_jobs::JobId;
 use cutweave_model::{
-    Duration, FolderId, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind,
+    Duration, FolderId, FrameRate, ImageSequence, MediaAsset, MediaId, MediaKind, ProbeInfo,
+    Project, StreamKind,
 };
 
 pub use analysis::{
     AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, EVENTS,
     MediaAnalysisFailed, MediaEvent, MediaImportProgress, MediaIndexed, StageError,
 };
+pub use collections::{
+    CollectionDeleted, CollectionFilterSet, CollectionNamed, CollectionSummary, CollectionType,
+    MediaAddToCollection, MediaAddedToCollection, MediaCreateCollection, MediaDeleteCollection,
+    MediaListCollections, MediaListCollectionsOutput, MediaRemoveFromCollection,
+    MediaRemovedFromCollection, MediaRenameCollection, MediaSetCollectionFilter,
+};
 pub use find::{
-    Keyed, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder, asset_name, compare, fold,
-    folder_scope, is_problem, used_media,
+    Keyed, MAX_FILTER_TEXT_CHARS, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder,
+    asset_name, collection_members, compare, find_collection, fold, folder_scope, is_problem,
+    needs_used, used_media,
 };
 pub use folders::{
     FolderContents, FolderRenamed, FolderSummary, MediaCreateFolder, MediaDeleteFolder,
@@ -48,15 +67,38 @@ pub use folders::{
     MediaListFoldersOutput, MediaMove, MediaMoved, MediaRename, MediaRenameFolder, MediaRenamed,
     OnConflict, find_folder, unique_folder_name,
 };
+pub use frame::{
+    FrameGrabber, FrameOf, FrameRegistered, GrabbedFrame, MediaImportFrame, MediaImportFrameOutput,
+    frame_label, has_frames, register_frame,
+};
 pub use policy::{
     AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy,
     OUTSIDE_ROOTS_HINT,
 };
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
 pub use proxy::{ImportProxy, ProxyService};
+pub use relink::{
+    DiskFiles, FolderFiles, MAX_RELINK_FILES, MAX_RELINK_MEDIA, MediaFindMissing,
+    MediaFindMissingOutput, MediaLocationSet, MediaRelink, MediaRelinkFolder,
+    MediaRelinkFolderOutput, MediaSetLocation, MediaStatus, MemoryFiles, MissingMedia, RelinkCtx,
+    RelinkFiles, RelinkMatch, RelinkSink, Relinked, relocate_batch,
+};
+pub use sequence::{MediaImportSequence, MediaImportSequenceOutput};
+pub use slideshow::{
+    MediaImportImagesAsSlideshow, MediaSlideshowOutput, SlideshowBatch, SlideshowOrder,
+    SlideshowPlaced, SlideshowSteps, place_slideshow,
+};
+pub use tags::{
+    MAX_TAG_MEDIA, MAX_TAGS_PER_CALL, MediaAddTags, MediaListTags, MediaListTagsOutput,
+    MediaNoteSet, MediaRemoveTags, MediaRenameTag, MediaSetNote, MediaSetRating, MediaTagged,
+    TagCount,
+};
 pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
 pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
 
+use crate::project::collect::on_import::{
+    CopyOutcome, ImportedFile, ProjectFolder, copy_into_project,
+};
 use crate::util::check_abs_path;
 
 /// Most files one `media.import` call accepts.
@@ -73,10 +115,16 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<MediaRegister>()?
         .register::<MediaImport>()?
+        .register::<MediaImportSequence>()?
         .register::<MediaRegisterTree>()?
         .register::<MediaList>()?
-        .register::<MediaRemove>()?;
+        .register::<MediaRemove>()?
+        .register::<MediaImportImagesAsSlideshow>()?
+        .register::<MediaImportFrame>()?;
     folders::register(registry)?;
+    tags::register(registry)?;
+    collections::register(registry)?;
+    relink::register(registry)?;
     proxy::register(registry)
 }
 
@@ -146,6 +194,10 @@ pub struct MediaRegister {
     pub content_hash: String,
     /// The folder of the bin to put the new asset in; absent: the top level.
     pub folder: Option<FolderId>,
+    /// For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`
+    /// the picture with the run's duration and frame rate; the asset's kind is
+    /// `image_sequence`. Absent for every other file.
+    pub image_sequence: Option<ImageSequence>,
 }
 
 fn check_hash(hash: &str) -> Result<(), CmdError> {
@@ -181,6 +233,30 @@ impl MediaRegister {
                 "/probe/rotation",
                 "the rotation must be 0, 90, 180 or 270",
             ));
+        }
+        if let Some(run) = &self.image_sequence {
+            if let Some(problem) = run.problem() {
+                return Err(CmdError::invalid("/image_sequence", problem));
+            }
+            if !self
+                .probe
+                .streams
+                .iter()
+                .any(|s| s.kind == StreamKind::Video)
+            {
+                return Err(CmdError::invalid(
+                    "/probe/streams",
+                    "the first file of the run is not a picture",
+                ));
+            }
+            if self.probe.duration != run.duration() || self.probe.fps != Some(run.fps) {
+                return Err(CmdError::invalid(
+                    "/probe/duration",
+                    "the probe of an image sequence must have the run's duration (count / fps) \
+                     and frame rate",
+                ));
+            }
+            return Ok(MediaKind::ImageSequence);
         }
         kind_of_probe(&self.probe).ok_or_else(|| {
             CmdError::invalid(
@@ -225,7 +301,12 @@ impl Command for MediaRegister {
             Some(id) => id,
             None => tx.new_id(),
         };
-        let mut media = MediaAsset::file(id, kind, self.path.clone(), self.probe.clone());
+        let mut media = match &self.image_sequence {
+            Some(run) => {
+                MediaAsset::image_sequence(id, self.path.clone(), run.clone(), self.probe.clone())
+            }
+            None => MediaAsset::file(id, kind, self.path.clone(), self.probe.clone()),
+        };
         media.content_hash = Some(self.content_hash.clone());
         media.folder = self.folder;
         tx.insert_media(&media)?;
@@ -277,6 +358,30 @@ pub trait MediaSink: Send {
             "this media sink cannot create bin folders (import with keep_structure off)",
         ))
     }
+
+    /// Registers the pictures of a slideshow and inserts them on a track, atomically
+    /// (`media.import_images_as_slideshow`, WP-2F.05d): run [`place_slideshow`] in one
+    /// transaction. A sink that cannot edit the timeline keeps this default, which refuses.
+    fn slideshow(&mut self, batch: SlideshowBatch) -> Result<SlideshowPlaced, CmdError> {
+        let _ = batch;
+        Err(CmdError::internal(
+            "this media sink cannot place a slideshow on the timeline",
+        ))
+    }
+
+    /// Registers the picture of `media.import_frame` and gives it the bin name `name`,
+    /// atomically ([`register_frame`]). A sink that cannot rename keeps this default, which
+    /// refuses.
+    fn register_frame(
+        &mut self,
+        register: MediaRegister,
+        name: String,
+    ) -> Result<FrameRegistered, CmdError> {
+        let _ = (register, name);
+        Err(CmdError::internal(
+            "this media sink cannot register an imported frame",
+        ))
+    }
 }
 
 /// What `media.import` runs against (the [`EngineCommand::Context`]). The engine builds one
@@ -294,6 +399,14 @@ pub struct ImportCtx {
     pub proxies: Option<Arc<dyn ProxyService>>,
     /// Where `media.import_progress` goes; `None` announces nothing.
     pub events: Option<Arc<dyn AnalysisSink>>,
+    /// Renders and stores the frames of `media.import_frame`; `None`: no renderer.
+    pub frames: Option<Arc<dyn FrameGrabber>>,
+    /// The frame rate of the sequence the editor shows: what `media.import_sequence` gives a
+    /// run when the caller names no `fps` (`None`: 30).
+    pub sequence_fps: Option<FrameRate>,
+    /// The open project's folder, where `copy_to_project` copies to; `None` for an untitled
+    /// document, which has no folder.
+    pub project: Option<ProjectFolder>,
 }
 
 impl ImportCtx {
@@ -308,7 +421,31 @@ impl ImportCtx {
             analysis: None,
             proxies: None,
             events: None,
+            frames: None,
+            sequence_fps: None,
+            project: None,
         }
+    }
+
+    /// The same context, rendering the frames of `media.import_frame` through `frames`.
+    #[must_use]
+    pub fn with_frames(mut self, frames: Arc<dyn FrameGrabber>) -> ImportCtx {
+        self.frames = Some(frames);
+        self
+    }
+
+    /// The same context with the open project's folder (for `copy_to_project`).
+    #[must_use]
+    pub fn with_project(mut self, project: Option<ProjectFolder>) -> ImportCtx {
+        self.project = project;
+        self
+    }
+
+    /// The same context with the frame rate of the sequence the editor shows.
+    #[must_use]
+    pub fn with_sequence_fps(mut self, fps: Option<FrameRate>) -> ImportCtx {
+        self.sequence_fps = fps;
+        self
     }
 
     /// The same context with `policy`.
@@ -430,6 +567,17 @@ pub struct MediaImportOutput {
 /// creates a bin folder for each directory that holds new media, named after it, inside
 /// `folder`. One undo removes the media and those folders; files already in the project stay
 /// where they are.
+///
+/// With `copy_to_project` (WP-2F.04c) each new file is first copied into the project's
+/// `media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from
+/// an imported folder keeps its place in that folder's tree) and the asset points at the copy,
+/// so the project keeps working when the original moves. The copy is compared with the
+/// original before it is used. A file already inside the project folder is not copied, and
+/// neither is one whose content the project already has (it is returned as a duplicate). The
+/// call fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it
+/// has no folder) or when the files do not fit on its drive; nothing is copied then. A file
+/// that cannot be copied is listed in `failed`. Undoing the import removes the assets; the
+/// copied files stay on disk (undo never deletes a file).
 #[command(
     name = "media.import",
     summary = "Import media files: probe and register them now, return media ids and analysis job ids",
@@ -446,7 +594,13 @@ pub struct MediaImport {
     /// For folders in `paths`: mirror their directories as bin folders (default true); false
     /// puts every file straight into `folder`.
     pub keep_structure: Option<bool>,
+    /// Copy each new file into the project's `media/` folder first (default false).
+    pub copy_to_project: Option<bool>,
 }
+
+/// What `copy_to_project` answers for an untitled document.
+pub const SAVE_FIRST: &str = "this project has not been saved yet, so it has no folder to copy \
+                              files into; save the project first, or import without copying";
 
 impl MediaImport {
     fn check(&self, policy: &ImportPolicy) -> Result<(), CmdError> {
@@ -578,8 +732,21 @@ struct Probing {
     dirs: Vec<Vec<String>>,
     /// The request index of each entry of `batch`.
     origin: Vec<usize>,
+    /// For each entry of `batch` found inside an imported folder: the folders that lead to it
+    /// (empty for a file named in the request).
+    found_in: Vec<Vec<String>>,
+    /// The path each entry of `batch` was asked for (its `path` may become a copy's).
+    requested: Vec<String>,
     /// The files named in the request that could not be imported.
     failed: Vec<ImportFailure>,
+}
+
+/// The entries of `all` whose `keep` flag is set.
+fn kept<T>(all: Vec<T>, keep: &[bool]) -> Vec<T> {
+    all.into_iter()
+        .zip(keep)
+        .filter_map(|(entry, keep)| keep.then_some(entry))
+        .collect()
 }
 
 impl MediaImport {
@@ -614,6 +781,8 @@ impl MediaImport {
             batch: Vec::with_capacity(items.len()),
             dirs: Vec::with_capacity(items.len()),
             origin: Vec::with_capacity(items.len()),
+            found_in: Vec::with_capacity(items.len()),
+            requested: Vec::with_capacity(items.len()),
             failed: Vec::new(),
         };
         for (item, result) in items.into_iter().zip(probed) {
@@ -626,11 +795,15 @@ impl MediaImport {
                         probe: probed.probe,
                         content_hash: probed.content_hash,
                         folder: self.folder,
+                        image_sequence: None,
                     };
                     match register.kind() {
                         Ok(_) => {
+                            out.requested.push(path.clone());
                             out.batch.push(register);
-                            out.dirs.push(if keep { item.dirs } else { Vec::new() });
+                            out.dirs
+                                .push(if keep { item.dirs.clone() } else { Vec::new() });
+                            out.found_in.push(item.dirs);
                             out.origin.push(item.origin);
                             continue;
                         }
@@ -656,6 +829,60 @@ impl MediaImport {
         }
         out
     }
+
+    /// `copy_to_project`: copies the probed files that are new to the project into its
+    /// `media/` folder and points their registrations at the copies. A file that cannot be
+    /// copied leaves the batch (reported in `failed`, or counted in `skipped` when it came
+    /// from a folder).
+    fn copy_new_files(
+        &self,
+        project: &ProjectFolder,
+        probing: &mut Probing,
+        skipped: &mut ImportSkipped,
+    ) -> Result<(), CmdError> {
+        let files: Vec<ImportedFile<'_>> = probing
+            .batch
+            .iter()
+            .zip(&probing.found_in)
+            .map(|(register, dirs)| ImportedFile {
+                from: &register.path,
+                content_hash: &register.content_hash,
+                dirs,
+            })
+            .collect();
+        let outcomes = copy_into_project(project, &files)?;
+        let mut keep = Vec::with_capacity(outcomes.len());
+        for (i, outcome) in outcomes.into_iter().enumerate() {
+            match outcome {
+                CopyOutcome::Stays => keep.push(true),
+                CopyOutcome::At(path) => {
+                    probing.batch[i].path = path;
+                    keep.push(true);
+                }
+                CopyOutcome::Failed(error) => {
+                    if probing.found_in[i].is_empty() {
+                        probing.failed.push(ImportFailure {
+                            path: probing.requested[i].clone(),
+                            code: ImportFailureCode::Io,
+                            error,
+                        });
+                    } else {
+                        skipped.unreadable += 1;
+                    }
+                    keep.push(false);
+                }
+            }
+        }
+        if keep.contains(&false) {
+            let position = |path: &str| self.paths.iter().position(|p| p == path);
+            probing.failed.sort_by_key(|f| position(&f.path));
+            probing.batch = kept(std::mem::take(&mut probing.batch), &keep);
+            probing.dirs = kept(std::mem::take(&mut probing.dirs), &keep);
+            probing.origin = kept(std::mem::take(&mut probing.origin), &keep);
+            probing.requested = kept(std::mem::take(&mut probing.requested), &keep);
+        }
+        Ok(())
+    }
 }
 
 impl EngineCommand for MediaImport {
@@ -664,15 +891,25 @@ impl EngineCommand for MediaImport {
 
     fn run(&self, ctx: &mut ImportCtx) -> Result<MediaImportOutput, CmdError> {
         self.check(&ctx.policy)?;
+        let copy = self.copy_to_project.unwrap_or(false);
+        if copy && ctx.project.is_none() {
+            return Err(CmdError::invalid("/copy_to_project", SAVE_FIRST));
+        }
         let keep = self.keep_structure.unwrap_or(true);
         let mut skipped = ImportSkipped::default();
         let items = expand(&self.paths, &mut skipped)?;
+        let mut probing = self.probe_items(ctx, items, keep, &mut skipped);
+        if copy && let Some(project) = &ctx.project {
+            self.copy_new_files(project, &mut probing, &mut skipped)?;
+        }
         let Probing {
             batch,
             dirs,
             origin,
+            requested,
             failed,
-        } = self.probe_items(ctx, items, keep, &mut skipped);
+            ..
+        } = probing;
         let mut folders = 0;
         let results = if batch.is_empty() {
             Vec::new()
@@ -710,7 +947,7 @@ impl EngineCommand for MediaImport {
             skipped,
             folders,
         };
-        for (register, r) in batch.into_iter().zip(results) {
+        for ((register, requested), r) in batch.into_iter().zip(requested).zip(results) {
             let mut index_job = Vec::new();
             if r.created
                 && let Some(analyzer) = &ctx.analysis
@@ -736,7 +973,7 @@ impl EngineCommand for MediaImport {
                 .map_or(ImportProxy::None, |p| p.imported(r.media_id, &index_job));
             out.media_ids.push(r.media_id);
             out.media.push(ImportedMedia {
-                path: register.path,
+                path: requested,
                 media_id: r.media_id,
                 kind: r.kind,
                 duplicate: !r.created,
@@ -768,6 +1005,22 @@ pub struct MediaSummary {
     pub has_video: bool,
     /// Whether it has sound.
     pub has_audio: bool,
+    /// Its tags, sorted ignoring case and accents.
+    pub tags: Vec<String>,
+    /// Stars, 1 to 5; absent: unrated.
+    pub rating: Option<u8>,
+    /// Its note; only with `include: ["note"]`, and left out otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// What `media.list` adds to each asset on request.
+#[wire]
+#[derive(Copy, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaInclude {
+    /// The asset's note.
+    Note,
 }
 
 /// Result of `media.list`.
@@ -783,8 +1036,9 @@ pub struct MediaListOutput {
     pub matched: u32,
 }
 
-/// Lists the media of the project, filtered (also by bin folder) and ordered, one page at a
-/// time. Each asset carries the name the bin shows and its folder.
+/// Lists the media of the project, filtered (also by bin folder, tags, rating and collection)
+/// and ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags
+/// and rating.
 #[query(
     name = "media.list",
     summary = "List the project's media (filter, sort, paged; default by id)",
@@ -801,9 +1055,12 @@ pub struct MediaList {
     /// Order.
     #[serde(default)]
     pub sort: Option<MediaSort>,
+    /// Extra fields per asset: `note`.
+    #[serde(default)]
+    pub include: Option<Vec<MediaInclude>>,
 }
 
-fn summary(m: &MediaAsset) -> MediaSummary {
+fn summary(m: &MediaAsset, note: bool) -> MediaSummary {
     MediaSummary {
         id: m.id,
         kind: m.kind,
@@ -813,6 +1070,9 @@ fn summary(m: &MediaAsset) -> MediaSummary {
         duration: m.probe.duration,
         has_video: m.has_video(),
         has_audio: m.has_audio(),
+        tags: m.tags.clone(),
+        rating: m.rating,
+        note: if note { m.note.clone() } else { None },
     }
 }
 
@@ -832,8 +1092,12 @@ impl Query for MediaList {
         let filter = self.filter.clone().unwrap_or_default();
         let sort = self.sort.unwrap_or_default();
         let desc = sort.order == MediaSortOrder::Desc;
-        let used = filter.used.is_some().then(|| used_media(doc));
-        let matcher = Matcher::new(&filter, used.as_ref())?.in_folders(folder_scope(doc, &filter)?);
+        let used = needs_used(doc, &filter).then(|| used_media(doc));
+        let matcher = Matcher::for_doc(doc, &filter, used.as_ref())?;
+        let note = self
+            .include
+            .as_deref()
+            .is_some_and(|i| i.contains(&MediaInclude::Note));
 
         // The matching assets, in the requested order. `doc.media` iterates by ID already.
         let mut found: Vec<Keyed<'_>> = doc
@@ -883,7 +1147,7 @@ impl Query for MediaList {
             None
         };
         Ok(MediaListOutput {
-            media: page.iter().map(|k| summary(k.media)).collect(),
+            media: page.iter().map(|k| summary(k.media, note)).collect(),
             next_cursor,
             total: u32::try_from(doc.media.len()).unwrap_or(u32::MAX),
             matched: u32::try_from(found.len()).unwrap_or(u32::MAX),
@@ -901,8 +1165,9 @@ pub struct MediaRemoveOutput {
     pub media_id: MediaId,
 }
 
-/// Removes a media asset from the project (the file on disk is untouched). Fails with
-/// `Invalid` while any clip uses it; delete those clips first.
+/// Removes a media asset from the project (the file on disk is untouched) and takes it off
+/// every manual collection. Fails with `Invalid` while any clip uses it; delete those clips
+/// first.
 #[command(
     name = "media.remove",
     summary = "Remove an unused media asset from the project",
@@ -944,6 +1209,7 @@ impl Command for MediaRemove {
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<MediaRemoveOutput, CmdError> {
         self.validate(&tx.query_ctx())?;
+        collections::drop_members(tx, &[self.id])?;
         tx.remove_media(self.id)?;
         Ok(MediaRemoveOutput { media_id: self.id })
     }

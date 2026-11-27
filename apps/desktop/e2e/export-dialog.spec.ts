@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// WP-1M.08 e2e: the export dialog, its progress, the top bar's chip and the toasts, against the
-// fake engine (it ramps a job up over about two seconds and writes a small file; no FFmpeg).
+// WP-1M.08, WP-2G.04 e2e: the export dialog, its progress, the top bar's chip, the toasts and the
+// queue panel, against the fake engine (it ramps a job up over about two seconds and writes a small file; no FFmpeg).
 // What a real export produces (ffprobe, Chromium playback) is the user flow F14
 // (`e2e/flows/f14-export.spec.ts`), which needs the engine built with FFmpeg (WP-1I.05).
 
@@ -37,21 +37,29 @@ const startExport = (page: Page) =>
   dialog(page).getByRole("button", { name: "Export", exact: true }).click();
 
 test.describe("export dialog (fake engine)", () => {
-  test("shows the sequence's settings and the detected encoders, refuses bad values", async () => {
+  test("shows the presets, the summary and the detected encoders, refuses bad values", async () => {
     const { app, page, close } = await open();
     try {
       await page.getByRole("button", { name: "Export", exact: true }).click();
       const d = dialog(page);
-      await expect(d).toBeVisible();
+      await expect(d.getByLabel("Preset")).toHaveValue("h264-mp4-1080p");
       await expect(d.getByLabel("Save to")).toHaveValue(/\.mp4$/);
-      await expect(d.getByText("MP4 H.264 1080p")).toBeVisible();
+      await expect(d.getByTestId("export-summary")).toContainText(
+        "1920 × 1080 · 30 fps · H.264 + AAC · MP4",
+      );
+      await expect(d.getByRole("radio", { name: "Whole sequence" })).toBeChecked();
+      // A 9:16 preset on this 16:9 sequence says what happens.
+      await d.getByLabel("Preset").selectOption("tiktok");
+      await expect(d.getByText(/^Fits with bars: TikTok is 9:16/)).toBeVisible();
+      await d.getByLabel("Preset").selectOption("h264-mp4-1080p");
+      await d.getByRole("button", { name: "Advanced" }).click();
       await expect(d.getByLabel("Width")).toHaveValue("1920");
       await expect(d.getByLabel("Height")).toHaveValue("1080");
       await expect(d.getByLabel("Frame rate")).toHaveValue("30");
       await expect(d.getByRole("radio", { name: "Medium" })).toBeChecked();
-      await expect(d.getByText("Entire timeline")).toBeVisible();
       await expect(d.getByRole("switch", { name: "Use hardware encoder" })).toBeChecked();
       await expect(d.getByText("Found NVIDIA NVENC, AMD AMF. Faster than software.")).toBeVisible();
+      await expect(d.getByRole("group", { name: "Encoder settings" })).toBeVisible();
 
       // Choose… asks the OS's save dialog, which starts at the proposed file, and takes its answer.
       const picked = path.join(tmpdir(), "picked.mp4");
@@ -79,12 +87,36 @@ test.describe("export dialog (fake engine)", () => {
     }
   });
 
+  test("Add to queue: the toast's Show queue opens the Exports panel with the export", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "cutweave-export-"));
+    const file = path.join(dir, "queued.mp4");
+    const { page, close } = await open();
+    try {
+      await openDialog(page, file);
+      await dialog(page).getByRole("button", { name: "Add to queue" }).click();
+      await expect(dialog(page)).toBeHidden();
+      const queued = toast(page, "Added to the export queue");
+      await expect(queued).toBeVisible();
+      await queued.getByRole("button", { name: "Show queue" }).click();
+      const panel = page.getByTestId("export-queue");
+      await expect(panel).toBeVisible();
+      await expect(panel.getByRole("listitem", { name: "queued.mp4, Done" })).toBeVisible({
+        timeout: 15_000,
+      });
+      expect(existsSync(file)).toBe(true);
+    } finally {
+      await close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("the progress goes on when the dialog is hidden; the chip brings it back; Cancel leaves no file", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "cutweave-export-"));
     const file = path.join(dir, "out.mp4");
     const { page, close } = await open();
     try {
       await openDialog(page, file);
+      await dialog(page).getByRole("button", { name: "Advanced" }).click();
       await dialog(page).getByRole("radio", { name: "Low" }).click();
       await startExport(page);
       await expect(progress(page)).toBeVisible();

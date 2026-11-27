@@ -11,6 +11,7 @@ import { formatTimecode } from "@cutweave/timeline";
 import { type PointerEvent, type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { usePref } from "../prefs/prefsStore.ts";
 import type { MediaCard } from "./cards.ts";
+import { isMovingPicture } from "./kinds.ts";
 import {
   frameAtFraction,
   frameGrid,
@@ -49,7 +50,7 @@ export function useCardScrub(card: MediaCard): CardScrub {
   const enabled =
     preference &&
     source !== null &&
-    (card.kind === "video" || card.kind === "audio") &&
+    (isMovingPicture(card.kind) || card.kind === "audio") &&
     card.duration !== null &&
     card.duration > 0 &&
     !card.broken;
@@ -104,7 +105,7 @@ export function useCardScrub(card: MediaCard): CardScrub {
       thumb.dataset.scrubbing = "true";
       if (lineRef.current !== null) lineRef.current.style.insetInlineStart = `${fraction * 100}%`;
       if (timeRef.current !== null) timeRef.current.textContent = formatTimecode(t, grid.rate);
-      if (kind === "video") {
+      if (isMovingPicture(kind)) {
         frames.request(t);
       } else if (first && kind === "audio") {
         const controller = new AbortController();

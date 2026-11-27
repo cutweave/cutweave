@@ -21,6 +21,10 @@ function library(): Project {
       kind,
       path_abs: `/media/Shoot ${n % 40}/clip_${String(n).padStart(5, "0")}_${words[n % words.length]}.mp4`,
       path_rel: null,
+      // ADR-0036: every asset is tagged, most are rated, one in ten has a note.
+      tags: n % 2 === 0 ? ["b-roll", `Scène ${n % 25}`] : ["Interview", "keep"],
+      ...(n % 6 > 0 ? { rating: n % 6 } : {}),
+      ...(n % 10 === 0 ? { note: `Take ${n}: naïve first answer, good second half.` } : {}),
       probe: {
         streams: [{ index: 0, kind: kind === "audio" ? "audio" : "video", codec: "h264" }],
         duration: kind === "image" ? null : (1 + (n % 600)) * 705_600_000,
@@ -54,6 +58,35 @@ describe("finding media in 10,000 assets", () => {
     const p95 = times[Math.floor((times.length - 1) * 0.95)] as number;
     console.info(
       `findMedia over ${COUNT}: p50 ${times[times.length >> 1]?.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms`,
+    );
+    expect(p95).toBeLessThan(BUDGET_MS);
+  });
+
+  it(`filters by tags and text (also in tags and notes) in under ${BUDGET_MS} ms at p95`, {
+    retry: 2,
+  }, () => {
+    const project = library();
+    const cards = selectMediaCards(project);
+    const usage = selectMediaUsage(project);
+    const sort = { by: "name", order: "asc" } as const;
+    findMedia(cards, usage, { text: "naive" }, sort); // builds the index, the sort and the notes
+    const typed = "scene naive";
+    const times: number[] = [];
+    let last = 0;
+    for (let round = 0; round < 8; round++) {
+      for (let len = 1; len <= typed.length; len++) {
+        const filter = { text: typed.slice(0, len), tags: ["B-ROLL"], min_rating: 2 };
+        const t = performance.now();
+        const found = findMedia(cards, usage, filter, sort);
+        times.push(performance.now() - t);
+        last = found.cards.length;
+      }
+    }
+    expect(last).toBeGreaterThan(0);
+    times.sort((a, b) => a - b);
+    const p95 = times[Math.floor((times.length - 1) * 0.95)] as number;
+    console.info(
+      `findMedia with tags over ${COUNT}: p50 ${times[times.length >> 1]?.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms`,
     );
     expect(p95).toBeLessThan(BUDGET_MS);
   });
