@@ -397,7 +397,9 @@ export class TimelineHost {
   send(event: MachineEvent): void {
     if (this.#disposed) return;
     this.#machine.send(event);
-    this.ui.setState({ state: this.#machine.state.mode.name });
+    // Only a new state is written: every write re-renders the panel (a pointer move each frame).
+    const state = this.#machine.state.mode.name;
+    if (this.ui.getState().state !== state) this.ui.setState({ state });
   }
 
   /** For good (tests): stops, and the machine with it. */
