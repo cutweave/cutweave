@@ -235,6 +235,8 @@ pub enum PausedQuality {
 
 /// The `playback.state` event payload and the result of the `view.*` transport commands.
 #[wire]
+// A wire payload: each flag is an independent fact a client reads by name.
+#[allow(clippy::struct_excessive_bools)]
 pub struct PlaybackState {
     /// `stopped`, `playing` or `scrubbing`.
     pub state: TransportMode,
