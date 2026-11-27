@@ -684,6 +684,18 @@ export function quantile(values: readonly number[], q: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1)] ?? Number.NaN;
 }
 
+/**
+ * What a hand-paced drag must show (issue #241): the app keeps drawing (frame intervals p95 under
+ * 50 ms: 20 frames a second or more), the clip keeps up (at least 20 updates in the two seconds)
+ * and each update comes back promptly (round trips p95 under 100 ms). Generous on purpose: a drag
+ * at a few frames a second fails every one; a loaded machine passes them.
+ */
+export function expectKeptUp(drag: PacedDrag): void {
+  expect(drag.rtt.length, "updates during the drag").toBeGreaterThanOrEqual(20);
+  expect(quantile(drag.frames, 0.95), "frame interval p95 (ms)").toBeLessThan(50);
+  expect(quantile(drag.rtt, 0.95), "round trip p95 (ms)").toBeLessThan(100);
+}
+
 /** One line for the run's output: what a hand-paced drag measured. */
 export function describePacedDrag(drag: PacedDrag): string {
   const ms = (v: number) => `${v.toFixed(1)} ms`;
