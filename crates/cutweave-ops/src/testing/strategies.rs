@@ -11,8 +11,8 @@ use std::{sync::Arc, time::Duration};
 
 use cutweave_jobs::{JobConfig, JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
 use cutweave_model::{
-    EntityId, FolderId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo, Project,
-    SampleRate, SeededGen, SequenceId, TrackId, TrackKind, Vec2,
+    CollectionId, EntityId, FolderId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo,
+    Project, SampleRate, SeededGen, SequenceId, TrackId, TrackKind, Vec2,
 };
 use proptest::{
     collection::vec,
@@ -354,6 +354,9 @@ pub(super) struct Pools {
     media: Vec<Med>,
     /// Media folders (ADR-0020).
     folders: Vec<FolderId>,
+    /// Collections of media (ADR-0036), and the manual ones among them.
+    collections: Vec<CollectionId>,
+    manual_collections: Vec<CollectionId>,
 }
 
 impl Pools {
@@ -413,6 +416,13 @@ impl Pools {
             })
             .collect();
         pools.folders = doc.folders.keys().copied().collect();
+        pools.collections = doc.collections.keys().copied().collect();
+        pools.manual_collections = doc
+            .collections
+            .values()
+            .filter(|c| matches!(c.kind, cutweave_model::CollectionKind::Manual { .. }))
+            .map(|c| c.id)
+            .collect();
         pools
     }
 
@@ -479,7 +489,30 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         | "export.list_presets"
         | "export.list_encoders"
         | "export.queue"
-        | "media.list_folders" => (1, no_params()),
+        | "media.list_folders"
+        | "media.list_tags"
+        | "media.list_collections" => (1, no_params()),
+        "media.add_tags" => (if no_media { 1 } else { 3 }, media_tags(p)),
+        "media.remove_tags" => (1, media_tags(p)),
+        "media.rename_tag" => (1, media_rename_tag()),
+        "media.set_rating" => (if no_media { 1 } else { 2 }, media_set_rating(p)),
+        "media.set_note" => (if no_media { 1 } else { 2 }, media_set_note(p)),
+        "media.create_collection" => (
+            if p.collections.is_empty() { 4 } else { 2 },
+            media_create_collection(p),
+        ),
+        "media.rename_collection" => (1, media_rename_collection(p)),
+        "media.delete_collection" => (1, media_delete_collection(p)),
+        "media.add_to_collection" => (
+            if p.manual_collections.is_empty() {
+                1
+            } else {
+                3
+            },
+            media_collection_members(p),
+        ),
+        "media.remove_from_collection" => (1, media_collection_members(p)),
+        "media.set_collection_filter" => (1, media_set_collection_filter(p)),
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
         "media.register_tree" => (if no_media { 3 } else { 1 }, media_register_tree(p)),
         "media.import" => (if no_media { 4 } else { 2 }, media_import(p)),
@@ -1050,23 +1083,269 @@ fn media_list(p: &Pools) -> BoxedStrategy<Value> {
         option::weighted(0.5, one_of(p.folders.clone())),
         option::of(any::<bool>()),
         option::weighted(0.2, select(vec!["clip", "Clip 1", "interview"])),
+        option::weighted(0.2, vec(tag(), 1..=2)),
+        option::weighted(0.2, 1..=5_u8),
+        option::weighted(0.3, one_of(p.collections.clone())),
     )
-        .prop_map(|(folder, recursive, text)| {
-            json!({"folder": folder, "recursive": recursive, "text": text})
+        .prop_map(|(folder, recursive, text, tags, min_rating, collection)| {
+            json!({"folder": folder, "recursive": recursive, "text": text, "tags": tags,
+                   "min_rating": min_rating, "collection": collection})
         });
     let valid = (
         option::of(1..=8_u32),
         option::of(one_of(p.media_ids())),
         option::weighted(0.4, filter),
+        any::<bool>(),
     )
-        .prop_map(
-            |(limit, cursor, filter)| json!({"limit": limit, "cursor": cursor, "filter": filter}),
-        )
+        .prop_map(|(limit, cursor, filter, note)| {
+            let include = if note { json!(["note"]) } else { Value::Null };
+            json!({"limit": limit, "cursor": cursor, "filter": filter, "include": include})
+        })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"limit": 0})),
         Just(json!({"limit": 501})),
         fresh::<FolderId>().prop_map(|folder| json!({"filter": {"folder": folder}})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+// ----- tags, ratings, notes and collections (WP-2F.06a, ADR-0036) -----------------------------
+
+/// Tags that clash often (ignoring case and accents) and cover Unicode and padding.
+const TAGS: [&str; 8] = [
+    "interview",
+    "Interview",
+    "b-roll",
+    "Café",
+    "cafe",
+    "  padded  ",
+    "Day 1",
+    "日本語",
+];
+
+fn tag() -> BoxedStrategy<String> {
+    select(TAGS.to_vec()).prop_map(str::to_owned).boxed()
+}
+
+fn bad_tag() -> BoxedStrategy<String> {
+    prop_oneof![
+        Just(String::new()),
+        Just("   ".to_owned()),
+        Just("a,b".to_owned()),
+        Just("tab\there".to_owned()),
+        Just("x".repeat(65)),
+    ]
+    .boxed()
+}
+
+/// A few distinct assets (sometimes one that does not exist).
+fn some_media(p: &Pools) -> BoxedStrategy<Vec<Value>> {
+    vec(one_of(p.media_ids()), 1..=3)
+        .prop_map(|media| {
+            let mut unique: Vec<Value> = Vec::new();
+            for m in media {
+                if !unique.contains(&m) {
+                    unique.push(m);
+                }
+            }
+            unique
+        })
+        .boxed()
+}
+
+/// `media.add_tags` and `media.remove_tags`.
+fn media_tags(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (some_media(p), vec(tag(), 1..=3))
+        .prop_map(|(media, tags)| json!({"media": media, "tags": tags}))
+        .boxed();
+    let invalid = prop_oneof![
+        (some_media(p), bad_tag()).prop_map(|(media, tag)| json!({"media": media, "tags": [tag]})),
+        some_media(p).prop_map(|media| json!({"media": media, "tags": []})),
+        Just(json!({"media": [], "tags": ["x"]})),
+        one_of(p.media_ids()).prop_map(|m| json!({"media": [m.clone(), m], "tags": ["x"]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename_tag() -> BoxedStrategy<Value> {
+    let valid = (tag(), tag())
+        .prop_map(|(from, to)| json!({"from": from, "to": to}))
+        .boxed();
+    let invalid = prop_oneof![
+        (tag(), bad_tag()).prop_map(|(from, to)| json!({"from": from, "to": to})),
+        (bad_tag(), tag()).prop_map(|(from, to)| json!({"from": from, "to": to})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_set_rating(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (some_media(p), option::weighted(0.8, 1..=5_u8))
+        .prop_map(|(media, rating)| json!({"media": media, "rating": rating}))
+        .boxed();
+    let invalid = prop_oneof![
+        (some_media(p), select(vec![0_u8, 6, 200]))
+            .prop_map(|(media, rating)| json!({"media": media, "rating": rating})),
+        Just(json!({"media": [], "rating": 3})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_set_note(p: &Pools) -> BoxedStrategy<Value> {
+    let note = prop_oneof![
+        Just("Good take.\nUse the second half.".to_owned()),
+        Just("  naïve mix  ".to_owned()),
+        Just("   ".to_owned()),
+    ];
+    let valid = (one_of(p.media_ids()), option::weighted(0.8, note))
+        .prop_map(|(media, note)| json!({"media": media, "note": note}))
+        .boxed();
+    let invalid = (
+        one_of(p.media_ids()),
+        prop_oneof![Just("bell\u{7}".to_owned()), Just("x".repeat(2001))],
+    )
+        .prop_map(|(media, note)| json!({"media": media, "note": note}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// Collection names that clash often (ignoring case).
+fn collection_name() -> BoxedStrategy<String> {
+    select(vec![
+        "Selects",
+        "selects",
+        "Best takes",
+        "  Padded  ",
+        "Unused interviews",
+        "Música",
+    ])
+    .prop_map(str::to_owned)
+    .boxed()
+}
+
+fn bad_collection_name() -> BoxedStrategy<String> {
+    prop_oneof![
+        Just(String::new()),
+        Just("line\nbreak".to_owned()),
+        Just("x".repeat(256)),
+    ]
+    .boxed()
+}
+
+/// A filter a smart collection can store (it names no collection).
+fn smart_filter(p: &Pools) -> BoxedStrategy<Value> {
+    (
+        option::weighted(0.4, vec(tag(), 1..=2)),
+        option::weighted(0.3, 1..=5_u8),
+        option::weighted(0.3, any::<bool>()),
+        option::weighted(0.3, select(vec!["video", "audio", "image"])),
+        option::weighted(0.2, one_of(p.folders.clone())),
+        option::weighted(0.2, select(vec!["clip", "interview", "naive"])),
+    )
+        .prop_map(|(tags, min_rating, used, kind, folder, text)| {
+            let mut filter = serde_json::Map::new();
+            let mut put = |key: &str, value: Value| {
+                if !value.is_null() {
+                    filter.insert(key.to_owned(), value);
+                }
+            };
+            put("tags", json!(tags));
+            put("min_rating", json!(min_rating));
+            put("used", json!(used));
+            put("kinds", kind.map_or(Value::Null, |k| json!([k])));
+            put("folder", json!(folder));
+            put("text", json!(text));
+            Value::Object(filter)
+        })
+        .boxed()
+}
+
+fn media_create_collection(p: &Pools) -> BoxedStrategy<Value> {
+    let kind = prop_oneof![
+        Just(json!({"type": "manual"})),
+        some_media(p).prop_map(|media| json!({"type": "manual", "media": media})),
+        smart_filter(p).prop_map(|filter| json!({"type": "smart", "filter": filter})),
+    ];
+    let valid = (collection_name(), kind)
+        .prop_map(|(name, kind)| json!({"name": name, "kind": kind}))
+        .boxed();
+    let invalid = prop_oneof![
+        bad_collection_name().prop_map(|name| json!({"name": name, "kind": {"type": "manual"}})),
+        one_of(p.collections.clone()).prop_map(|c| {
+            json!({"name": "Nested", "kind": {"type": "smart", "filter": {"collection": c}}})
+        }),
+        Just(json!({"name": "Bad filter", "kind": {"type": "smart", "filter": {"min_rating": 9}}})),
+        Just(json!({"name": "No kind"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename_collection(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.collections.clone()), collection_name())
+        .prop_map(|(collection, name)| json!({"collection": collection, "name": name}))
+        .boxed();
+    let invalid = (one_of(p.collections.clone()), bad_collection_name())
+        .prop_map(|(collection, name)| json!({"collection": collection, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn media_delete_collection(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = one_of(p.collections.clone())
+        .prop_map(|collection| json!({"collection": collection}))
+        .boxed();
+    let invalid = fresh::<CollectionId>()
+        .prop_map(|collection| json!({"collection": collection}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `media.add_to_collection` and `media.remove_from_collection`: mostly a manual collection.
+fn media_collection_members(p: &Pools) -> BoxedStrategy<Value> {
+    let manual = if p.manual_collections.is_empty() {
+        p.collections.clone()
+    } else {
+        p.manual_collections.clone()
+    };
+    let valid = (one_of(manual), some_media(p))
+        .prop_map(|(collection, media)| json!({"collection": collection, "media": media}))
+        .boxed();
+    let invalid = prop_oneof![
+        (one_of(p.collections.clone()), some_media(p))
+            .prop_map(|(collection, media)| json!({"collection": collection, "media": media})),
+        one_of(p.collections.clone()).prop_map(|c| json!({"collection": c, "media": []})),
+        (one_of(p.collections.clone()), one_of(p.media_ids()))
+            .prop_map(|(c, m)| json!({"collection": c, "media": [m.clone(), m]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_set_collection_filter(p: &Pools) -> BoxedStrategy<Value> {
+    let smart: Vec<CollectionId> = p
+        .collections
+        .iter()
+        .filter(|c| !p.manual_collections.contains(c))
+        .copied()
+        .collect();
+    let target = if smart.is_empty() {
+        p.collections.clone()
+    } else {
+        smart
+    };
+    let valid = (one_of(target), smart_filter(p))
+        .prop_map(|(collection, filter)| json!({"collection": collection, "filter": filter}))
+        .boxed();
+    let invalid = prop_oneof![
+        (one_of(p.collections.clone()), one_of(p.collections.clone()))
+            .prop_map(|(c, other)| json!({"collection": c, "filter": {"collection": other}})),
+        one_of(p.collections.clone())
+            .prop_map(|c| json!({"collection": c, "filter": {"tags": ["a,b"]}})),
     ]
     .boxed();
     mix(valid, invalid)
