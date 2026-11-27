@@ -17,6 +17,13 @@
 //!   lookup, and a proxy that cannot be decoded makes the reader fall back: the original is
 //!   always a valid answer.
 //!
+//! - **A reader in the middle of a stream keeps its proxy.** Going from a proxy to the original
+//!   costs a seek into the original (a whole GOP of a long-GOP file: a visible hitch), going
+//!   the other way costs one intra-frame decode. So a reader that decodes frames in order and
+//!   is on the proxy stays on it when the decision turns to the original (the toggle was
+//!   switched off, the picture is now drawn larger) and changes at its next seek
+//!   ([`MediaResolver::streaming`]); a change to the proxy applies at once.
+//!
 //! The resolver is pure and allocates nothing by itself. A reader on a real-time thread looks
 //! the proxy up once ([`MediaResolver::candidate`], when the store's generation moved) and
 //! asks [`MediaResolver::serves`] per frame, which is a comparison.
@@ -198,6 +205,18 @@ impl<L> MediaResolver<L> {
         }
     }
 
+    /// What a reader that decodes frames in order reads next: it is on `current` and the
+    /// decision for the next frame is `decided`. It keeps the proxy it is on (the original
+    /// then comes at its next seek, where it costs nothing extra); every other change applies
+    /// at once.
+    #[must_use]
+    pub const fn streaming(current: Rendition, decided: Rendition) -> Rendition {
+        match (current, decided) {
+            (Rendition::Proxy, Rendition::Original) => Rendition::Proxy,
+            (_, decided) => decided,
+        }
+    }
+
     /// The proxy of `media` a reader with `purpose` could be given, before the resolution rule
     /// ([`serves`](Self::serves)): looked up only for a purpose that may use one. A reader
     /// that renders many frames keeps it and asks `serves` per frame.
@@ -323,6 +342,17 @@ mod tests {
             MediaSource::Original
         );
         assert!(originals.proxies().is_none());
+    }
+
+    #[test]
+    fn a_reader_in_a_stream_keeps_its_proxy_until_its_next_seek() {
+        use Rendition::{Original, Proxy};
+        type R = MediaResolver<Store>;
+        // Turning to the original waits; turning to the proxy does not.
+        assert_eq!(R::streaming(Proxy, Original), Proxy);
+        assert_eq!(R::streaming(Original, Proxy), Proxy);
+        assert_eq!(R::streaming(Proxy, Proxy), Proxy);
+        assert_eq!(R::streaming(Original, Original), Original);
     }
 
     #[test]

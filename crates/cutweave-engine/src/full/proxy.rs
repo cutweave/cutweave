@@ -1015,21 +1015,52 @@ mod tests {
 
         // WP-2F.02, the resolution rule: playback, scrub and paused frames alike use the proxy
         // when the picture is drawn no larger than it, and the original when it needs more.
-        for mode in [DecodeMode::Seek, DecodeMode::Sequential] {
-            for (drawn, want) in [
-                (480, (960, 540)),
-                (960, (960, 540)),
-                (961, (2560, 1440)),
-                (2560, (2560, 1440)),
-            ] {
-                let (got, showed) = served(&snapshot, mode, true, Some(drawn), t);
-                assert_eq!(got, want, "{mode:?} drawn at {drawn}");
-                assert_eq!(showed, want == (960, 540), "{mode:?} drawn at {drawn}");
-            }
-            // Off: the original at any size.
-            let (got, showed) = served(&snapshot, mode, false, Some(480), t);
-            assert_eq!((got, showed), ((2560, 1440), false), "{mode:?}");
+        for (drawn, want) in [
+            (480, (960, 540)),
+            (960, (960, 540)),
+            (961, (2560, 1440)),
+            (2560, (2560, 1440)),
+        ] {
+            let (got, showed) = served(&snapshot, DecodeMode::Seek, true, Some(drawn), t);
+            assert_eq!(got, want, "drawn at {drawn}");
+            assert_eq!(showed, want == (960, 540), "drawn at {drawn}");
         }
+        // Off: the original at any size.
+        assert_eq!(
+            served(&snapshot, DecodeMode::Seek, false, Some(480), t),
+            ((2560, 1440), false)
+        );
+
+        // Playback (frames in order). A stream on the original turns to the proxy at once; a
+        // stream on the proxy keeps it when the answer turns to the original (the toggle off,
+        // or drawn larger): no seek into the original in the middle of playback. The original
+        // shows at the next seek, and playback after that seek stays on it.
+        let frame = |n: i64| FrameRate::FPS_30.frame_to_time(n).unwrap();
+        let play = |n: i64, proxy: bool, drawn: u32| {
+            served(
+                &snapshot,
+                DecodeMode::Sequential,
+                proxy,
+                Some(drawn),
+                frame(n),
+            )
+        };
+        const PROXY: ((u32, u32), bool) = ((960, 540), true);
+        const ORIGINAL: ((u32, u32), bool) = ((2560, 1440), false);
+        assert_eq!(play(20, true, 1920), ORIGINAL);
+        assert_eq!(play(21, true, 480), PROXY, "to the proxy at once");
+        assert_eq!(play(22, true, 1920), PROXY, "kept: drawn larger");
+        assert_eq!(play(23, false, 480), PROXY, "kept: the toggle went off");
+        assert_eq!(play(24, false, 480), PROXY);
+        assert_eq!(
+            served(&snapshot, DecodeMode::Seek, false, Some(480), frame(24)),
+            ORIGINAL,
+            "the pause shows the original"
+        );
+        assert_eq!(play(25, false, 480), ORIGINAL);
+        assert_eq!(play(26, true, 480), PROXY);
+        // A jump (another part of the file) is a seek anyway: the decision applies.
+        assert_eq!(play(58, false, 480), ORIGINAL);
 
         // The asset's proxies turned off (ADR-0027): the original, from the next frame; on
         // again: the proxy again. The store did not change in between.
@@ -1078,6 +1109,20 @@ mod tests {
             served(&snapshot, DecodeMode::Sequential, true, Some(480), t),
             ((2560, 1440), false)
         );
+        // Evicted in the middle of a stream that was on it: the original, with no error.
+        proxies
+            .generator
+            .generate(
+                &source,
+                &proxies.profile().unwrap(),
+                &CancelToken::new(),
+                &mut |_| {},
+            )
+            .unwrap();
+        assert_eq!(play(30, true, 480), PROXY);
+        proxies.delete(&snapshot.doc, &[id]).unwrap();
+        assert_eq!(play(31, false, 480), ORIGINAL);
+        assert_eq!(play(32, true, 480), ORIGINAL);
         drop(actor);
         let _ = std::fs::remove_dir_all(&dir);
     }

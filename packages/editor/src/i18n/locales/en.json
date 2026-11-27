@@ -964,12 +964,12 @@
         "delete": "Could not delete the proxies"
       },
       "tip": {
-        "ready": "A proxy is ready: scrubbing uses this smaller copy. Exports always use the original file.",
+        "ready": "A proxy is ready: the preview uses this smaller copy when it is large enough for the picture. Exports always use the original file.",
         "generating": "Cutweave is making a smaller copy for smooth scrubbing. You can keep editing.",
         "queued": "A proxy will be made when the jobs before it finish.",
         "failed": "The proxy could not be made. Right-click and choose Regenerate proxies to try again.",
         "failedBecause": "The proxy could not be made: {{message}}. Right-click and choose Regenerate proxies to try again.",
-        "evicted": "The proxy was removed from the cache, so scrubbing uses the original file. Right-click and choose Regenerate proxies to make it again.",
+        "evicted": "The proxy was removed from the cache, so the preview uses the original file. Right-click and choose Regenerate proxies to make it again.",
         "incomplete": "Making the proxy was stopped before the end. Regenerate proxies continues from where it stopped."
       }
     },

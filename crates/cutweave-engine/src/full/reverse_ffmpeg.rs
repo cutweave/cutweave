@@ -164,19 +164,22 @@ impl Fixture {
         )
     }
 
-    /// The request for frame `n` of the media (full quality, no proxy asked for).
+    /// The request for frame `n` of the media as the preview asks for it while it uses proxies
+    /// (the default), drawn at the original's full size: a proxy is too small for it, so only
+    /// playback read backwards takes one (WP-2D.01b, WP-2F.02).
     fn request(&self, n: usize) -> FrameRequest {
         let video = &self.asset.probe.streams[0];
+        let (width, height) = (video.width.unwrap(), video.height.unwrap());
         FrameRequest {
             media: self.id,
             stream: Some(0),
             source_time: self.index.time_of(n).unwrap(),
-            source_size: Some((video.width.unwrap(), video.height.unwrap())),
+            source_size: Some((width, height)),
             rotation: 0,
             color: self.asset.probe.color.clone(),
             still: false,
-            proxy: false,
-            drawn_long_edge: None,
+            proxy: true,
+            drawn_long_edge: Some(width.max(height)),
         }
     }
 

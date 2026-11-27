@@ -53,6 +53,11 @@
 //!   (a proxy became ready, was evicted or deleted) or the asset's proxy mode changes: one
 //!   atomic load per frame, so a proxy finished while the file is open is used from the next
 //!   frame on, and the original's decoders stay open for the frames that need them.
+//! - **No hitch in playback.** While a media item plays (frames decoded in order), it stays on
+//!   the proxy it is reading when the decision turns to the original (the toggle was switched
+//!   off, the quality ladder climbed to a size the proxy does not cover): the original would
+//!   need a seek into its GOP. The original shows at the next seek, pause or step. A change to
+//!   the proxy (intra-frame) applies to the next frame ([`MediaResolver::streaming`]).
 //! - **Fallback.** A missing, evicted or failing proxy falls back to the original.
 //! - **Offline originals.** Media whose original is not on this computer shows the "media
 //!   offline" slate, never its proxy: the lookup finds no proxy for it, and a paused frame, a
@@ -93,11 +98,9 @@ use cutweave_commands::DocSnapshot;
 use cutweave_media::{
     CancelCheck, CancelToken, DecodeMode, DecodeOpts, DecoderPool, HwMode, MediaBackend,
     MediaError, MediaPurpose, MediaResolver, PixelFormat, PreviewQuality, ProxyFile, ReadBack,
-    VideoDecoder,
+    Rendition, VideoDecoder,
 };
-use cutweave_model::{
-    FLICKS_PER_SECOND, MediaAsset, MediaId, ProbeInfo, Project, ProxyMode, Time,
-};
+use cutweave_model::{FLICKS_PER_SECOND, MediaAsset, MediaId, ProbeInfo, Project, ProxyMode, Time};
 use cutweave_render::alloc_scope::{self, Scope};
 use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 
@@ -576,6 +579,9 @@ struct Held {
     /// the asset's proxy mode then (`None`: look again).
     proxy: Option<HeldProxy>,
     proxy_resolved: Option<(u64, ProxyMode)>,
+    /// The last picture served was a playback frame from the proxy: the stream it is part of
+    /// stays on the proxy (see the module docs).
+    streaming_proxy: bool,
     /// The source time last asked for: a request before it reads the media backwards.
     requested: Option<Time>,
     /// Whether some frames of the media decode only from an earlier keyframe (from the index).
@@ -757,6 +763,7 @@ impl PreviewFrames {
             last: None,
             proxy: None,
             proxy_resolved: None,
+            streaming_proxy: false,
             requested: None,
             long_gop: None,
             readback: None,
@@ -828,14 +835,18 @@ impl PreviewRequest<'_> {
 
     /// The picture of `asset`'s ready proxy shown at original time `t`, when the resolver
     /// gives `purpose` the proxy (see the module docs); `None` falls back to the original.
+    /// `streaming`: the item is in the middle of a playback stream it reads from the proxy,
+    /// which it keeps while the proxy it holds is still the store's.
     fn proxy_frame(
         &self,
         held: &mut Held,
         asset: Option<&MediaAsset>,
         t: Time,
         purpose: MediaPurpose,
+        streaming: bool,
     ) -> Option<Arc<VideoFrame>> {
-        if !purpose.may_use_proxy() {
+        let wanted = purpose.may_use_proxy();
+        if !wanted && !streaming {
             return None;
         }
         let resolver = &self.frames.frames.resolver;
@@ -843,6 +854,10 @@ impl PreviewRequest<'_> {
         let asset = asset?;
         let resolved = (proxies.store().generation(), asset.proxy_mode);
         if held.proxy_resolved != Some(resolved) {
+            if !wanted {
+                // The proxy the stream was on may be gone, and this frame asks for none.
+                return None;
+            }
             // A proxy became ready or went away since this item was resolved, or the asset's
             // proxies were turned on or off (allocates).
             held.proxy = alloc_scope::within(Scope::Media, || {
@@ -853,8 +868,19 @@ impl PreviewRequest<'_> {
             held.proxy_resolved = Some(resolved);
         }
         let long_edge = held.proxy.as_ref()?.ready.long_edge();
-        // The resolution rule: a picture drawn larger than the proxy reads the original.
-        if !Resolver::serves(purpose, long_edge) {
+        // The resolution rule: a picture drawn larger than the proxy reads the original. A
+        // stream on the proxy keeps it until its next seek.
+        let decided = if Resolver::serves(purpose, long_edge) {
+            Rendition::Proxy
+        } else {
+            Rendition::Original
+        };
+        let current = if streaming {
+            Rendition::Proxy
+        } else {
+            Rendition::Original
+        };
+        if Resolver::streaming(current, decided) == Rendition::Original {
             return None;
         }
         // A paused frame, a seek or a scrub looks at the disk again: an original that went
@@ -1020,10 +1046,19 @@ impl FrameSource for PreviewRequest<'_> {
         // The resolver decides: the proxy when the preview uses proxies and it holds the
         // pixels the layer is drawn at (WP-2F.02).
         // Offline media shows the slate even when it has a proxy (one picture per clip).
+        // A playback frame next to the one before it (within a second, either way) is part of
+        // the same stream.
+        let playback = self.mode == DecodeMode::Sequential;
+        let streaming = playback
+            && held.streaming_proxy
+            && previous.is_some_and(|p| (t.flicks() - p.flicks()).abs() <= REVERSE_STEP_FLICKS);
+        held.streaming_proxy = false;
         if !held.offline
-            && let Some(frame) = self.proxy_frame(held, asset, t, self.purpose(request, backward))
+            && let Some(frame) =
+                self.proxy_frame(held, asset, t, self.purpose(request, backward), streaming)
         {
             self.showed_proxy.set(true);
+            held.streaming_proxy = playback;
             return Ok(frame);
         }
         if held.index.is_none() {

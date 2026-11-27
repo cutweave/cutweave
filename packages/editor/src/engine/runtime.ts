@@ -287,7 +287,7 @@ export function startEngineRuntime(
     const values = stores.prefs?.getState().values;
     if (values === undefined) return;
     // The transport's `view.*` commands are not in the generated schema.
-    const call = rpc.call as unknown as (
+    const call = rpc.call.bind(rpc) as unknown as (
       method: string,
       params: Record<string, unknown>,
     ) => Promise<unknown>;

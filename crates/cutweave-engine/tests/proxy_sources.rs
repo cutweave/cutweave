@@ -205,7 +205,7 @@ impl Rig {
     fn show(&self, t: i64) -> Value {
         let before = full_support::delivered(&self.handle);
         call(&self.ui, "view.seek", json!({ "t": t })).unwrap();
-        eventually("the frame after the seek", || {
+        eventually(&format!("the frame after the seek to {t}"), || {
             // The clocks are the test's: let the scrub's idle time pass, so it refines.
             self.clocks.advance(SEC / 5);
             let s = self.state();
@@ -253,7 +253,7 @@ fn an_export_of_three_clips_opens_no_proxy_file() {
 
     // The preview reads proxies: a frame of the second clip is on screen from its proxy (the
     // preview is 640 x 360, smaller than the proxy), and the spy saw that open.
-    let shown = r.show(SEC / 2 + SEC / 10);
+    let shown = r.show(SEC + SEC / 2);
     assert_eq!(shown["use_proxies"], json!(true), "{shown}");
     assert_eq!(shown["proxy"], json!(true), "{shown}");
     assert!(
@@ -374,7 +374,7 @@ fn the_toggle_turns_the_previews_proxies_off_and_a_new_or_deleted_proxy_swaps_at
         "the playhead did not move: {state}"
     );
     // Seeks and playback stay on the original while it is off.
-    let shown = r.show(SEC + SEC / 2);
+    let shown = r.show(SEC / 2 + SEC / 10);
     assert_eq!(shown["proxy"], json!(false), "{shown}");
     call(
         &r.ui,

@@ -669,6 +669,11 @@ mod tests {
         // The plain marking clears a size set before.
         proxies.apply_for_output(&mut scene, (960, 540));
         proxies.apply(&mut scene);
-        assert!(scene.layers.iter().all(|l| l.request.drawn_long_edge.is_none()));
+        assert!(
+            scene
+                .layers
+                .iter()
+                .all(|l| l.request.drawn_long_edge.is_none())
+        );
     }
 }
