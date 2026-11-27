@@ -774,7 +774,10 @@ describe("the timeline's own edits (WP-2A.10)", () => {
     const chapter = menuFor("timeline.marker", target);
     expect(chapter.items.map((i) => i.label)).not.toContain("Convert to chapter");
     await chapter.choose("Convert to marker");
-    expect(lastCall()).toEqual({ name: "timeline.update_marker", args: { id: marker, kind: "user" } });
+    expect(lastCall()).toEqual({
+      name: "timeline.update_marker",
+      args: { id: marker, kind: "user" },
+    });
   });
 
   it("gives clips a colour label from the label tokens, checks the current one and clears it (issue #222)", async () => {

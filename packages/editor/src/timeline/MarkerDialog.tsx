@@ -62,7 +62,9 @@ export function MarkerDialog({ marker: id }: { readonly marker: string }) {
   const { t } = useTranslation();
   const marker = useDocStore((s) => {
     const sequence = selectActiveSequenceId(s.project);
-    return sequence === null ? undefined : s.project?.sequences[sequence]?.markers?.[id as MarkerId];
+    return sequence === null
+      ? undefined
+      : s.project?.sequences[sequence]?.markers?.[id as MarkerId];
   });
   const [label, setLabel] = useState(marker?.label ?? "");
   const [picked, setPicked] = useState<LabelColor | null>(null);
