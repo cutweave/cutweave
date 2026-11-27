@@ -22,6 +22,29 @@ export function resolveTheme(choice: ThemeChoice, systemIsDark: boolean): Resolv
   return choice;
 }
 
+/** "Interface scale" (WP-2H.09), in percent: main sets the windows' zoom factor to it. */
+export const INTERFACE_SCALES = [90, 100, 110, 125, 150] as const;
+export type InterfaceScale = (typeof INTERFACE_SCALES)[number];
+/** The zoom factor of a window for an interface scale: `125` is `1.25`. */
+export const zoomFactorFor = (scale: InterfaceScale): number => scale / 100;
+
+/** "Density" (WP-2H.09): today's sizes, or the larger set under `data-density="comfortable"`. */
+export const DENSITY_CHOICES = ["standard", "comfortable"] as const;
+export type DensityChoice = (typeof DENSITY_CHOICES)[number];
+/** The `data-density` a window's root carries: Standard is the design system's `compact`. */
+export const densityAttribute = (choice: DensityChoice): "compact" | "comfortable" =>
+  choice === "comfortable" ? "comfortable" : "compact";
+
+/** "Reduce motion" (WP-2H.09): as the system asks, always, or never. */
+export const REDUCE_MOTION_CHOICES = ["system", "on", "off"] as const;
+export type ReduceMotionChoice = (typeof REDUCE_MOTION_CHOICES)[number];
+/**
+ * The `data-motion` a window's root carries: `reduce` makes every transition instant, `full`
+ * keeps motion even when the system asks to reduce it, and none follows the system.
+ */
+export const motionAttribute = (choice: ReduceMotionChoice): "reduce" | "full" | undefined =>
+  choice === "on" ? "reduce" : choice === "off" ? "full" : undefined;
+
 export const STARTUP_CHOICES = ["empty", "last"] as const;
 export type StartupChoice = (typeof STARTUP_CHOICES)[number];
 
@@ -132,6 +155,10 @@ export interface PreferenceValues {
   "general.workspace": WorkspaceChoice;
   "general.dialog_choices": DialogChoices;
   "appearance.theme": ThemeChoice;
+  // Appearance (WP-2H.09)
+  "appearance.scale": InterfaceScale;
+  "appearance.density": DensityChoice;
+  "appearance.reduce_motion": ReduceMotionChoice;
   "saving.autosave": boolean;
   "saving.interval": (typeof AUTOSAVE_INTERVALS_S)[number];
   "saving.backups": (typeof AUTOSAVE_BACKUPS)[number];
@@ -284,6 +311,20 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "general.workspace": { type: "enum", scope: "app", options: WORKSPACE_CHOICES, default: "last" },
   "general.dialog_choices": { type: "record", scope: "app", default: {} },
   "appearance.theme": { type: "enum", scope: "app", options: THEME_CHOICES, default: "dark" },
+  // Appearance (WP-2H.09): main applies the scale (the zoom factor), the editor the other two.
+  "appearance.scale": { type: "enum", scope: "app", options: INTERFACE_SCALES, default: 100 },
+  "appearance.density": {
+    type: "enum",
+    scope: "app",
+    options: DENSITY_CHOICES,
+    default: "standard",
+  },
+  "appearance.reduce_motion": {
+    type: "enum",
+    scope: "app",
+    options: REDUCE_MOTION_CHOICES,
+    default: "system",
+  },
   "saving.autosave": { type: "boolean", scope: "app", default: true },
   "saving.interval": { type: "enum", scope: "app", options: AUTOSAVE_INTERVALS_S, default: 30 },
   "saving.backups": { type: "enum", scope: "app", options: AUTOSAVE_BACKUPS, default: 10 },

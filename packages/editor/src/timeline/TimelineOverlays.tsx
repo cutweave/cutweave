@@ -6,7 +6,14 @@
 // Alt-drop replaces.
 import type { DropPreview, Rect, TimelineTrack } from "@cutweave/timeline";
 import { IconButton, Menu, type MenuEntry, Tooltip } from "@cutweave/ui";
-import { type ReactElement, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import type { TKey } from "../i18n/index.ts";
@@ -43,6 +50,26 @@ function readMetrics(el: Element): Metrics {
     controlSm: px("--control-sm"),
     ruler: px("--control-md"),
   };
+}
+
+/**
+ * The density of the window `el` is in (`data-density` on its root, WP-2H.09). The size tokens
+ * are other values in another density, and the canvas lays its headers out again: what is
+ * placed over them reads the tokens again and follows.
+ */
+function useDensity(el: RefObject<Element | null>): string {
+  const [density, setDensity] = useState("");
+  useEffect(() => {
+    const root = el.current?.ownerDocument.documentElement;
+    const view = root?.ownerDocument.defaultView;
+    if (root === undefined || view === null || view === undefined) return;
+    const read = (): void => setDensity(root.getAttribute("data-density") ?? "");
+    read();
+    const observer = new view.MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-density"] });
+    return () => observer.disconnect();
+  }, [el]);
+  return density;
 }
 
 /** Re-renders when what moves the canvas changes: scroll, zoom, the document. */
@@ -96,9 +123,11 @@ export function TrackHeaderControls({ host }: { readonly host: TimelineHost }): 
   const model = selectTimelineModel(project);
   const box = useRef<HTMLDivElement>(null);
   const [m, setMetrics] = useState<Metrics>(ZERO);
+  const density = useDensity(box);
+  // The tokens are read again in another density.
   useLayoutEffect(() => {
     if (box.current !== null) setMetrics(readMetrics(box.current));
-  }, []);
+  }, [density]);
   const rows: ReactElement[] = [];
   if (m.controlSm > 0) {
     for (const track of model.tracks) {

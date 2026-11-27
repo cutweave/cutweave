@@ -839,6 +839,12 @@ body {
     transition: background var(--duration-fast) var(--easing-standard);
   }
 }
+/* Reduce motion Off keeps it when the system asks to reduce (WP-2H.09, components.css). */
+@media (prefers-reduced-motion: reduce) {
+  :where([data-motion="full"]) .cw-media__card {
+    transition: background var(--duration-fast) var(--easing-standard);
+  }
+}
 
 /* ---------- Preview ---------- */
 .cw-preview {

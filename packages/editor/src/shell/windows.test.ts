@@ -96,6 +96,23 @@ describe("the window registry", () => {
     expect(target.dataset.theme).toBe("light");
   });
 
+  it("gives each popout the density and the Reduce motion choice, live (WP-2H.09)", async () => {
+    const html = document.documentElement;
+    html.dataset.density = "comfortable";
+    html.dataset.motion = "reduce";
+    const popout = secondWindow();
+    const target = popout.document.documentElement;
+    addPopoutWindow(popout, ["panel.inspector"]);
+    expect(target.dataset.density).toBe("comfortable");
+    expect(target.dataset.motion).toBe("reduce");
+    html.dataset.density = "compact";
+    delete html.dataset.motion;
+    await flush();
+    expect(target.dataset.density).toBe("compact");
+    expect(target.hasAttribute("data-motion")).toBe(false);
+    removePopoutWindow(popout);
+  });
+
   it("titles a popout by its panels and the project: Inspector — My video — Cutweave", async () => {
     const popout = secondWindow();
     addPopoutWindow(popout, ["panel.inspector"]);

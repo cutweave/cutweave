@@ -52,7 +52,18 @@ describe("settings search", () => {
   });
 
   it("matches on the page title, so a page name finds its rows", () => {
-    expect(find("appearance")[0]?.rows.map((r) => r.row.id)).toEqual(["appearance.theme"]);
+    expect(find("appearance")[0]?.rows.map((r) => r.row.id)).toEqual([
+      "appearance.theme",
+      "appearance.scale",
+      "appearance.density",
+      "appearance.reduce_motion",
+    ]);
+  });
+
+  it("finds the interface scale, the density and Reduce motion by everyday words (WP-2H.09)", () => {
+    expect(find("zoom")[0]?.rows.map((r) => r.row.id)).toContain("appearance.scale");
+    expect(find("spacing")[0]?.rows.map((r) => r.row.id)).toEqual(["appearance.density"]);
+    expect(find("animation")[0]?.rows.map((r) => r.row.id)).toEqual(["appearance.reduce_motion"]);
   });
 
   it("marks the matching text, in the label and the description", () => {

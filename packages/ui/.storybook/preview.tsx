@@ -21,7 +21,9 @@ const FONT_LOADS = [
 const withTheme: Decorator = (Story, context) => {
   const theme: Theme = context.globals.theme === "light" ? "light" : "dark";
   document.documentElement.dataset.theme = theme;
-  document.documentElement.dataset.density = "compact";
+  // Standard is `compact`; Comfortable is the larger size tokens (design/tokens.json `density`).
+  document.documentElement.dataset.density =
+    context.globals.density === "comfortable" ? "comfortable" : "compact";
   // `.body` (13px / 20px Instrument Sans) comes from the generated type classes in tokens.css.
   document.body.classList.add("body");
   return <Story />;
@@ -46,12 +48,15 @@ const preview: Preview = {
     },
     density: {
       description:
-        "Density. The design system ships one compact density: controls are 24/28/32 px with a 24 px minimum hit target. A looser density is not planned before P7.",
+        "Density (sets data-density on the document root). Standard is compact: controls are 24/28/32 px with a 24 px minimum hit target. Comfortable makes controls, bars, tracks and padding larger (Settings > Appearance > Density).",
       toolbar: {
         title: "Density",
         icon: "ruler",
         dynamicTitle: true,
-        items: [{ value: "compact", title: "Compact (24/28/32 px controls)" }],
+        items: [
+          { value: "compact", title: "Standard (24/28/32 px controls)" },
+          { value: "comfortable", title: "Comfortable (28/32/36 px controls)" },
+        ],
       },
     },
   },

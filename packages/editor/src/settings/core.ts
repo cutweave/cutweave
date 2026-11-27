@@ -4,7 +4,12 @@
 // shortcuts, WP-1J.05 Agents and MCP and Notifications, WP-1D.08 Cache and storage and
 // Performance and hardware, and later ones) and register themselves the same way.
 
-import { AUTOSAVE_BACKUPS, AUTOSAVE_INTERVALS_S, RECENT_COUNT_MAX } from "@cutweave/preferences";
+import {
+  AUTOSAVE_BACKUPS,
+  AUTOSAVE_INTERVALS_S,
+  INTERFACE_SCALES,
+  RECENT_COUNT_MAX,
+} from "@cutweave/preferences";
 import { sessionUiStore } from "../session/sessionUiStore.ts";
 // The "This computer" pages register themselves (WP-1D.08).
 import "./machine.tsx";
@@ -195,6 +200,12 @@ const general: SettingsPageDef = {
   ],
 };
 
+/** "Interface scale" choices: `125%`. */
+const scaleOptions: readonly ChoiceOption[] = INTERFACE_SCALES.map((scale) => ({
+  value: scale,
+  text: `${scale}%`,
+}));
+
 const appearance: SettingsPageDef = {
   id: "appearance",
   title: "settings.pages.appearance",
@@ -214,6 +225,44 @@ const appearance: SettingsPageDef = {
           { value: "dark", label: "theme.dark" },
           { value: "light", label: "theme.light" },
           { value: "system", label: "theme.system" },
+        ],
+      },
+    },
+    // WP-2H.09: main sets the windows' zoom factor; the editor sets the density and the motion.
+    {
+      id: "appearance.scale",
+      key: "appearance.scale",
+      label: "settings.rows.interfaceScale.label",
+      description: "settings.rows.interfaceScale.description",
+      keywords: "settings.rows.interfaceScale.keywords",
+      control: { kind: "segmented", options: scaleOptions },
+    },
+    {
+      id: "appearance.density",
+      key: "appearance.density",
+      label: "settings.rows.density.label",
+      description: "settings.rows.density.description",
+      keywords: "settings.rows.density.keywords",
+      control: {
+        kind: "segmented",
+        options: [
+          { value: "standard", label: "settings.rows.density.standard" },
+          { value: "comfortable", label: "settings.rows.density.comfortable" },
+        ],
+      },
+    },
+    {
+      id: "appearance.reduce_motion",
+      key: "appearance.reduce_motion",
+      label: "settings.rows.reduceMotion.label",
+      description: "settings.rows.reduceMotion.description",
+      keywords: "settings.rows.reduceMotion.keywords",
+      control: {
+        kind: "segmented",
+        options: [
+          { value: "system", label: "settings.rows.reduceMotion.system" },
+          { value: "on", label: "settings.rows.reduceMotion.on" },
+          { value: "off", label: "settings.rows.reduceMotion.off" },
         ],
       },
     },

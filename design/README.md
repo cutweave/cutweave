@@ -81,6 +81,14 @@ Cutweave is an open-source video editor for creators and the AI agents that work
   - The toolbar and transport bar are `toolbar` tall. Panel headers are `panel-header`.
   - Nothing clickable is smaller than `hit-min`; small icons get an invisible hit area.
 - **Tracks:** `track-sm` (collapsed), `track-md` (default), `track-lg` (keyframe lanes).
+- **Density:** Standard is the values above (`data-density="compact"` on the root). **Comfortable** (`data-density="comfortable"`, Settings > Appearance > Density) is a second set of the same tokens, listed under `density` in `tokens.json`:
+  - Controls `control-sm` / `-md` / `-lg` are 28 / 32 / 36 (Standard 24 / 28 / 32) and `hit-min` is 28.
+  - `toolbar` is 44 and `panel-header` 36 (Standard 40 and 32).
+  - Tracks `track-sm` / `-md` / `-lg` are 36 / 56 / 84 (Standard 32 / 48 / 72). A track with a height of its own keeps it.
+  - Padding `space-2` / `-3` / `-4` is 10 / 16 / 20 (Standard 8 / 12 / 16).
+
+  Text, icons, radii and colors are the same in both, so contrast does not change. Components never test the attribute: they read the tokens. The token build refuses a set that makes a token smaller or leaves a control below `hit-min`.
+- **Interface scale:** 90 to 150% is the window's zoom, not a token. A canvas sizes its backing store as CSS size × `devicePixelRatio`, so it stays sharp at every scale.
 - **Radii:** `radius-sm` for buttons, inputs and clips; `radius-md` for menus and cards; `radius-lg` for dialogs and media tiles; `radius-full` for chips, switches and the playhead flag; `radius-xs` for markers.
 - **Depth:** hierarchy comes from surface steps and `border-subtle` / `border-default`. Only floating layers get shadows: `shadow-popover`, `shadow-dialog`, and `shadow-drag` for a clip in flight.
 
@@ -99,7 +107,7 @@ Cutweave is an open-source video editor for creators and the AI agents that work
 
 - **Timings:** `duration-fast` for hover and toggles, `duration-base` for menus and tabs, `duration-slow` for dialogs, toasts and the proposal reveal. Use `easing-enter` for appearing, `easing-exit` for leaving and `easing-standard` for everything else.
 - **During playback, nothing animates** in the timeline or preview except the playhead and the frames themselves.
-- **Reduced motion:** under `prefers-reduced-motion`, transitions become instant.
+- **Reduced motion:** under `prefers-reduced-motion`, transitions become instant. Settings > Appearance > Reduce motion overrides the system through `data-motion` on the root: `reduce` makes every transition and animation instant, `full` keeps them when the system asks to reduce, and no attribute follows the system.
 
 ## Iconography
 

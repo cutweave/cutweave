@@ -24,7 +24,12 @@ import {
   type WebContents,
   type WebPreferences,
 } from "electron";
-import { type PreferenceKey, resolveTheme } from "../../../../packages/preferences/src/index.ts";
+import {
+  type InterfaceScale,
+  type PreferenceKey,
+  resolveTheme,
+  zoomFactorFor,
+} from "../../../../packages/preferences/src/index.ts";
 import type { EditAction, EngineStatus, ThemeId } from "../shared/api.ts";
 import {
   addFolder,
@@ -48,6 +53,7 @@ import { EngineSupervisor } from "./engine/supervisor.ts";
 import { FocusGroup } from "./focus-group.ts";
 import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
+import { applyInterfaceScale, cssToScreen, titleBarHeightFor } from "./interface-scale.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { applicationMenuTemplate } from "./menu.ts";
 import {
@@ -63,7 +69,7 @@ import { PreferencesStore } from "./preferences-store.ts";
 import { forcedPreviewPath } from "./preview-path.ts";
 import { RecentProjects } from "./recent-projects.ts";
 import { installTestHooks, shouldInstallTestHooks } from "./test-hooks.ts";
-import { hasThemedOverlay, titleBarOverlay } from "./title-bar.ts";
+import { hasThemedOverlay, titleBarOverlay, trafficLightPosition } from "./title-bar.ts";
 import { createMainWindow } from "./window.ts";
 import { assertWindowPreferences, WindowPolicyError } from "./window-policy.ts";
 import {
@@ -180,11 +186,25 @@ function adoptPopout(
   }
   registerPopout(child, opener, details.frameName);
   child.setMenuBarVisibility(false);
-  // Its saved bounds may be on a monitor that is gone, or larger than any left.
+  // The same interface scale as the editor (WP-2H.09), now and whenever its page loads.
+  const scale = currentScale();
+  applyInterfaceScale(child.webContents, scale);
+  child.webContents.on("did-finish-load", () =>
+    applyInterfaceScale(child.webContents, currentScale()),
+  );
+  // Its saved bounds may be on a monitor that is gone, or larger than any left. The editor
+  // asked for the size in its own CSS pixels (the panel's box, or the `innerWidth` and
+  // `innerHeight` dockview saved) and Chromium took them as screen points: at another interface
+  // scale the same page needs that many times the points.
   const outer = child.getBounds();
   const content = child.getContentBounds();
   const fitted = fitPopout(
-    { x: outer.x, y: outer.y, width: content.width, height: content.height },
+    {
+      x: outer.x,
+      y: outer.y,
+      width: cssToScreen(content.width, scale),
+      height: cssToScreen(content.height, scale),
+    },
     screen.getAllDisplays().map((d) => d.workArea),
   );
   if (fitted.width !== content.width || fitted.height !== content.height) {
@@ -278,6 +298,37 @@ function currentTheme(): ThemeId {
   );
 }
 
+/** Settings > Appearance > Interface scale, in percent (WP-2H.09). */
+function currentScale(): InterfaceScale {
+  return preferences?.get("appearance.scale") ?? 100;
+}
+
+/** The top bar's height on screen: the `toolbar` token of the density, at the interface scale. */
+function currentTitleBarHeight(): number {
+  return titleBarHeightFor(currentScale(), preferences?.get("appearance.density") ?? "standard");
+}
+
+/**
+ * Applies the interface scale to the editor window and its detached panels' windows, and keeps
+ * the OS window controls as tall as the top bar (WP-2H.09). Called when the scale or the density
+ * changes and when the editor's page has loaded.
+ */
+function applyAppearance(): void {
+  const editor = liveWindow();
+  if (editor === null) return;
+  const scale = currentScale();
+  applyInterfaceScale(editor.webContents, scale);
+  for (const popout of popoutsOf(editor.webContents)) {
+    applyInterfaceScale(popout.webContents, scale);
+  }
+  const height = currentTitleBarHeight();
+  if (hasThemedOverlay(process.platform)) {
+    editor.setTitleBarOverlay(titleBarOverlay(currentTheme(), height));
+  } else {
+    editor.setWindowButtonPosition(trafficLightPosition(height));
+  }
+}
+
 /** Status to every editor window (never the token: that is `engine:getConnection` only). */
 function setEngineStatus(status: EngineStatus): void {
   engineStatus = status;
@@ -347,7 +398,12 @@ function openWindow(): void {
     factory,
     // Read before the window exists, so its frame and controls open in the right colors.
     theme: currentTheme(),
+    // The interface scale and the density's top bar height (WP-2H.09): the first frame has them.
+    zoomFactor: zoomFactorFor(currentScale()),
+    titleBarHeight: currentTitleBarHeight(),
   });
+  // Chromium keeps a zoom per origin; after every load the window has the chosen one.
+  mainWindow.webContents.on("did-finish-load", applyAppearance);
   closeGuard.reset();
   // With unsaved changes the editor settles them first (Save / Discard / Cancel); it answers
   // with `window:confirmClose`, which closes the window again and lets this through.
@@ -421,6 +477,14 @@ if (!app.requestSingleInstanceLock()) {
     prefs.onChange((changes) => {
       if (changes["appearance.theme"] !== undefined) {
         nativeTheme.themeSource = changes["appearance.theme"];
+      }
+      // The interface scale applies at once, in every window; the OS window controls follow the
+      // top bar's height, which the scale and the density change (WP-2H.09).
+      if (
+        changes["appearance.scale"] !== undefined ||
+        changes["appearance.density"] !== undefined
+      ) {
+        applyAppearance();
       }
       if (changes["agents.allowed_folders"] !== undefined) {
         rootsApplied = supervisor?.applyAllowedRoots() ?? Promise.resolve();
@@ -505,7 +569,7 @@ if (!app.requestSingleInstanceLock()) {
         },
         setTheme: (theme) => {
           if (hasThemedOverlay(process.platform)) {
-            liveWindow()?.setTitleBarOverlay(titleBarOverlay(theme));
+            liveWindow()?.setTitleBarOverlay(titleBarOverlay(theme, currentTitleBarHeight()));
           }
           // Detached panels' windows: their frame color, under the page, follows too.
           const editor = liveWindow();
