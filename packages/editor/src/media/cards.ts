@@ -92,7 +92,9 @@ export function selectMediaUsage(project: Project | null): ReadonlyMap<string, n
           counts.set(item.media, (counts.get(item.media) ?? 0) + 1);
         }
       }
-      const fill = sequence.format.background_fill;
+      // A partial document (a sequence without its format) has no fill.
+      const format: typeof sequence.format | undefined = sequence.format;
+      const fill = format?.background_fill;
       if (fill?.kind === "image") counts.set(fill.media, (counts.get(fill.media) ?? 0) + 1);
     }
     usage = counts;
