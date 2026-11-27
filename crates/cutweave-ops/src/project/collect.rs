@@ -8,7 +8,9 @@
 //! each in a folder named after the folder it came from (`media/Footage/clip.mp4`; a name taken
 //! by another file gets ` (2)`). With [`CollectMode::CopyExternalOnly`] a file inside the
 //! project folder keeps its place relative to it instead. Assets with the same content share
-//! one copy. The copy's document is named after its folder and points at the copied files;
+//! one copy. Every picture of an image sequence is copied (ADR-0035): the run stays together in
+//! one folder under its own file names (a folder where one of them is taken gets ` (2)`), and
+//! a run with a picture that is gone is refused like any missing file. The copy's document is named after its folder and points at the copied files;
 //! with `trim_unused` the assets no
 //! timeline uses are left out of it. `generated/` is copied when `include_generated` is set.
 //! The open project and its files are never written to. Proxies are cache state and are not
@@ -26,7 +28,7 @@
 //! user approved ([`CollectCtx::allowed_roots`]), as for `export.start`.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     fs,
     io::{self, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -162,7 +164,159 @@ fn is_file_asset(asset: &MediaAsset) -> bool {
     asset.kind != MediaKind::SequenceRef && asset.path_abs.is_some()
 }
 
+/// The file names of an image sequence's pictures (ADR-0035), the first one first: the numbers
+/// of the run that had a file at import. `None` for any other asset.
+fn run_names(asset: &MediaAsset) -> Option<Vec<String>> {
+    let run = asset
+        .image_sequence
+        .as_ref()
+        .filter(|_| asset.kind == MediaKind::ImageSequence)?;
+    let names: Vec<String> = run
+        .segments()
+        .into_iter()
+        .flat_map(|(start, len)| start..start.saturating_add(len))
+        .filter_map(|number| run.file_name(number))
+        .collect();
+    (!names.is_empty()).then_some(names)
+}
+
+/// The files planned so far and the names they took.
+struct Planner<'a> {
+    dest: PathBuf,
+    mode: CollectMode,
+    project_root: Option<&'a str>,
+    files: Vec<PlannedFile>,
+    by_hash: HashMap<String, usize>,
+    by_source: HashMap<String, usize>,
+    /// The file at each destination (relative, lower-cased, with `/`).
+    taken: HashMap<String, usize>,
+}
+
+impl Planner<'_> {
+    /// Where the file `from` goes, as the parts of a path below the destination: its place in
+    /// the project folder when that is kept, else `media/<its folder>/<its name>`.
+    fn place(&self, from: &str) -> Vec<String> {
+        (self.mode == CollectMode::CopyExternalOnly)
+            .then(|| self.project_root.and_then(|root| inside(root, from)))
+            .flatten()
+            .unwrap_or_else(|| {
+                vec![
+                    MEDIA_FOLDER.to_owned(),
+                    parent_name(from),
+                    file_name(from).to_owned(),
+                ]
+            })
+    }
+
+    fn key(parts: &[String]) -> String {
+        parts.join("/").to_lowercase()
+    }
+
+    fn push(&mut self, from: &str, parts: &[String]) -> usize {
+        self.files.push(PlannedFile {
+            media: Vec::new(),
+            from: PathBuf::from(from),
+            to: parts.iter().fold(self.dest.clone(), |p, part| p.join(part)),
+        });
+        let index = self.files.len() - 1;
+        self.taken.insert(Self::key(parts), index);
+        index
+    }
+
+    /// Plans one file under a name nothing else has (`name (2).ext` and so on).
+    fn single(&mut self, from: &str) -> usize {
+        let parts = self.place(from);
+        let (name, folder) = parts.split_last().map_or_else(
+            || (file_name(from).to_owned(), Vec::new()),
+            |(name, folder)| (name.clone(), folder.to_vec()),
+        );
+        let mut n = 1;
+        let parts = loop {
+            let candidate = if n == 1 {
+                name.clone()
+            } else {
+                numbered(&name, n)
+            };
+            let mut parts = folder.clone();
+            parts.push(candidate);
+            if !self.taken.contains_key(&Self::key(&parts)) {
+                break parts;
+            }
+            n += 1;
+        };
+        self.push(from, &parts)
+    }
+
+    /// Plans the pictures of a run (`names`, the first one at `from`): all into one folder
+    /// under their own names, so the copy's pattern finds them. A folder where one of the
+    /// names is taken by another file is passed over for `<folder> (2)` and so on; a picture
+    /// that is already planned there (a still of the same file) is not planned twice. Returns
+    /// the files, the first picture first.
+    fn run(&mut self, from: &str, names: &[String]) -> Vec<usize> {
+        let cut = from.rfind(['/', '\\']).map_or(0, |i| i + 1);
+        let sources: Vec<String> = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                if i == 0 {
+                    from.to_owned()
+                } else {
+                    format!("{}{name}", &from[..cut])
+                }
+            })
+            .collect();
+        let mut base = self.place(from);
+        base.pop();
+        let in_folder = |folder: &[String], name: &String| {
+            let mut parts = folder.to_vec();
+            parts.push(name.clone());
+            parts
+        };
+        let mut n = 1;
+        let folder = loop {
+            let mut folder = base.clone();
+            if n > 1 {
+                match folder.last_mut() {
+                    Some(last) => *last = format!("{last} ({n})"),
+                    None => folder.push(format!("{MEDIA_FOLDER} ({n})")),
+                }
+            }
+            let free = names.iter().zip(&sources).all(|(name, source)| {
+                self.taken
+                    .get(&Self::key(&in_folder(&folder, name)))
+                    .is_none_or(|&i| {
+                        self.files[i]
+                            .from
+                            .to_string_lossy()
+                            .eq_ignore_ascii_case(source)
+                    })
+            });
+            if free {
+                break folder;
+            }
+            n += 1;
+        };
+        names
+            .iter()
+            .zip(&sources)
+            .map(|(name, source)| {
+                let parts = in_folder(&folder, name);
+                let index = match self.taken.get(&Self::key(&parts)) {
+                    Some(&index) => index,
+                    None => self.push(source, &parts),
+                };
+                self.by_source.entry(source.to_lowercase()).or_insert(index);
+                index
+            })
+            .collect()
+    }
+}
+
 /// Plans collecting `doc` (a project in `project_root`, if it is saved) into `options.dest`.
+///
+/// An image sequence (ADR-0035) is planned picture by picture: every number of the run that
+/// had a file at import, all into one folder under their own names. Each of those files names
+/// the asset in [`PlannedFile::media`]; the copy's asset points at the first.
 #[must_use]
 pub fn plan_collect(
     doc: &Project,
@@ -170,7 +324,6 @@ pub fn plan_collect(
     options: &CollectOptions,
 ) -> CollectPlan {
     let dest = PathBuf::from(&options.dest);
-    let mode = options.mode.unwrap_or_default();
     let used = options
         .trim_unused
         .unwrap_or(false)
@@ -182,10 +335,15 @@ pub fn plan_collect(
     {
         name.trim().clone_into(&mut out.meta.name);
     }
-    let mut files: Vec<PlannedFile> = Vec::new();
-    let mut by_hash: HashMap<String, usize> = HashMap::new();
-    let mut by_source: HashMap<String, usize> = HashMap::new();
-    let mut taken: HashSet<String> = HashSet::new();
+    let mut plan = Planner {
+        dest: dest.clone(),
+        mode: options.mode.unwrap_or_default(),
+        project_root,
+        files: Vec::new(),
+        by_hash: HashMap::new(),
+        by_source: HashMap::new(),
+        taken: HashMap::new(),
+    };
     for asset in doc.media.values() {
         if let Some(used) = &used
             && !used.contains(&asset.id)
@@ -196,65 +354,49 @@ pub fn plan_collect(
         let (true, Some(from)) = (is_file_asset(asset), asset.path_abs.as_deref()) else {
             continue;
         };
-        let known = asset
+        let same_content = asset
             .content_hash
             .as_ref()
-            .and_then(|h| by_hash.get(h))
-            .or_else(|| by_source.get(&from.to_lowercase()))
+            .and_then(|h| plan.by_hash.get(h))
             .copied();
-        let index = known.unwrap_or_else(|| {
-            let kept = (mode == CollectMode::CopyExternalOnly)
-                .then(|| project_root.and_then(|root| inside(root, from)))
-                .flatten();
-            let parts = kept.unwrap_or_else(|| {
-                vec![
-                    MEDIA_FOLDER.to_owned(),
-                    parent_name(from),
-                    file_name(from).to_owned(),
-                ]
-            });
-            let (name, folder) = parts.split_last().map_or_else(
-                || (file_name(from).to_owned(), Vec::new()),
-                |(name, folder)| (name.clone(), folder.to_vec()),
-            );
-            let mut n = 1;
-            let parts = loop {
-                let candidate = if n == 1 {
-                    name.clone()
-                } else {
-                    numbered(&name, n)
-                };
-                let mut parts = folder.clone();
-                parts.push(candidate);
-                if taken.insert(parts.join("/").to_lowercase()) {
-                    break parts;
+        let index = match (same_content, run_names(asset)) {
+            (Some(index), _) => {
+                plan.by_source.insert(from.to_lowercase(), index);
+                plan.files[index].media.push(asset.id);
+                index
+            }
+            (None, Some(names)) => {
+                let files = plan.run(from, &names);
+                for &index in &files {
+                    plan.files[index].media.push(asset.id);
                 }
-                n += 1;
-            };
-            files.push(PlannedFile {
-                media: Vec::new(),
-                from: PathBuf::from(from),
-                to: parts.iter().fold(dest.clone(), |p, part| p.join(part)),
-            });
-            files.len() - 1
-        });
+                files.first().copied().unwrap_or_default()
+            }
+            (None, None) => {
+                let index = match plan.by_source.get(&from.to_lowercase()) {
+                    Some(&index) => index,
+                    None => plan.single(from),
+                };
+                plan.by_source.insert(from.to_lowercase(), index);
+                plan.files[index].media.push(asset.id);
+                index
+            }
+        };
         if let Some(hash) = &asset.content_hash {
-            by_hash.insert(hash.clone(), index);
+            plan.by_hash.insert(hash.clone(), index);
         }
-        by_source.insert(from.to_lowercase(), index);
-        files[index].media.push(asset.id);
         if let Some(copy) = out.media.get_mut(&asset.id) {
             // The asset keeps the name the bin shows even if its file was renamed on the way.
             if copy.name.is_none()
                 && file_name(from)
-                    != files[index]
+                    != plan.files[index]
                         .to
                         .file_name()
                         .map_or("", |n| n.to_str().unwrap_or(""))
             {
                 copy.name = Some(asset_name(asset).into_owned());
             }
-            copy.path_abs = Some(files[index].to.to_string_lossy().into_owned());
+            copy.path_abs = Some(plan.files[index].to.to_string_lossy().into_owned());
             copy.path_rel = None;
         }
     }
@@ -266,7 +408,7 @@ pub fn plan_collect(
         .filter(|dir| dir.is_dir());
     CollectPlan {
         dest,
-        files,
+        files: plan.files,
         doc: out,
         generated,
     }
@@ -578,8 +720,11 @@ pub struct CollectMissing {
     pub media_id: MediaId,
     /// The name the bin shows.
     pub name: String,
-    /// Where the project says its file is.
+    /// Where the project says its file is (for an image sequence: its first picture).
     pub path: String,
+    /// For an image sequence: how many of its pictures are gone, the first one included (the
+    /// numbers that had no file at import are not counted). Absent for other media.
+    pub missing_frames: Option<u32>,
 }
 
 /// Result of `project.collect_estimate`.
@@ -597,7 +742,8 @@ pub struct CollectEstimate {
     pub free_bytes: Option<u64>,
     /// Whether the files fit (true when the free space cannot be told).
     pub enough_space: bool,
-    /// Media whose file is missing: relink them first (`media.relink_folder`).
+    /// Media whose file is missing, and image sequences with pictures that are gone: relink
+    /// them first (`media.relink_folder`).
     pub missing: Vec<CollectMissing>,
     /// Media left out because no timeline uses them (`trim_unused`).
     pub trimmed: u32,
@@ -661,18 +807,37 @@ pub(super) fn estimate(
     let dest = Path::new(&options.dest);
     let plan = plan_collect(&ctx.doc, ctx.project_root.as_deref(), options);
     let mut bytes = 0_u64;
-    let mut missing = Vec::new();
+    let mut missing: Vec<CollectMissing> = Vec::new();
+    // An image sequence is listed once, with the number of its pictures that are gone.
+    let mut runs: HashMap<MediaId, usize> = HashMap::new();
     for file in &plan.files {
         match fs::metadata(&file.from) {
             Ok(meta) if meta.is_file() => bytes += meta.len(),
-            _ => missing.extend(file.media.iter().filter_map(|id| {
-                let asset = ctx.doc.media.get(id)?;
-                Some(CollectMissing {
-                    media_id: *id,
-                    name: asset_name(asset).into_owned(),
-                    path: file.from.to_string_lossy().into_owned(),
-                })
-            })),
+            _ => {
+                for id in &file.media {
+                    let Some(asset) = ctx.doc.media.get(id) else {
+                        continue;
+                    };
+                    let is_run = run_names(asset).is_some();
+                    if let Some(&at) = runs.get(id) {
+                        let frames = &mut missing[at].missing_frames;
+                        *frames = Some(frames.unwrap_or(0).saturating_add(1));
+                        continue;
+                    }
+                    if is_run {
+                        runs.insert(*id, missing.len());
+                    }
+                    missing.push(CollectMissing {
+                        media_id: *id,
+                        name: asset_name(asset).into_owned(),
+                        path: match (&asset.path_abs, is_run) {
+                            (Some(first), true) => first.clone(),
+                            _ => file.from.to_string_lossy().into_owned(),
+                        },
+                        missing_frames: is_run.then_some(1),
+                    });
+                }
+            }
         }
     }
     let free_bytes = ctx.host.free_space(dest);
@@ -689,17 +854,26 @@ pub(super) fn estimate(
     (plan, estimate)
 }
 
-/// Refuses a copy its estimate says cannot be made: a media file is missing, or the files do
-/// not fit.
+/// Refuses a copy its estimate says cannot be made: a media file is missing (or a picture of an
+/// image sequence that had a file at import), or the files do not fit.
 pub(super) fn check_ready(estimate: &CollectEstimate) -> Result<(), CmdError> {
     if let Some(first) = estimate.missing.first() {
         let more = estimate.missing.len() - 1;
+        let what = match first.missing_frames {
+            Some(1) => format!(
+                "1 picture of the image sequence `{}` is missing",
+                first.name
+            ),
+            Some(n) => format!(
+                "{n} pictures of the image sequence `{}` are missing",
+                first.name
+            ),
+            None => format!("the file of `{}` is missing", first.name),
+        };
         return Err(CmdError::invalid(
             "/media",
             format!(
-                "the file of `{}` is missing{}; relink it first (media.relink_folder), or \
-                 remove it from the project",
-                first.name,
+                "{what}{}; relink it first (media.relink_folder), or remove it from the project",
                 if more == 0 {
                     String::new()
                 } else {
@@ -723,7 +897,8 @@ pub(super) fn check_ready(estimate: &CollectEstimate) -> Result<(), CmdError> {
 
 /// Says what `project.collect` with the same params would copy: how many media files, how many
 /// bytes, the free space on the destination drive and whether the files fit, and which media
-/// cannot be copied because their file is missing. Changes nothing.
+/// cannot be copied because their file is missing (an image sequence counts every picture, and
+/// is listed with `missing_frames` when some are gone). Changes nothing.
 #[wire]
 pub struct ProjectCollectEstimate {
     /// Absolute path of the folder to collect into: a new or empty folder, or the folder of
@@ -802,6 +977,8 @@ pub struct ProjectCollectOutput {
 /// same folder after a cancel or a crash continues without copying finished files again.
 /// Fails with `Invalid` at `/dest` when the files do not fit on the drive or the folder
 /// already holds a project, and at `/media` when a media file is missing (relink it first).
+/// An image sequence is copied whole, every picture under its own name in one folder; a
+/// picture that is gone counts as a missing file.
 /// Agents and headless callers may only collect into folders the user approved.
 #[command(
     name = "project.collect",
@@ -852,12 +1029,17 @@ impl EngineCommand for ProjectCollect {
     }
 }
 
-/// The assets of `plan` by destination, for callers that show what goes where.
+/// The assets of `plan` by destination, for callers that show what goes where (an image
+/// sequence: where its first picture goes).
 #[must_use]
 pub fn destinations(plan: &CollectPlan) -> BTreeMap<MediaId, PathBuf> {
     plan.files
         .iter()
-        .flat_map(|f| f.media.iter().map(|id| (*id, f.to.clone())))
+        .flat_map(|f| f.media.iter())
+        .filter_map(|id| {
+            let to = plan.doc.media.get(id)?.path_abs.as_deref()?;
+            Some((*id, PathBuf::from(to)))
+        })
         .collect()
 }
 

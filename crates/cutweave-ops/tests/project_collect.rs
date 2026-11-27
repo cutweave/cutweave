@@ -12,6 +12,7 @@ mod common;
 
 use std::{
     cell::Cell,
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -21,12 +22,12 @@ use std::{
 use common::{H, assert_invalid};
 use cutweave_commands::{Access, CmdError, McpExposure};
 use cutweave_jobs::{JobError, JobState};
-use cutweave_model::{MediaId, Project};
+use cutweave_model::{Extra, FrameRate, ImageSequence, MediaAsset, MediaId, Project};
 use cutweave_ops::{
-    media::AllowedRoots,
+    media::{AllowedRoots, FakeProbe},
     project::collect::{
         CollectCtx, CollectHost, CollectMode, CollectOptions, CollectProgress, ContentHasher,
-        plan_collect, run_collect,
+        destinations, plan_collect, run_collect,
     },
     testing::job_manager,
 };
@@ -541,4 +542,222 @@ fn the_collect_commands_are_in_the_mcp_catalog() {
         assert!(!meta.annotations.destructive, "{name}");
         assert!(meta.annotations.idempotent, "{name}");
     }
+}
+
+// ----- image sequences (#208) ---------------------------------------------------------------
+
+/// The picture `number` of the test runs: its file name and its bytes (every picture differs).
+fn picture(number: u32) -> (String, Vec<u8>) {
+    (
+        format!("f_{number:04}.png"),
+        format!("picture {number}").into_bytes(),
+    )
+}
+
+/// Writes the run `<dir>/f_0001.png` … `f_<count>.png` without the numbers in `missing` and
+/// adds it to the project as one image sequence.
+fn add_run(t: &Temp, h: &mut H, id: u128, dir: &str, count: u32, missing: &[u32]) -> MediaId {
+    let mut first = String::new();
+    for number in (1..=count).filter(|n| !missing.contains(n)) {
+        let (name, bytes) = picture(number);
+        let path = t.write(&format!("{dir}/{name}"), &bytes);
+        if number == 1 {
+            first = path;
+        }
+    }
+    let run = ImageSequence {
+        pattern: "f_%04d.png".to_owned(),
+        first: 1,
+        count,
+        fps: FrameRate::FPS_30,
+        missing: missing.to_vec(),
+        extra: Extra::new(),
+    };
+    let probe = FakeProbe::image(&first).probe;
+    let mut asset = MediaAsset::image_sequence(MediaId::from_u128(id), first, run, probe);
+    asset.content_hash = Some(format!("fake:run{id}"));
+    let mut doc = h.doc();
+    doc.media.insert(asset.id, asset);
+    doc.validate().unwrap();
+    h.replace_doc(doc);
+    MediaId::from_u128(id)
+}
+
+#[test]
+fn every_picture_of_an_image_sequence_is_planned_into_one_folder() {
+    let t = Temp::new("seq");
+    let mut h = H::empty();
+    let run = add_run(&t, &mut h, u128::MAX, "Renders/shotA", 5, &[3]);
+    // A still that is one picture of the run shares the run's copy.
+    let still = h.add_image(&s(&t.path("Renders/shotA/f_0002.png")));
+    let dest = t.path("Out");
+    let plan = plan_collect(&h.doc(), None, &options(&dest));
+    let folder = dest.join("media").join("shotA");
+    assert_eq!(
+        plan.doc.media[&still].path_abs.as_deref(),
+        Some(s(&folder.join("f_0002.png")).as_str())
+    );
+    // The four pictures that had a file, under their own names; number 3 never had one.
+    assert_eq!(
+        plan.files
+            .iter()
+            .map(|f| f.to.clone())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([1, 2, 4, 5].map(|n| folder.join(picture(n).0)))
+    );
+    assert!(plan.files.iter().all(|f| f.media.contains(&run)));
+    let copy = &plan.doc.media[&run];
+    assert_eq!(
+        copy.path_abs.as_deref(),
+        Some(s(&folder.join("f_0001.png")).as_str())
+    );
+    assert_eq!(copy.name, None);
+    assert_eq!(copy.image_sequence, h.doc().media[&run].image_sequence);
+    assert_eq!(destinations(&plan)[&run], folder.join("f_0001.png"));
+
+    let host = Host::new(None);
+    let report = run_collect(&plan, &*host, &Progress::all()).unwrap();
+    assert_eq!((report.copied, report.skipped), (4, 0));
+    for n in [1, 2, 4, 5] {
+        let (name, bytes) = picture(n);
+        assert_eq!(fs::read(folder.join(name)).unwrap(), bytes);
+    }
+    assert!(!folder.join("f_0003.png").exists());
+    // The copy's document resolves every picture of the run.
+    let (_, written) = &host.written.lock().unwrap()[0];
+    let copy = &written.media[&run];
+    let seq = copy.image_sequence.as_ref().unwrap();
+    let dir = Path::new(copy.path_abs.as_deref().unwrap())
+        .parent()
+        .unwrap();
+    for number in (seq.first..seq.first + seq.count).filter(|n| !seq.missing.contains(n)) {
+        assert!(dir.join(seq.file_name(number).unwrap()).is_file());
+    }
+}
+
+#[test]
+fn a_run_stays_together_when_its_file_names_are_taken() {
+    let t = Temp::new("seq2");
+    let mut h = H::empty();
+    // A still of another folder with the name of a picture, two runs with the same names, and
+    // a still that is a picture of the first run. The stills are planned first (lower ids).
+    let other = h.add_image(&t.write("z/shots/f_0002.png", b"another picture"));
+    let one = add_run(&t, &mut h, u128::MAX - 1, "x/shots", 3, &[]);
+    let two = add_run(&t, &mut h, u128::MAX, "y/shots", 3, &[]);
+    let still = h.add_image(&s(&t.path("x/shots/f_0003.png")));
+    let dest = t.path("Out");
+    let plan = plan_collect(&h.doc(), None, &options(&dest));
+    // The first run cannot go where the other still is, so it moves as a whole (and its
+    // third picture is there twice: once for the still, once in the run).
+    assert_eq!(plan.files.len(), 8);
+    let folder_of = |id: MediaId| {
+        let path = plan.doc.media[&id].path_abs.clone().unwrap();
+        PathBuf::from(path).parent().unwrap().to_path_buf()
+    };
+    let folders = [folder_of(other), folder_of(one), folder_of(two)];
+    let mut names: Vec<String> = folders
+        .iter()
+        .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["shots", "shots (2)", "shots (3)"]);
+    for (id, from) in [(one, "x/shots"), (two, "y/shots")] {
+        let folder = folder_of(id);
+        let files: Vec<&PathBuf> = plan
+            .files
+            .iter()
+            .filter(|f| f.media.contains(&id))
+            .map(|f| &f.to)
+            .collect();
+        assert_eq!(files.len(), 3);
+        for (n, to) in (1..=3).zip(files) {
+            assert_eq!(*to, folder.join(picture(n).0), "names are unchanged");
+        }
+        assert_eq!(
+            plan.files
+                .iter()
+                .find(|f| f.to == folder.join("f_0001.png"))
+                .unwrap()
+                .from,
+            t.path(from).join("f_0001.png")
+        );
+        assert_eq!(plan.doc.media[&id].name, None);
+    }
+    assert_eq!(
+        plan.doc.media[&still].path_abs.as_deref(),
+        Some(s(&folder_of(other).join("f_0003.png")).as_str())
+    );
+    plan.doc.validate().unwrap();
+}
+
+#[test]
+fn external_only_keeps_a_run_inside_the_project_where_it_is() {
+    let t = Temp::new("seq3");
+    let mut h = H::empty();
+    let run = add_run(&t, &mut h, 900, "Promo/renders/a", 3, &[]);
+    let dest = t.path("Out");
+    let mut o = options(&dest);
+    o.mode = Some(CollectMode::CopyExternalOnly);
+    let plan = plan_collect(&h.doc(), Some(&s(&t.path("Promo"))), &o);
+    assert_eq!(
+        plan.files.iter().map(|f| f.to.clone()).collect::<Vec<_>>(),
+        [1, 2, 3].map(|n| dest.join("renders").join("a").join(picture(n).0))
+    );
+    assert_eq!(
+        plan.doc.media[&run].path_abs.as_deref(),
+        Some(s(&dest.join("renders").join("a").join("f_0001.png")).as_str())
+    );
+}
+
+#[test]
+fn the_estimate_counts_every_picture_and_a_run_with_pictures_gone_is_refused() {
+    let t = Temp::new("seq4");
+    let mut h = H::empty();
+    let clip = h.add_video(&t.write("Footage/clip.mp4", b"clip"), 5, false);
+    let run = add_run(&t, &mut h, 900, "Renders/shotA", 6, &[3]);
+    let host = Host::new(None);
+    let ctx = || CollectCtx {
+        doc: h.doc(),
+        project_root: None,
+        allowed_roots: None,
+        jobs: job_manager(),
+        host: Arc::clone(&host) as Arc<dyn CollectHost>,
+    };
+    let call = |name: &str, dest: &Path| {
+        h.registry
+            .invoke_engine_json(name, json!({"dest": s(dest)}), &mut ctx(), Access::STANDARD)
+    };
+    let bytes: usize = [1, 2, 4, 5, 6].map(|n| picture(n).1.len()).iter().sum();
+    let out = call("project.collect_estimate", &t.path("Out")).unwrap();
+    assert_eq!(out["files"], 6);
+    assert_eq!(out["bytes"], (bytes + 4) as u64);
+    assert_eq!(out["missing"], json!([]));
+
+    // Two pictures that had a file at import are gone: the run is listed once.
+    fs::remove_file(t.path("Renders/shotA/f_0004.png")).unwrap();
+    fs::remove_file(t.path("Renders/shotA/f_0006.png")).unwrap();
+    let out = call("project.collect_estimate", &t.path("Out")).unwrap();
+    assert_eq!(
+        out["missing"],
+        json!([{"media_id": run, "name": "f_0001.png",
+                "path": s(&t.path("Renders/shotA/f_0001.png")), "missing_frames": 2}])
+    );
+    let err = call("project.collect", &t.path("Out")).unwrap_err();
+    assert!(
+        err.message()
+            .contains("2 pictures of the image sequence `f_0001.png` are missing"),
+        "{err}"
+    );
+    assert_invalid(call("project.collect", &t.path("Out")), "/media");
+    assert!(!t.path("Out").exists(), "nothing was copied");
+
+    // Its first picture too, and another file: both are listed, a plain file without a count.
+    fs::remove_file(t.path("Renders/shotA/f_0001.png")).unwrap();
+    fs::remove_file(t.path("Footage/clip.mp4")).unwrap();
+    let out = call("project.collect_estimate", &t.path("Out")).unwrap();
+    let missing = out["missing"].as_array().unwrap();
+    assert_eq!(missing.len(), 2);
+    let of = |id: MediaId| missing.iter().find(|m| m["media_id"] == json!(id)).unwrap();
+    assert_eq!(of(run)["missing_frames"], 3);
+    assert_eq!(of(clip)["missing_frames"], Value::Null);
 }

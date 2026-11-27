@@ -24,9 +24,9 @@ use std::{
 use common::{H, assert_invalid};
 use cutweave_commands::{Access, CmdError, McpExposure};
 use cutweave_jobs::{JobError, JobState};
-use cutweave_model::Project;
+use cutweave_model::{Extra, FrameRate, ImageSequence, MediaAsset, MediaId, Project};
 use cutweave_ops::{
-    media::AllowedRoots,
+    media::{AllowedRoots, FakeProbe},
     project::{
         archive::{ArchiveManifest, MANIFEST_NAME, plan_zip, run_archive_folder, run_archive_zip},
         collect::{
@@ -613,4 +613,74 @@ fn archive_is_in_the_mcp_catalog() {
     assert!(!meta.annotations.destructive);
     assert!(meta.annotations.idempotent);
     assert!(!meta.undoable);
+}
+
+// ----- image sequences (#208) ---------------------------------------------------------------
+
+#[test]
+fn an_archive_holds_every_picture_of_an_image_sequence() {
+    let t = Temp::new("seq");
+    let mut h = H::empty();
+    // `f_0001.png` … `f_0005.png`; number 3 had no file at import.
+    let mut first = String::new();
+    for number in [1_u32, 2, 4, 5] {
+        let path = t.write(
+            &format!("Renders/shotA/f_{number:04}.png"),
+            format!("picture {number}").as_bytes(),
+        );
+        if number == 1 {
+            first = path;
+        }
+    }
+    let run = ImageSequence {
+        pattern: "f_%04d.png".to_owned(),
+        first: 1,
+        count: 5,
+        fps: FrameRate::FPS_30,
+        missing: vec![3],
+        extra: Extra::new(),
+    };
+    let probe = FakeProbe::image(&first).probe;
+    let mut asset = MediaAsset::image_sequence(MediaId::from_u128(900), first, run, probe);
+    asset.content_hash = Some("fake:run".to_owned());
+    let mut doc = h.doc();
+    doc.media.insert(asset.id, asset);
+    h.replace_doc(doc);
+    let pictures = [1, 2, 4, 5].map(|n| format!("media/shotA/f_{n:04}.png"));
+    let mut listed = vec!["Handover.cutweave".to_owned()];
+    listed.extend(pictures.iter().cloned());
+
+    let host = Host::new(None);
+    let dest = t.path("Out/Handover");
+    let options = CollectOptions {
+        dest: s(&dest),
+        mode: None,
+        trim_unused: None,
+        include_generated: None,
+    };
+    let plan = plan_collect(&h.doc(), None, &options);
+    let manifest = run_archive_folder(&plan, &*host, &Progress::all()).unwrap();
+    assert_eq!(paths(&manifest), listed);
+    for (n, path) in [1, 2, 4, 5].iter().zip(&pictures) {
+        let bytes = fs::read(dest.join(path)).unwrap();
+        assert_eq!(bytes, format!("picture {n}").into_bytes());
+        let file = manifest.files.iter().find(|f| &f.path == path).unwrap();
+        assert_eq!(
+            (file.size, &file.hash),
+            (bytes.len() as u64, &Fnv::of(&bytes))
+        );
+    }
+
+    let zip = t.path("Zip/Handover.zip");
+    let plan = plan_zip(&h.doc(), None, &zip, None, None);
+    let manifest = run_archive_zip(&plan, &zip, &*host, &Progress::all()).unwrap();
+    assert_eq!(paths(&manifest), listed);
+    let entries = read_zip(&zip);
+    for (n, path) in [1, 2, 4, 5].iter().zip(&pictures) {
+        let (_, _, bytes) = entries
+            .iter()
+            .find(|(name, _, _)| name == &format!("Handover/{path}"))
+            .unwrap();
+        assert_eq!(*bytes, format!("picture {n}").into_bytes());
+    }
 }
