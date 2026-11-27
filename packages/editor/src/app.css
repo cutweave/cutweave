@@ -968,6 +968,8 @@ body {
    don't touch the panel edge or the ruler. */
 .cw-timeline__tools.cw-toolbar {
   display: flex;
+  /* WP-2A.10: every tool stays reachable in a narrow Timeline (the buttons wrap). */
+  flex-wrap: wrap;
   height: auto;
   padding: var(--space-1-5) var(--space-3);
   background: transparent;
