@@ -1,6 +1,6 @@
 # ADR-0036: Tags, ratings and notes on media, and collections in the project
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-27)
 - **Date:** 2026-11-27
 - **Deciders:** product owner and Cutweave maintainers (drafted by the Fable work-package session before WP-2F.06 starts)
 - **Supersedes:** none (extends the media model of arch §4.2 and ADR-0020)
@@ -46,7 +46,7 @@ The package adds fields to the project document and ten commands, so it needs a 
 
 ## Decision
 
-**Decided by:** the product owner and the maintainers, before WP-2F.06 starts. Nothing below is built until this ADR is accepted. Pass criteria for the work packages that build it:
+Accepted by the product owner on 2026-11-27, as drafted: optional fields with no schema bump, no `imported_within_days`, and the three-way split of WP-2F.06. Pass criteria for the work packages that build it:
 
 - undo identity for every new command, and the registry property tests (invariants after random command sequences) pass with them;
 - `media.list` with tags and text over 10,000 synthetic assets answers in under 30 ms p95, and the Rust and TypeScript predicates agree on the extended shared fixture;
@@ -54,7 +54,7 @@ The package adds fields to the project document and ten commands, so it needs a 
 - a v3 document without the new fields reads the same as before, a document with them keeps them through an older build's open and save (`extra`), and a manual collection with a member that no longer exists opens, lists and edits without error;
 - the F22 user flow extended as the WBS says (tag, filter, save as a smart collection, reopen, the sidebar shows it; drop a clip on a folder in the sidebar).
 
-If accepted, we will:
+We will:
 
 1. **Tags, rating, note on the asset.**
    - `MediaAsset.tags: [String]`: each 1 to 64 characters after trimming, no control characters and no comma; at most 64 per asset. Stored as first typed; two tags are the same when they are equal ignoring case and accents (the folding search already uses), and the stored list is sorted by that folded form without repeats.
@@ -78,7 +78,7 @@ If accepted, we will:
 6. **What stays out of the document:** whether the bin sidebar is shown, its width and which collection is open are editor state (the workspace layout), like every other panel choice.
 7. **Work packages.** WP-2F.06 is larger than four agent-days as written, so it splits: **2F.06a** model, commands, filter, queries, parity (engine only); **2F.06b** tag editor, rating stars, note field, the Filters popover's Tags and Rating, and the `bin.card` menu items (Add tag…, Set rating ▸); **2F.06c** collections in the UI ("Save as smart collection", Add to collection ▸), the bin sidebar with the folder tree and the collections, and the F22 flow.
 
-**Fallback** (rejected or deferred): the bin keeps folders and the existing search; grouping across folders waits.
+**Fallback** (not taken; kept for the record): the bin keeps folders and the existing search; grouping across folders waits.
 
 ## Consequences
 
