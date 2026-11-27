@@ -1643,7 +1643,9 @@
 [data-motion="reduce"] *,
 [data-motion="reduce"] *::before,
 [data-motion="reduce"] *::after {
+  /* biome-ignore lint/complexity/noImportantStyles: the person's choice wins over every rule, the dock's and a plugin's included */
   transition-property: none !important;
+  /* biome-ignore lint/complexity/noImportantStyles: as above */
   animation-name: none !important;
 }
 /* "full" keeps the motion when the system asks to reduce it: the rules above, once more
