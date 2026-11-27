@@ -1024,6 +1024,59 @@ fn leave_unsaved_work(folder: &Path, n: usize) {
     engine.shutdown();
 }
 
+/// Issue #236 (found by the crash harness, WP-2J.05): a save writes `path_rel` of every asset
+/// into the file, the open document keeps its own (nothing for a file imported in this
+/// session), so a later patch that carries the asset as an old value (removing it, undoing its
+/// import) does not match the saved document. Replay must not stop there and drop the edits
+/// that follow; a checkpoint from before the import survives too.
+#[test]
+fn recovery_replays_edits_after_a_save_that_remove_media_imported_before_it() {
+    let t = TempDir::new("recover-media");
+    let folder = empty_project(t.path(), "Media");
+    let file = t.path().join("late.mp4");
+    std::fs::write(&file, b"a stub video").unwrap();
+    {
+        let mut config = oneshot(t.path());
+        config.project = Some(folder.clone());
+        config.subsystems = Some(Box::new(cutweave_engine::DevStubMedia));
+        let engine = Engine::start(config).unwrap();
+        let conn = engine.handle().connect(&agent("cli")).unwrap();
+        must(
+            &conn,
+            "edit.checkpoint",
+            json!({ "name": "before the file" }),
+        );
+        let imported = must(&conn, "media.import", json!({ "paths": [path_str(&file)] }));
+        must(&conn, "project.save", json!({}));
+        must(
+            &conn,
+            "media.remove",
+            json!({ "id": imported["media_ids"][0] }),
+        );
+        must(&conn, "project.rename", json!({ "name": "After" }));
+        drop(conn);
+        engine.shutdown();
+    }
+
+    let engine = Engine::start(oneshot(t.path())).unwrap();
+    let conn = engine.handle().connect(&agent("cli")).unwrap();
+    let opened = must(&conn, "project.open", json!({ "path": path_str(&folder) }));
+    assert_eq!(opened["project"]["recovery"]["records"], 2);
+    let recovered = must(&conn, "project.recover", json!({}));
+    assert_eq!(recovered["applied"], 2, "{recovered}");
+    assert_eq!(recovered["damaged"], false);
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "After");
+    let media = must(&conn, "media.list", json!({}));
+    assert_eq!(media["media"].as_array().map(Vec::len), Some(0), "{media}");
+    let checkpoints = must(&conn, "edit.list_checkpoints", json!({}));
+    assert_eq!(
+        checkpoints["checkpoints"][0]["name"], "before the file",
+        "{checkpoints}"
+    );
+    drop(conn);
+    engine.shutdown();
+}
+
 #[test]
 fn recovery_waits_for_a_decision_then_restores_and_autosaves() {
     let t = TempDir::new("recover");

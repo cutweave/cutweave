@@ -198,6 +198,12 @@ impl Script {
         self.op(Who::Editor, "media.import", json!({"paths": [path]}))
     }
 
+    /// The file name of the next export.
+    pub fn export_name(&mut self) -> String {
+        self.names += 1;
+        format!("export-{}.mp4", self.names)
+    }
+
     /// The file name of the next import.
     pub fn import_name(&mut self) -> String {
         self.names += 1;

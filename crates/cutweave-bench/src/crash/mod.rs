@@ -73,6 +73,12 @@ pub enum Point {
     /// After the export queue's pause changed (`.cutweave/exports.sqlite`), with an edit in
     /// flight.
     Queue,
+    /// `--with-media` only: while the first of two queued exports is being encoded. After the
+    /// restart both must still be queued in order and finish, with no partial file left.
+    Export,
+    /// `--with-media` only: while a proxy is being made. After the restart its state must be
+    /// sane (a proxy called ready has its file) and making it again must finish.
+    Proxy,
 }
 
 impl Point {
@@ -90,6 +96,10 @@ impl Point {
         Point::Queue,
     ];
 
+    /// The crash points that need real media: an engine built with FFmpeg, a GPU and the
+    /// project's source files (`--with-media`).
+    pub const REAL: [Point; 2] = [Point::Export, Point::Proxy];
+
     /// Its name in reports and `--points`.
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -104,13 +114,18 @@ impl Point {
             Point::Recover => "recover",
             Point::Import => "import",
             Point::Queue => "queue",
+            Point::Export => "export",
+            Point::Proxy => "proxy",
         }
     }
 
     /// The point called `name`.
     #[must_use]
     pub fn parse(name: &str) -> Option<Point> {
-        Point::ALL.into_iter().find(|p| p.name() == name)
+        Point::ALL
+            .into_iter()
+            .chain(Point::REAL)
+            .find(|p| p.name() == name)
     }
 }
 
@@ -136,6 +151,11 @@ pub struct CrashOptions {
     pub seed: u64,
     /// Crash only at these points (in seeded order); `None`: all of them.
     pub points: Option<Vec<Point>>,
+    /// The engine under test is the full engine (FFmpeg, the GPU) on a project whose source
+    /// files exist, so exports and proxies really run: adds [`Point::REAL`] and leaves out
+    /// [`Point::Import`] (the reference engine keeps the stub prober). `exe` must be built
+    /// with the `ffmpeg` feature.
+    pub media: bool,
     /// Self-test.
     pub fault: Option<Fault>,
     /// Print each crash as it is checked.
@@ -211,7 +231,7 @@ impl CrashReport {
     pub fn table(&self) -> String {
         let mut out = format!("crash harness, seed {}\n\n", self.seed);
         let _ = writeln!(out, "{:<14} {:>7} {:>7}", "point", "crashes", "passed");
-        for point in Point::ALL {
+        for point in Point::ALL.into_iter().chain(Point::REAL) {
             let rows: Vec<&Row> = self.rows.iter().filter(|r| r.point == point).collect();
             if rows.is_empty() {
                 continue;
@@ -272,10 +292,18 @@ impl CrashReport {
 }
 
 /// The crash points of a run, in order: every point once in a seeded order, then again, until
-/// there are `count`.
+/// there are `count`. `media`: the points of a run with real media (see
+/// [`CrashOptions::media`]).
 #[must_use]
-pub fn plan(count: u32, seed: u64, only: Option<&[Point]>) -> Vec<Point> {
-    let pool: Vec<Point> = only.map_or_else(|| Point::ALL.to_vec(), <[Point]>::to_vec);
+pub fn plan(count: u32, seed: u64, only: Option<&[Point]>, media: bool) -> Vec<Point> {
+    let all = || {
+        let stub = Point::ALL
+            .into_iter()
+            .filter(|p| !(media && *p == Point::Import));
+        let real = Point::REAL.into_iter().filter(|_| media);
+        stub.chain(real).collect()
+    };
+    let pool: Vec<Point> = only.map_or_else(all, <[Point]>::to_vec);
     let mut rng = Rng::new(seed ^ 0xC2A5);
     let mut out = Vec::new();
     while out.len() < count as usize && !pool.is_empty() {
@@ -294,7 +322,26 @@ pub fn plan(count: u32, seed: u64, only: Option<&[Point]>) -> Vec<Point> {
 /// Runs the harness. `Err`: the harness itself could not run (no engine, no project); a
 /// recovery that fails is in the report.
 pub fn run(options: &CrashOptions) -> Result<CrashReport, BenchError> {
-    let points = plan(options.count, options.seed, options.points.as_deref());
+    let points = plan(
+        options.count,
+        options.seed,
+        options.points.as_deref(),
+        options.media,
+    );
+    let misplaced = points.iter().find(|p| {
+        if options.media {
+            **p == Point::Import
+        } else {
+            Point::REAL.contains(p)
+        }
+    });
+    if let Some(point) = misplaced {
+        return Err(BenchError::Spec(format!(
+            "the crash point `{}` cannot be used {} --with-media",
+            point.name(),
+            if options.media { "with" } else { "without" }
+        )));
+    }
     let mut session = session::Session::start(options, points.first().copied())?;
     let mut rows = Vec::new();
     for (i, point) in points.iter().enumerate() {
@@ -327,11 +374,13 @@ pub fn run(options: &CrashOptions) -> Result<CrashReport, BenchError> {
 
 /// Usage of `cutweave-bench crash`.
 pub const USAGE: &str = "usage: cutweave-bench crash [--count N] [--seed S] [--points a,b,...]
-                            [--scratch DIR] [--self-test] [--quiet]
+                            [--scratch DIR] [--with-media] [--self-test] [--quiet]
 Kills a real engine N times (default 20) during seeded editing work, restarts it and checks
 that nothing it acknowledged is lost (WP-2J.05). --seed (default: from the clock, printed)
 repeats the work and the crash plan of a run. --points limits the crash points:
 edit, commit-abort, save, autosave, drag, drag-commit, torn-tail, recover, import, queue.
+--with-media runs the full engine on real source files and adds the points export and proxy
+(needs a build with --features ffmpeg, the FFmpeg bundle and the GPU; no import point).
 --self-test makes the journal lose an acknowledged edit and passes only if the run notices.
 --scratch (default target/tmp/crash-harness) is emptied first.";
 
@@ -348,6 +397,8 @@ pub struct CrashArgs {
     pub scratch: Option<PathBuf>,
     /// `--self-test`.
     pub self_test: bool,
+    /// `--with-media`.
+    pub with_media: bool,
     /// `--quiet`: no line per crash while it runs.
     pub quiet: bool,
 }
@@ -361,6 +412,7 @@ impl CrashArgs {
             points: None,
             scratch: None,
             self_test: false,
+            with_media: false,
             quiet: false,
         };
         let mut it = args.iter();
@@ -392,6 +444,7 @@ impl CrashArgs {
                     out.points = Some(points);
                 }
                 "--self-test" => out.self_test = true,
+                "--with-media" => out.with_media = true,
                 "--quiet" => out.quiet = true,
                 other => return Err(BenchError::Spec(format!("unknown option `{other}`"))),
             }
@@ -421,6 +474,7 @@ pub fn command(
         count: args.count,
         seed,
         points: args.points,
+        media: args.with_media,
         fault: None,
         progress: !args.quiet,
     };
@@ -466,6 +520,7 @@ mod tests {
         assert_eq!(full.points, Some(vec![Point::Save, Point::TornTail]));
         assert_eq!(full.scratch, Some(PathBuf::from("x")));
         assert!(parse("--self-test").is_ok_and(|a| a.self_test));
+        assert!(parse("--with-media").is_ok_and(|a| a.with_media));
         for bad in ["--count", "--count x", "--points nope", "--frobnicate"] {
             assert!(parse(bad).is_err(), "{bad}");
         }
@@ -473,22 +528,30 @@ mod tests {
 
     #[test]
     fn a_plan_covers_every_point_before_repeating_and_follows_the_seed() {
-        let twenty = plan(20, 7, None);
+        let twenty = plan(20, 7, None, false);
         assert_eq!(twenty.len(), 20);
         for round in twenty.chunks(Point::ALL.len()) {
             let mut sorted = round.to_vec();
             sorted.sort();
             assert_eq!(sorted, Point::ALL);
         }
-        assert_eq!(twenty, plan(20, 7, None));
-        assert!((8..40).any(|seed| plan(20, seed, None) != twenty));
-        assert_eq!(plan(3, 1, Some(&[Point::Save])), [Point::Save; 3]);
-        assert!(plan(4, 1, Some(&[])).is_empty());
+        assert_eq!(twenty, plan(20, 7, None, false));
+        assert!((8..40).any(|seed| plan(20, seed, None, false) != twenty));
+        assert_eq!(plan(3, 1, Some(&[Point::Save]), false), [Point::Save; 3]);
+        assert!(plan(4, 1, Some(&[]), false).is_empty());
+        // With real media: the export and proxy points, and no import.
+        let real = plan(11, 7, None, true);
+        assert!(Point::REAL.iter().all(|p| real.contains(p)), "{real:?}");
+        assert!(
+            !real.contains(&Point::Import) && real.len() == 11,
+            "{real:?}"
+        );
+        assert!(!twenty.iter().any(|p| Point::REAL.contains(p)));
     }
 
     #[test]
     fn points_have_names_and_the_table_names_a_failure_with_its_seed() {
-        for point in Point::ALL {
+        for point in Point::ALL.into_iter().chain(Point::REAL) {
             assert_eq!(Point::parse(point.name()), Some(point));
         }
         assert_eq!(Point::parse("nope"), None);

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
 
-use super::clients::{AGENT_DRAIN_WAIT, ANSWER_WAIT, Agent, Answer, DRAIN_WAIT, Editor};
+use super::clients::{AGENT_DRAIN_WAIT, ANSWER_WAIT, Agent, Answer, DRAIN_WAIT, Editor, Pending};
 use super::compare::{IdMap, same_document};
 use super::script::{Drag, Move, Op, Placed, Script, Who};
 use super::{CrashOptions, Fault, Point, Row, disk};
@@ -101,6 +101,15 @@ pub(super) struct Session {
     max_committed: u64,
     /// The export queue's pause, as acknowledged.
     paused: bool,
+    /// Real media: the engine under test is the full engine.
+    media: bool,
+    export_dir: PathBuf,
+    /// Exports acknowledged as queued and not checked yet: `(job, file)`.
+    exports: Vec<(String, PathBuf)>,
+    /// The source the proxy point makes a proxy of.
+    proxy_source: Option<String>,
+    /// A proxy was being made when the engine was killed.
+    proxy_cut: bool,
     acknowledged: usize,
     refused: usize,
     life_acknowledged: usize,
@@ -128,6 +137,13 @@ impl Session {
         let folder = fixture.write(&scratch.join("subject"))?;
         let ref_folder = scratch.join("reference").join(&spec.name);
         disk::copy_dir(&folder, &ref_folder)?;
+        if options.media && !crate::media::synthesize(&folder, &fixture.manifest)? {
+            return Err(BenchError::Other(
+                "--with-media needs the FFmpeg bundle (`. scripts/ffmpeg/env.sh`)".into(),
+            ));
+        }
+        let proxy_source = fixture.manifest.media.iter().find(|m| m.video);
+        let proxy_source = proxy_source.map(|m| m.id.clone());
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -141,9 +157,9 @@ impl Session {
             seed: options.seed,
             rt: &rt,
         };
-        let reference = base.spawn("reference-run", &ref_folder, Vec::new())?;
+        let reference = base.spawn("reference-run", &ref_folder, Vec::new(), false)?;
         let env = abort_env(&mut script, first);
-        let subject = base.spawn("subject-run", &folder, env)?;
+        let subject = base.spawn("subject-run", &folder, env, options.media)?;
         Ok(Session {
             exe: options.exe.clone(),
             scratch,
@@ -160,6 +176,11 @@ impl Session {
             ids: IdMap::default(),
             max_committed: 0,
             paused: false,
+            media: options.media,
+            export_dir: options.scratch.join("exports"),
+            exports: Vec::new(),
+            proxy_source,
+            proxy_cut: false,
             acknowledged: 0,
             refused: 0,
             life_acknowledged: 0,
@@ -261,14 +282,9 @@ impl Session {
             }
         }
         if let Some((op, pending)) = call {
-            let wait = if kill_after.is_some() {
-                AGENT_DRAIN_WAIT
-            } else {
-                wait
-            };
-            match live.agent.finish(pending, wait) {
-                Ok(answer) => self.record(What::Plain(op), answer),
-                Err(_) => {
+            match agent_answer(&mut live, pending, dead || kill_after.is_some()) {
+                Some(answer) => self.record(What::Plain(op), answer),
+                None => {
                     dead = true;
                     flight.in_flight.push(op);
                 }
@@ -324,7 +340,7 @@ impl Session {
         }
         // Now and then a file is imported, and the project saved (the journal rotates) with
         // the commands behind the save already on their way.
-        if self.script.below(12) == 0 {
+        if !self.media && self.script.below(12) == 0 {
             ops.push(self.new_import()?);
         }
         let save_at = (self.script.below(8) == 0).then_some(0);
@@ -395,9 +411,9 @@ impl Session {
                         .agent
                         .start(agent.command, &agent.params, &agent.request_id);
                     live.engine.kill();
-                    match live.agent.finish(pending, AGENT_DRAIN_WAIT) {
-                        Ok(answer) => self.record(What::Plain(agent), answer),
-                        Err(_) => flight.in_flight.push(agent),
+                    match agent_answer(&mut live, pending, true) {
+                        Some(answer) => self.record(What::Plain(agent), answer),
+                        None => flight.in_flight.push(agent),
                     }
                     flight.died = true;
                     true
@@ -489,25 +505,68 @@ impl Session {
                 self.exchange(ops, Some(agent), None, Some(after), flight)
             }
             Point::Queue => {
-                let id = self.script.request_id();
-                let paused = !self.paused;
-                if let Some(live) = self.subject.as_mut() {
-                    let params = json!({"paused": paused});
-                    match live
-                        .editor
-                        .call("export.pause_queue", &params, Some(&id), None)?
-                    {
-                        Answer::Done { .. } => self.paused = paused,
-                        Answer::Refused(e) => {
-                            return Err(BenchError::command("export.pause_queue", &e));
-                        }
-                    }
-                }
+                self.set_pause(!self.paused)?;
                 let ops = vec![self.script.light()];
                 let after = self.script.below(1500);
                 self.exchange(ops, None, None, Some(after), flight)
             }
+            Point::Export => {
+                if self.paused {
+                    self.set_pause(false)?;
+                }
+                std::fs::create_dir_all(&self.export_dir)
+                    .map_err(|e| BenchError::io("create", &self.export_dir, e))?;
+                for _ in 0..2 {
+                    // Five seconds of the sequence, small, in software.
+                    let path = self.export_dir.join(self.script.export_name());
+                    let params = json!({
+                        "path": path, "hw": "off",
+                        "preset": {"custom": {"width": 320, "height": 180}},
+                        "range": {"in": 0, "out": 150 * self.script.frame()},
+                    });
+                    let queued = self.acknowledged_call("export.enqueue", &params)?;
+                    let text = |key: &str| queued[key].as_str().unwrap_or_default().to_owned();
+                    self.exports
+                        .push((text("job_id"), PathBuf::from(text("path"))));
+                }
+                self.strike_job(flight)
+            }
+            Point::Proxy => {
+                if let Some(source) = self.proxy_source.clone() {
+                    self.acknowledged_call("media.generate_proxy", &json!({"media": [source]}))?;
+                    self.proxy_cut = true;
+                }
+                self.strike_job(flight)
+            }
         }
+    }
+
+    /// A call on the editor's connection that must be acknowledged; returns its output.
+    fn acknowledged_call(&mut self, method: &str, params: &Value) -> Result<Value, BenchError> {
+        let id = self.script.request_id();
+        let Some(live) = self.subject.as_mut() else {
+            return Err(BenchError::Other(
+                "the engine under test is not running".into(),
+            ));
+        };
+        match live.editor.call(method, params, Some(&id), None)? {
+            Answer::Done { output, .. } => Ok(output),
+            Answer::Refused(e) => Err(BenchError::command(method, &e)),
+        }
+    }
+
+    fn set_pause(&mut self, paused: bool) -> Result<(), BenchError> {
+        self.acknowledged_call("export.pause_queue", &json!({"paused": paused}))?;
+        self.paused = paused;
+        Ok(())
+    }
+
+    /// The kill while a background job runs: 0.1 to 1.5 s after it was started, with an edit
+    /// in flight.
+    fn strike_job(&mut self, flight: &mut Flight) -> Result<(), BenchError> {
+        let ops = vec![self.script.light()];
+        let after = 100_000 + self.script.below(1_400_000);
+        self.exchange(ops, None, None, Some(after), flight)
     }
 
     fn strike_edit(&mut self, flight: &mut Flight) -> Result<(), BenchError> {
@@ -612,7 +671,7 @@ impl Session {
         }
         let live = self
             .base()
-            .spawn("subject-run", &self.folder, env.to_vec())
+            .spawn("subject-run", &self.folder, env.to_vec(), self.media)
             .map_err(|e| format!("the project did not open after the crash: {e}"))?;
         let live = self.subject.insert(live);
         let hello = live
@@ -690,10 +749,146 @@ impl Session {
         self.sync_reference()?;
         self.compare()?;
         disk::check(&self.folder, false)?;
+        self.check_exports()?;
+        self.check_proxy()?;
         if self.script.below(2) == 0 {
             self.save()?;
         }
         Ok(())
+    }
+
+    /// A read-only call on the engine under test.
+    fn ask(&mut self, method: &str, params: &Value) -> Result<Value, String> {
+        self.subject()?
+            .editor
+            .query(method, params)
+            .map_err(|e| format!("`{method}` failed after the crash: {e}"))
+    }
+
+    /// The exports queued before the kill: all still queued, in order; each finishes with its
+    /// file; no partial file is left.
+    fn check_exports(&mut self) -> Result<(), String> {
+        let exports = std::mem::take(&mut self.exports);
+        if exports.is_empty() {
+            return Ok(());
+        }
+        let queue = self.ask("export.queue", &json!({}))?;
+        let acknowledged: Vec<&str> = exports.iter().map(|(id, _)| id.as_str()).collect();
+        let listed: Vec<&str> = queue["jobs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|job| job["id"].as_str())
+            .filter(|id| acknowledged.contains(id))
+            .collect();
+        if listed != acknowledged {
+            return Err(format!(
+                "the export queue after the crash holds {listed:?} of the acknowledged exports \
+                 {acknowledged:?}"
+            ));
+        }
+        for (id, path) in &exports {
+            let mut job = Value::Null;
+            // `job.wait` waits at most a minute a call.
+            for _ in 0..5 {
+                job = self.ask("job.wait", &json!({"job_id": id, "timeout_ms": 60_000}))?;
+                if matches!(
+                    job["state"].as_str(),
+                    Some("succeeded" | "failed" | "cancelled")
+                ) {
+                    break;
+                }
+            }
+            if job["state"] != "succeeded" {
+                return Err(format!(
+                    "the export to {} queued before the crash ended as {}: {}",
+                    path.display(),
+                    job["state"],
+                    job["error"]
+                ));
+            }
+            if !std::fs::metadata(path).is_ok_and(|m| m.len() > 0) {
+                return Err(format!(
+                    "the finished export {} has no file",
+                    path.display()
+                ));
+            }
+        }
+        let partials = disk::partials(&self.export_dir);
+        if !partials.is_empty() {
+            return Err(format!(
+                "the interrupted export left partial files: {}",
+                partials.join(", ")
+            ));
+        }
+        for (job, _) in &exports {
+            let id = self.script.request_id();
+            let params = json!({"id": job});
+            let _ = self
+                .subject()?
+                .editor
+                .call("export.remove", &params, Some(&id), None);
+        }
+        Ok(())
+    }
+
+    /// The proxy that was being made at the kill: its state is one a restart can leave, a
+    /// proxy called ready has its file, and asking for it again gets it made.
+    fn check_proxy(&mut self) -> Result<(), String> {
+        let (true, Some(source)) = (
+            std::mem::take(&mut self.proxy_cut),
+            self.proxy_source.clone(),
+        ) else {
+            return Ok(());
+        };
+        let params = json!({"media": [source]});
+        let has_file = |proxy: &Value| {
+            let path = proxy["path"].as_str().unwrap_or_default();
+            std::fs::metadata(path).is_ok_and(|m| m.len() > 0)
+        };
+        let proxy = self.ask("media.proxy_status", &params)?["proxies"][0].take();
+        let state = proxy["status"].as_str().unwrap_or_default().to_owned();
+        if !["none", "queued", "generating", "incomplete", "ready"].contains(&state.as_str()) {
+            return Err(format!(
+                "after the crash the interrupted proxy is `{state}`: {proxy}"
+            ));
+        }
+        if state == "ready" && !has_file(&proxy) {
+            return Err(format!("a proxy is called ready without its file: {proxy}"));
+        }
+        let id = self.script.request_id();
+        let again = self
+            .subject()?
+            .editor
+            .call("media.generate_proxy", &params, Some(&id), None)
+            .map_err(|e| format!("media.generate_proxy got no answer: {e}"))?;
+        if let Answer::Refused(e) = again {
+            return Err(format!(
+                "the proxy cannot be made again after the crash: {e}"
+            ));
+        }
+        let mut proxy = Value::Null;
+        for _ in 0..8 {
+            proxy = self.ask("media.proxy_status", &params)?["proxies"][0].take();
+            match (proxy["status"].as_str(), proxy["job_id"].as_str()) {
+                (Some("ready"), _) if has_file(&proxy) => {
+                    let id = self.script.request_id();
+                    let _ =
+                        self.subject()?
+                            .editor
+                            .call("media.delete_proxy", &params, Some(&id), None);
+                    return Ok(());
+                }
+                (Some("queued" | "generating"), Some(job)) => {
+                    let wait = json!({"job_id": job, "timeout_ms": 60_000});
+                    self.ask("job.wait", &wait)?;
+                }
+                _ => break,
+            }
+        }
+        Err(format!(
+            "the proxy interrupted by the crash was not made again: {proxy}"
+        ))
     }
 
     /// Sends the commands that were in flight again, under their request ids: the journal
@@ -915,21 +1110,23 @@ struct Base<'a> {
 }
 
 impl Base<'_> {
+    /// `real`: the full engine (FFmpeg, the GPU) instead of the stub prober.
     fn spawn(
         &self,
         tag: &str,
         project: &Path,
         env: Vec<(String, String)>,
+        real: bool,
     ) -> Result<Live, BenchError> {
         let engine = ChildEngine::spawn(&ChildSpec {
             exe: self.exe.to_path_buf(),
             scratch: self.scratch.join(tag),
             project: Some(project.to_path_buf()),
-            stub_media: true,
+            stub_media: !real,
             gui: false,
             deterministic_ids: Some(self.seed),
             env,
-            roots: vec![self.scratch.join("imports")],
+            roots: vec![self.scratch.join("imports"), self.scratch.join("exports")],
         })?;
         let editor = Editor::connect(&engine)?;
         let agent = Agent::connect(self.rt, &engine)?;
@@ -938,6 +1135,24 @@ impl Base<'_> {
             agent,
             engine,
         })
+    }
+}
+
+/// The answer to the agent's call; `None`: none came. With the engine `gone` the wait is
+/// short (see [`AGENT_DRAIN_WAIT`]); otherwise it lasts as long as the engine runs (rmcp's
+/// client does not always notice an engine that aborted), at most [`ANSWER_WAIT`].
+fn agent_answer(live: &mut Live, mut pending: Pending, gone: bool) -> Option<Answer> {
+    if gone {
+        return live.agent.finish(pending, AGENT_DRAIN_WAIT).ok();
+    }
+    let deadline = Instant::now() + ANSWER_WAIT;
+    loop {
+        if let Some(result) = live.agent.poll(&mut pending, AGENT_DRAIN_WAIT) {
+            return result.ok();
+        }
+        if live.engine.wait_exit(Duration::ZERO) || Instant::now() >= deadline {
+            return live.agent.finish(pending, AGENT_DRAIN_WAIT).ok();
+        }
     }
 }
 

@@ -156,6 +156,23 @@ impl Editor {
     }
 }
 
+/// The answer in a tool result.
+fn tool_answer(result: CallToolResult) -> Answer {
+    if result.is_error == Some(true) {
+        let text = result
+            .structured_content
+            .map_or_else(|| "tool error".to_owned(), |v| v.to_string());
+        return Answer::Refused(text);
+    }
+    let meta = result.meta.unwrap_or_default();
+    let rev = |key: &str| meta.0.get(key).and_then(Value::as_u64).unwrap_or(0);
+    Answer::Done {
+        output: result.structured_content.unwrap_or(Value::Null),
+        rev: rev(META_REV),
+        committed: rev(META_COMMITTED_REV),
+    }
+}
+
 /// An MCP tool call that may still be running.
 pub struct Pending(JoinHandle<Result<CallToolResult, rmcp::ServiceError>>);
 
@@ -202,26 +219,27 @@ impl Agent {
     }
 
     /// Waits for a started call. An error: no answer (it was in flight when the engine died).
-    pub fn finish(&self, pending: Pending, wait: Duration) -> Result<Answer, BenchError> {
-        let result = self
+    pub fn finish(&self, mut pending: Pending, wait: Duration) -> Result<Answer, BenchError> {
+        self.poll(&mut pending, wait)
+            .unwrap_or_else(|| Err(BenchError::Other("no MCP answer in time".into())))
+    }
+
+    /// Waits at most `wait` for a started call; `None`: it is still running.
+    pub fn poll(
+        &self,
+        pending: &mut Pending,
+        wait: Duration,
+    ) -> Option<Result<Answer, BenchError>> {
+        let joined = self
             .rt
-            .block_on(async { tokio::time::timeout(wait, pending.0).await })
-            .map_err(|_| BenchError::Other("no MCP answer in time".into()))?
-            .map_err(|e| other("the MCP call task failed", e))?
-            .map_err(|e| other("the MCP call failed", e))?;
-        if result.is_error == Some(true) {
-            let text = result
-                .structured_content
-                .map_or_else(|| "tool error".to_owned(), |v| v.to_string());
-            return Ok(Answer::Refused(text));
-        }
-        let meta = result.meta.unwrap_or_default();
-        let rev = |key: &str| meta.0.get(key).and_then(Value::as_u64).unwrap_or(0);
-        Ok(Answer::Done {
-            output: result.structured_content.unwrap_or(Value::Null),
-            rev: rev(META_REV),
-            committed: rev(META_COMMITTED_REV),
-        })
+            .block_on(async { tokio::time::timeout(wait, &mut pending.0).await })
+            .ok()?;
+        Some(
+            joined
+                .map_err(|e| other("the MCP call task failed", e))
+                .and_then(|called| called.map_err(|e| other("the MCP call failed", e)))
+                .map(tool_answer),
+        )
     }
 
     /// Calls a tool and waits for its answer.

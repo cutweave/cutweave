@@ -8,9 +8,9 @@ use std::path::PathBuf;
 
 use cutweave_bench::crash::clients::{Answer, Editor};
 use cutweave_bench::crash::{CrashOptions, Fault, Point, run};
-use cutweave_bench::fixture::{FixtureSpec, generate};
+use cutweave_bench::fixture::{Fixture, FixtureSpec, generate};
 use cutweave_bench::harness::{ChildEngine, ChildSpec};
-use serde_json::json;
+use serde_json::{Value, json};
 
 fn options(tag: &str, count: u32, seed: u64) -> CrashOptions {
     CrashOptions {
@@ -19,6 +19,7 @@ fn options(tag: &str, count: u32, seed: u64) -> CrashOptions {
         count,
         seed,
         points: None,
+        media: false,
         fault: None,
         progress: false,
     }
@@ -67,14 +68,13 @@ fn an_acknowledged_edit_missing_after_the_recovery_fails_the_run() {
     assert!(report.table().contains("--seed 7"), "{}", report.table());
 }
 
-/// Issue #235, found by the harness at its `drag-commit` point: the journal has a drag's
-/// commit, and after the recovery the commit sent again under its request id must get its
-/// original result, as a live engine gives and as `docs/reference/rpc.md` says.
-#[test]
-#[ignore = "issue #235: a resent edit.commit_tx is refused after a recovery"]
-fn a_drag_commit_sent_again_after_a_recovery_returns_its_original_result() {
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("crash-commit-resend");
+/// A stub-media engine on a fresh copy of the smoke project in `target/tmp/<tag>`; files in
+/// its `imports` folder can be imported.
+fn smoke_project(tag: &str) -> (Fixture, ChildSpec, PathBuf) {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(tag);
     let _ = std::fs::remove_dir_all(&dir);
+    let imports = dir.join("imports");
+    std::fs::create_dir_all(&imports).unwrap();
     let fixture = generate(&FixtureSpec::smoke()).unwrap();
     let folder = fixture.write(&dir).unwrap();
     let spec = ChildSpec {
@@ -85,8 +85,70 @@ fn a_drag_commit_sent_again_after_a_recovery_returns_its_original_result() {
         gui: false,
         deterministic_ids: Some(1),
         env: Vec::new(),
-        roots: Vec::new(),
+        roots: vec![imports.clone()],
     };
+    (fixture, spec, imports)
+}
+
+/// A call that must be acknowledged; returns its output.
+fn done(editor: &mut Editor, method: &str, params: &Value, request_id: &str) -> Value {
+    match editor.call(method, params, Some(request_id), None).unwrap() {
+        Answer::Done { output, .. } => output,
+        Answer::Refused(why) => panic!("{method} was refused: {why}"),
+    }
+}
+
+/// Issue #236, found by the harness (seed 104): a save writes each source's path relative to
+/// the project into the file, but the open document keeps what it had (nothing, for a file
+/// imported in this session). A later change that carries the whole asset as its old value
+/// (removing it, undoing its import) then does not match the saved document when the journal
+/// is replayed, so the recovery stops there and drops that edit and every one after it.
+#[test]
+fn edits_after_a_save_survive_a_crash_when_one_removes_media_imported_before_the_save() {
+    let (fixture, spec, imports) = smoke_project("crash-saved-media");
+    let id = |n: u32| format!("0190f5c2-0236-7000-8000-{n:012x}");
+    let sequence = &fixture.manifest.sequence;
+    let file = imports.join("late.mp4");
+    std::fs::write(&file, b"stub media").unwrap();
+
+    let mut engine = ChildEngine::spawn(&spec).unwrap();
+    let mut editor = Editor::connect(&engine).unwrap();
+    let imported = done(
+        &mut editor,
+        "media.import",
+        &json!({"paths": [file]}),
+        &id(1),
+    );
+    let media = imported["media_ids"][0].clone();
+    done(&mut editor, "project.save", &json!({}), &id(2));
+    done(&mut editor, "media.remove", &json!({"id": media}), &id(3));
+    for (n, t) in [(4, 0), (5, 705_600_000_i64)] {
+        let marker = json!({"sequence": sequence, "t": t});
+        done(&mut editor, "timeline.add_marker", &marker, &id(n));
+    }
+    let acknowledged = editor.query("project.snapshot", &json!({})).unwrap();
+    engine.kill();
+
+    let engine = ChildEngine::spawn(&spec).unwrap();
+    let mut editor = Editor::connect(&engine).unwrap();
+    let hello = json!({"client": "crash-test", "version": "0"});
+    let offered = editor.query("rpc.hello", &hello).unwrap()["project"]["recovery"].take();
+    assert_eq!(offered["records"], 3, "{offered}");
+    let recovered = done(&mut editor, "project.recover", &json!({}), &id(6));
+    assert_eq!(recovered["applied"], 3, "{recovered}");
+    assert_eq!(recovered["damaged"], false, "{recovered}");
+    let after = editor.query("project.snapshot", &json!({})).unwrap();
+    assert_eq!(after["committed_rev"], acknowledged["committed_rev"]);
+    assert_eq!(after["project"], acknowledged["project"]);
+}
+
+/// Issue #235, found by the harness at its `drag-commit` point: the journal has a drag's
+/// commit, and after the recovery the commit sent again under its request id must get its
+/// original result, as a live engine gives and as `docs/reference/rpc.md` says.
+#[test]
+#[ignore = "issue #235: a resent edit.commit_tx is refused after a recovery"]
+fn a_drag_commit_sent_again_after_a_recovery_returns_its_original_result() {
+    let (fixture, spec, _) = smoke_project("crash-commit-resend");
     let id = |n: u32| format!("0190f5c2-0235-7000-8000-{n:012x}");
     let manifest = &fixture.manifest;
     let clip = manifest
@@ -101,10 +163,8 @@ fn a_drag_commit_sent_again_after_a_recovery_returns_its_original_result() {
     let mut engine = ChildEngine::spawn(&spec).unwrap();
     let mut editor = Editor::connect(&engine).unwrap();
     let begin = json!({"label": "Move clip", "kind": "gesture"});
-    let opened = editor
-        .call("edit.begin_tx", &begin, Some(&id(1)), None)
-        .unwrap();
-    let tx = opened.output().unwrap()["tx"].as_str().unwrap().to_owned();
+    let opened = done(&mut editor, "edit.begin_tx", &begin, &id(1));
+    let tx = opened["tx"].as_str().unwrap().to_owned();
     let moved = json!({"item": clip.id, "start": to});
     let update = editor
         .call("item.move", &moved, Some(&id(2)), Some(&tx))
@@ -118,10 +178,8 @@ fn a_drag_commit_sent_again_after_a_recovery_returns_its_original_result() {
 
     let engine = ChildEngine::spawn(&spec).unwrap();
     let mut editor = Editor::connect(&engine).unwrap();
-    let recovered = editor
-        .call("project.recover", &json!({}), Some(&id(4)), None)
-        .unwrap();
-    assert_eq!(recovered.output().unwrap()["applied"], 1, "{recovered:?}");
+    let recovered = done(&mut editor, "project.recover", &json!({}), &id(4));
+    assert_eq!(recovered["applied"], 1, "{recovered}");
     let again = editor
         .call("edit.commit_tx", &json!({}), Some(&id(3)), None)
         .unwrap();
