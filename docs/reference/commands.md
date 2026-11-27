@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (161 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (162 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -134,6 +134,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.save_as` | Save the document as a new project folder and continue there | engine | catalog |
 | project | `project.set_allowed_roots` | Set the folders agents may use besides the open project's (the app's own setting) | engine, idempotent, ui-only | catalog |
 | project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent, ui-only | catalog |
+| project | `project.set_settings` | Change project settings (a patch of project.info's settings) | command, undoable, idempotent | catalog |
 | sequence | `sequence.create` | Add a sequence from an aspect preset or a format | command, undoable | core |
 | sequence | `sequence.create_from_media` | Add a sequence holding the given assets in order | command, undoable | catalog |
 | sequence | `sequence.delete` | Delete a sequence (not the last one, not while a compound clip uses it) | command, undoable, destructive | catalog |
