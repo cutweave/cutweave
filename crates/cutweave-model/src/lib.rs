@@ -92,7 +92,8 @@ pub use project::{
 };
 pub use rate::{FrameRate, Rounding, SampleRate};
 pub use sequence::{
-    Color, ColorError, ColorSpace, Sequence, SequenceFormat, Track, TrackItems, TrackKind,
+    BackgroundFill, BackgroundFit, BlurSource, Color, ColorError, ColorSpace,
+    MAX_BACKGROUND_BLUR_RADIUS, Sequence, SequenceFormat, Track, TrackItems, TrackKind,
 };
 pub use settings_patch::{SettingsInEffect, SettingsPatch, SettingsPatchError};
 pub use snap::{SnapError, SnapIndex, SnapKind, SnapKinds, SnapOptions, SnapTarget, Snapped, snap};

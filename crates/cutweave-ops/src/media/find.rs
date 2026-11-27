@@ -84,15 +84,21 @@ pub fn asset_name(media: &MediaAsset) -> Cow<'_, str> {
     }
 }
 
-/// The IDs of every asset placed on a timeline of any sequence.
+/// The IDs of every asset placed on a timeline of any sequence, or shown as a sequence's
+/// background image (WP-2B.02).
 #[must_use]
 pub fn used_media(doc: &Project) -> HashSet<MediaId> {
-    doc.sequences
+    let placed = doc
+        .sequences
         .values()
         .flat_map(|s| s.tracks.values())
         .flat_map(|t| t.items.iter())
-        .filter_map(cutweave_model::Item::media)
-        .collect()
+        .filter_map(cutweave_model::Item::media);
+    let backgrounds = doc
+        .sequences
+        .values()
+        .filter_map(|s| s.format.background_fill.as_ref()?.media());
+    placed.chain(backgrounds).collect()
 }
 
 fn is_term_break(c: char) -> bool {
