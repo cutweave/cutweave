@@ -123,6 +123,27 @@ export class TransportController {
    * the source's own time). A source already set for `media` is not restarted.
    */
   async playSource(media: MediaId, host: SourceHost = "preview", from = 0): Promise<void> {
+    if (!(await this.#setSource(media, host))) return;
+    if (from > 0) await this.seek(from);
+    await this.play();
+  }
+
+  /**
+   * Shows `media` in the Preview's Source view, paused at `at` (flicks, the source's own time):
+   * match frame (WP-2A.14). Resolves to whether the source is shown.
+   */
+  async showSource(media: MediaId, at = 0): Promise<boolean> {
+    const { playback } = this.#deps;
+    if (playback.getState().source?.media === media && playback.getState().playing) {
+      await this.pause();
+    }
+    if (!(await this.#setSource(media, "preview"))) return false;
+    await this.seek(at);
+    return true;
+  }
+
+  /** Makes `media` the engine's source, shown by `host`; `false` when the engine refuses. */
+  async #setSource(media: MediaId, host: SourceHost): Promise<boolean> {
     const { playback } = this.#deps;
     this.#sourceView().getState().setHost(host);
     if (playback.getState().source?.media !== media) {
@@ -130,12 +151,11 @@ export class TransportController {
       if (result === undefined) {
         // Refused (a still, a removed asset): nothing is shown anywhere else.
         this.#sourceView().getState().setHost("preview");
-        return;
+        return false;
       }
       playback.getState().applyState(result);
     }
-    if (from > 0) await this.seek(from);
-    await this.play();
+    return true;
   }
 
   /**
