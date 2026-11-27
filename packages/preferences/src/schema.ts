@@ -164,6 +164,9 @@ export interface PreferenceValues {
   // Editing (WP-2F.05b, ADR-0035)
   /** Seconds a still image gets in new projects when it is placed without a length. */
   "editing.still_duration": number;
+  // Playback (WP-2H.10)
+  /** Pausing, or playing into the end, puts the playhead back where playback began. */
+  "playback.return_to_start": boolean;
   // Media and import (WP-1M.14)
   /** Show a video's frames while the pointer moves across its card in the bin. */
   "media.hover_scrub": boolean;
@@ -335,6 +338,8 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     max: STILL_DURATION_MAX,
     default: 5,
   },
+  // Playback (WP-2H.10): applied by the editor's transport.
+  "playback.return_to_start": { type: "boolean", scope: "app", default: false },
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
   "media.keep_structure": { type: "boolean", scope: "app", default: true },

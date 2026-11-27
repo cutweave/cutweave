@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The pages of features that already exist (WP-1M.13): Export, which the Export dialog starts
-// from, and Media and import. Keyboard shortcuts (WP-2H.05) is `shortcuts.tsx`.
+// from, and Media and import. Keyboard shortcuts (WP-2H.05) is `shortcuts.tsx`. Editing
+// (WP-2F.05b) and Playback (WP-2H.10) are here too.
 
 import {
   EXPORT_FOLDER_CHOICES,
@@ -167,6 +168,28 @@ const editingPage: SettingsPageDef = {
   ],
 };
 
+// ---- Playback (WP-2H.10) ------------------------------------------------------------------------
+// The rows the engine applies (preview quality, proxies, scrub audio, loop) join the page with
+// the work that gives the engine each behaviour; see docs/reference/settings.md.
+
+const playbackPage: SettingsPageDef = {
+  id: "playback",
+  title: "settings.pages.playback",
+  icon: "play",
+  group: "preferences",
+  order: 50,
+  rows: [
+    {
+      id: "playback.return_to_start",
+      key: "playback.return_to_start",
+      label: "settings.rows.returnToStart.label",
+      description: "settings.rows.returnToStart.description",
+      keywords: "settings.rows.returnToStart.keywords",
+      control: { kind: "switch" },
+    },
+  ],
+};
+
 // ---- Media and import (WP-1M.14) --------------------------------------------------------------
 
 const mediaPage: SettingsPageDef = {
@@ -243,7 +266,12 @@ const mediaPage: SettingsPageDef = {
 };
 
 /** The pages of this work package. */
-export const FEATURE_PAGES: readonly SettingsPageDef[] = [editingPage, mediaPage, exportPage];
+export const FEATURE_PAGES: readonly SettingsPageDef[] = [
+  editingPage,
+  playbackPage,
+  mediaPage,
+  exportPage,
+];
 
 /** Registers them (idempotent). */
 export function registerFeaturePages(): void {

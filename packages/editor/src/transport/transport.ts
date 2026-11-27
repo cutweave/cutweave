@@ -11,6 +11,9 @@
 //   speeds up 1x → 2x → 4x, J the same in reverse, K pauses.
 // - Volume and mute are the engine's linear `master_gain` (`view.set`; there is no separate
 //   `view.set_master_gain` or mute flag yet): mute sends 0 and keeps the volume to return to.
+// - "Go back to where it started" (`playback.return_to_start`, WP-2H.10) is the editor's: when
+//   the person pauses, or playback runs into the end, the transport seeks back to the position
+//   playback began at. A step, and a pause someone else made (an agent), stay where they are.
 // - An engine without the playback subsystem answers `not_found`: reported once, controls go
 //   quiet, seeks still move the view's playhead (which `viewSync` mirrors to the engine).
 import { type MediaId, type Project, RpcError } from "@cutweave/protocol";
@@ -57,6 +60,11 @@ export interface TransportDeps {
   readonly doc: StoreApi<DocStore>;
   /** Where the source is shown (the app's own when left out). */
   readonly sourceView?: StoreApi<SourceViewStore>;
+  /**
+   * The `playback.return_to_start` preference, read at each stop (so a change applies at once);
+   * off when left out.
+   */
+  readonly returnToStart?: () => boolean;
   /** The engine has no transport commands (the first `not_found`). */
   readonly onUnsupported?: () => void;
   readonly onError?: (error: unknown) => void;
@@ -72,6 +80,10 @@ export class TransportController {
   #gainInFlight = false;
   #gainAgain = false;
   #reported = false;
+  /** Where the playback under way began: what played (a source, or `null`) and its position. */
+  #began: { readonly media: MediaId | null; at: number } | null = null;
+  /** A pause the person asked for is on its way to the engine. */
+  #pausing = false;
 
   constructor(deps: TransportDeps) {
     this.#deps = deps;
@@ -81,8 +93,13 @@ export class TransportController {
     return this.#command("view.play", {});
   }
 
-  pause(): Promise<void> {
-    return this.#command("view.pause", {});
+  async pause(): Promise<void> {
+    this.#pausing = true;
+    try {
+      await this.#command("view.pause", {});
+    } finally {
+      this.#pausing = false;
+    }
   }
 
   togglePlay(): Promise<void> {
@@ -151,6 +168,8 @@ export class TransportController {
   seek(t: number): Promise<void> {
     const at = Math.max(0, Math.round(t));
     const { playback, view } = this.#deps;
+    // A seek while playing is the person's new place: a stop comes back here.
+    if (playback.getState().playing && this.#began !== null) this.#began.at = at;
     if (playback.getState().source !== null) playback.getState().setSourcePlayhead(at);
     else {
       playback.getState().setPlayhead(at);
@@ -197,14 +216,53 @@ export class TransportController {
     this.#sendGain();
   }
 
-  /** Moves the view's playhead with the engine's (`playback.state`); returns the unsubscribe. */
+  /**
+   * Moves the view's playhead with the engine's (`playback.state`), and returns to where
+   * playback began when it stops and the preference asks for it; returns the unsubscribe.
+   */
   attach(): () => void {
     const { playback, view } = this.#deps;
     return playback.subscribe((next, prev) => {
       if (next.playhead !== prev.playhead && next.playhead !== view.getState().playhead) {
         view.getState().setPlayhead(next.playhead);
       }
+      if (next.playing && !prev.playing) this.#noteStart(next, prev);
+      else if (!next.playing && prev.playing) this.#returnToStart(next, prev);
     });
+  }
+
+  /** The end of what plays and one frame of it, in flicks. */
+  #content(state: PlaybackStore): { end: number; frame: number } {
+    if (state.source !== null) {
+      return { end: state.source.duration, frame: frameDurationFlicks(state.source.fps) };
+    }
+    const project = this.#deps.doc.getState().project;
+    const id = selectActiveSequenceId(project);
+    const fps = id === null ? undefined : project?.sequences[id]?.format.frame_rate;
+    return { end: sequenceEnd(project), frame: fps === undefined ? 1 : frameDurationFlicks(fps) };
+  }
+
+  /** Playback began: remembers its position (the start, when `view.play` restarts at the end). */
+  #noteStart(next: PlaybackStore, prev: PlaybackStore): void {
+    const at = next.source !== null ? prev.sourcePlayhead : prev.playhead;
+    const { end, frame } = this.#content(next);
+    const restarts = next.rate > 0 && end > 0 && at >= end - frame;
+    this.#began = { media: next.source?.media ?? null, at: restarts ? 0 : at };
+  }
+
+  /**
+   * Playback stopped. With `playback.return_to_start` on, a pause the person made and a
+   * playback that ran into the end (or, in reverse, the start) go back to where it began.
+   */
+  #returnToStart(next: PlaybackStore, prev: PlaybackStore): void {
+    const began = this.#began;
+    this.#began = null;
+    if (began === null || this.#deps.returnToStart?.() !== true) return;
+    if (began.media !== (next.source?.media ?? null)) return;
+    const at = next.source !== null ? next.sourcePlayhead : next.playhead;
+    const { end, frame } = this.#content(next);
+    const ranOut = prev.rate < 0 ? at <= 0 : end > 0 && at >= end - frame;
+    if (this.#pausing || ranOut) void this.seek(began.at);
   }
 
   async #sendSeek(t: number): Promise<void> {

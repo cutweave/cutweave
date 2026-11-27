@@ -78,6 +78,7 @@
       "general": "General",
       "appearance": "Appearance",
       "editing": "Editing",
+      "playback": "Playback",
       "media": "Media and import",
       "export": "Export",
       "shortcuts": "Keyboard shortcuts",
@@ -216,6 +217,11 @@
         "description": "How long a photo or other still is when you place it on the timeline. New projects take this value; clips already on a timeline keep their length.",
         "keywords": "image, photo, picture, still, length, default, seconds, new project",
         "unit": "seconds"
+      },
+      "returnToStart": {
+        "label": "Go back to where playback started",
+        "description": "When you pause, or playback reaches the end, the playhead returns to where you pressed play. Off leaves it where playback stopped.",
+        "keywords": "stop, pause, return, rewind, playhead, position, start, play, space, transport, preview"
       },
       "hoverScrub": {
         "label": "Preview video on hover",
