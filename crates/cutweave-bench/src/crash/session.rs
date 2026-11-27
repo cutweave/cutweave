@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
 
-use super::clients::{ANSWER_WAIT, Agent, Answer, DRAIN_WAIT, Editor};
+use super::clients::{AGENT_DRAIN_WAIT, ANSWER_WAIT, Agent, Answer, DRAIN_WAIT, Editor};
 use super::compare::{IdMap, same_document};
 use super::script::{Drag, Move, Op, Placed, Script, Who};
 use super::{CrashOptions, Fault, Point, Row, disk};
@@ -261,6 +261,11 @@ impl Session {
             }
         }
         if let Some((op, pending)) = call {
+            let wait = if kill_after.is_some() {
+                AGENT_DRAIN_WAIT
+            } else {
+                wait
+            };
             match live.agent.finish(pending, wait) {
                 Ok(answer) => self.record(What::Plain(op), answer),
                 Err(_) => {
@@ -317,7 +322,21 @@ impl Session {
         for _ in 0..self.script.below(3) {
             ops.push(self.script.light());
         }
-        self.exchange(ops, agent, None, None, flight)
+        // Now and then a file is imported, and the project saved (the journal rotates) with
+        // the commands behind the save already on their way.
+        if self.script.below(12) == 0 {
+            ops.push(self.new_import()?);
+        }
+        let save_at = (self.script.below(8) == 0).then_some(0);
+        self.exchange(ops, agent, save_at, None, flight)
+    }
+
+    /// `media.import` of a new file with content of its own.
+    fn new_import(&mut self) -> Result<Op, BenchError> {
+        let path = self.imports.join(self.script.import_name());
+        let content = format!("stub media for {}", path.display());
+        std::fs::write(&path, content).map_err(|e| BenchError::io("write", &path, e))?;
+        Ok(self.script.import(&path))
     }
 
     /// After a request failed without a kill: the engine must really be gone.
@@ -376,7 +395,7 @@ impl Session {
                         .agent
                         .start(agent.command, &agent.params, &agent.request_id);
                     live.engine.kill();
-                    match live.agent.finish(pending, DRAIN_WAIT) {
+                    match live.agent.finish(pending, AGENT_DRAIN_WAIT) {
                         Ok(answer) => self.record(What::Plain(agent), answer),
                         Err(_) => flight.in_flight.push(agent),
                     }
@@ -440,7 +459,7 @@ impl Session {
             Point::Save => {
                 let ops = vec![self.script.light(), self.script.light()];
                 let agent = self.script.agent_touch();
-                let after = self.script.below(8000);
+                let after = self.script.below(30_000);
                 self.exchange(ops, Some(agent), Some(1), Some(after), flight)
             }
             Point::Autosave => {
@@ -464,12 +483,9 @@ impl Session {
             }
             Point::TornTail => self.strike_torn_tail(flight),
             Point::Import => {
-                let path = self.imports.join(self.script.import_name());
-                let content = format!("stub media for {}", path.display());
-                std::fs::write(&path, content).map_err(|e| BenchError::io("write", &path, e))?;
-                let ops = vec![self.script.import(&path)];
+                let ops = vec![self.new_import()?];
                 let agent = self.script.agent_touch();
-                let after = self.script.below(3000);
+                let after = self.script.below(25_000);
                 self.exchange(ops, Some(agent), None, Some(after), flight)
             }
             Point::Queue => {
@@ -590,6 +606,10 @@ impl Session {
     /// Starts the engine under test on its project and says hello. `Err`: it did not open.
     fn restart(&mut self, env: &[(String, String)]) -> Result<Value, String> {
         self.subject = None;
+        // Every restart is a takeover of a stale lock: a killed engine cannot remove its own.
+        if !self.folder.join(".cutweave").join("lock").is_file() {
+            return Err("the killed engine left no lock file behind".into());
+        }
         let live = self
             .base()
             .spawn("subject-run", &self.folder, env.to_vec())

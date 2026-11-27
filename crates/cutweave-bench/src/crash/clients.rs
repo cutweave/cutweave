@@ -22,7 +22,13 @@ use crate::harness::{ChildEngine, WsClient};
 /// How long one answer may take while the engine is alive.
 pub const ANSWER_WAIT: Duration = Duration::from_secs(60);
 /// How long the harness waits for the answers that were on their way when the engine died.
+/// The WebSocket ends at once then; this only bounds the wait.
 pub const DRAIN_WAIT: Duration = Duration::from_secs(10);
+/// The same for the agent's call. rmcp's HTTP client does not always notice that the engine
+/// is gone, so this wait is often spent in full: it is short. An answer that was already
+/// received is read well within it; one missed here only makes the harness send the call
+/// again under its request id, which is the same check.
+pub const AGENT_DRAIN_WAIT: Duration = Duration::from_millis(250);
 
 const META_REV: &str = "io.cutweave/rev";
 const META_COMMITTED_REV: &str = "io.cutweave/committed_rev";
