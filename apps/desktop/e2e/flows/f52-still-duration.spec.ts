@@ -4,7 +4,9 @@
 // timeline with Enter: the clip is 3 s. Set it to 8 seconds and add the picture again: still 3 s,
 // because the project keeps the value it was created with, and the first clip is unchanged. A
 // second project, created now, gives 8 s. Changing an open project's own value is File > Project
-// settings… (WP-2H.08) and is not driven here.
+// settings… (WP-2H.08) and is not driven here. Last, "Duration…" on the picture's card (#215):
+// the next insert of that card is as long as the person says, and the clip already there keeps
+// its length.
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "../fixtures.ts";
 import {
@@ -75,6 +77,19 @@ test.describe("F52 still image duration", () => {
         await mediaCard(page, "logo.png").click();
         await page.keyboard.press("Enter");
         await expect.poll(() => clipLengths(page)).toEqual([sec(8)]);
+
+        // Duration… on the card proposes the project's 8 s; 2 s is for this card's next insert.
+        await mediaCard(page, "logo.png").click({ button: "right" });
+        await page.getByRole("menuitem", { name: "Duration…" }).click();
+        const ask = page.getByRole("dialog", { name: "Duration of logo.png" });
+        await expect(ask.getByLabel("Seconds")).toHaveValue("8");
+        await ask.getByLabel("Seconds").fill("2");
+        await ask.getByRole("button", { name: "Set duration" }).click();
+        await expect(ask).toBeHidden();
+        await mediaCard(page, "logo.png").click();
+        await page.keyboard.press("Enter");
+        await expect.poll(async () => (await clipLengths(page)).length).toBe(2);
+        expect((await clipLengths(page)).sort((a, b) => a - b)).toEqual([sec(2), sec(8)]);
       } finally {
         await close();
       }

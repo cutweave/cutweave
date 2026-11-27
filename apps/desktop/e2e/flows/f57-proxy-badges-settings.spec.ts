@@ -52,7 +52,7 @@ const proxyLimit = (status: CacheStatus): number | undefined =>
 /** Right-clicks the clip's card and chooses a row of its menu. */
 async function cardMenu(page: Page, row: string): Promise<void> {
   await mediaCard(page, CLIP).click({ button: "right" });
-  await page.getByRole("menuitem", { name: row }).click();
+  await page.getByRole("menuitem", { name: row, exact: true }).click();
 }
 
 test.describe("F57 proxies in the bin and in Settings", () => {
@@ -121,6 +121,23 @@ test.describe("F57 proxies in the bin and in Settings", () => {
         timeout: 30_000,
       });
       await expect(badge(page)).toHaveAttribute("data-proxy", "ready", { timeout: 180_000 });
+
+      // Proxy ▸ Never on the card's menu (#215): this clip alone gets no proxy, whatever the
+      // project's policy; the menu shows the choice, and one Undo puts Auto back.
+      const wanted = async () =>
+        (await editorCall<Proxies>(page, "media.proxy_status", {})).proxies[0]?.wanted;
+      const proxyMenu = page.getByRole("menu", { name: "Proxy" });
+      await cardMenu(page, "Proxy");
+      await expect(proxyMenu.getByRole("menuitemradio", { name: "Auto" })).toBeChecked();
+      await snapshot(page, info, "proxy mode menu");
+      await proxyMenu.getByRole("menuitemradio", { name: "Never" }).click();
+      await expect.poll(wanted).toBe(false);
+      await cardMenu(page, "Proxy");
+      await expect(proxyMenu.getByRole("menuitemradio", { name: "Never" })).toBeChecked();
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      await chooseMenu(page, app, "Edit", /^Undo/);
+      await expect.poll(wanted).toBe(true);
 
       // Settings: a larger proxy cache, one proxy job at a time, proxies for all video in new
       // projects. The engine has the machine values at once.
