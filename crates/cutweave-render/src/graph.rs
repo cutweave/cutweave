@@ -1137,11 +1137,10 @@ mod tests {
         let top = g
             .passes
             .iter()
-            .filter_map(|p| match &p.op {
+            .find_map(|p| match &p.op {
                 PassOp::Composite(c) if c.item == ItemId::from_u128(2) => Some(c),
                 _ => None,
             })
-            .next()
             .unwrap();
         // The rectangle of the picture plus its one-pixel soft edges.
         assert_eq!(top.rect, [15, 0, 49, 36]);

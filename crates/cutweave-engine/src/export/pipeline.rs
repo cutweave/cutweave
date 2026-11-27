@@ -896,6 +896,32 @@ fn push_everything(
     })
 }
 
+/// Fails an export that did not allow offline media (WP-2F.03c) when a file its range plays is
+/// gone now: the request was checked when it was queued, and a file can go missing while it
+/// waits its turn.
+fn refuse_offline(plan: &ExportPlan, services: &ExportServices) -> Result<(), ExportError> {
+    if plan.allow_offline {
+        return Ok(());
+    }
+    let doc = &plan.snapshot.doc;
+    let missing = doc
+        .sequences
+        .get(&plan.sequence)
+        .map_or_else(Vec::new, |seq| {
+            offline_media(doc, seq, &[(plan.start, plan.end)], &|asset| {
+                services.sources.offline(asset)
+            })
+        });
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(failed(format!(
+        "{}; relink them and export again, or export with allow_offline: true to get a \"media \
+         offline\" slate in their place",
+        describe_offline(&missing)
+    )))
+}
+
 /// Runs the export of `plan` (see the module docs): renders, mixes and encodes it into
 /// `plan.path`, reporting its progress to `report`, until done or `cancel`. After a mid-stream
 /// hardware-encoder failure (`hw: auto`) it starts over in software from frame 0, reporting
@@ -917,25 +943,7 @@ pub fn run_export(
             plan.path.display()
         )));
     }
-    if !plan.allow_offline {
-        // The request was checked when it was queued; a file can go missing while it waits.
-        let doc = &plan.snapshot.doc;
-        let missing = doc
-            .sequences
-            .get(&plan.sequence)
-            .map_or_else(Vec::new, |seq| {
-                offline_media(doc, seq, &[(plan.start, plan.end)], &|asset| {
-                    services.sources.offline(asset)
-                })
-            });
-        if !missing.is_empty() {
-            return Err(failed(format!(
-                "{}; relink them and export again, or export with allow_offline: true to get a \
-                 \"media offline\" slate in their place",
-                describe_offline(&missing)
-            )));
-        }
-    }
+    refuse_offline(plan, services)?;
     let written = Arc::new(AtomicI64::new(0));
     let bytes = Arc::new(AtomicU64::new(0));
     let spec = encode_spec(plan, services, cancel, &written, &bytes);

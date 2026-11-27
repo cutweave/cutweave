@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use cutweave_commands::CmdError;
 use cutweave_model::{MediaAsset, MediaId, MediaKind, Project, Sequence, Time, TrackKind};
 
-use super::ExportStarter;
+use super::{ExportStarter, Region};
 use crate::media::asset_name;
 
 /// Most names the refusal lists; the rest are counted.
@@ -112,15 +112,21 @@ pub fn refusal(missing: &[OfflineMedia]) -> CmdError {
     )
 }
 
-/// `Err` with the [`refusal`] when the export of `ranges` of `seq` would play offline media, as
-/// `starter` sees the disk.
+/// `Err` with the [`refusal`] when the export of `regions` of `seq` would play offline media, as
+/// `starter` sees the disk, unless the request allows it (`allow_offline`). The planner calls it
+/// after the params were checked: a missing file is the project's state, not a typo.
 pub fn check(
     doc: &Project,
     seq: &Sequence,
-    ranges: &[(Time, Time)],
+    regions: &[Region],
+    allow_offline: bool,
     starter: &dyn ExportStarter,
 ) -> Result<(), CmdError> {
-    let missing = offline_media(doc, seq, ranges, &|asset| starter.media_offline(asset));
+    if allow_offline {
+        return Ok(());
+    }
+    let ranges: Vec<(Time, Time)> = regions.iter().map(|r| (r.start, r.end)).collect();
+    let missing = offline_media(doc, seq, &ranges, &|asset| starter.media_offline(asset));
     if missing.is_empty() {
         Ok(())
     } else {

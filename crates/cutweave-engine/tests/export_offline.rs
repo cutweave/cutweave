@@ -228,7 +228,7 @@ fn missing_media_refuses_the_export_and_allow_offline_exports_the_slate() {
     }
     let queue = must(&rig.conn, "export.queue", json!({}));
     assert_eq!(queue["jobs"], json!([]), "{queue}");
-    assert!(rig.fake.encodes().is_empty());
+    assert_eq!(rig.fake.encodes().len(), 0);
     assert!(!std::path::Path::new(&out_path).exists());
 
     // A range that only plays `a` exports as ever.

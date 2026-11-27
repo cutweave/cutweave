@@ -926,11 +926,7 @@ impl ExportRequest<'_> {
                 output,
             });
         }
-        if !allow_offline {
-            // After the params were checked: a missing file is the project's state, not a typo.
-            let ranges: Vec<(Time, Time)> = regions.iter().map(|r| (r.start, r.end)).collect();
-            offline::check(doc, seq, &ranges, starter)?;
-        }
+        offline::check(doc, seq, &regions, allow_offline, starter)?;
         output::check_disk(&plans, starter)?;
         Ok((plans, labels))
     }
