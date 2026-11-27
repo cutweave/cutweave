@@ -851,7 +851,13 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
             json!({ "sequence": sequence, "depth": 2, "limit": 1 }),
         )
         .await;
-    assert_eq!(page["tracks"][0]["items"].as_array().unwrap().len(), 1);
+    let listed: usize = page["tracks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["items"].as_array().unwrap().len())
+        .sum();
+    assert_eq!(listed, 1, "{page}");
     assert!(page["next_cursor"].is_string(), "{page}");
     c.tool(
         "view_set",
