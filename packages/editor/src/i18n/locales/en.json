@@ -152,6 +152,26 @@
         "description": "Dark, light, or follow your system.",
         "keywords": "color, colour, dark mode, light mode, night, appearance, system, os"
       },
+      "interfaceScale": {
+        "label": "Interface scale",
+        "description": "The size of text and controls in every window. The preview and the timeline stay sharp.",
+        "keywords": "zoom, size, bigger, larger, smaller, text size, font size, ui scale, dpi, magnify, percent"
+      },
+      "density": {
+        "label": "Density",
+        "description": "Comfortable makes controls, rows and tracks taller and adds room around them.",
+        "keywords": "compact, spacing, padding, row height, track height, touch, roomy, cozy, tight",
+        "standard": "Standard",
+        "comfortable": "Comfortable"
+      },
+      "reduceMotion": {
+        "label": "Reduce motion",
+        "description": "On makes menus, dialogs and controls change at once, with no fade. Match system follows your system's setting.",
+        "keywords": "animation, animations, transitions, fade, accessibility, motion sickness, vestibular, instant",
+        "system": "Match system",
+        "on": "On",
+        "off": "Off"
+      },
       "exportFolder": {
         "label": "Save exports in",
         "description": "Where the Export dialog proposes to save the file.",

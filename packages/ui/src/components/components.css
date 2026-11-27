@@ -1637,6 +1637,67 @@
   }
 }
 
+/* Settings > Appearance > Reduce motion (WP-2H.09): `data-motion` on the root overrides the
+   system. "reduce" makes every state change instant, here and in anything else in the window. */
+[data-motion="reduce"],
+[data-motion="reduce"] *,
+[data-motion="reduce"] *::before,
+[data-motion="reduce"] *::after {
+  /* biome-ignore lint/complexity/noImportantStyles: the person's choice wins over every rule, the dock's and a plugin's included */
+  transition-property: none !important;
+  /* biome-ignore lint/complexity/noImportantStyles: as above */
+  animation-name: none !important;
+}
+/* "full" keeps the motion when the system asks to reduce it: the rules above, once more
+   (motion.test.ts checks that the two stay the same). */
+@media (prefers-reduced-motion: reduce) {
+  :where([data-motion="full"]) .cw-btn,
+  :where([data-motion="full"]) .cw-iconbtn,
+  :where([data-motion="full"]) .cw-seg__item,
+  :where([data-motion="full"]) .cw-num,
+  :where([data-motion="full"]) .cw-kf,
+  :where([data-motion="full"]) .cw-switch::before,
+  :where([data-motion="full"]) .cw-tabs__tab,
+  :where([data-motion="full"]) .cw-section__toggle,
+  :where([data-motion="full"]) .cw-menu__item,
+  :where([data-motion="full"]) .cw-settings__tab,
+  :where([data-motion="full"]) .cw-menubar__trigger {
+    transition:
+      background-color var(--duration-fast) var(--easing-standard),
+      border-color var(--duration-fast) var(--easing-standard),
+      color var(--duration-fast) var(--easing-standard);
+  }
+  :where([data-motion="full"]) .cw-switch__thumb {
+    transition:
+      left var(--duration-fast) var(--easing-standard),
+      background-color var(--duration-fast) var(--easing-standard);
+  }
+  /* Floating layers fade in only; leaving is instant so Radix unmounts without waiting. */
+  @keyframes cw-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  :where([data-motion="full"]) .cw-section__chevron {
+    transition: transform var(--duration-base) var(--easing-standard);
+  }
+  :where([data-motion="full"]) .cw-menu[data-state="open"] {
+    animation: cw-fade-in var(--duration-base) var(--easing-enter);
+  }
+  :where([data-motion="full"]) .cw-tooltip[data-state="delayed-open"],
+  :where([data-motion="full"]) .cw-tooltip[data-state="instant-open"] {
+    animation: cw-fade-in var(--duration-fast) var(--easing-enter);
+  }
+  :where([data-motion="full"]) .cw-dialog[data-state="open"],
+  :where([data-motion="full"]) .cw-scrim[data-state="open"],
+  :where([data-motion="full"]) .cw-toast[data-state="open"] {
+    animation: cw-fade-in var(--duration-slow) var(--easing-enter);
+  }
+}
+
 /* ---------- FolderTile (the folder variant of the bin's asset tile) ---------- */
 .cw-foldertile {
   display: flex;

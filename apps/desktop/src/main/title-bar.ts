@@ -31,21 +31,31 @@ export function hasThemedOverlay(platform: NodeJS.Platform): boolean {
   return platform !== "darwin";
 }
 
-/** The overlay for `theme`: the app frame color, the primary text color for the glyphs. */
+/**
+ * The overlay for `theme`: the app frame color, the primary text color for the glyphs. `height`
+ * is the top bar's on screen: taller at a larger interface scale or density (interface-scale.ts).
+ */
 export function titleBarOverlay(
   theme: ThemeId,
+  height: number = TITLE_BAR_HEIGHT,
 ): Required<Pick<TitleBarOverlayOptions, "color" | "symbolColor" | "height">> {
   return {
     color: colors[theme]["surface-0"],
     symbolColor: colors[theme]["text-primary"],
-    height: TITLE_BAR_HEIGHT,
+    height,
   };
 }
 
-/** Window options for the title bar on `platform`; the overlay starts in `theme`. */
+/** Where the macOS traffic lights sit: at the panel padding, centered in a bar `height` tall. */
+export function trafficLightPosition(height: number = TITLE_BAR_HEIGHT): { x: number; y: number } {
+  return { x: px(spacing["space-3"]), y: Math.round((height - TRAFFIC_LIGHT_SIZE) / 2) };
+}
+
+/** Window options for the title bar on `platform`; the overlay starts in `theme`, `height` tall. */
 export function titleBarOptions(
   platform: NodeJS.Platform,
   theme: ThemeId = "dark",
+  height: number = TITLE_BAR_HEIGHT,
 ): Pick<
   BrowserWindowConstructorOptions,
   "titleBarStyle" | "titleBarOverlay" | "trafficLightPosition" | "backgroundColor"
@@ -56,12 +66,13 @@ export function titleBarOptions(
     return {
       titleBarStyle: "hiddenInset",
       titleBarOverlay: true,
-      trafficLightPosition: {
-        x: px(spacing["space-3"]),
-        y: Math.round((TITLE_BAR_HEIGHT - TRAFFIC_LIGHT_SIZE) / 2),
-      },
+      trafficLightPosition: trafficLightPosition(height),
       backgroundColor,
     };
   }
-  return { titleBarStyle: "hidden", titleBarOverlay: titleBarOverlay(theme), backgroundColor };
+  return {
+    titleBarStyle: "hidden",
+    titleBarOverlay: titleBarOverlay(theme, height),
+    backgroundColor,
+  };
 }

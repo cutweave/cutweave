@@ -328,6 +328,26 @@ export const opacity = {
 export type OpacityTokenName =
   | "opacity-disabled";
 
+/** The tokens each density makes larger (`data-density` on the root). */
+export const density = {
+  "comfortable": {
+    "hit-min": "28px",
+    "control-sm": "28px",
+    "control-md": "32px",
+    "control-lg": "36px",
+    "toolbar": "44px",
+    "panel-header": "36px",
+    "track-sm": "36px",
+    "track-md": "56px",
+    "track-lg": "84px",
+    "space-2": "10px",
+    "space-3": "16px",
+    "space-4": "20px",
+  },
+} as const;
+export type DensityId =
+  | "comfortable";
+
 /** Font stacks by key (CSS `--font-<key>`). */
 export const fontFamilies = {
   "ui": "\"Instrument Sans\", \"Segoe UI\", system-ui, sans-serif",

@@ -476,8 +476,12 @@ export class TimelineView {
 
   private smoothZoom(): boolean {
     if (this.options.smoothZoom !== undefined) return this.options.smoothZoom;
-    const win = this.canvas.ownerDocument?.defaultView;
-    return !(win?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+    const doc = this.canvas.ownerDocument;
+    // Settings > Appearance > Reduce motion (`data-motion` on the root) overrides the system.
+    const choice = doc?.documentElement?.getAttribute("data-motion");
+    if (choice === "reduce") return false;
+    if (choice === "full") return true;
+    return !(doc?.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
   }
 
   private userView(patch: Partial<ViewState>): void {

@@ -47,6 +47,14 @@ pub fn tokens_css(t: &Tokens) -> String {
         let _ = writeln!(out, "  --font-{k}: {stack};");
     }
     out.push_str("}\n");
+    // After `:root` (the same specificity), so a density's sizes win over the default ones.
+    for d in &t.densities {
+        let _ = writeln!(out, "[data-density=\"{}\"] {{", d.id);
+        for tok in &d.tokens {
+            let _ = writeln!(out, "  --{}: {};", tok.name, tok.value);
+        }
+        out.push_str("}\n");
+    }
     for s in &t.type_styles {
         let mut decl = vec![
             format!("font-family: var(--font-{})", s.family),
@@ -125,6 +133,26 @@ fn hex_of(c: Rgba) -> String {
     }
 }
 
+/// The `density` object and `DensityId` of `tokens.ts`; nothing when there are no density sets.
+fn density_ts(t: &Tokens, o: &mut String) {
+    if t.densities.is_empty() {
+        return;
+    }
+    o.push_str("/** The tokens each density makes larger (`data-density` on the root). */\n");
+    o.push_str("export const density = {\n");
+    for d in &t.densities {
+        let _ = writeln!(o, "  {}: {{", ts_str(&d.id));
+        for tok in &d.tokens {
+            let _ = writeln!(o, "    {}: {},", ts_str(&tok.name), ts_str(&tok.value));
+        }
+        o.push_str("  },\n");
+    }
+    o.push_str("} as const;\n");
+    let ids: Vec<&str> = t.densities.iter().map(|d| d.id.as_str()).collect();
+    o.push_str(&ts_union("DensityId", &ids));
+    o.push('\n');
+}
+
 /// `tokens.ts`: constants and string-literal unions for `@cutweave/tokens`.
 pub fn tokens_ts(t: &Tokens) -> Result<String, String> {
     let mut o = format!(
@@ -184,6 +212,8 @@ pub fn tokens_ts(t: &Tokens) -> Result<String, String> {
         o.push_str(&ts_union(&format!("{}TokenName", pascal(&f.key)), &names));
         o.push('\n');
     }
+
+    density_ts(t, &mut o);
 
     o.push_str("/** Font stacks by key (CSS `--font-<key>`). */\nexport const fontFamilies = {\n");
     for (k, v) in &t.font_families {
@@ -326,6 +356,9 @@ mod tests {
       "radius": {"tokens": [{"name": "radius-sm", "value": "4px", "usage": ""}]},
       "shadow": {"tokens": [{"name": "shadow-pop", "value": {"dark": "0 1px #000", "light": "0 1px #fff"}, "usage": ""}]},
       "zIndex": {"tokens": [{"name": "z-top", "value": "20", "usage": ""}]},
+      "density": {"sets": [{"id": "roomy", "tokens": [
+        {"name": "space-1", "value": "6px", "usage": "u"}
+      ]}]},
       "type": {"families": {"ui": "\"Inter\", sans-serif"}, "groups": [
         {"name": "UI", "family": "ui", "styles": [
           {"name": "body", "fontSize": "13px", "lineHeight": "20px", "fontWeight": 400},
@@ -362,6 +395,9 @@ mod tests {
   --z-top: 20;
   --font-ui: \"Inter\", sans-serif;
 }
+[data-density=\"roomy\"] {
+  --space-1: 6px;
+}
 .body { font-family: var(--font-ui); font-size: 13px; line-height: 20px; font-weight: 400; }
 .tag { font-family: var(--font-ui); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.04em; }
 ";
@@ -396,6 +432,10 @@ mod tests {
         assert!(ts.contains("export type ColorTokenName =\n  | \"bg\"\n  | \"gold\""));
         assert!(ts.contains("export type ZIndexTokenName =\n  | \"z-top\";"));
         assert!(ts.contains("\"tag\": { family: \"ui\""));
+        assert!(ts.contains(
+            "export const density = {\n  \"roomy\": {\n    \"space-1\": \"6px\",\n  },\n} as const;"
+        ));
+        assert!(ts.contains("export type DensityId =\n  | \"roomy\";"));
     }
 
     #[test]
