@@ -3,7 +3,7 @@
 // WP-1M.08, WP-2G.04: the export dialog and the top bar's chip, over the real stores and a
 // recording engine that answers like the real one (presets, resolve, encoders, options). The
 // user flows F14 and F34 run the same dialog in the app on the real engine.
-import type { JobInfo, Project } from "@cutweave/protocol";
+import type { ExportPresetEntry, ExportPresetSpec, JobInfo, Project } from "@cutweave/protocol";
 import { RpcError } from "@cutweave/protocol";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
@@ -26,6 +26,7 @@ import {
   H264_OPTIONS,
   PRESET_ENTRIES,
   resolveFor,
+  USER_PRESET,
 } from "../testing/exportFixtures.ts";
 import { ExportStatusChip } from "./ExportChip.tsx";
 import { ExportDialog } from "./ExportDialog.tsx";
@@ -134,6 +135,21 @@ function refuseOffline(text: string): void {
     if (starts && !refused && input.allow_offline !== true) {
       refused = true;
       throw new RpcError("invalid", text, "/media/med_1");
+    }
+    return answer?.(name, input);
+  });
+}
+
+/** Makes the engine refuse the next `export.start` or `export.enqueue`, and only that call. */
+function refuseStart(error: RpcError): void {
+  const answer = call.getMockImplementation() as
+    | ((name: string, input: Record<string, unknown>) => Promise<unknown>)
+    | undefined;
+  let refused = false;
+  call.mockImplementation(async (name: string, input: Record<string, unknown>) => {
+    if ((name === "export.start" || name === "export.enqueue") && !refused) {
+      refused = true;
+      throw error;
     }
     return answer?.(name, input);
   });
@@ -424,10 +440,13 @@ describe("ExportDialog", () => {
   it("keeps Replace when the file exists and media is missing", async () => {
     const user = userEvent.setup();
     const dialog = await openDialog();
-    call.mockRejectedValueOnce(new RpcError("invalid", "exists", "/overwrite"));
+    // The refusals are the answers to the export itself. (Refusing "the next call" instead
+    // also catches the preset's resolve or the encoder list when one of them is still on its
+    // way, and then the export goes through: that made this test fail on a busy machine.)
+    refuseStart(new RpcError("invalid", "exists", "/overwrite"));
     await user.click(within(dialog).getByRole("button", { name: "Add to queue" }));
     const replace = await screen.findByRole("dialog", { name: "Replace Film.mp4?" });
-    call.mockRejectedValueOnce(
+    refuseStart(
       new RpcError("invalid", "1 media file is missing: `beach.mp4`; relink", "/media/med_1"),
     );
     await user.click(within(replace).getByRole("button", { name: "Replace" }));
@@ -490,5 +509,134 @@ describe("ExportDialog", () => {
     await user.click(within(dialog).getByRole("button", { name: "Advanced" }));
     await within(dialog).findByRole("group", { name: "Encoder settings" });
     expect((await axe.run(dialog)).violations).toEqual([]);
+  });
+});
+
+describe("ExportDialog: presets of your own (WP-2G.04b)", () => {
+  /** An engine that keeps saved presets, as the real one does. */
+  function keepPresets(start: readonly ExportPresetEntry[] = PRESET_ENTRIES) {
+    let entries = [...start];
+    const answer = call.getMockImplementation() as (
+      name: string,
+      input: Record<string, unknown>,
+    ) => Promise<unknown>;
+    call.mockImplementation(async (name: string, input: Record<string, unknown>) => {
+      if (name === "export.list_presets") return { presets: entries, problems: [] };
+      if (name === "export.save_preset") {
+        const preset = input.preset as ExportPresetSpec;
+        const replaced = entries.some((e) => e.preset.id === preset.id);
+        entries = [
+          ...entries.filter((e) => e.preset.id !== preset.id),
+          { source: "user", supported: true, preset },
+        ];
+        return { id: preset.id, replaced };
+      }
+      if (name === "export.delete_preset") {
+        entries = entries.filter((e) => e.preset.id !== input.id);
+        return { id: input.id };
+      }
+      if (name === "export.resolve_preset") return resolveFor("h264-mp4-1080p", seq);
+      return answer(name, input);
+    });
+  }
+
+  it("saves what the dialog shows as a preset under a name, and chooses it", async () => {
+    keepPresets();
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Advanced" }));
+    await user.click(await within(dialog).findByRole("radio", { name: "Low" }));
+    const width = within(dialog).getByLabelText("Width");
+    await user.clear(width);
+    await user.type(width, "1280");
+
+    await user.click(within(dialog).getByRole("button", { name: "Save as preset…" }));
+    const name = within(dialog).getByLabelText("Preset name");
+    // Enter with nothing typed asks for a name; it neither saves nor starts the export.
+    await user.type(name, "{Enter}");
+    expect(await within(dialog).findByText("Type a name for the preset.")).toBeTruthy();
+    expect(lastCall("export.save_preset")).toBeUndefined();
+    await user.type(name, "Review copy{Enter}");
+    await waitFor(() => expect(lastCall("export.save_preset")).toBeDefined());
+    expect(lastCall("export.start")).toBeUndefined();
+    const saved = lastCall("export.save_preset")?.preset as ExportPresetSpec;
+    expect(saved).toMatchObject({
+      schema_version: 1,
+      id: "review-copy",
+      name: "Review copy",
+      summary: "Fit into 1920 x 1080, sequence frame rate, high quality",
+      container: "mp4",
+      size: { kind: "fixed", width: 1280, height: 1080 },
+      fps: { kind: "follow_sequence" },
+    });
+    expect(saved.video).toMatchObject({ codec: "h264", rate_control: { mode: "crf", crf: 28 } });
+
+    // The picker is on the new preset, under "Your presets"; the name row is gone.
+    await waitFor(() => expect(presetSelect(dialog).value).toBe("review-copy"));
+    const mine = presetSelect(dialog).querySelector('optgroup[label="Your presets"]');
+    expect([...(mine?.querySelectorAll("option") ?? [])].map((o) => o.textContent)).toEqual([
+      "Review copy",
+    ]);
+    expect(within(dialog).queryByLabelText("Preset name")).toBeNull();
+    expect(toastStore.getState().notices.at(-1)?.title).toBe("Preset saved");
+    // Exporting now sends the preset by its id, with no changes on top.
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(lastCall("export.start")).toBeDefined());
+    expect(lastCall("export.start")?.preset).toBe("review-copy");
+  });
+
+  it("says which preset of yours the name replaces, and why the engine refused", async () => {
+    keepPresets([...PRESET_ENTRIES, USER_PRESET]);
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Save as preset…" }));
+    await user.type(within(dialog).getByLabelText("Preset name"), "my review copy");
+    expect(within(dialog).getByText("This replaces your preset “My review copy”.")).toBeTruthy();
+    const answer = call.getMockImplementation() as (n: string, i: unknown) => Promise<unknown>;
+    call.mockImplementation(async (name: string, input: unknown) => {
+      if (name === "export.save_preset") {
+        throw new RpcError("invalid", "at most 200 user presets; delete one first", "/preset");
+      }
+      return answer(name, input);
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Save preset" }));
+    expect(
+      await within(dialog).findByText(
+        "The preset was not saved: at most 200 user presets; delete one first",
+      ),
+    ).toBeTruthy();
+    expect(lastCall("export.save_preset")?.preset).toMatchObject({ id: "my-review" });
+    // Don't save: the row closes and nothing else changed.
+    await user.click(within(dialog).getByRole("button", { name: "Don’t save the preset" }));
+    expect(within(dialog).queryByLabelText("Preset name")).toBeNull();
+    expect(presetSelect(dialog).value).toBe("h264-mp4-1080p");
+  });
+
+  it("deletes a preset of yours, never a built-in one, and Undo brings it back", async () => {
+    keepPresets([...PRESET_ENTRIES, USER_PRESET]);
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    expect(within(dialog).queryByRole("button", { name: "Delete this preset" })).toBeNull();
+    await user.selectOptions(presetSelect(dialog), "my-review");
+    await user.click(within(dialog).getByRole("button", { name: "Delete this preset" }));
+    await waitFor(() => expect(lastCall("export.delete_preset")).toEqual({ id: "my-review" }));
+    await waitFor(() => expect(presetSelect(dialog).value).toBe("h264-mp4-1080p"));
+    expect(presetSelect(dialog).querySelector('optgroup[label="Your presets"]')).toBeNull();
+    // The dialog says so and offers Undo (a toast's button is out of reach behind a dialog).
+    const gone = await within(dialog).findByTestId("export-preset-deleted");
+    expect(gone.textContent).toContain("Deleted your preset “My review copy”.");
+    await user.click(within(gone).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(presetSelect(dialog).value).toBe("my-review"));
+    expect(within(dialog).queryByTestId("export-preset-deleted")).toBeNull();
+    expect(lastCall("export.save_preset")?.preset).toMatchObject({ id: "my-review" });
+  });
+
+  it("has no accessibility violations with the name row open", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Save as preset…" }));
+    await user.type(within(dialog).getByLabelText("Preset name"), "{Enter}");
+    const results = await axe.run(dialog, { rules: { "color-contrast": { enabled: false } } });
+    expect(results.violations.map((v) => v.id)).toEqual([]);
   });
 });

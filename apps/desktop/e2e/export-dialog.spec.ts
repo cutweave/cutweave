@@ -42,16 +42,16 @@ test.describe("export dialog (fake engine)", () => {
     try {
       await page.getByRole("button", { name: "Export", exact: true }).click();
       const d = dialog(page);
-      await expect(d.getByLabel("Preset")).toHaveValue("h264-mp4-1080p");
+      await expect(d.getByLabel("Preset", { exact: true })).toHaveValue("h264-mp4-1080p");
       await expect(d.getByLabel("Save to")).toHaveValue(/\.mp4$/);
       await expect(d.getByTestId("export-summary")).toContainText(
         "1920 × 1080 · 30 fps · H.264 + AAC · MP4",
       );
       await expect(d.getByRole("radio", { name: "Whole sequence" })).toBeChecked();
       // A 9:16 preset on this 16:9 sequence says what happens.
-      await d.getByLabel("Preset").selectOption("tiktok");
+      await d.getByLabel("Preset", { exact: true }).selectOption("tiktok");
       await expect(d.getByText(/^Fits with bars: TikTok is 9:16/)).toBeVisible();
-      await d.getByLabel("Preset").selectOption("h264-mp4-1080p");
+      await d.getByLabel("Preset", { exact: true }).selectOption("h264-mp4-1080p");
       await d.getByRole("button", { name: "Advanced" }).click();
       await expect(d.getByLabel("Width")).toHaveValue("1920");
       await expect(d.getByLabel("Height")).toHaveValue("1080");

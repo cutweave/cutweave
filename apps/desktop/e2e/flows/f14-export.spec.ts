@@ -142,7 +142,7 @@ test.describe("F14 export", () => {
       // sequence's size and rate under Advanced.
       await exportButton.click();
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByLabel("Preset")).toHaveValue("h264-mp4-1080p");
+      await expect(dialog.getByLabel("Preset", { exact: true })).toHaveValue("h264-mp4-1080p");
       await expect(dialog.getByTestId("export-summary")).toContainText(
         "1920 × 1080 · 30 fps · H.264 + AAC · MP4",
       );

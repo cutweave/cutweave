@@ -2,7 +2,7 @@
 // The export queue panel (WP-2G.04, dockable; View > Panels > Exports): every export of the
 // project's queue, first in line first, with its progress, speed and time left. Row actions are
 // icon buttons with tooltips: cancel, retry, move up and down (or drag a waiting export onto
-// another), reveal the file and take it off the list; a failed export says why. The same actions
+// another), open the file, reveal it and take it off the list; a failed export says why. The same actions
 // are on the row's context menu (`export.row`). Each row follows its own job in `jobStore`, so a
 // progress event re-renders that row only.
 
@@ -71,9 +71,10 @@ interface RowProps {
   readonly canUp: boolean;
   readonly canDown: boolean;
   readonly canReveal: boolean;
+  readonly canOpen: boolean;
 }
 
-const QueueRow = memo(function QueueRow({ job, canUp, canDown, canReveal }: RowProps) {
+const QueueRow = memo(function QueueRow({ job, canUp, canDown, canReveal, canOpen }: RowProps) {
   const { t: rawT } = useTranslation();
   const t = translator(rawT);
   const queue = exportQueue();
@@ -167,6 +168,9 @@ const QueueRow = memo(function QueueRow({ job, canUp, canDown, canReveal }: RowP
         {state === "failed" || state === "cancelled"
           ? action("refresh-cw", t("exportQueue.retry"), () => void queue.retry(job.id))
           : null}
+        {state === "succeeded" && canOpen
+          ? action("external-link", t("exportQueue.open"), () => void queue.open(job.path))
+          : null}
         {state === "succeeded" && canReveal
           ? action("folder-open", t("exportQueue.reveal"), () => queue.reveal(job.path))
           : null}
@@ -192,6 +196,7 @@ export function ExportQueuePanel() {
   const waiting = jobs.filter(isWaiting).length;
   const finished = jobs.some(isFinished);
   const canReveal = queue.canReveal();
+  const canOpen = queue.canOpen();
   const pauseLabel = paused ? t("exportQueue.resume") : t("exportQueue.pause");
   return (
     <div className="cw-queue" data-testid="export-queue">
@@ -244,6 +249,7 @@ export function ExportQueuePanel() {
                 canUp={moveTarget(jobs, job.id, "up") !== undefined}
                 canDown={moveTarget(jobs, job.id, "down") !== undefined}
                 canReveal={canReveal}
+                canOpen={canOpen}
               />
             ))}
           </ul>

@@ -10,7 +10,15 @@ import {
   isRendererWritable,
   validatePreference,
 } from "../../../../packages/preferences/src/index.ts";
-import { AGENT_CLIENTS, APP_FOLDERS, EDIT_ACTIONS, THEMES } from "../shared/api.ts";
+import {
+  AGENT_CLIENTS,
+  APP_FOLDERS,
+  EDIT_ACTIONS,
+  EXPORT_CONTAINERS,
+  MAX_NOTICE_BODY,
+  MAX_NOTICE_TITLE,
+  THEMES,
+} from "../shared/api.ts";
 import type { InvokeChannel, InvokeChannels } from "../shared/ipc-contract.ts";
 import {
   isTrustedOrigin,
@@ -80,8 +88,19 @@ export const invokeSchemas = {
   "window:confirmClose": noArgs,
   "dialog:pickMediaFiles": noArgs,
   "dialog:pickMediaFolders": noArgs,
-  "dialog:chooseExportFile": z.tuple([filePath]),
+  "dialog:chooseExportFile": z.union([
+    z.tuple([filePath]),
+    z.tuple([filePath, z.enum(EXPORT_CONTAINERS)]),
+  ]),
   "shell:showItemInFolder": z.tuple([filePath]),
+  "shell:openFile": z.tuple([filePath]),
+  // Plain, bounded text for the OS notification; main decides whether it shows.
+  "notify:exportFinished": z.tuple([
+    z.strictObject({
+      title: z.string().min(1).max(MAX_NOTICE_TITLE),
+      body: z.string().max(MAX_NOTICE_BODY),
+    }),
+  ]),
   "shell:openExternal": z.tuple([externalUrl]),
   "app:about": noArgs,
   "app:quit": noArgs,
