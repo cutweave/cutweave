@@ -84,7 +84,7 @@ interface Seen {
 /**
  * What the person sees in the preview: a screenshot of its canvas, decoded in the page. The lit
  * part is the box of the rows and columns where enough pixels are brighter than the black
- * background.
+ * background: half of a row (the overlay's timecode is shorter), an eighth of a column.
  */
 async function seen(page: Page): Promise<Seen | null> {
   const box = await page.locator("canvas.cw-preview__canvas").boundingBox();
@@ -116,13 +116,13 @@ async function seen(page: Page): Promise<Seen | null> {
     for (let x = 0; x < width; x += 1) {
       let n = 0;
       for (let y = 0; y < height; y += 1) if (lit(x, y)) n += 1;
-      if (n > height / 10) cols.push(x);
+      if (n > height / 8) cols.push(x);
     }
     const rows: number[] = [];
     for (let y = 0; y < height; y += 1) {
       let n = 0;
       for (let x = 0; x < width; x += 1) if (lit(x, y)) n += 1;
-      if (n > width / 10) rows.push(y);
+      if (n > width / 2) rows.push(y);
     }
     const [x0, x1] = [cols[0], cols[cols.length - 1]];
     const [y0, y1] = [rows[0], rows[rows.length - 1]];
