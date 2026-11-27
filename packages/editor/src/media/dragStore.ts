@@ -4,7 +4,7 @@
 // begins the session on `dragstart`, the timeline reads it on every `dragover` and `drop`, and
 // whoever sees the drag end clears it. `dataTransfer` still carries the media ID under
 // `MEDIA_DRAG_TYPE`, so a drop anywhere else can tell it is ours.
-import type { MediaDrag } from "@cutweave/timeline";
+import type { DroppedMedia } from "@cutweave/timeline";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { DragPayload } from "./folders.ts";
@@ -14,8 +14,8 @@ export const MEDIA_DRAG_TYPE = "application/x-cutweave-media";
 
 export interface DragState {
   /** The card being dragged, or `null` when no drag from the bin is under way. */
-  readonly session: MediaDrag | null;
-  begin(media: MediaDrag): void;
+  readonly session: DroppedMedia | null;
+  begin(media: DroppedMedia): void;
   end(): void;
 }
 

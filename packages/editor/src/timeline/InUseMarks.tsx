@@ -12,8 +12,8 @@ import { useEngineStore } from "../engine/engineStore.ts";
 import { actorDisplayName } from "../session/historyLabels.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
-import type { TimelineController } from "./controller.ts";
 import { translator } from "./errors.ts";
+import type { TimelineHost } from "./host.ts";
 import { LocksFeed, locksStore } from "./locks.ts";
 
 /** Keeps `locksStore` current while the timeline shows an engine's sequence. */
@@ -30,7 +30,7 @@ function useLocksFeed(): void {
 }
 
 /** The marks, laid over the timeline canvas. */
-export function InUseMarks({ controller }: { readonly controller: TimelineController }) {
+export function InUseMarks({ controller }: { readonly controller: TimelineHost }) {
   const { t } = useTranslation();
   useLocksFeed();
   const byItem = useStore(locksStore, (s) => s.byItem);

@@ -45,7 +45,7 @@ import { openSettings } from "../../settings/settingsStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
-import { activeTimelineController } from "../../timeline/activeController.ts";
+import { activeTimelineHost } from "../../timeline/activeHost.ts";
 import {
   attributesSource,
   clipboardStore,
@@ -65,7 +65,7 @@ import { runWorkspaceCommand } from "../../workspace/commands.ts";
 import { floatPanel, movePanel, toggleMaximizePanel } from "../../workspace/dockHost.ts";
 import type { UiCommand } from "../commands.ts";
 import { menuDialogStore } from "../dialogs.ts";
-import { clipFact, clipFacts, trackFact } from "./facts.ts";
+import { activeSequence, clipFact, clipFacts, trackFact } from "./facts.ts";
 
 const tr = () => translator(i18n.t.bind(i18n));
 
@@ -642,6 +642,22 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     },
   },
   {
+    // WP-2A.10: every clip of the sequence that starts at or after the menu's time.
+    id: "timeline.select_after_here",
+    label: "contextMenu.item.selectAfterHere",
+    run: (_args, ctx) => {
+      const time = ctx.target.place?.time;
+      const found = activeSequence();
+      if (time === undefined || found === null) return;
+      const clips = Object.values(found.sequence.tracks)
+        .flatMap((track) => Object.values(track.items))
+        .filter((clip) => clip.start >= time)
+        .sort((a, b) => a.start - b.start)
+        .map((clip) => clip.id);
+      selectIds("item", clips);
+    },
+  },
+  {
     id: "timeline.move_playhead_here",
     label: "contextMenu.command.viewSetPlayhead",
     icon: "arrow-right",
@@ -651,11 +667,39 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     },
   },
   {
+    // A marker's Go to marker, and the ruler's Go to marker ▸ (WP-2A.10): its time, or the
+    // marker the menu is on.
+    id: "timeline.go_to_marker",
+    label: "contextMenu.item.goToMarker",
+    icon: "arrow-right",
+    run: async (args, ctx) => {
+      const time = arg<{ t?: number }>(args).t ?? ctx.target.place?.time;
+      if (time !== undefined) await transportController().seek(time);
+    },
+  },
+  {
+    // The playhead's Split at playhead: what S does (the selected clips, else the one under it).
+    id: "timeline.split_at_playhead",
+    label: "contextMenu.command.clipSplit",
+    icon: "scissors",
+    run: () => activeTimelineHost()?.split(),
+  },
+  {
+    id: "timeline.zoom_to_fit",
+    label: "contextMenu.item.zoomToFit",
+    run: () => activeTimelineHost()?.zoomToFit(),
+  },
+  {
+    id: "timeline.zoom_to_selection",
+    label: "contextMenu.item.zoomToSelection",
+    run: () => activeTimelineHost()?.zoomToSelection(),
+  },
+  {
     id: "timeline.rename_track",
     label: "contextMenu.item.renameTrack",
     run: (_args, ctx) => {
       const track = ctx.ids[0];
-      if (track !== undefined) activeTimelineController()?.beginRename(track);
+      if (track !== undefined) activeTimelineHost()?.beginRename(track);
     },
   },
   {

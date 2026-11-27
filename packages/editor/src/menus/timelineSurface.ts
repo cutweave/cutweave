@@ -4,7 +4,9 @@
 // selected clip's lower-left corner, or the playhead's menu where the playhead is, and the
 // pointer path (`canvas.ts`) stays with the canvas.
 import type { TimelineView } from "@cutweave/timeline";
+import { docStore } from "../state/docStore.ts";
 import { viewStore } from "../state/viewStore.ts";
+import { onePerGroup } from "../timeline/groups.ts";
 import { itemSelection } from "./adapters.ts";
 import { registerContextSurface, type SurfaceResolver } from "./host.tsx";
 
@@ -18,7 +20,8 @@ export function timelineKeyboardResolver(
     const element = canvas();
     if (view === null || element === null) return null;
     const box = element.getBoundingClientRect();
-    const ids = itemSelection.current();
+    // One clip per linked group, as the clip menu counts them (WP-2A.10).
+    const ids = onePerGroup(docStore.getState().project, itemSelection.current());
     const rect = ids[0] === undefined ? null : view.itemRect(ids[0]);
     if (rect !== null && ids[0] !== undefined) {
       return {
