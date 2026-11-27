@@ -8,7 +8,12 @@
 //! The first case is the shrunk failure `checkpoint_props` once found: the only collection is
 //! deleted and another one created after the checkpoint.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::needless_pass_by_value,
+    clippy::many_single_char_names
+)]
 
 use std::sync::{Arc, LazyLock};
 
