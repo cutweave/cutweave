@@ -18,6 +18,7 @@ import type {
   ExportedFile,
   ExportHw,
   ExportPreset,
+  ExportPresetSpec,
   ExportQuality,
   ExportRange,
   ExportStartOutput,
@@ -127,6 +128,11 @@ export type StartOutcome =
   | { readonly kind: "offline"; readonly count: number; readonly names: readonly string[] }
   /** The engine refused; `pointer` says which field (`/path`, `/range/kind`, `/advanced/…`). */
   | { readonly kind: "refused"; readonly message: string; readonly pointer: string | null };
+
+/** How saving or deleting a preset of the person's went. */
+export type PresetOutcome =
+  | { readonly ok: true; readonly id: string; readonly replaced: boolean }
+  | { readonly ok: false; readonly message: string; readonly pointer: string | null };
 
 export type ResolveOutcome =
   | { readonly ok: true; readonly value: ResolvePresetOutput }
@@ -286,6 +292,46 @@ export class ExportController {
       if (state.getState().presets.status !== "ready") {
         state.getState().setPresets({ status: "unavailable" });
       }
+    }
+  }
+
+  /**
+   * Saves a preset of the person's ("Save as preset", `export.save_preset`): the engine keeps
+   * it with its other presets, so the picker, the CLI and agents list it. The list is asked for
+   * again before this resolves, so the dialog can choose the new preset at once.
+   */
+  async savePreset(preset: ExportPresetSpec): Promise<PresetOutcome> {
+    const rpc = this.#rpc();
+    if (rpc === null) {
+      return { ok: false, message: this.#deps.t("export.errors.engine"), pointer: null };
+    }
+    try {
+      const out = await rpc.call("export.save_preset", { preset });
+      await this.loadPresets();
+      return { ok: true, id: out.id, replaced: out.replaced };
+    } catch (error) {
+      const failure = asRpcError(error);
+      return { ok: false, message: failure.message, pointer: failure.path ?? null };
+    }
+  }
+
+  /** Deletes a preset of the person's (`export.delete_preset`) and asks for the list again. */
+  async deletePreset(id: string): Promise<PresetOutcome> {
+    const rpc = this.#rpc();
+    if (rpc === null) {
+      return { ok: false, message: this.#deps.t("export.errors.engine"), pointer: null };
+    }
+    try {
+      await rpc.call("export.delete_preset", { id });
+      // A deleted preset is no longer "the last one used" nor the default.
+      for (const key of ["export.last_preset", "export.preset"] as const) {
+        if (this.#pref(key) === id) void this.#deps.prefs?.set(key, "").catch(() => undefined);
+      }
+      await this.loadPresets();
+      return { ok: true, id, replaced: false };
+    } catch (error) {
+      const failure = asRpcError(error);
+      return { ok: false, message: failure.message, pointer: failure.path ?? null };
     }
   }
 

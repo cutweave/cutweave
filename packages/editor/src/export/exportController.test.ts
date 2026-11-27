@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { type JobInfo, type Project, RpcError } from "@cutweave/protocol";
+import {
+  type ExportPresetSpec,
+  type JobInfo,
+  type Project,
+  RpcError,
+} from "@cutweave/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createEngineStore } from "../engine/engineStore.ts";
 import { PreferencesClient } from "../prefs/prefsStore.ts";
@@ -455,5 +460,58 @@ describe("ExportController", () => {
     });
     expect(await controller.chooseFile("")).toBe("C:\\out\\x.mp4");
     expect(choose).toHaveBeenCalledWith("C:\\p\\Film.mp4");
+  });
+});
+
+describe("ExportController: presets of the person's", () => {
+  const mine = {
+    ...(PRESET_ENTRIES[0]?.preset as ExportPresetSpec),
+    id: "review",
+    name: "Review",
+  };
+
+  it("saves a preset with export.save_preset and lists the presets again", async () => {
+    const { controller, call, state } = setup();
+    call.mockImplementation(async (name: string) => {
+      if (name === "export.save_preset") return { id: "review", replaced: false };
+      if (name === "export.list_presets") {
+        return {
+          presets: [...PRESET_ENTRIES, { source: "user", supported: true, preset: mine }],
+          problems: [],
+        };
+      }
+      throw new Error(`unexpected ${name}`);
+    });
+    expect(await controller.savePreset(mine)).toEqual({ ok: true, id: "review", replaced: false });
+    expect(call).toHaveBeenCalledWith("export.save_preset", { preset: mine });
+    const presets = state.getState().presets;
+    expect(presets.status === "ready" && presets.value.some((e) => e.preset.id === "review")).toBe(
+      true,
+    );
+  });
+
+  it("says why the engine refused a preset, and at which field", async () => {
+    const { controller, call } = setup();
+    call.mockRejectedValue(
+      new RpcError("invalid", "the name must be 1..=80 characters", "/name"),
+    );
+    expect(await controller.savePreset(mine)).toEqual({
+      ok: false,
+      message: "the name must be 1..=80 characters",
+      pointer: "/name",
+    });
+  });
+
+  it("deletes a preset and forgets it as the last one used", async () => {
+    const { controller, call, prefs } = setup();
+    await prefs.set("export.last_preset", "review");
+    call.mockImplementation(async (name: string) => {
+      if (name === "export.delete_preset") return { id: "review" };
+      if (name === "export.list_presets") return { presets: PRESET_ENTRIES, problems: [] };
+      throw new Error(`unexpected ${name}`);
+    });
+    expect(await controller.deletePreset("review")).toMatchObject({ ok: true, id: "review" });
+    expect(call).toHaveBeenCalledWith("export.delete_preset", { id: "review" });
+    await vi.waitFor(() => expect(prefs.get("export.last_preset")).toBe(""));
   });
 });
