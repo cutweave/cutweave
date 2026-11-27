@@ -1,6 +1,6 @@
 # ADR-0039: The standard MCP tool list: parameter docs, the three visual tools and the 8k token budget
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-27): option 1; built in WP-2I.01 (#239)
 - **Date:** 2026-11-27
 - **Deciders:** Product owner
 - **Supersedes:** none
@@ -48,34 +48,34 @@ Options 1 and 2 need no new figure but leave an agent either without parameter d
 
 ## Decision
 
-Not decided here.
+**Option 1** (product owner, 2026-11-27).
 
-**Decided by:** the product owner, on three questions:
+1. The standard profile's budget stays at **8,000 tokens**.
+2. Listed input schemas stay **validation-only**, as WP-2I.01 built them: no parameter descriptions in `tools/list`; each listed tool has a description of at most 300 characters with one example; `cutweave_describe_command` returns the parameter docs in full, and the server instructions say so.
+3. WP-2I.02 builds its three commands and their tests. It lists `render_contact_sheet` as a core tool if the list still fits 8,000 tokens with it; `media_filmstrip` and `audio_waveform` stay in the catalog, reached through `cutweave_query`.
+4. The list stays capped at **36 tools**. Which tools are listed once the P3 to P5 core tools arrive is decided then, not now.
 
-1. What is the standard profile's token budget: 8,000 (today), 9,000 (option 4) or 12,000 (option 3)?
-2. Do listed input schemas carry parameter descriptions again (only possible at about 12,000), or do they stay validation-only as WP-2I.01 built them?
-3. When the P3 to P5 core tools arrive and the list passes 36 tools: raise the tool count, or keep 36 and decide then which tools are listed?
+The parameter-docs question is looked at again after the first scripted-agent run (WP-2I.06), which is the first measurement of whether agents stumble without them.
 
-**Pass criteria for the work package that applies the answer:** `STANDARD_BUDGET` and `[budget]` in `crates/cutweave-api/mcp_core.toml` carry the figure (one test already fails when they differ); the `tools/list` snapshot and `docs/reference/mcp-core-tools.md` are regenerated; if parameter descriptions return, `lean_schema` keeps them and its unit tests say so; arch §14 and R36 state the figure.
-
-**Until then:** the budget is 8,000 tokens and 36 tools. Listed schemas are validation-only. WP-2I.02 builds its three commands and their tests, lists one as a core tool only while the list still fits 8,000 tokens, and reports the measured size; the others stay under `[[pending]]` in `mcp_core.toml`.
+**Pass criteria:** `STANDARD_BUDGET` and `[budget]` in `crates/cutweave-api/mcp_core.toml` carry 8,000 (one test fails when they differ); the `tools/list` snapshot and `docs/reference/mcp-core-tools.md` match the registry; arch §14 and §23 state the figure and the rule.
 
 ## Consequences
 
 **Positive**
 
-- No budget changed without a decision, and the whole core set that has commands today is listed.
-- The cost of each choice is measured and written down.
+- The budget every agent session pays does not grow, and the whole core set that has commands today is listed.
+- The cost of each option is measured and written down, so the question can be reopened with numbers.
 
 **Negative / costs**
 
-- Until this is decided, agents read parameter docs with an extra call, and the visual tools of WP-2I.02 may ship as catalog commands rather than listed tools.
-- WP-2I.06 (the scripted agent runs) depends on which tools are listed.
+- Agents read parameter docs with an extra call (`cutweave_describe_command`) or work from the description, the example and the parameter names and types.
+- Two of the three visual tools of WP-2I.02 are catalog commands, one step further from an agent than a listed tool.
 
 **Follow-ups**
 
-- WP-2I.02 and WP-2I.05 build against the answer.
-- The same question returns with the P3 core tools (question 3).
+- WP-2I.02 and WP-2I.05 build against this decision.
+- WP-2I.06's scripted-agent run is the first measurement of the cost; the parameter-docs question is looked at again with its results.
+- The tool-count question returns with the P3 core tools.
 
 ## Links
 
