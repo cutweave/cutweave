@@ -292,11 +292,6 @@
         "smooth": "Smooth",
         "off": "Off"
       },
-      "magneticMain": {
-        "label": "Magnetic main track in new sequences",
-        "description": "The main video track of a new sequence keeps its clips together with no gaps.",
-        "keywords": "magnetic, main track, gap, ripple, sequence, new"
-      },
       "thumbnails": {
         "label": "Video clip thumbnails",
         "description": "Filmstrip shows frames all along a clip, First frame shows one at its start, Off shows none.",

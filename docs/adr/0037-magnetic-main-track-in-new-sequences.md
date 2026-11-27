@@ -8,7 +8,7 @@
 
 ## Context
 
-WP-2A.13 adds the Timeline preference "Main track is magnetic in new sequences" (`timeline.magnetic_main`, default on; [settings catalog](../reference/settings.md)). The work package says the value is "passed when the editor creates a sequence".
+WP-2A.13 plans the Timeline preference "Main track is magnetic in new sequences" (`timeline.magnetic_main`, default on; [settings catalog](../reference/settings.md)). The work package says the value is "passed when the editor creates a sequence".
 
 Nothing takes it today. `project.new` and `sequence.create` make a video track `V1` whose `magnetic` flag is off, and neither has a parameter for it. The only way to get a magnetic main track is `track.set_magnetic` afterwards, which is what the track's context menu does (flow F37).
 
@@ -17,7 +17,7 @@ So the preference cannot be applied without one of two things, and both are a de
 - A new parameter on `project.new` and `sequence.create`. That is a change to two command schemas, which needs an ADR.
 - The editor calling `track.set_magnetic` after it creates a sequence. That needs no schema change, but with the preference's default (on) every project made in the app would start with a magnetic main track. Today none does, and the timeline flows (F04, F05, F38, F39, F61 and others) were written against a free main track.
 
-WP-2A.13 ships the preference and its row in Settings > Timeline. The value is stored, exported and imported, and is not applied to new sequences until this is decided.
+WP-2A.13 ships the rest of Settings > Timeline without this row: no control that does nothing may land. The preference key `timeline.magnetic_main` and its row are added when this ADR is accepted, by the work package that applies them.
 
 ## Decision drivers
 
@@ -46,7 +46,7 @@ Not decided here.
 
 **Pass criteria for the follow-up work package** (either option): a unit test that a sequence created with the value on has a magnetic `V1` and with it off has none, as one history entry; the parity test covers the new parameter (option 1); flow F25 gains "turn the preference off, create a project: the main track is not magnetic"; every timeline flow that assumes a free main track on a new project either turns the preference off first or is rewritten for the magnetic track.
 
-**Until then:** the preference is stored and not applied. `project.new` and `sequence.create` are unchanged.
+**Until then:** there is no preference key and no row in Settings > Timeline; the catalog lists the row as waiting on this ADR. `project.new` and `sequence.create` are unchanged.
 
 ## Consequences
 
@@ -57,12 +57,12 @@ Not decided here.
 
 **Negative / costs**
 
-- Settings > Timeline shows a row that has no effect yet. The settings catalog says so.
+- Settings > Timeline has no "Main track is magnetic in new sequences" row until this is accepted. The settings catalog says so.
 - A follow-up work package is needed for the parameter (or the follow-up call) and for the flows.
 
 **Follow-ups**
 
-- A work package for the chosen option, with the pass criteria above.
+- A work package for the chosen option, with the pass criteria above. It adds the preference key `timeline.magnetic_main`, its row, strings and tests.
 - If option 1: `cargo xtask gen`, the command catalog and the MCP token budget (two parameter descriptions).
 
 ## Links

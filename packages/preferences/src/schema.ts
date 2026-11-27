@@ -271,8 +271,6 @@ export interface PreferenceValues {
   /** Snap distance in pixels. */
   "timeline.snap_distance": number;
   "timeline.follow": FollowModeChoice;
-  /** The main video track of a new sequence is magnetic. */
-  "timeline.magnetic_main": boolean;
   "timeline.thumbnails": ThumbnailModeChoice;
   "timeline.waveforms": boolean;
   "timeline.track_height": TrackHeightChoice;
@@ -530,7 +528,6 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     default: 8,
   },
   "timeline.follow": { type: "enum", scope: "app", options: FOLLOW_MODES, default: "page" },
-  "timeline.magnetic_main": { type: "boolean", scope: "app", default: true },
   "timeline.thumbnails": {
     type: "enum",
     scope: "app",
