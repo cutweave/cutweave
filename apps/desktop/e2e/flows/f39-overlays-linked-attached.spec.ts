@@ -158,9 +158,9 @@ test.describe("F39 overlays, linked and attached clips", () => {
       await expect.poll(() => on(page, overlay)).toEqual([[13, 10]]);
       await editorCaughtUp(page);
 
-      // The ruler menu's "Add marker here" at 26 s; the coffee dragged near it lands on it.
+      // The ruler menu's "Add marker here" at 34 s; the coffee dragged near it lands on it.
       g = await timelineGeometry(page);
-      await page.mouse.click(xAt(g, sec(26)) + 0.5, rulerY(g), { button: "right" });
+      await page.mouse.click(xAt(g, sec(34)) + 0.5, rulerY(g), { button: "right" });
       await page
         .getByRole("menu", { name: "Ruler actions" })
         .getByRole("menuitem", { name: /^Add marker here/ })
@@ -173,24 +173,24 @@ test.describe("F39 overlays, linked and attached clips", () => {
             })
           ).markers.map((m) => m.t),
         )
-        .toEqual([sec(26)]);
+        .toEqual([sec(34)]);
       await editorCaughtUp(page);
       box = clipBox(g, coffee);
       grab = { x: box.x + 20, y: box.y };
-      await drag(page, grab, { x: near(g, 26) + 20, y: box.y });
-      await expect.poll(() => on(page, overlay)).toEqual([[26, 10]]);
+      await drag(page, grab, { x: near(g, 34) + 20, y: box.y });
+      await expect.poll(() => on(page, overlay)).toEqual([[34, 10]]);
       await editorCaughtUp(page);
 
-      // The logo dropped onto the overlay at 22 s does not fit before the coffee: a new track
+      // The logo dropped onto the overlay at 31 s does not fit before the coffee: a new track
       // above takes it. Ctrl+Z.
       const tracksBefore = (await sequence(page)).tracks.length;
-      await movePlayhead(page, 22);
-      await dropCard(page, "logo.png", overlay, 22);
+      await movePlayhead(page, 31);
+      await dropCard(page, "logo.png", overlay, 31);
       await expect.poll(async () => (await sequence(page)).tracks.length).toBe(tracksBefore + 1);
       const seq = await sequence(page);
-      const above = seq.tracks.findIndex((t) => t.items.some((i) => i.start === sec(22)));
+      const above = seq.tracks.findIndex((t) => t.items.some((i) => i.start === sec(31)));
       expect(above).toBeLessThan(seq.tracks.findIndex((t) => t.name === overlay));
-      expect(await on(page, overlay)).toEqual([[26, 10]]);
+      expect(await on(page, overlay)).toEqual([[34, 10]]);
       await editorCaughtUp(page);
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await sequence(page)).tracks.length).toBe(tracksBefore);
@@ -204,7 +204,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
         .poll(() => on(page, overlay))
         .toEqual([
           [2, 5],
-          [26, 10],
+          [34, 10],
         ]);
       await editorCaughtUp(page);
       g = await timelineGeometry(page);
@@ -233,7 +233,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
         .poll(() => on(page, overlay))
         .toEqual([
           [12, 5],
-          [26, 10],
+          [34, 10],
         ]);
       await editorCaughtUp(page);
       await snapshot(page, info, "title follows its clip");
@@ -246,7 +246,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
       await expect.poll(() => on(page, "V1")).toEqual([[0, 10]]);
       expect(await on(page, overlay)).toEqual([
         [12, 5],
-        [26, 10],
+        [34, 10],
       ]);
       expect(await attachedTo(page, title)).toBeNull();
       await editorCaughtUp(page);

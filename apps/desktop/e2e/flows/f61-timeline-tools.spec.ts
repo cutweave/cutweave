@@ -77,6 +77,10 @@ const roundTrips = (page: Page) =>
     performance.getEntriesByName("cutweave.timeline.rtt", "measure").map((e) => e.duration),
   );
 
+/** V1's clips as `[start, duration]` seconds (the track added later goes above it). */
+const v1Clips = async (page: Page): Promise<[number, number][]> =>
+  (await layout(page)).find((t) => t.track === "V1")?.clips ?? [];
+
 const p95 = (values: readonly number[]): number => {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.ceil(0.95 * sorted.length) - 1)] ?? Number.NaN;
@@ -321,10 +325,10 @@ test.describe("F61 timeline tools, selection and track headers", () => {
       await page.mouse.down();
       await page.mouse.move(box.x + 34, box.y, { steps: 2 });
       await page.mouse.move(box.x + 30 + 2 * g.pxPerSec, box.y, { steps: 8 });
-      await expect.poll(async () => (await layout(page))[0]?.clips[1]?.[0]).toBe(16);
+      await expect.poll(async () => (await v1Clips(page))[1]?.[0]).toBe(16);
       await page.keyboard.press("Escape");
       await page.mouse.up();
-      await expect.poll(async () => (await layout(page))[0]?.clips[1]?.[0]).toBe(14);
+      await expect.poll(async () => (await v1Clips(page))[1]?.[0]).toBe(14);
       await editorCaughtUp(page);
       await expect(undo).toHaveAttribute("aria-label", label ?? "");
 
@@ -345,7 +349,7 @@ test.describe("F61 timeline tools, selection and track headers", () => {
       expect(rtt.length).toBeGreaterThan(5);
       expect(p95(rtt)).toBeLessThan(16);
       await shortcut(app, "Control+Z");
-      await expect.poll(async () => (await layout(page))[0]?.clips[0]).toEqual([2, 10]);
+      await expect.poll(async () => (await v1Clips(page))[0]).toEqual([2, 10]);
       await editorCaughtUp(page);
 
       // Every timeline menu, opened as a person does, passes axe.
