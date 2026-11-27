@@ -51,6 +51,10 @@ export interface PlaybackState {
   quality: PreviewQuality;
   /** Frames the engine skipped because rendering fell behind (since playback attached). */
   dropped: number;
+  /** Whether the engine's preview uses proxies (`view.set_preview_quality`, WP-2F.02). */
+  useProxies: boolean;
+  /** Whether the frame on screen shows a proxy (a picture decoded from one). */
+  proxy: boolean;
   /** `performance.now()` when `playhead` was last set: extrapolate from here while playing. */
   sampledAt: number;
   transport: TransportSupport;
@@ -83,6 +87,8 @@ export const initialPlaybackState: PlaybackState = {
   sourcePlayhead: 0,
   quality: "full",
   dropped: 0,
+  useProxies: true,
+  proxy: false,
   sampledAt: 0,
   transport: "unknown",
   holdPlayhead: false,
@@ -125,7 +131,8 @@ function parseSource(value: unknown): PlaybackSource | null | undefined {
 /**
  * Reads the fields of a `playback.state` payload it understands: `state` (or `mode`),
  * `playing`, `rate` (or `rate_milli`, 1000 = 1x), `t` (or `playhead` / `pts`, flicks),
- * `quality`, `dropped` and `source` (ADR-0022). `playhead` is the time of what plays: the
+ * `quality`, `dropped`, `use_proxies`, `proxy` and `source` (ADR-0022). `playhead` is the time
+ * of what plays: the
  * timeline's, or the source's when `source` is set.
  */
 export function parsePlaybackState(payload: unknown): Parsed {
@@ -152,6 +159,8 @@ export function parsePlaybackState(payload: unknown): Parsed {
   if (isCount(p.dropped)) {
     out.dropped = p.dropped;
   }
+  if (typeof p.use_proxies === "boolean") out.useProxies = p.use_proxies;
+  if (typeof p.proxy === "boolean") out.proxy = p.proxy;
   if ("source" in p) {
     const source = parseSource(p.source);
     if (source !== undefined) out.source = source;

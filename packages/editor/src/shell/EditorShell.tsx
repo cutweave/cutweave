@@ -16,6 +16,7 @@ import { ContextMenuHost } from "../menus/host.tsx";
 import { MenuDialogs } from "../menus/MenuDialogs.tsx";
 import { CommandPalette } from "../palette/index.ts";
 import { usePref } from "../prefs/prefsStore.ts";
+import { ProjectSettingsDialog } from "../project/ProjectSettingsDialog.tsx";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useTransportWiring } from "../transport/useTransport.ts";
@@ -96,6 +97,7 @@ function Shell() {
         <RelinkDialog />
         <CollectDialog />
         <ArchiveDialog />
+        <ProjectSettingsDialog />
         <SequenceOffer />
         <ContextMenuHost />
       </ToastProvider>

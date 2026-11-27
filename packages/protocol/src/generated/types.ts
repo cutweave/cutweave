@@ -4782,7 +4782,8 @@ export type MediaSetProxyMode = {
  *  (video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster than
  *  60 fps, or 10-bit HEVC) or `all`. The policy is saved in the project. The engine then
  *  queues the proxies the project now wants; it never deletes one (`media.delete_proxy` does).
- *  An asset's own mode (`media.set_proxy_mode`) wins over the policy.
+ *  An asset's own mode (`media.set_proxy_mode`) wins over the policy. A named shortcut of
+ *  `project.set_settings{patch: {proxy_policy}}`: the same patch through the same checks.
  */
 export type MediaSetProxyPolicy = {
 	/**  `off`, `auto` or `all`. */
@@ -5389,6 +5390,8 @@ export type ProjectInfoOutput = {
 	created: string | null,
 	/**  Format of new sequences. */
 	default_format: SequenceFormat,
+	/**  The project's settings (`project.set_settings` changes them). */
+	settings: ProjectSettings,
 	/**  Number of media assets. */
 	media_count: number,
 	/**  The sequences, ordered by ID. */
@@ -5420,9 +5423,10 @@ export type ProjectMeta = {
 } & { [key in string]: unknown };
 
 /**
- *  Initializes an empty project: sets the project name and default format and creates one
- *  sequence with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the
- *  project already has media or sequences.
+ *  Initializes an empty project: sets the project name and settings and creates one sequence
+ *  with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the project
+ *  already has media or sequences, or if a setting is given both in `settings` and as its own
+ *  param.
  */
 export type ProjectNew = {
 	/**  Project name (1..=200 characters). */
@@ -5439,6 +5443,11 @@ export type ProjectNew = {
 	 *  absent: `auto`. The editor passes the person's "Proxies for new projects" setting.
 	 */
 	proxy_policy?: ProxyPolicy | null,
+	/**
+	 *  Project settings to start with, as in `project.set_settings`; absent keys take their
+	 *  default. `default_format` here is the full form of `format`.
+	 */
+	settings?: { [key in string]: JsonValue } | null,
 };
 
 /**  Result of `project.new`. */
@@ -5650,6 +5659,20 @@ export type ProjectSetAutosaveOutput = {
 	keep_backups: number,
 };
 
+/**
+ *  Changes project settings: `patch` holds the keys to change (those of `project.info`'s
+ *  `settings`), the rest keep their value. `null` puts an optional key back to its default;
+ *  an object value (`default_format`) is merged key by key. One undo step. Changing a setting
+ *  never alters what exists: sequences keep their format and clips their length.
+ */
+export type ProjectSetSettings = {
+	/**
+	 *  The settings to change, e.g. `{"proxy_policy": "off"}`. Times are flicks or seconds
+	 *  (`"3s"`).
+	 */
+	patch: { [key in string]: JsonValue },
+};
+
 /**  Project-wide settings (arch §4.2 `settings`, v1 subset). */
 export type ProjectSettings = {
 	/**  Format of new sequences. */
@@ -5667,6 +5690,12 @@ export type ProjectSettings = {
 	 */
 	proxy_policy?: ProxyPolicy,
 } & { [key in string]: unknown };
+
+/**  Result of `project.set_settings`. */
+export type ProjectSettingsOutput = {
+	/**  The project's settings now. */
+	settings: ProjectSettings,
+};
 
 /**  What the engine holds: the `project.*` commands return it and `project.opened` carries it. */
 export type ProjectStatus = {

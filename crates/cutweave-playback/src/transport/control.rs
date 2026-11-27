@@ -14,7 +14,7 @@
 //! there for the session.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::thread::Thread;
 
@@ -61,6 +61,8 @@ pub(crate) struct Stats {
     pub last_frame: AtomicI64,
     pub last_rev: AtomicU64,
     pub last_quality: AtomicU8,
+    /// Whether the newest delivered frame shows a proxy.
+    pub last_proxy: AtomicBool,
     /// The epoch whose full-quality still is delivered (ends `Scrubbing`).
     pub refined_epoch: AtomicU64,
 }
@@ -76,6 +78,7 @@ impl Stats {
             last_frame: AtomicI64::new(-1),
             last_rev: AtomicU64::new(0),
             last_quality: AtomicU8::new(FrameQuality::Full.to_u8()),
+            last_proxy: AtomicBool::new(false),
             refined_epoch: AtomicU64::new(u64::MAX),
         }
     }
@@ -104,6 +107,9 @@ pub(crate) struct Shared {
     pub stats: Stats,
     /// A pending `set_preview_size` (packed by [`pack_preview`]; 0 = none).
     pub preview_request: AtomicU64,
+    /// Whether the preview uses proxies (`view.set_preview_quality`): read by the render
+    /// thread for every frame it asks for.
+    pub use_proxies: AtomicBool,
     pub render_thread: OnceLock<Thread>,
     pub status_thread: OnceLock<Thread>,
     /// Finds the media `view.set_source` names.
@@ -161,6 +167,8 @@ impl Shared {
             rev: Rev(self.stats.last_rev.load(Ordering::Relaxed)),
             quality: FrameQuality::from_u8(self.stats.last_quality.load(Ordering::Relaxed)),
             dropped: u32::try_from(self.stats.dropped.load(Ordering::Relaxed)).unwrap_or(u32::MAX),
+            use_proxies: self.use_proxies.load(Ordering::Relaxed),
+            proxy: self.stats.last_proxy.load(Ordering::Relaxed),
             source: snap.source(),
         }
     }
@@ -210,6 +218,7 @@ impl Transport {
                 clock,
                 stats: Stats::new(),
                 preview_request: AtomicU64::new(0),
+                use_proxies: AtomicBool::new(true),
                 render_thread: OnceLock::new(),
                 status_thread: OnceLock::new(),
                 sources,
@@ -403,6 +412,23 @@ impl Transport {
         next.content = next.content.wrapping_add(1);
         next.scrub = false;
         self.publish(c, next)
+    }
+
+    /// Turns the preview's use of proxies on or off (`view.set_preview_quality`, WP-2F.02).
+    /// A change re-renders the current frame and applies to every frame after it; playback
+    /// continues without a seek, so nothing is skipped.
+    pub fn set_use_proxies(&self, on: bool) -> PlaybackState {
+        let mut c = self.lock();
+        if self.shared.use_proxies.swap(on, Ordering::Relaxed) == on {
+            return self.unchanged(&c);
+        }
+        self.refresh_in(&mut c)
+    }
+
+    /// Whether the preview uses proxies.
+    #[must_use]
+    pub fn use_proxies(&self) -> bool {
+        self.shared.use_proxies.load(Ordering::Relaxed)
     }
 
     /// Changes the sequence's frame grid or extent (the document changed). While the sequence

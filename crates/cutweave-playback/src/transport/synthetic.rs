@@ -144,7 +144,10 @@ impl FrameSource for SyntheticSource {
         }
         SyntheticSource::paint(request.frame, &request.layout, out);
         self.renders += 1;
-        Ok(Rendered { rev: self.rev })
+        Ok(Rendered {
+            rev: self.rev,
+            proxy: false,
+        })
     }
 }
 

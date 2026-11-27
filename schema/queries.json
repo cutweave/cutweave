@@ -4696,6 +4696,126 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "settings": {
+            "description": "The project's settings (`project.set_settings` changes them).",
+            "properties": {
+              "default_format": {
+                "description": "Format of new sequences.",
+                "properties": {
+                  "background": {
+                    "description": "Canvas color behind all tracks.",
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                    "type": "string"
+                  },
+                  "color_space": {
+                    "description": "Working color space.",
+                    "oneOf": [
+                      {
+                        "const": "rec709",
+                        "description": "Rec.709 primaries, SDR.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "frame_rate": {
+                    "additionalProperties": false,
+                    "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                    "properties": {
+                      "den": {
+                        "description": "Seconds.",
+                        "maximum": 4294967295,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "num": {
+                        "description": "Frames.",
+                        "maximum": 4294967295,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "num",
+                      "den"
+                    ],
+                    "type": "object"
+                  },
+                  "height": {
+                    "description": "Canvas height in pixels.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "sample_rate": {
+                    "description": "The mix rate.",
+                    "maximum": 352800000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "description": "Canvas width in pixels.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "width",
+                  "height",
+                  "frame_rate",
+                  "sample_rate",
+                  "color_space",
+                  "background"
+                ],
+                "type": "object",
+                "x-ui": {
+                  "group": "New sequences",
+                  "order": 0
+                }
+              },
+              "proxy_policy": {
+                "description": "Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so\ndocuments written before the field read the same.",
+                "oneOf": [
+                  {
+                    "const": "off",
+                    "description": "Never automatically (`media.generate_proxy` still makes one).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "auto",
+                    "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "all",
+                    "description": "For every video file.",
+                    "type": "string"
+                  }
+                ],
+                "x-ui": {
+                  "group": "Media",
+                  "order": 11
+                }
+              },
+              "still_duration": {
+                "description": "How long a still image is when it is placed without a length (ADR-0035). Absent: five\nseconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so\ndocuments written before the field read the same. Changing it never alters clips that\nalready exist.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "x-ui": {
+                  "group": "Media",
+                  "order": 10
+                }
+              }
+            },
+            "required": [
+              "default_format"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -4703,6 +4823,7 @@
           "schema_version",
           "created",
           "default_format",
+          "settings",
           "media_count",
           "sequences",
           "allowed_roots"

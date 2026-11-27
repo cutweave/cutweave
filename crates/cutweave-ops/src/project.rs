@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The `project` namespace (WP-1B.05; arch §5.1): `project.new`, `project.info`,
-//! `project.rename`; collecting a project's files into one folder (WP-2F.04: [`collect`]) and
+//! `project.rename`; the project's settings (WP-2H.08: [`settings`]); collecting a project's files into one folder (WP-2F.04: [`collect`]) and
 //! archiving it as a folder or a zip (WP-2F.04b: [`archive`]).
 //!
 //! Opening, saving and closing a project need disk access and live in the engine
@@ -10,14 +10,15 @@ use cutweave_commands::{
     CmdError, Command, Query, QueryCtx, Registry, RegistryError, Tx, command, query, wire,
 };
 use cutweave_model::{
-    Duration, FrameRate, Invariant, MAX_STILL_DURATION_SECS, Project, ProxyPolicy, SampleRate,
-    Sequence, SequenceFormat, SequenceId, TimeInput, Track, TrackId, TrackKind,
+    Duration, FrameRate, ProjectSettings, ProxyPolicy, SampleRate, Sequence, SequenceFormat,
+    SequenceId, SettingsInEffect, SettingsPatch, TimeInput, Track, TrackId, TrackKind,
 };
 
 use crate::util::{check_name, resolve_duration};
 
 pub mod archive;
 pub mod collect;
+pub mod settings;
 
 /// Name of the sequence `project.new` creates.
 pub const DEFAULT_SEQUENCE_NAME: &str = "Sequence 1";
@@ -28,6 +29,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ProjectNew>()?
         .register::<ProjectInfo>()?
         .register::<ProjectRename>()?;
+    settings::register(registry)?;
     collect::register(registry)?;
     archive::register(registry)
 }
@@ -69,9 +71,10 @@ pub struct ProjectNewOutput {
     pub audio_track: TrackId,
 }
 
-/// Initializes an empty project: sets the project name and default format and creates one
-/// sequence with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the
-/// project already has media or sequences.
+/// Initializes an empty project: sets the project name and settings and creates one sequence
+/// with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the project
+/// already has media or sequences, or if a setting is given both in `settings` and as its own
+/// param.
 #[command(
     name = "project.new",
     summary = "Initialize an empty project with one sequence (V1 + A1)",
@@ -90,24 +93,76 @@ pub struct ProjectNew {
     /// Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);
     /// absent: `auto`. The editor passes the person's "Proxies for new projects" setting.
     pub proxy_policy: Option<ProxyPolicy>,
+    /// Project settings to start with, as in `project.set_settings`; absent keys take their
+    /// default. `default_format` here is the full form of `format`.
+    pub settings: Option<SettingsPatch>,
 }
 
 impl ProjectNew {
-    /// The still duration to store, if one was given.
-    fn still(&self, format: &SequenceFormat) -> Result<Option<Duration>, CmdError> {
-        let Some(input) = self.still_duration else {
-            return Ok(None);
-        };
-        let length = resolve_duration("/still_duration", input, format.frame_rate)?;
-        let longest = Duration::from_secs(MAX_STILL_DURATION_SECS)
-            .map_err(|e| CmdError::internal(e.to_string()))?;
-        if length > longest {
-            return Err(CmdError::invalid(
-                "/still_duration",
-                "a still can be at most one hour long by default",
-            ));
+    /// The settings the project starts with: the defaults, then `settings`, then the params
+    /// that name one key (`format`, `still_duration`, `proxy_policy`). A key given both ways
+    /// is refused.
+    fn settings(&self) -> Result<ProjectSettings, CmdError> {
+        let mut next = ProjectSettings::default();
+        if let Some(patch) = &self.settings {
+            for (key, param, given) in [
+                (settings::DEFAULT_FORMAT, "format", self.format.is_some()),
+                (
+                    settings::STILL_DURATION,
+                    "still_duration",
+                    self.still_duration.is_some(),
+                ),
+                (
+                    settings::PROXY_POLICY,
+                    "proxy_policy",
+                    self.proxy_policy.is_some(),
+                ),
+            ] {
+                if given && patch.has(key) {
+                    return Err(CmdError::invalid(
+                        format!("/settings/{key}"),
+                        format!("`{key}` is given twice: here and as `{param}`; give it once"),
+                    ));
+                }
+            }
+            next = settings::merged(&next, patch, "/settings")?;
         }
-        Ok(Some(length))
+        if let Some(format) = &self.format {
+            next.default_format = format.resolve();
+        }
+        let pointer = |own: bool, param: &str, key: &str| {
+            if own {
+                format!("/{param}")
+            } else {
+                format!("/settings/{key}")
+            }
+        };
+        settings::check_format(&next.default_format).map_err(|reason| {
+            CmdError::invalid(
+                pointer(self.format.is_some(), "format", settings::DEFAULT_FORMAT),
+                reason,
+            )
+        })?;
+        if let Some(input) = self.still_duration {
+            let rate = next.default_format.frame_rate;
+            next.still_duration = Some(resolve_duration("/still_duration", input, rate)?);
+        }
+        if let Some(length) = next.still_duration {
+            settings::check_still(length).map_err(|reason| {
+                CmdError::invalid(
+                    pointer(
+                        self.still_duration.is_some(),
+                        "still_duration",
+                        settings::STILL_DURATION,
+                    ),
+                    reason,
+                )
+            })?;
+        }
+        if let Some(policy) = self.proxy_policy {
+            next.proxy_policy = policy;
+        }
+        Ok(next)
     }
 }
 
@@ -122,24 +177,15 @@ impl Command for ProjectNew {
                 "the project is not empty; project.new only initializes an empty project",
             ));
         }
-        let format = self.format.clone().unwrap_or_default().resolve();
-        self.still(&format)?;
-        let mut probe = Project::new("format check");
-        probe.settings.default_format = format;
-        for v in probe.violations() {
-            if let Invariant::InvalidFormat { reason, .. } = v {
-                return Err(CmdError::invalid("/format", reason));
-            }
-        }
-        Ok(())
+        self.settings().map(drop)
     }
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<ProjectNewOutput, CmdError> {
         self.validate(&tx.query_ctx())?;
         let name = check_name("/name", &self.name)?;
-        let format = self.format.clone().unwrap_or_default().resolve();
-        let still = self.still(&format)?;
-        let mut sequence = Sequence::new(tx.new_id(), DEFAULT_SEQUENCE_NAME, format.clone());
+        let settings = self.settings()?;
+        let format: SequenceFormat = settings.default_format.clone();
+        let mut sequence = Sequence::new(tx.new_id(), DEFAULT_SEQUENCE_NAME, format);
         let video = Track::new(tx.new_id(), TrackKind::Video, "V1");
         let audio = Track::new(tx.new_id(), TrackKind::Audio, "A1");
         let out = ProjectNewOutput {
@@ -154,9 +200,10 @@ impl Command for ProjectNew {
             Ok(())
         })?;
         tx.update_settings(|s| {
-            s.default_format = format;
-            s.still_duration = still;
-            s.proxy_policy = self.proxy_policy.unwrap_or_default();
+            // Fields of a newer version that an empty document carries are kept.
+            let extra = std::mem::take(&mut s.extra);
+            *s = settings;
+            s.extra = extra;
             Ok(())
         })?;
         tx.insert_sequence(&sequence)?;
@@ -194,6 +241,8 @@ pub struct ProjectInfoOutput {
     pub created: Option<String>,
     /// Format of new sequences.
     pub default_format: SequenceFormat,
+    /// The project's settings (`project.set_settings` changes them).
+    pub settings: SettingsInEffect,
     /// Number of media assets.
     pub media_count: u32,
     /// The sequences, ordered by ID.
@@ -241,6 +290,7 @@ impl Query for ProjectInfo {
             schema_version: doc.meta.schema_version,
             created: doc.meta.created.clone(),
             default_format: doc.settings.default_format.clone(),
+            settings: SettingsInEffect::from(&doc.settings),
             media_count: count(doc.media.len()),
             sequences,
             allowed_roots: Vec::new(),

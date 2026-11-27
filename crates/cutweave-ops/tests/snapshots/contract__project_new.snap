@@ -141,12 +141,135 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting.",
           "default": null
+        },
+        "settings": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "default_format": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "description": "Canvas width in pixels."
+                },
+                "height": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "description": "Canvas height in pixels."
+                },
+                "frame_rate": {
+                  "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                  "type": "object",
+                  "properties": {
+                    "num": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4294967295,
+                      "description": "Frames."
+                    },
+                    "den": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4294967295,
+                      "description": "Seconds."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "sample_rate": {
+                  "description": "The mix rate.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 352800000
+                },
+                "color_space": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "const": "rec709",
+                      "description": "Rec.709 primaries, SDR."
+                    }
+                  ],
+                  "description": "Working color space."
+                },
+                "background": {
+                  "description": "Canvas color behind all tracks.",
+                  "type": "string",
+                  "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+                }
+              },
+              "x-ui": {
+                "group": "New sequences",
+                "order": 0
+              },
+              "description": "Format of new sequences."
+            },
+            "still_duration": {
+              "anyOf": [
+                {
+                  "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How long a still image is when it is placed without a length (ADR-0035). Absent: five\nseconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so\ndocuments written before the field read the same. Changing it never alters clips that\nalready exist.",
+              "x-ui": {
+                "group": "Media",
+                "order": 10
+              }
+            },
+            "proxy_policy": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "off",
+                  "description": "Never automatically (`media.generate_proxy` still makes one)."
+                },
+                {
+                  "type": "string",
+                  "const": "auto",
+                  "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default."
+                },
+                {
+                  "type": "string",
+                  "const": "all",
+                  "description": "For every video file."
+                }
+              ],
+              "description": "Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so\ndocuments written before the field read the same.",
+              "x-ui": {
+                "group": "Media",
+                "order": 11
+              }
+            }
+          },
+          "description": "Project settings to start with, as in `project.set_settings`; absent keys take their\ndefault. `default_format` here is the full form of `format`.",
+          "additionalProperties": false,
+          "default": null
         }
       },
       "required": [
         "name"
       ],
-      "description": "Initializes an empty project: sets the project name and default format and creates one\nsequence with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the\nproject already has media or sequences.",
+      "description": "Initializes an empty project: sets the project name and settings and creates one sequence\nwith a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the project\nalready has media or sequences, or if a setting is given both in `settings` and as its own\nparam.",
       "title": "ProjectNew"
     },
     "output_schema": {
@@ -301,12 +424,135 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         ],
         "description": "Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);\nabsent: `auto`. The editor passes the person's \"Proxies for new projects\" setting.",
         "default": null
+      },
+      "settings": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "default_format": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0,
+                "description": "Canvas width in pixels."
+              },
+              "height": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0,
+                "description": "Canvas height in pixels."
+              },
+              "frame_rate": {
+                "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                "type": "object",
+                "properties": {
+                  "num": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4294967295,
+                    "description": "Frames."
+                  },
+                  "den": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4294967295,
+                    "description": "Seconds."
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sample_rate": {
+                "description": "The mix rate.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 352800000
+              },
+              "color_space": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "rec709",
+                    "description": "Rec.709 primaries, SDR."
+                  }
+                ],
+                "description": "Working color space."
+              },
+              "background": {
+                "description": "Canvas color behind all tracks.",
+                "type": "string",
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+              }
+            },
+            "x-ui": {
+              "group": "New sequences",
+              "order": 0
+            },
+            "description": "Format of new sequences."
+          },
+          "still_duration": {
+            "anyOf": [
+              {
+                "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long a still image is when it is placed without a length (ADR-0035). Absent: five\nseconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so\ndocuments written before the field read the same. Changing it never alters clips that\nalready exist.",
+            "x-ui": {
+              "group": "Media",
+              "order": 10
+            }
+          },
+          "proxy_policy": {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one)."
+              },
+              {
+                "type": "string",
+                "const": "auto",
+                "description": "For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster\nthan 60 fps, or 10-bit HEVC. The default."
+              },
+              {
+                "type": "string",
+                "const": "all",
+                "description": "For every video file."
+              }
+            ],
+            "description": "Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so\ndocuments written before the field read the same.",
+            "x-ui": {
+              "group": "Media",
+              "order": 11
+            }
+          }
+        },
+        "description": "Project settings to start with, as in `project.set_settings`; absent keys take their\ndefault. `default_format` here is the full form of `format`.",
+        "additionalProperties": false,
+        "default": null
       }
     },
     "required": [
       "name"
     ],
-    "description": "Initializes an empty project: sets the project name and default format and creates one\nsequence with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the\nproject already has media or sequences.",
+    "description": "Initializes an empty project: sets the project name and settings and creates one sequence\nwith a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the project\nalready has media or sequences, or if a setting is given both in `settings` and as its own\nparam.",
     "title": "ProjectNew"
   },
   "output": {
