@@ -1592,6 +1592,12 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Snapshot test on the full core tool list with annotations (insta).
 - **Tests:** insta, conformance script, parity.
 - **Out of scope:** text/caption/AI tools; resources beyond what P1 provides (adds `cutweave://sequence/{id}/timeline` pagination in 2I.02 only if absent).
+- **As built (2026-11-27):**
+  - `mcp_core.toml` is `crates/cutweave-api/mcp_core.toml`: 28 listed core tools (each with its command, a description and one example), the budget, and the planned tools that are not listed yet. The naming rule has no exception, so there is no alias table: `item.delete` is `item_delete` by the rule, and a name that is not the rule's needs an ADR. `docs/reference/mcp-core-tools.md` is generated from it by `cargo xtask gen`.
+  - Listed since this WP: `track_add`, `timeline_add_marker`, `clip_set_speed`, `edit_redo`, `edit_checkpoint`, `edit_restore`, `view_get`, `view_set`. `render_contact_sheet`, `media_filmstrip` and `audio_waveform` have no registered command yet and stay pending for WP-2I.02.
+  - The full engine lists 32 tools in about 7,694 of 8,000 tokens. To get there, listed input schemas carry validation only: every parameter description is gone from `tools/list` (`cutweave_describe_command` has them) and each listed description ends with its example. The three visual tools need about 650 more tokens; ADR-0039 (Proposed) asks the owner how to make room.
+  - `timeline_get` gained `range{from, to}`, `limit` (1 to 1000) and `cursor` / `next_cursor` at depth 2, and items list their own name. The default stays depth 1 (tracks and counts), far below 4k tokens for a 400-item sequence; a page of 50 items is under 4k tokens too.
+  - Results carry the revision in `_meta` (`io.cutweave/rev`) and in the summary line, not inside `structuredContent`, which stays the command's output (ADR-0028). `view_get` is listed with `readOnlyHint: false`: the registry keeps that hint for queries, and `view.get` is an engine command.
 
 ### WP-2I.02 — Visual tools: contact sheet, filmstrip, waveform image
 - **Area:** crates/cutweave-api/src/mcp/visual.rs, crates/cutweave-render (grid composer), crates/cutweave-cache

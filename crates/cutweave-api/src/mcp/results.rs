@@ -342,7 +342,7 @@ pub fn hint(error: &CmdError) -> &'static str {
             "Another connection's transaction holds it; retry later or work on other items"
         }
         CmdError::Locked { .. } => {
-            "The track or item is locked by the user; ask them, or unlock it with track.set"
+            "The user locked this track: ask them first; cutweave_execute track.set {track, locked: false} unlocks it"
         }
         CmdError::Conflict { reason, .. } => match reason {
             ConflictReason::StaleRev => {
