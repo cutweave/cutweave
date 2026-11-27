@@ -584,6 +584,16 @@
         "label": "Proxy size",
         "description": "The longest side of a proxy picture, in pixels. Smaller proxies scrub faster and take less space. A new size applies to proxies made from now on.",
         "keywords": "proxy proxies size resolution 540p 720p 960p"
+      },
+      "exportDone": {
+        "label": "Finished exports",
+        "description": "Notify when an export finishes while Cutweave is in the background.",
+        "keywords": "notify, notification, export, done, finished, complete, background, alert"
+      },
+      "exportSound": {
+        "label": "Export sound",
+        "description": "Play a sound when an export finishes.",
+        "keywords": "notify, sound, chime, audio, export, done, finished, complete"
       }
     },
     "cache": {
@@ -2159,6 +2169,27 @@
     "lost": {
       "title": "Export stopped",
       "message": "The engine restarted. Start the export again."
+    },
+    "savePreset": {
+      "open": "Save as preset…",
+      "name": "Preset name",
+      "save": "Save preset",
+      "cancel": "Don’t save the preset",
+      "replaces": "This replaces your preset “{{name}}”.",
+      "from": "From {{preset}}",
+      "saved": "Preset saved",
+      "savedMessage": "{{name}} is under Your presets.",
+      "empty": "Type a name for the preset.",
+      "long": "A preset name has at most 80 characters.",
+      "refused": "The preset was not saved: {{message}}"
+    },
+    "deletePreset": {
+      "label": "Delete this preset",
+      "deleted": "Deleted your preset “{{name}}”.",
+      "undo": "Undo"
+    },
+    "notify": {
+      "failed": "{{name}}: {{message}}"
     }
   },
   "exportQueue": {
@@ -2197,7 +2228,9 @@
       "notDone": "The file is written when the export is done",
       "noError": "This export has no error",
       "notFinished": "Cancel the export first"
-    }
+    },
+    "open": "Open file",
+    "openFailed": "The file did not open"
   },
   "agentUi": {
     "connectedTitle": "Agent connected",

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The export queue row's menu (`export.row`, WP-2G.04, plan in research 09 §6): Cancel, Retry,
-// Move up, Move down, Reveal file, Copy error, Remove from list. The queue's own commands are UI
+// Move up, Move down, Open file, Reveal file, Copy error, Remove from list. The queue's own commands are UI
 // commands over the engine's `export.*` queue commands, so the list follows at once; reveal and
-// copy are the shared host commands. "Open file" waits for a main-process bridge (WP-2G.04b).
+// copy are the shared host commands; Open file (WP-2G.04b) asks main to open the exported file.
 import type { MenuServices } from "../menus/services.ts";
 import type { MenuContext, MenuSurfaceDef, MenuTarget } from "../menus/types.ts";
 import type { QueueRowData } from "./ExportQueuePanel.tsx";
@@ -54,10 +54,17 @@ export const EXPORT_ROW_SURFACE: MenuSurfaceDef = {
       reason: "exportQueue.menu.cannotMove",
     },
     {
+      command: "export.queue_open",
+      group: "file",
+      order: 0,
+      enabledIf: stateIs("succeeded"),
+      reason: "exportQueue.menu.notDone",
+    },
+    {
       id: "reveal",
       command: "host.reveal_path",
       group: "file",
-      order: 0,
+      order: 1,
       enabledIf: stateIs("succeeded"),
       reason: "exportQueue.menu.notDone",
       args: (ctx) => ({ path: rowOf(ctx).path }),
@@ -66,7 +73,7 @@ export const EXPORT_ROW_SURFACE: MenuSurfaceDef = {
       id: "copy-error",
       command: "host.copy_text",
       group: "file",
-      order: 1,
+      order: 2,
       label: { key: "exportQueue.menu.copyError" },
       enabledIf: (ctx) => rowOf(ctx).error !== null,
       reason: "exportQueue.menu.noError",
@@ -119,6 +126,13 @@ export function registerQueueMenu(services: MenuServices): void {
     icon: "trash-2",
     hidden: true,
     run: (_args, ctx) => exportQueue().remove(rowOf(ctx).id),
+  });
+  ui.register({
+    id: "export.queue_open",
+    label: "exportQueue.open",
+    icon: "external-link",
+    hidden: true,
+    run: (_args, ctx) => exportQueue().open(rowOf(ctx).path),
   });
   services.surfaces.register(EXPORT_ROW_SURFACE);
 }

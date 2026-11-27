@@ -4,16 +4,19 @@
 
 import nodePath from "node:path";
 import type { PreferenceKey } from "../../../../packages/preferences/src/index.ts";
-import type {
-  AboutInfo,
-  AgentConnectInfo,
-  AppFolder,
-  AppInfo,
-  EditAction,
-  EngineConnection,
-  EngineStatus,
-  PrefsSnapshot,
-  ThemeId,
+import {
+  type AboutInfo,
+  type AgentConnectInfo,
+  type AppFolder,
+  type AppInfo,
+  type EditAction,
+  type EngineConnection,
+  type EngineStatus,
+  EXPORT_CONTAINERS,
+  type ExportContainer,
+  type ExportNotice,
+  type PrefsSnapshot,
+  type ThemeId,
 } from "../shared/api.ts";
 import type { InvokeHandlers } from "./ipc.ts";
 import { parseExternalUrl } from "./origins.ts";
@@ -80,9 +83,19 @@ export interface HandlerDeps {
   chooseMediaFiles(): Promise<readonly string[] | null>;
   /** Shows the native multi-folder picker; resolves to the chosen paths or null when cancelled. */
   chooseMediaFolders(): Promise<readonly string[] | null>;
-  /** Shows the native "save as" for the export at `defaultPath`; the chosen path or null. */
-  chooseExportFile(defaultPath: string): Promise<string | null>;
+  /**
+   * Shows the native "save as" for the export at `defaultPath`, offering the file type of
+   * `container`; the chosen path or null.
+   */
+  chooseExportFile(defaultPath: string, container: ExportContainer): Promise<string | null>;
   showItemInFolder(path: string): void;
+  /** `shell.openPath` on an exported file; resolves to the OS's error text, `""` when it opened. */
+  openFile(path: string): Promise<string>;
+  /**
+   * An export finished: shows the OS notification when the person wants one and the app is in
+   * the background; whether it was shown.
+   */
+  notifyExportFinished(notice: ExportNotice): boolean;
   /** `shell.openExternal`; only ever called with a validated `https:` URL. */
   openExternal(url: string): Promise<void>;
   // The title bar and in-app menu bar (WP-1M.09).
@@ -149,18 +162,63 @@ export function validMediaPaths(paths: readonly unknown[]): string[] {
   return [...out];
 }
 
-/** The video file the export dialog may send to the engine: absolute, bounded, ending in .mp4. */
-export function validExportPath(chosen: unknown): string | null {
+/** What the OS save dialog calls each export file type (its filter). */
+const EXPORT_FILTER_NAMES: Readonly<Record<ExportContainer, string>> = {
+  mp4: "MP4 video",
+  mov: "QuickTime movie",
+  gif: "GIF animation",
+  wav: "WAV audio",
+  mp3: "MP3 audio",
+  m4a: "M4A audio",
+  flac: "FLAC audio",
+  ogg: "Ogg audio",
+};
+
+/** The save dialog's filter for an export: the file type the preset writes, and nothing else. */
+export function exportFileFilters(
+  container: ExportContainer,
+): { name: string; extensions: string[] }[] {
+  return [{ name: EXPORT_FILTER_NAMES[container], extensions: [container] }];
+}
+
+const EXTENSION_LENGTH = 5;
+
+/**
+ * The file the export dialog may send to the engine: absolute, bounded, ending in the
+ * container's extension (`.mp4` unless another is asked for), which is added when missing.
+ */
+export function validExportPath(
+  chosen: unknown,
+  container: ExportContainer = "mp4",
+): string | null {
   if (
     typeof chosen !== "string" ||
     chosen.length === 0 ||
-    chosen.length > MAX_PATH_LENGTH - 4 ||
+    chosen.length > MAX_PATH_LENGTH - EXTENSION_LENGTH ||
     chosen.includes("\u0000") ||
     !nodePath.isAbsolute(chosen)
   ) {
     return null;
   }
-  return /\.mp4$/i.test(chosen) ? chosen : `${chosen}.mp4`;
+  return chosen.toLowerCase().endsWith(`.${container}`) ? chosen : `${chosen}.${container}`;
+}
+
+/**
+ * A path "Open file" may hand to the OS: absolute, bounded and of an export file type, so the
+ * renderer can never make main start a program or a script. `null` otherwise.
+ */
+export function validOpenFilePath(path: unknown): string | null {
+  if (
+    typeof path !== "string" ||
+    path.length === 0 ||
+    path.length > MAX_PATH_LENGTH ||
+    path.includes("\u0000") ||
+    !nodePath.isAbsolute(path)
+  ) {
+    return null;
+  }
+  const extension = nodePath.extname(path).slice(1).toLowerCase();
+  return (EXPORT_CONTAINERS as readonly string[]).includes(extension) ? path : null;
 }
 
 /** The most a settings file may hold: a few hundred bytes in practice. */
@@ -233,14 +291,22 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
       // The same re-check as for files: only plain, bounded, absolute paths leave.
       return validMediaPaths(chosen);
     },
-    "dialog:chooseExportFile": async (defaultPath) => {
-      const chosen = await deps.chooseExportFile(defaultPath);
-      // Re-check what comes back from the dialog layer: one bounded, absolute path, as .mp4.
-      return validExportPath(chosen);
+    "dialog:chooseExportFile": async (defaultPath, container = "mp4") => {
+      const chosen = await deps.chooseExportFile(defaultPath, container);
+      // Re-check what comes back from the dialog layer: one bounded, absolute path, with the
+      // container's extension.
+      return validExportPath(chosen, container);
     },
     "shell:showItemInFolder": (path) => {
       deps.showItemInFolder(path);
     },
+    "shell:openFile": async (path) => {
+      const safe = validOpenFilePath(path);
+      if (safe === null) throw new Error("refusing to open a file that is not an export");
+      const problem = await deps.openFile(safe);
+      if (problem !== "") throw new Error(problem);
+    },
+    "notify:exportFinished": (notice) => deps.notifyExportFinished(notice),
     "shell:openExternal": async (url) => {
       // Re-check at the point of use (defense in depth; the schema already did).
       const safe = parseExternalUrl(url);

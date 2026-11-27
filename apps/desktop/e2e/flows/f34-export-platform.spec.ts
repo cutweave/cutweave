@@ -127,7 +127,7 @@ test.describe("F34 export for a platform", () => {
       // File > Export…: the presets made for 9:16 come first.
       await chooseMenu(page, app, "File", "Export…");
       await expect(dialog).toBeVisible();
-      const preset = dialog.getByLabel("Preset");
+      const preset = dialog.getByLabel("Preset", { exact: true });
       const first = preset.locator("optgroup").first();
       await expect(first).toHaveAttribute("label", "For this 9:16 sequence");
       await expect(first.locator("option")).toHaveText([

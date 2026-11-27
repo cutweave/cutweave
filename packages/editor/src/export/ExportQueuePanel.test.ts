@@ -260,6 +260,7 @@ describe("ExportQueuePanel", () => {
       "export.queue_retry",
       "export.queue_up",
       "export.queue_down",
+      "export.queue_open",
       "reveal",
       "copy-error",
       "export.queue_remove",
@@ -269,6 +270,7 @@ describe("ExportQueuePanel", () => {
       "export.queue_retry",
       "export.queue_up",
       "export.queue_down",
+      "export.queue_open",
       "export.queue_remove",
     ]) {
       expect(services.ui.get(command)?.hidden).toBe(true);
@@ -290,6 +292,59 @@ describe("ExportQueuePanel", () => {
     expect(enabled(rows["copy-error"] as never, failed)).toBe(true);
     expect(rows["copy-error"]?.args?.(failed)).toEqual({ text: "x" });
     expect(enabled(rows.reveal as never, failed)).toBe(false);
+    // Open file: only a finished file opens.
+    expect(enabled(rows["export.queue_open"] as never, failed)).toBe(false);
+    const done = target({ id: id(5), path: "C:\\out\\clip5.mp4", state: "succeeded", error: null });
+    expect(enabled(rows["export.queue_open"] as never, done)).toBe(true);
+  });
+
+  it("opens a finished export's file from its row and from the menu, and says when it does not open", async () => {
+    const openFile = vi.fn(async (_path: string) => undefined);
+    const host = globalThis as { cutweave?: unknown };
+    host.cutweave = {
+      dialog: { openProjectFolder: async () => null },
+      shell: { showItemInFolder: async () => undefined, openFile },
+    };
+    try {
+      resetExportController();
+      const user = userEvent.setup();
+      mount(h(ExportQueuePanel));
+      const done = await screen.findByRole("listitem", { name: "clip5.mp4, Done" });
+      await user.click(within(done).getByRole("button", { name: "Open file" }));
+      expect(openFile).toHaveBeenCalledWith("C:\\out\\clip5.mp4");
+      // Only a finished export has a file to open.
+      const failed = screen.getByRole("listitem", { name: "clip4.mp4, Failed" });
+      expect(within(failed).queryByRole("button", { name: "Open file" })).toBeNull();
+
+      const services = createMenuServices();
+      registerQueueMenu(services);
+      const ctx = {
+        target: {
+          surface: "export.row",
+          ids: [],
+          data: { id: id(5), path: "C:\\out\\clip5.mp4", state: "succeeded", error: null },
+        },
+        ids: [],
+        keys: {},
+        playhead: null,
+      };
+      openFile.mockRejectedValueOnce(new Error("No application is associated with this file"));
+      await services.ui.get("export.queue_open")?.run(undefined, ctx as never);
+      expect(openFile).toHaveBeenCalledTimes(2);
+      expect(toastStore.getState().notices.at(-1)).toMatchObject({
+        tone: "danger",
+        title: "The file did not open",
+        message: "C:\\out\\clip5.mp4",
+      });
+    } finally {
+      delete host.cutweave;
+    }
+  });
+
+  it("has no Open file button without the desktop app", async () => {
+    mount(h(ExportQueuePanel));
+    const done = await screen.findByRole("listitem", { name: "clip5.mp4, Done" });
+    expect(within(done).queryByRole("button", { name: "Open file" })).toBeNull();
   });
 
   it("knows where a waiting export moves", () => {

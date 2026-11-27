@@ -87,24 +87,32 @@ function media(n: number) {
   };
 }
 
+/**
+ * The format the real engine always writes in a project's `settings.default_format` and in each
+ * sequence's `format` (`SequenceFormat` has no optional field): 1920 × 1080 at 30 fps.
+ */
+export function fakeFormat() {
+  return {
+    width: 1920,
+    height: 1080,
+    frame_rate: { num: FPS, den: 1 },
+    sample_rate: 48000,
+    color_space: "rec709",
+    background: { r: 0, g: 0, b: 0, a: 1 },
+  };
+}
+
 /** One 1920 × 1080 sequence at 30 fps: three 2 s clips back to back on a video track. */
 export function threeClipProject() {
   return {
     meta: { name: "Three clips", schema_version: 3, created: null, app_version: null },
-    settings: { default_format: {} },
+    settings: { default_format: fakeFormat() },
     media: Object.fromEntries([1, 2, 3].map((n) => [`med_${n}`, media(n)])),
     sequences: {
       seq_1: {
         id: "seq_1",
         name: "Main",
-        format: {
-          width: 1920,
-          height: 1080,
-          frame_rate: { num: FPS, den: 1 },
-          sample_rate: 48000,
-          color_space: "rec709",
-          background: { r: 0, g: 0, b: 0, a: 1 },
-        },
+        format: fakeFormat(),
         track_order: ["trk_v"],
         markers: {},
         in_out: null,

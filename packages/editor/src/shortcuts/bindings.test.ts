@@ -281,6 +281,8 @@ describe("every key handler in the editor is accounted for", () => {
   // generated into the list above or a text field's own keys, named here with the reason. A new
   // handler fails this test until it is listed in the keymap or named here.
   const KNOWN: Readonly<Record<string, string>> = {
+    "export/ExportForm.tsx":
+      "the preset name field: Enter saves the preset instead of starting the export (dialogs group)",
     "history/HistoryPanel.tsx":
       "the history list's keys: Up, Down, Home and End move between rows, Enter goes to one",
     "inspector/MediaOrganize.tsx":
