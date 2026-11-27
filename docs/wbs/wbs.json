@@ -6734,7 +6734,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1596
+        "line": 1602
       },
       "phase": "P2",
       "epic": "2I",
@@ -6786,7 +6786,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1617
+        "line": 1623
       },
       "phase": "P2",
       "epic": "2I",
@@ -6831,7 +6831,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1636
+        "line": 1642
       },
       "phase": "P2",
       "epic": "2I",
@@ -6884,7 +6884,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1653
+        "line": 1659
       },
       "phase": "P2",
       "epic": "2I",
@@ -6915,7 +6915,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1671
+        "line": 1677
       },
       "phase": "P2",
       "epic": "2I",
@@ -6958,7 +6958,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1693
+        "line": 1699
       },
       "phase": "P2",
       "epic": "2J",
@@ -7015,7 +7015,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1710
+        "line": 1716
       },
       "phase": "P2",
       "epic": "2J",
@@ -7049,7 +7049,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1725
+        "line": 1731
       },
       "phase": "P2",
       "epic": "2J",
@@ -7091,7 +7091,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1740
+        "line": 1746
       },
       "phase": "P2",
       "epic": "2J",
@@ -7132,7 +7132,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1756
+        "line": 1762
       },
       "phase": "P2",
       "epic": "2J",
@@ -7176,7 +7176,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1774
+        "line": 1780
       },
       "phase": "P2",
       "epic": "2J",
@@ -7216,7 +7216,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1789
+        "line": 1795
       },
       "phase": "P2",
       "epic": "2J",
@@ -7254,7 +7254,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1803
+        "line": 1809
       },
       "phase": "P2",
       "epic": "2J",
@@ -7292,7 +7292,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1816
+        "line": 1822
       },
       "phase": "P2",
       "epic": "2J",
