@@ -172,8 +172,7 @@ impl ProjectSettings {
                             );
                             serde_json::from_value::<ProjectSettings>(one).is_err()
                         })
-                        .map(|(key, _)| format!("/{}", escape(key)))
-                        .unwrap_or_default();
+                        .map_or_default(|(key, _)| format!("/{}", escape(key)));
                 }
                 Err(SettingsPatchError { pointer, reason })
             }
@@ -305,9 +304,11 @@ mod tests {
 
     #[test]
     fn null_puts_an_optional_key_back_to_its_default() {
-        let mut base = ProjectSettings::default();
-        base.still_duration = Some(Duration::from_secs(3).unwrap());
-        base.proxy_policy = ProxyPolicy::Off;
+        let base = ProjectSettings {
+            still_duration: Some(Duration::from_secs(3).unwrap()),
+            proxy_policy: ProxyPolicy::Off,
+            ..ProjectSettings::default()
+        };
         let next = base
             .patched(&patch(
                 json!({ "still_duration": null, "proxy_policy": null }),
