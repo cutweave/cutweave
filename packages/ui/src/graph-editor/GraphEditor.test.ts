@@ -464,14 +464,20 @@ describe("the keyboard and the mouse's other buttons", () => {
     expect(r.events.action).toHaveBeenLastCalledWith("clear");
   });
 
-  it("leaves the keys it does not use to the app (undo, the palette)", () => {
+  it("leaves the keys it does not use to the app (undo, Space, the arrows with no key selected)", () => {
     const r = rig(positionCurves());
     const seen = vi.fn();
     document.body.addEventListener("keydown", seen);
     fireEvent.keyDown(r.canvas, { key: "z", ctrlKey: true });
-    fireEvent.keyDown(r.canvas, { key: "ArrowRight" }); // handled: stops here
+    fireEvent.keyDown(r.canvas, { key: " " });
+    fireEvent.keyDown(r.canvas, { key: "ArrowRight" }); // nothing selected: the app's frame step
+    expect(seen).toHaveBeenCalledTimes(3);
+    expect(r.events.nudge).not.toHaveBeenCalled();
+    r.view.setSelection([{ curve: "position.x", index: 1 }]);
+    fireEvent.keyDown(r.canvas, { key: "ArrowRight" }); // a nudge: stops here
     document.body.removeEventListener("keydown", seen);
-    expect(seen).toHaveBeenCalledTimes(1);
+    expect(seen).toHaveBeenCalledTimes(3);
+    expect(r.events.nudge).toHaveBeenCalledTimes(1);
   });
 
   it("adds a key on a double-click on a curve, and says which key is under a point", () => {

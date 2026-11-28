@@ -1244,6 +1244,8 @@ export class GraphView {
       done();
       return;
     }
+    // With no key selected the arrows are not the graph's: the app steps the playhead with them.
+    if (key.startsWith("Arrow") && this.#selection.size === 0) return;
     switch (key) {
       case "ArrowLeft":
         this.events.nudge?.(-big, 0);
