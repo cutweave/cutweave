@@ -122,6 +122,44 @@ export function removeDir(dir: string): void {
 /** How long a launch waits for "Engine connected" once the editor is up (issue #224). */
 const ENGINE_START_MS = 30_000;
 
+/** What a real-engine launch of the flows can be asked for. */
+export interface FlowAppOptions {
+  /**
+   * Decode real files: the full engine (WP-1I.05; FFmpeg when it is built with it) with
+   * playback, the preview ring and `render.frame` (F13, F14, F17). Its audio plays on the null
+   * output, so a run makes no sound. Default: stub probing.
+   */
+  realMedia?: boolean;
+  /** More folders the engine may read, besides the workspace (a benchmark project's sources). */
+  extraRoots?: readonly string[];
+}
+
+/**
+ * The environment of a real-engine launch (`launchFlowApp`; the UI benchmarks launch with it too,
+ * to time the start themselves).
+ */
+export function flowAppEnv(work: Workspace, options: FlowAppOptions = {}): Record<string, string> {
+  return {
+    ...REAL_ENGINE_ENV,
+    CUTWEAVE_DEV_STUB_MEDIA: options.realMedia === true ? "" : "1",
+    CUTWEAVE_AUDIO: "null",
+    // Real-media flows write thumbnails, filmstrips and waveforms: into a throwaway folder of
+    // the workspace, never the real user's cache (the engine's default is the OS cache folder).
+    // A cache folder chosen in Settings (`--cache-dir`) wins over this default.
+    ...(options.realMedia === true
+      ? { CUTWEAVE_CACHE_DIR: path.join(work.dir, "default-cache") }
+      : {}),
+    CUTWEAVE_ENGINE_ALLOW_ROOTS: [work.dir, ...(options.extraRoots ?? [])].join(path.delimiter),
+    // Every launch gets a fresh, empty user profile (fixtures.ts). On Windows, creating a
+    // D3D12 device in a profile without `AppData\Local` hangs in the driver (measured > 90 s on
+    // the reference laptop; Vulkan opens in about 2 s), so the engine's GPU uses Vulkan here.
+    // A real profile is not affected. `CUTWEAVE_FLOW_WGPU_BACKEND` overrides it.
+    ...(process.platform === "win32"
+      ? { WGPU_BACKEND: process.env.CUTWEAVE_FLOW_WGPU_BACKEND ?? "vulkan" }
+      : {}),
+  };
+}
+
 /**
  * Launches the built app with the real engine (`cutweave-engine-serve`), stub media probing and
  * the workspace allowed as an engine root, and waits until the editor shows "Engine connected".
@@ -130,35 +168,10 @@ const ENGINE_START_MS = 30_000;
 export async function launchFlowApp(
   work: Workspace,
   home?: string,
-  options: {
-    /**
-     * Decode real files: the full engine (WP-1I.05; FFmpeg when it is built with it) with
-     * playback, the preview ring and `render.frame` (F13, F14, F17). Its audio plays on the null
-     * output, so a run makes no sound. Default: stub probing.
-     */
-    realMedia?: boolean;
-  } = {},
+  options: FlowAppOptions = {},
 ): Promise<LaunchedApp> {
   const launched = await launchApp(
-    {
-      ...REAL_ENGINE_ENV,
-      CUTWEAVE_DEV_STUB_MEDIA: options.realMedia === true ? "" : "1",
-      CUTWEAVE_AUDIO: "null",
-      // Real-media flows write thumbnails, filmstrips and waveforms: into a throwaway folder of
-      // the workspace, never the real user's cache (the engine's default is the OS cache folder).
-      // A cache folder chosen in Settings (`--cache-dir`) wins over this default.
-      ...(options.realMedia === true
-        ? { CUTWEAVE_CACHE_DIR: path.join(work.dir, "default-cache") }
-        : {}),
-      CUTWEAVE_ENGINE_ALLOW_ROOTS: work.dir,
-      // Every launch gets a fresh, empty user profile (fixtures.ts). On Windows, creating a
-      // D3D12 device in a profile without `AppData\Local` hangs in the driver (measured > 90 s on
-      // the reference laptop; Vulkan opens in about 2 s), so the engine's GPU uses Vulkan here.
-      // A real profile is not affected. `CUTWEAVE_FLOW_WGPU_BACKEND` overrides it.
-      ...(process.platform === "win32"
-        ? { WGPU_BACKEND: process.env.CUTWEAVE_FLOW_WGPU_BACKEND ?? "vulkan" }
-        : {}),
-    },
+    flowAppEnv(work, options),
     [],
     home === undefined ? {} : { home },
   );
@@ -621,6 +634,8 @@ export async function drag(
 const HAND_MOVE_MS = 16;
 /** Moves of a hand-paced drag: about two seconds. */
 const HAND_MOVES = 120;
+/** Moves of one trip out and back: about a second. */
+const HAND_CYCLE_MOVES = 60;
 
 /** What a hand-paced drag measured. */
 export interface PacedDrag {
@@ -633,20 +648,10 @@ export interface PacedDrag {
 }
 
 /**
- * A drag paced like a hand (issue #241): press at `from`, then a move every 16 ms whether or not
- * the page has handled the one before, out to `reach` px right of the press and back, twice
- * (about two seconds), and let go where it began. Playwright's own moves each wait for the page,
- * so a page that falls behind never has a person's moves pile up on it; these do not wait (the
- * timer paces the input, it does not wait for the app). The frame intervals are read in the page
- * (an animation-frame loop of its own, changing nothing) and the round trips from the app's probe
- * (the gesture's own User Timing entries).
+ * Starts reading the page's frame intervals: an animation-frame loop of its own that records
+ * when each frame began and changes nothing. `stopFrameProbe` ends it.
  */
-export async function handPacedDrag(
-  page: Page,
-  from: { x: number; y: number },
-  reach: number,
-): Promise<PacedDrag> {
-  await page.mouse.move(from.x, from.y);
+export async function startFrameProbe(page: Page): Promise<void> {
   await page.evaluate(() => {
     const frames = { at: [] as number[], on: true };
     (globalThis as unknown as { __flowFrames: typeof frames }).__flowFrames = frames;
@@ -656,26 +661,52 @@ export async function handPacedDrag(
     };
     requestAnimationFrame(tick);
   });
-  await page.mouse.down();
-  const moves: Promise<void>[] = [];
-  for (let i = 1; i <= HAND_MOVES; i += 1) {
-    const dx = Math.round((reach * (1 - Math.cos((4 * Math.PI * i) / HAND_MOVES))) / 2);
-    moves.push(page.mouse.move(from.x + dx, from.y));
-    await new Promise((resolve) => setTimeout(resolve, HAND_MOVE_MS));
-  }
-  await Promise.all(moves);
-  await page.mouse.up();
-  await editorCaughtUp(page);
-  const { at, rtt } = await page.evaluate(() => {
+}
+
+/** Ends `startFrameProbe`'s loop: the intervals between the frames it saw, ms. */
+export async function stopFrameProbe(page: Page): Promise<number[]> {
+  const at = await page.evaluate(() => {
     const frames = (globalThis as unknown as { __flowFrames: { at: number[]; on: boolean } })
       .__flowFrames;
     frames.on = false;
-    return {
-      at: frames.at,
-      rtt: performance.getEntriesByName("cutweave.timeline.rtt", "measure").map((e) => e.duration),
-    };
+    return frames.at;
   });
-  return { moves: HAND_MOVES, frames: at.slice(1).map((t, i) => t - (at[i] as number)), rtt };
+  return at.slice(1).map((t, i) => t - (at[i] as number));
+}
+
+/**
+ * A drag paced like a hand (issue #241): press at `from`, then a move every 16 ms whether or not
+ * the page has handled the one before, out to `reach` px right of the press and back, once a
+ * second (twice in the default two seconds), and let go where it began. Playwright's own moves
+ * each wait for the page, so a page that falls behind never has a person's moves pile up on it;
+ * these do not wait (the timer paces the input, it does not wait for the app). The frame
+ * intervals are read in the page from the press to the release (`startFrameProbe`) and the round
+ * trips from the app's probe (the gesture's own User Timing entries). `moves` is how many moves
+ * to send (a multiple of 60 ends where it began); the UI benchmarks drag for longer.
+ */
+export async function handPacedDrag(
+  page: Page,
+  from: { x: number; y: number },
+  reach: number,
+  moves = HAND_MOVES,
+): Promise<PacedDrag> {
+  await page.mouse.move(from.x, from.y);
+  await startFrameProbe(page);
+  await page.mouse.down();
+  const sent: Promise<void>[] = [];
+  for (let i = 1; i <= moves; i += 1) {
+    const dx = Math.round((reach * (1 - Math.cos((2 * Math.PI * i) / HAND_CYCLE_MOVES))) / 2);
+    sent.push(page.mouse.move(from.x + dx, from.y));
+    await new Promise((resolve) => setTimeout(resolve, HAND_MOVE_MS));
+  }
+  await Promise.all(sent);
+  await page.mouse.up();
+  const frames = await stopFrameProbe(page);
+  await editorCaughtUp(page);
+  const rtt = await page.evaluate(() =>
+    performance.getEntriesByName("cutweave.timeline.rtt", "measure").map((e) => e.duration),
+  );
+  return { moves, frames, rtt };
 }
 
 /** The `q` quantile (0..1) of `values` (nearest rank); `NaN` when empty. */

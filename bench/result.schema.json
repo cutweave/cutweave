@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cutweave.dev/schema/bench-result.json",
   "title": "Cutweave benchmark result",
-  "description": "Output of `cargo xtask bench` and scripts/bench/ui-bench.ts; consumed by `cargo xtask bench-check` (WP-0I.03).",
+  "description": "Output of `cargo xtask bench`, `cargo bench -p cutweave-bench` and the UI benchmarks (apps/desktop/e2e/perf); consumed by `cargo xtask bench-check` (WP-0I.03).",
   "type": "object",
   "required": ["machine", "commit", "date", "toolchain", "metrics"],
   "additionalProperties": false,
@@ -21,6 +21,10 @@
         "wgpu": { "type": ["string", "null"] },
         "electron": { "type": ["string", "null"] }
       }
+    },
+    "details": {
+      "type": "object",
+      "description": "Where the numbers come from: the machine (CPU, GPU, memory) and how the run was set up. Never judged."
     },
     "metrics": {
       "type": "array",
