@@ -513,6 +513,42 @@ fn contact_sheet_of_12_frames_golden_per_adapter() {
     );
 }
 
+/// WP-2I.02 budget: a 12-frame sheet of a 1080p sequence, rendered and encoded, takes under
+/// 1.5 s on the reference machine's hardware adapters (warm; a software rasteriser is timed
+/// and reported, not held to it).
+#[test]
+fn a_12_frame_sheet_of_1080p_renders_within_its_budget() {
+    let _serial = serial();
+    let f = three_clips(1920, 1080);
+    for (info, c) in every_adapter() {
+        let backend = gpu_backend(c, &f);
+        let params = json!({ "count": 12 });
+        query(&backend, &f, "render.contact_sheet", params.clone()).unwrap();
+        let mut ms: Vec<f64> = (0..5)
+            .map(|_| {
+                let t0 = Instant::now();
+                let out = query(&backend, &f, "render.contact_sheet", params.clone()).unwrap();
+                let elapsed = t0.elapsed().as_secs_f64() * 1e3;
+                assert_eq!(out["frames"].as_array().unwrap().len(), 12);
+                elapsed
+            })
+            .collect();
+        ms.sort_by(f64::total_cmp);
+        let p50 = ms[ms.len() / 2];
+        eprintln!(
+            "render.contact_sheet 12 x 1080p -> 768 JPEG, warm, {:<40} {:<7} p50 {p50:7.2} ms",
+            info.name, info.backend
+        );
+        if !info.software {
+            assert!(
+                p50 < 1500.0,
+                "{}: p50 {p50:.1} ms over the 1.5 s budget",
+                info.key
+            );
+        }
+    }
+}
+
 /// WP-1F.03 acceptance: 1080p `render.frame` to a 768 px JPEG end to end (registry dispatch,
 /// evaluation, graph, GPU render and readback, inspection, JPEG, base64, JSON) with a warm
 /// cache, timed per adapter. Budget: < 150 ms on the dev machine (hardware adapters).

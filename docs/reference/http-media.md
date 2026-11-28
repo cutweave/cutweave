@@ -16,6 +16,8 @@ All routes live on the engine's server, `http://127.0.0.1:<port>`, behind the Ho
 
 `HEAD` works wherever `GET` does.
 
+The catalog commands `media.filmstrip` and `audio.waveform` (WP-2I.02) name the matching route in their result (`link`: a path on this server with `hash=`, so the answer is immutable and its ETag is the content hash and a hash of the parameters). The link of the whole clip's filmstrip serves the bytes the command returned; the link of a media file's waveform serves the same peaks as a plain PNG, without the command's time ruler. Over MCP a picture asked for above 1568 px is returned as a resource link to that route instead of an image (`crates/cutweave-api/src/mcp/visual.rs`).
+
 ### Parameters
 
 | Parameter | Routes | Values | Default |
