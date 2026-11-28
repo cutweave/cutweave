@@ -455,7 +455,8 @@ test.describe("F61 timeline tools, selection and track headers", () => {
 
       // A sideways drag in the lane at the bottom edge keeps the clip on its track (issue #262).
       // With two more audio tracks the timeline has more lanes than it shows; in the default
-      // window the third lane's middle is inside the 32 px at the bottom where a drag scrolls.
+      // window the third lane is the one at the bottom edge, and the part of it that shows is
+      // inside the 32 px where a drag toward the edge scrolls.
       for (const count of [4, 5]) {
         await page.getByRole("button", { name: "Add track", exact: true }).click();
         await page.getByRole("menuitem", { name: "Audio track" }).click();
@@ -464,19 +465,23 @@ test.describe("F61 timeline tools, selection and track headers", () => {
       await editorCaughtUp(page);
       await viewSettled(page);
       g = await timelineGeometry(page);
-      const third = g.tracks[2];
-      if (third === undefined) throw new Error("no third lane");
-      expect(third.name).toBe("A1");
-      const fromBottom = g.box.y + g.box.height - laneY(g, third.name);
-      console.info(
-        `third lane: ${fromBottom.toFixed(0)} px from the bottom edge of a ${g.box.height.toFixed(0)} px timeline`,
-      );
-      expect(fromBottom, "the third lane's middle is inside the auto-scroll zone").toBeLessThan(32);
-      expect(fromBottom).toBeGreaterThan(4);
       expect(g.scrollY).toBe(0);
-      const sound = third.items.find((i) => Math.abs(i.start - sec(2)) < FRAME / 2);
+      const lanesHeight = g.box.height - g.rulerHeight;
+      expect(g.tracks.length * g.laneHeight, "more lanes than show").toBeGreaterThan(lanesHeight);
+      // 10 px above the bottom edge: well inside the zone, and on a clip of the lane there.
+      const edgeY = g.box.y + g.box.height - 10;
+      const atEdge = g.tracks[Math.floor((lanesHeight - 10) / g.laneHeight)];
+      if (atEdge === undefined) throw new Error("no lane at the bottom edge");
+      console.info(
+        `the lane at the bottom edge of the ${g.box.height.toFixed(0)} px timeline: ${atEdge.name}, ` +
+          `its middle ${(g.box.y + g.box.height - laneY(g, atEdge.name)).toFixed(0)} px from the edge`,
+      );
+      expect(atEdge.name).toBe("A1");
+      // The press is on the clip's body: past the lane's padding, under its top.
+      expect(edgeY - (laneY(g, "A1") - g.laneHeight / 2)).toBeGreaterThan(6);
+      const sound = atEdge.items.find((i) => Math.abs(i.start - sec(2)) < FRAME / 2);
       if (sound === undefined) throw new Error("the interview's sound is not at 2 s on A1");
-      box = clipBox(g, sound.id);
+      box = { ...clipBox(g, sound.id), y: edgeY };
       await page.mouse.move(box.x + 30, box.y);
       await page.mouse.down();
       const reach = Math.round(g.pxPerSec);
