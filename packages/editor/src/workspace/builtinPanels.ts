@@ -7,11 +7,15 @@ import "../export/queueRegistration.ts";
 import { QUEUE_PANEL } from "../export/useExport.ts";
 import { HistoryPanel } from "../history/HistoryPanel.tsx";
 import { AssetBrowserPanel } from "../panels/AssetBrowserPanel.tsx";
+import { GraphEditorPanel } from "../panels/graph/GraphEditorPanel.tsx";
 import "../history/index.ts";
 import { InspectorPanel } from "../panels/InspectorPanel.tsx";
 import { PreviewPanel } from "../panels/PreviewPanel.tsx";
 import { TimelinePanel } from "../panels/TimelinePanel.tsx";
 import { registerPanel } from "./panelRegistry.ts";
+
+/** The Graph Editor panel's id (WP-2C.07). */
+export const GRAPH_PANEL = "graph-editor";
 
 export function registerBuiltinPanels(): void {
   registerPanel({
@@ -60,6 +64,15 @@ export function registerBuiltinPanels(): void {
     defaultDock: { ref: "inspector", direction: "within" },
     startClosed: true,
     minSize: () => ({ width: tokenPx("--layer-width-sm") }),
+  });
+  // WP-2C.07: the graph editor, a tab next to the Timeline, from View > Panels.
+  registerPanel({
+    id: GRAPH_PANEL,
+    title: "panel.graph",
+    component: GraphEditorPanel,
+    defaultDock: { ref: "timeline", direction: "within" },
+    startClosed: true,
+    minSize: () => ({ height: tokenPx("--track-md") * 3 }),
   });
 }
 
