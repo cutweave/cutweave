@@ -4,18 +4,20 @@
 //! ```text
 //! segment := MAGIC frame*                      MAGIC = "CWJRNL" 0x00 0x01
 //! frame   := len:u32le payload[len] crc:u32le   crc = CRC-32(len bytes ++ payload)
-//! payload := UTF-8 JSON object, {"type": "header" | "carry" | "commit" | "checkpoint", ...}
+//! payload := UTF-8 JSON object, {"type": "header" | "carry" | "commit" | "checkpoint" | "tx", ...}
 //! ```
 //!
 //! The first frame of a segment is its [`SegmentHeader`]; a [`Carry`] may follow; every other
-//! frame is one committed transaction ([`CommitEntry`]) or a change of the checkpoints
-//! ([`CheckpointEntry`], WP-2I.03). The checksum covers the length too, so a torn or
-//! bit-flipped length is detected like a torn payload. Entries of an unknown type (written by a
-//! newer engine) are skipped.
+//! frame is one committed transaction ([`CommitEntry`]), a change of the checkpoints
+//! ([`CheckpointEntry`], WP-2I.03) or a transaction marker ([`TxEntry`], ADR-0043). The
+//! checksum covers the length too, so a torn or bit-flipped length is detected like a torn
+//! payload. Entries of an unknown type (written by a newer engine) are skipped, and so are
+//! unknown fields of a known entry: that is how a format version adds things an older engine
+//! can live without. Nothing reads the version to refuse a segment.
 
 use cutweave_commands::{
     CheckpointInfo, CheckpointRecord, CommitRecord, DedupRecord, JournaledCheckpoint,
-    JournaledCommit, Patch, Rev, WallTime,
+    JournaledCommit, JournaledTxMarker, Patch, Rev, TxMarker, WallTime,
 };
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +28,12 @@ pub(crate) const MAGIC: &[u8; 8] = b"CWJRNL\x00\x01";
 
 /// The current format version (in every [`SegmentHeader`]). Version 2 (WP-2I.03) adds
 /// checkpoint entries and the carried checkpoints; it reads version 1 segments unchanged.
-pub const FORMAT_VERSION: u32 = 2;
+/// Version 3 (ADR-0043) adds transaction markers (`tx` entries) and the carried
+/// [`Carry::tx_issued`]; it reads versions 1 and 2 unchanged. A version 2 engine reads a
+/// version 3 segment too: it skips the markers and the field, recovers the same document, and
+/// answers as it did before them (a repeated cancel or empty commit is refused, and
+/// transaction ids continue past the last committed one only).
+pub const FORMAT_VERSION: u32 = 3;
 
 /// The first entry of a segment: what it builds on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +71,10 @@ pub struct Carry {
     /// The highest checkpoint number issued so far (numbers are never reused).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub checkpoints_issued: u64,
+    /// The highest transaction id the markers before the save said may be handed out
+    /// (ADR-0043; ids are never reused).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tx_issued: u64,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde's `skip_serializing_if` passes a reference
@@ -75,7 +86,10 @@ impl Carry {
     /// Whether there is nothing to carry.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.requests.is_empty() && self.checkpoints.is_empty() && self.checkpoints_issued == 0
+        self.requests.is_empty()
+            && self.checkpoints.is_empty()
+            && self.checkpoints_issued == 0
+            && self.tx_issued == 0
     }
 }
 
@@ -112,6 +126,20 @@ pub struct CheckpointEntry {
     pub ids: Option<IdState>,
 }
 
+/// One transaction marker (ADR-0043): the transaction ids that may be handed out, and a
+/// transaction closed without a committed change (a cancel, a commit of nothing) with the
+/// requests to keep answering. It has no revision and changes no document, so replay takes
+/// only what it remembers.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TxEntry {
+    /// The marker as the doc actor wrote it.
+    pub tx: JournaledTxMarker,
+    /// The deterministic id generators' positions right after it (`--deterministic-ids`
+    /// only): a request id in it may have come from them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ids: Option<IdState>,
+}
+
 /// A decoded entry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -120,6 +148,7 @@ pub(crate) enum Entry {
     Carry(Carry),
     Commit(Box<CommitEntry>),
     Checkpoint(Box<CheckpointEntry>),
+    Tx(Box<TxEntry>),
     /// An entry type this version does not know (a newer engine wrote it): skipped.
     #[serde(other)]
     Unknown,
@@ -145,6 +174,29 @@ enum CheckpointRef<'a> {
         #[serde(skip_serializing_if = "Option::is_none")]
         ids: Option<IdState>,
     },
+}
+
+/// The borrowed form of a transaction marker entry.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum TxRef<'a> {
+    Tx {
+        tx: &'a TxMarker<'a>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ids: Option<IdState>,
+    },
+}
+
+/// One frame holding the transaction marker `record`.
+pub(crate) fn tx_frame(
+    record: &TxMarker<'_>,
+    ids: Option<IdState>,
+) -> Result<Vec<u8>, JournalError> {
+    let payload =
+        serde_json::to_vec(&TxRef::Tx { tx: record, ids }).map_err(JournalError::Encode)?;
+    let mut out = Vec::new();
+    push_frame(&mut out, &payload)?;
+    Ok(out)
 }
 
 /// Appends one frame holding `payload` to `out`.
@@ -308,7 +360,7 @@ pub(crate) fn decode_segment(bytes: &[u8]) -> (Vec<Decoded>, Option<(u64, StopRe
 mod tests {
     #![allow(clippy::unwrap_used)]
 
-    use cutweave_commands::{Rev, WallTime};
+    use cutweave_commands::{Rev, TxId, WallTime};
     use proptest::prelude::*;
 
     use super::*;
@@ -359,6 +411,155 @@ mod tests {
         assert!(carry.is_empty());
         let json = serde_json::to_value(Entry::Carry(Carry::default())).unwrap();
         assert_eq!(json, serde_json::json!({"type": "carry", "requests": []}));
+    }
+
+    fn marker_frame() -> Vec<u8> {
+        let closed = cutweave_commands::ClosedTx {
+            tx_id: TxId::new(7),
+            kind: cutweave_commands::TxKind::Gesture,
+            outcome: cutweave_commands::TxOutcome::Cancelled,
+        };
+        let marker = TxMarker {
+            issued: 64,
+            at: WallTime::from_millis(9),
+            closed: Some(closed),
+            steps: &[],
+        };
+        tx_frame(&marker, None).unwrap()
+    }
+
+    #[test]
+    fn transaction_markers_round_trip() {
+        let mut bytes = segment();
+        bytes.extend(marker_frame());
+        let reservation = TxMarker {
+            issued: 128,
+            at: WallTime::from_millis(10),
+            closed: None,
+            steps: &[],
+        };
+        bytes.extend(
+            tx_frame(
+                &reservation,
+                Some(IdState {
+                    entity: 3,
+                    request: 4,
+                }),
+            )
+            .unwrap(),
+        );
+        let (entries, stop) = decode_segment(&bytes);
+        assert_eq!(stop, None);
+        let Entry::Tx(close) = &entries[2].entry else {
+            panic!("{:?}", entries[2].entry);
+        };
+        assert_eq!(close.tx.issued, 64);
+        assert_eq!(close.tx.closed.unwrap().tx_id, TxId::new(7));
+        assert_eq!(close.ids, None);
+        let Entry::Tx(reserved) = &entries[3].entry else {
+            panic!("{:?}", entries[3].entry);
+        };
+        assert_eq!(reserved.tx.to_owned(), reservation.to_owned());
+        assert_eq!(reserved.ids.unwrap().request, 4);
+        // The written form: a reservation is just the number and the time.
+        let frame = tx_frame(&reservation, None).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&frame[4..frame.len() - 4]).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"type": "tx", "tx": {"issued": 128, "at": 10}})
+        );
+    }
+
+    /// The entries a version 2 engine knows (the format before ADR-0043), to read what
+    /// version 3 writes the way that engine does.
+    #[derive(Debug, Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    #[allow(dead_code)] // the payloads are only decoded
+    enum EntryV2 {
+        Header(serde_json::Value),
+        Carry(CarryV2),
+        Commit(serde_json::Value),
+        Checkpoint(serde_json::Value),
+        #[serde(other)]
+        Unknown,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct CarryV2 {
+        requests: Vec<DedupRecord>,
+        #[serde(default)]
+        checkpoints_issued: u64,
+    }
+
+    #[test]
+    fn a_version_2_reader_skips_markers_and_the_carried_transaction_number() {
+        let frame = marker_frame();
+        let payload = &frame[4..frame.len() - 4];
+        assert!(matches!(
+            serde_json::from_slice::<EntryV2>(payload).unwrap(),
+            EntryV2::Unknown
+        ));
+        let carry = Entry::Carry(Carry {
+            tx_issued: 64,
+            checkpoints_issued: 2,
+            ..Carry::default()
+        });
+        let old = serde_json::from_slice::<EntryV2>(&serde_json::to_vec(&carry).unwrap()).unwrap();
+        let EntryV2::Carry(old) = old else {
+            panic!("{old:?}");
+        };
+        assert!(old.requests.is_empty());
+        assert_eq!(old.checkpoints_issued, 2);
+        for known in [
+            serde_json::json!({"type": "header"}),
+            serde_json::json!({"type": "commit"}),
+            serde_json::json!({"type": "checkpoint"}),
+        ] {
+            assert!(!matches!(
+                serde_json::from_value::<EntryV2>(known).unwrap(),
+                EntryV2::Unknown
+            ));
+        }
+    }
+
+    #[test]
+    fn carries_without_a_transaction_number_read_as_version_2_wrote_them() {
+        let carry: Carry =
+            serde_json::from_str(r#"{"requests": [], "checkpoints_issued": 3}"#).unwrap();
+        assert_eq!(carry.tx_issued, 0);
+        let carry = Carry {
+            tx_issued: 5,
+            ..Carry::default()
+        };
+        assert!(!carry.is_empty());
+        assert_eq!(
+            serde_json::to_value(Entry::Carry(carry)).unwrap(),
+            serde_json::json!({"type": "carry", "requests": [], "tx_issued": 5})
+        );
+    }
+
+    #[test]
+    fn a_marker_with_fields_from_the_future_still_reads() {
+        let mut bytes = segment();
+        let payload = br#"{"type":"tx","tx":{"issued":9,"at":1,"later":true},"more":1}"#;
+        push_frame(&mut bytes, payload).unwrap();
+        let (entries, stop) = decode_segment(&bytes);
+        assert_eq!(stop, None);
+        assert!(matches!(&entries[2].entry, Entry::Tx(e) if e.tx.issued == 9));
+    }
+
+    #[test]
+    fn a_torn_marker_is_a_torn_tail() {
+        let whole = segment();
+        let frame = marker_frame();
+        for cut in 0..frame.len() {
+            let mut bytes = whole.clone();
+            bytes.extend(&frame[..cut]);
+            let (entries, stop) = decode_segment(&bytes);
+            assert_eq!(entries.len(), 2, "cut at {cut}");
+            let expected = (cut > 0).then_some((whole.len() as u64, StopReason::Truncated));
+            assert_eq!(stop, expected, "cut at {cut}");
+        }
     }
 
     #[test]

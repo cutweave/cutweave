@@ -90,7 +90,7 @@ use cutweave_model::Project;
 
 pub use format::{
     CarriedCheckpoint, Carry, CheckpointEntry, CommitEntry, FORMAT_VERSION, SegmentHeader,
-    StopReason,
+    StopReason, TxEntry,
 };
 pub use ids::{IdState, IdTracker};
 pub use scan::{RecoveryAvailable, ReplayReport, ReplayStop};
@@ -233,7 +233,8 @@ pub struct Recovered {
     pub checkpoints: CheckpointLedger,
     /// The requests to keep deduplicating (inside the window at recovery time).
     pub requests: Vec<DedupRecord>,
-    /// The first transaction id the doc actor may allocate.
+    /// The first transaction id the doc actor may allocate: past every committed transaction
+    /// and every id a marker said may have been handed out (ADR-0043).
     pub next_tx: TxId,
     /// The deterministic id streams' positions after the last replayed transaction.
     pub ids: Option<IdState>,
@@ -306,6 +307,8 @@ struct Plan {
     last_rev: Rev,
     requests: Vec<DedupRecord>,
     checkpoints: CheckpointLedger,
+    /// The highest transaction id that may have been handed out (to carry over the next save).
+    tx_issued: u64,
 }
 
 /// A project's journal between opening the project and starting the journal: the scan, the
@@ -360,6 +363,7 @@ impl PendingJournal {
                 last_rev: Rev::ZERO,
                 requests: Vec::new(),
                 checkpoints: CheckpointLedger::new(),
+                tx_issued: 0,
             });
             return Recovered {
                 project: base.clone(),
@@ -407,6 +411,7 @@ impl PendingJournal {
             last_rev: rev,
             requests: requests.clone(),
             checkpoints: checkpoints.clone(),
+            tx_issued: max_tx,
         });
         Recovered {
             project,
@@ -516,6 +521,7 @@ impl PendingJournal {
                         .collect(),
                     next_generation,
                     checkpoints: Box::new(plan.checkpoints),
+                    tx_issued: plan.tx_issued,
                 }
             }
         };
