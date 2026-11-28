@@ -56,6 +56,14 @@ fn sheet(f: &ThreeClips, params: Value) -> Result<ContactSheet, CmdError> {
     Ok(serde_json::from_value(out).unwrap())
 }
 
+/// The sheet's pixels before encoding (the query returns a JPEG).
+fn composed(f: &ThreeClips, params: Value) -> crate::query::ComposedSheet {
+    let ctx = QueryCtx::new(&f.project, Access::STANDARD);
+    let params: RenderContactSheet = serde_json::from_value(params).unwrap();
+    let mut backend = ReferenceBackend::new(Arc::clone(&f.source) as _);
+    crate::query::compose_contact_sheet(&mut backend, &ctx, &params).unwrap()
+}
+
 fn png_of(frame: &FrameImage) -> Image {
     assert_eq!(frame.mime, "image/png");
     let bytes = unbase64(&frame.data);
@@ -396,10 +404,11 @@ fn hidden_items_are_reported() {
 #[test]
 fn contact_sheets_sample_lay_out_and_label() {
     let f = three_clips(W, H);
-    let out = sheet(&f, json!({ "count": 4, "format": "png" })).unwrap();
-    assert_eq!((out.cols, out.rows), (2, 2));
+    let out = sheet(&f, json!({ "count": 4 })).unwrap();
+    assert_eq!(out.mime, "image/jpeg");
+    assert_eq!((out.columns, out.rows), (2, 2));
     assert!(out.width <= 768 && out.height <= 768);
-    let times: Vec<_> = out.frames.iter().map(|c| c.time).collect();
+    let times: Vec<_> = out.frames.iter().map(|c| c.t).collect();
     assert_eq!(
         times,
         [sec(0.0), sec(2.0), sec(4.0), sec(6.0)],
@@ -414,7 +423,20 @@ fn contact_sheets_sample_lay_out_and_label() {
         labels,
         ["00:00:00:00", "00:00:02:00", "00:00:04:00", "00:00:06:00"]
     );
-    let items: Vec<Vec<ItemId>> = out.frames.iter().map(|c| c.items_visible.clone()).collect();
+    let items: Vec<Vec<ItemId>> = out
+        .frames
+        .iter()
+        .map(|c| c.items_visible.iter().map(|i| i.item).collect())
+        .collect();
+    // Each item names its track; the fixture's clips and media have no name.
+    let first = &out.frames[0].items_visible[0];
+    assert_eq!(
+        f.project.sequences[&out.sequence]
+            .find_item(&first.item)
+            .map(|(track, _)| track.id),
+        Some(first.track)
+    );
+    assert_eq!(first.name, None);
     assert_eq!(
         items,
         [vec![f.a], vec![f.c, f.a], vec![f.c, f.b], vec![f.b]]
@@ -426,7 +448,9 @@ fn contact_sheets_sample_lay_out_and_label() {
     assert_eq!(out.rev, None);
 
     // Pixels: each cell shows its frame; the label strip carries the timecode.
-    let img = decode_png(&unbase64(&out.data));
+    let jpeg = decode_jpeg(&unbase64(&out.data));
+    assert_eq!((jpeg.width, jpeg.height), (out.width, out.height));
+    let img = composed(&f, json!({ "count": 4 })).image;
     assert_eq!((img.width, img.height), (out.width, out.height));
     let (red, green, blue) = (
         expected_srgb(RED),
@@ -449,21 +473,21 @@ fn contact_sheets_sample_lay_out_and_label() {
         assert!(label_px > 30, "cell {i}: {label_px} label pixels");
     }
     // Without labels the strip is gone.
-    let bare = sheet(&f, json!({ "count": 4, "labels": false, "format": "png" })).unwrap();
-    assert!(bare.height < out.height);
-    let img = decode_png(&unbase64(&bare.data));
+    let bare = composed(&f, json!({ "count": 4, "labels": false }));
+    assert!(bare.image.height < out.height);
+    let img = bare.image;
     let c = bare.frames[0].cell;
     assert_eq!(img.pixel(c.x, c.y + c.height + 1), BACKGROUND);
 
-    // Intervals, explicit ranges, aliases and columns.
+    // Intervals, explicit ranges and columns.
     let by_interval = sheet(
         &f,
         json!({ "from": "1s", "to": "7s", "every": "2s", "columns": 3 }),
     )
     .unwrap();
-    let times: Vec<_> = by_interval.frames.iter().map(|c| c.time).collect();
+    let times: Vec<_> = by_interval.frames.iter().map(|c| c.t).collect();
     assert_eq!(times, [sec(1.0), sec(3.0), sec(5.0)]);
-    assert_eq!((by_interval.cols, by_interval.rows), (3, 1));
+    assert_eq!((by_interval.columns, by_interval.rows), (3, 1));
     assert_eq!(by_interval.mime, "image/jpeg");
     let jpeg = decode_jpeg(&unbase64(&by_interval.data));
     assert_eq!(
@@ -472,19 +496,60 @@ fn contact_sheets_sample_lay_out_and_label() {
     );
 
     for (params, path) in [
-        (json!({ "count": 3, "interval": "1s" }), ""),
+        (json!({ "count": 3, "every": "1s" }), ""),
+        (json!({ "count": 3, "at": "cuts" }), ""),
+        (json!({ "every": "1s", "at": ["1s"] }), ""),
         (json!({ "count": 0 }), "/count"),
         (json!({ "count": 65 }), "/count"),
-        (json!({ "interval": "0s" }), "/interval"),
+        (json!({ "every": "0s" }), "/every"),
         (
-            json!({ "interval": "1s", "start": 0, "end": "100s" }),
-            "/interval",
+            json!({ "every": "1s", "from": 0, "to": "100s" }),
+            "/every",
         ),
-        (json!({ "start": "5s", "end": "5s" }), "/end"),
+        (json!({ "from": "5s", "to": "5s" }), "/to"),
+        (json!({ "at": "markers" }), "/at"),
+        (json!({ "at": [] }), "/at"),
+        (json!({ "at": ["1s", "9s"] }), "/at/1"),
+        (json!({ "at": "cuts", "from": "5s", "to": "6s" }), "/at"),
+
         (json!({ "count": 64, "max_size": 64 }), "/max_size"),
         (json!({ "max_size": 4096 }), "/max_size"),
     ] {
         let e = sheet(&f, params.clone()).unwrap_err();
         assert_eq!(invalid_path(&e), path, "{params}: {e}");
     }
+}
+
+/// WP-2I.02: frames at the cuts, at the markers and at given times.
+#[test]
+fn contact_sheets_at_cuts_markers_and_times() {
+    let mut f = three_clips(W, H);
+    // The clips start at 0 s and 4 s on V1 and at 2 s on V2.
+    let cuts = sheet(&f, json!({ "at": "cuts" })).unwrap();
+    let times: Vec<_> = cuts.frames.iter().map(|c| c.t).collect();
+    assert_eq!(times, [sec(0.0), sec(2.0), sec(4.0)]);
+    assert_eq!((cuts.columns, cuts.rows), (2, 2));
+    let later = sheet(&f, json!({ "at": "cuts", "from": "1s" })).unwrap();
+    assert_eq!(later.frames.len(), 2);
+
+    // Times as given (the order kept), each moved to the start of its frame.
+    let picked = sheet(&f, json!({ "at": ["5s", "f:30", 0], "columns": 3 })).unwrap();
+    let times: Vec<_> = picked.frames.iter().map(|c| c.t).collect();
+    assert_eq!(times, [sec(5.0), sec(1.0), sec(0.0)]);
+    assert_eq!(picked.frames[0].timecode.as_deref(), Some("00:00:05:00"));
+
+    // Markers, in time order, whatever the order they were added in.
+    let seq = *f.project.sequences.keys().next().unwrap();
+    for (n, at) in [(2u128, 6.0), (1, 3.0)] {
+        let id = cutweave_model::MarkerId::from_u128(n);
+        f.project
+            .sequences
+            .get_mut(&seq)
+            .unwrap()
+            .markers
+            .insert(id, cutweave_model::Marker::new(id, sec(at)));
+    }
+    let marked = sheet(&f, json!({ "at": "markers" })).unwrap();
+    let times: Vec<_> = marked.frames.iter().map(|c| c.t).collect();
+    assert_eq!(times, [sec(3.0), sec(6.0)]);
 }

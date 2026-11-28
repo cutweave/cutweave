@@ -424,7 +424,7 @@ fn contact_sheet_golden_per_adapter() {
     let f = three_clips(384, 216);
     let source = golden_source();
     let params: RenderContactSheet = serde_json::from_value(json!({
-        "count": 6, "cols": 3, "start": "0s", "end": "8s", "max_size": 640
+        "count": 6, "columns": 3, "from": "0s", "to": "8s", "max_size": 640
     }))
     .unwrap();
     let ctx = QueryCtx::new(&f.project, Access::STANDARD);
@@ -434,7 +434,7 @@ fn contact_sheet_golden_per_adapter() {
         let sheet = compose_contact_sheet(&mut backend, &ctx, &params).unwrap();
         let again = compose_contact_sheet(&mut backend, &ctx, &params).unwrap();
         assert_eq!(sheet, again, "{}: not deterministic", info.key);
-        assert_eq!((sheet.cols, sheet.rows), (3, 2));
+        assert_eq!((sheet.columns, sheet.rows), (3, 2));
         assert_eq!(sheet.frames.len(), 6);
         let name = "contact_sheet_3x2.golden";
         let r = store
