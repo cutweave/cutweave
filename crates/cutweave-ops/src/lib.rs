@@ -28,6 +28,7 @@ pub mod timeline;
 pub mod track;
 mod util;
 pub mod view;
+pub mod visual;
 
 pub use detail::Detail;
 pub use util::MAX_NAME_CHARS;
@@ -45,6 +46,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     keyframe::register(registry)?;
     job::register(registry)?;
     export::register(registry)?;
+    visual::register(registry)?;
     view::register(registry)
 }
 
