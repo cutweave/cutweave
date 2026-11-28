@@ -68,7 +68,7 @@ There is **no actor field**: the actor is always the connection credential's. An
 
 Deduplication is the document actor's (WP-1B.03). It covers the document commands, the `edit.*` commands and queries inside a transaction. **Engine commands that run outside the document actor are not deduplicated by `request_id`**: `job.*`, `media.import`, `view.*`, the session commands (`project.open`, `project.close`, `project.save`, `project.save_as`, `project.recover`, `project.discard_recovery`, `project.set_autosave`) and subsystem commands. `request_id` is still required on the mutating ones, so clients need no special cases and the engine can deduplicate them later without a protocol change.
 
-`expected_rev` is checked on **every call that is not read-only** (WP-2I.04). The document actor checks it together with the change, so nothing can slip in between. For an engine command outside the document actor it is checked against the live revision right before the command runs; the document can still change while such a command works. A read outside a transaction ignores it. A repeat of a request that was already applied (same `request_id`) returns the first result whatever the revision is now.
+`expected_rev` is checked on **every call that is not read-only** (WP-2I.04). The document actor checks it together with the change, so nothing can slip in between. For an engine command outside the document actor it is checked against the live revision right before the command runs; the document can still change while such a command works. A read outside a transaction ignores it. A deduplicated repeat of a request that was already applied (same `request_id`) returns the first result whatever the revision is now.
 
 ## Ordering and concurrency
 
