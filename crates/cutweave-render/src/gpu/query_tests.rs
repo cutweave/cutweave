@@ -415,18 +415,15 @@ fn golden_source() -> Arc<dyn FrameSource + Send + Sync> {
     )
 }
 
-#[test]
-fn contact_sheet_golden_per_adapter() {
-    let _serial = serial();
+/// Renders the sheet `params` asks for on every adapter and compares it with that adapter's
+/// reference `name` (SSIM >= 0.995 and PSNR >= 40 dB, `crate::metrics`), and across adapters
+/// with the WARP set. Returns the failures.
+fn sheet_golden(name: &str, f: &ThreeClips, params: &Value, grid: (u32, u32)) -> Vec<String> {
     let store = GoldenStore::new(Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/golden"));
     let update = update_requested();
     let strict = std::env::var("CI").is_ok() || required();
-    let f = three_clips(384, 216);
     let source = golden_source();
-    let params: RenderContactSheet = serde_json::from_value(json!({
-        "count": 6, "columns": 3, "from": "0s", "to": "8s", "max_size": 640
-    }))
-    .unwrap();
+    let params: RenderContactSheet = serde_json::from_value(params.clone()).unwrap();
     let ctx = QueryCtx::new(&f.project, Access::STANDARD);
     let mut failures = Vec::new();
     for (info, c) in every_adapter() {
@@ -434,9 +431,8 @@ fn contact_sheet_golden_per_adapter() {
         let sheet = compose_contact_sheet(&mut backend, &ctx, &params).unwrap();
         let again = compose_contact_sheet(&mut backend, &ctx, &params).unwrap();
         assert_eq!(sheet, again, "{}: not deterministic", info.key);
-        assert_eq!((sheet.columns, sheet.rows), (3, 2));
-        assert_eq!(sheet.frames.len(), 6);
-        let name = "contact_sheet_3x2.golden";
+        assert_eq!((sheet.columns, sheet.rows), grid);
+        assert_eq!(sheet.frames.len(), (grid.0 * grid.1) as usize);
         let r = store
             .check(&info.key, FALLBACK_SET, name, &sheet.image, update)
             .expect("golden I/O");
@@ -460,7 +456,55 @@ fn contact_sheet_golden_per_adapter() {
             }
             _ => failures.push(format!("{} {r}", info.key)),
         }
+        // The same sheet as the query returns it: a JPEG within the size an agent can take.
+        let out = crate::query::render_contact_sheet(&mut backend, &ctx, &params).unwrap();
+        assert_eq!(out.mime, "image/jpeg", "{}", info.key);
+        assert!(
+            out.bytes <= MAX_SHEET_JPEG_BYTES,
+            "{}: {} bytes",
+            info.key,
+            out.bytes
+        );
+        let jpeg = decode_jpeg(&unbase64(&out.data));
+        assert_eq!(
+            (jpeg.width, jpeg.height),
+            (sheet.image.width, sheet.image.height)
+        );
     }
+    failures
+}
+
+/// WP-2I.02 acceptance: a contact sheet at default settings is at most this many bytes.
+const MAX_SHEET_JPEG_BYTES: u32 = 400_000;
+
+#[test]
+fn contact_sheet_golden_per_adapter() {
+    let _serial = serial();
+    let f = three_clips(384, 216);
+    let params = json!({
+        "count": 6, "columns": 3, "from": "0s", "to": "8s", "max_size": 640
+    });
+    let failures = sheet_golden("contact_sheet_3x2.golden", &f, &params, (3, 2));
+    assert!(
+        failures.is_empty(),
+        "golden failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// WP-2I.02 acceptance: the 12-frame grid of the three-clip fixture at default settings (a
+/// 768 px sheet of a 1080p sequence) matches its reference on every adapter, and is an
+/// `image/jpeg` of at most 400 KB.
+#[test]
+fn contact_sheet_of_12_frames_golden_per_adapter() {
+    let _serial = serial();
+    let f = three_clips(1920, 1080);
+    let failures = sheet_golden(
+        "contact_sheet_12.golden",
+        &f,
+        &json!({ "count": 12 }),
+        (4, 3),
+    );
     assert!(
         failures.is_empty(),
         "golden failures:\n{}",

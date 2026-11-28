@@ -559,3 +559,79 @@ fn contact_sheets_at_cuts_markers_and_times() {
     let times: Vec<_> = marked.frames.iter().map(|c| c.t).collect();
     assert_eq!(times, [sec(3.0), sec(6.0)]);
 }
+
+/// A backend that paints every frame one flat colour at the size asked for: the layout and the
+/// encoding of a sheet without the cost of rendering it.
+struct FlatBackend(Arc<dyn crate::FrameSource + Send + Sync>);
+
+impl crate::query::FrameBackend for FlatBackend {
+    fn frame_source(&self) -> &dyn crate::FrameSource {
+        &*self.0
+    }
+
+    fn rasterize(
+        &mut self,
+        _scene: &crate::SceneDescription,
+        graph: &crate::graph::RenderGraph,
+    ) -> Result<Image, String> {
+        let (width, height) = graph.target.size();
+        Ok(Image::filled(width, height, [90, 140, 200, 255]))
+    }
+}
+
+mod max_size {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+
+        /// WP-2I.02 acceptance: `max_size` is honoured for every value from 128 to 2048: the
+        /// sheet and the JPEG that carries it are never larger, whatever the frame count, the
+        /// columns, the labels and the shape of the sequence; a size too small for its cells is
+        /// refused at `/max_size`.
+        #[test]
+        fn a_sheet_is_never_larger_than_max_size(
+            max_size in 128u32..=2048,
+            count in 1u32..=24,
+            columns in proptest::option::of(1u32..=8),
+            labels in any::<bool>(),
+            shape in prop_oneof![Just((1920u32, 1080u32)), Just((1080, 1920)), Just((640, 640))],
+        ) {
+            let f = three_clips(shape.0, shape.1);
+            let mut params = json!({ "count": count, "max_size": max_size, "labels": labels });
+            if let Some(columns) = columns {
+                params["columns"] = json!(columns);
+            }
+            let params: RenderContactSheet = serde_json::from_value(params).unwrap();
+            let ctx = QueryCtx::new(&f.project, Access::STANDARD);
+            let mut backend = FlatBackend(Arc::clone(&f.source) as _);
+            match crate::query::render_contact_sheet(&mut backend, &ctx, &params) {
+                Ok(sheet) => {
+                    prop_assert!(sheet.width <= max_size && sheet.height <= max_size);
+                    prop_assert_eq!(sheet.frames.len(), count as usize);
+                    prop_assert_eq!(sheet.mime.as_str(), "image/jpeg");
+                    let jpeg = decode_jpeg(&unbase64(&sheet.data));
+                    prop_assert_eq!((jpeg.width, jpeg.height), (sheet.width, sheet.height));
+                    for cell in &sheet.frames {
+                        let c = cell.cell;
+                        prop_assert!(c.x + c.width <= sheet.width);
+                        prop_assert!(c.y + c.height <= sheet.height);
+                    }
+                }
+                Err(e) => prop_assert_eq!(invalid_path(&e), "/max_size"),
+            }
+        }
+    }
+
+    /// The bounds of `max_size` themselves.
+    #[test]
+    fn max_size_has_bounds() {
+        let f = three_clips(W, H);
+        for (max_size, ok) in [(63, false), (64, true), (2048, true), (2049, false)] {
+            let got = sheet(&f, json!({ "count": 1, "max_size": max_size }));
+            assert_eq!(got.is_ok(), ok, "{max_size}");
+        }
+    }
+}
