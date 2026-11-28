@@ -82,7 +82,7 @@ pub use doc::{
     ActorOptions, DEFAULT_EVENT_CAPACITY, DocActor, DocHandle, DocMetrics, DocStats, EventStream,
     NoMetrics, Outcome, Pending, RecvError, RequestSample, SystemClock, TryRecvError,
 };
-pub use error::{ChangedSince, CmdError, ConflictReason, ResourceKind, Rev};
+pub use error::{ChangedSince, CmdError, ConflictReason, ResourceKind, Rev, StaleRev};
 pub use json::json_eq;
 pub use meta::{
     Annotations, CommandMeta, CommandSpec, EntryKind, MAX_SUMMARY_CHARS, McpExposure, NAMESPACES,

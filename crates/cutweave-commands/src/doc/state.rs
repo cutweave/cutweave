@@ -992,8 +992,7 @@ impl DocState {
         CmdError::Conflict {
             reason: ConflictReason::ItemInGesture,
             current_rev: None,
-            expected_rev: None,
-            changed_since: None,
+            stale: None,
             retry_after_ms,
             holder: Some(t.actor.clone()),
             detail: format!(

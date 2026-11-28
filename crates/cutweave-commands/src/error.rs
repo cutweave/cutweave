@@ -154,6 +154,17 @@ pub enum ChangedSince {
     Unknown,
 }
 
+/// What a `Conflict{reason: stale_rev}` from a stale `expected_rev` says beyond the current
+/// revision (WP-2I.04). On the wire its two fields are the conflict's own: `expected_rev` and
+/// `changed_since`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StaleRev {
+    /// The revision the request expected.
+    pub expected_rev: Rev,
+    /// What changed between `expected_rev` and the conflict's `current_rev`.
+    pub changed_since: ChangedSince,
+}
+
 /// Machine-readable reason of a [`CmdError::Conflict`].
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, specta::Type,
@@ -245,11 +256,10 @@ pub enum CmdError {
         reason: ConflictReason,
         /// The document revision when the error was raised (filled in by the engine).
         current_rev: Option<Rev>,
-        /// The revision the request expected (`stale_rev` from an `expected_rev`, WP-2I.04);
-        /// none for the other conflicts.
-        expected_rev: Option<Rev>,
-        /// What changed between `expected_rev` and `current_rev`; set with `expected_rev`.
-        changed_since: Option<ChangedSince>,
+        /// The revision a stale `expected_rev` named and what changed since (WP-2I.04):
+        /// `expected_rev` and `changed_since` on the wire. None for the other conflicts. Boxed
+        /// to keep the error small.
+        stale: Option<Box<StaleRev>>,
         /// When retrying may succeed (soft locks): the time left until the holding gesture's
         /// idle deadline; none for a proposal, which waits for a person (WP-2A.12).
         retry_after_ms: Option<u64>,
@@ -336,8 +346,7 @@ impl CmdError {
         CmdError::Conflict {
             reason,
             current_rev: None,
-            expected_rev: None,
-            changed_since: None,
+            stale: None,
             retry_after_ms: None,
             holder: None,
             detail: detail.into(),
@@ -346,12 +355,15 @@ impl CmdError {
 
     /// `Conflict{reason: stale_rev}` for a request whose `expected_rev` is not the current
     /// revision (WP-2I.04): it names both revisions and what changed between them.
+    #[must_use]
     pub fn stale_rev(expected: Rev, current: Rev, changed_since: ChangedSince) -> CmdError {
         CmdError::Conflict {
             reason: ConflictReason::StaleRev,
             current_rev: Some(current),
-            expected_rev: Some(expected),
-            changed_since: Some(changed_since),
+            stale: Some(Box::new(StaleRev {
+                expected_rev: expected,
+                changed_since,
+            })),
             retry_after_ms: None,
             holder: None,
             detail: format!("expected revision {expected}; refresh and retry"),
@@ -519,7 +531,9 @@ impl JsonSchema for CmdError {
 mod wire {
     use serde::{Deserialize, Serialize};
 
-    use super::{Actor, ChangedSince, CmdError, ConflictReason, ResourceKind, Rev, Scope};
+    use super::{
+        Actor, ChangedSince, CmdError, ConflictReason, ResourceKind, Rev, Scope, StaleRev,
+    };
 
     /// A command error: tagged by `code`, with a human `message`.
     #[derive(Serialize, Deserialize, schemars::JsonSchema, specta::Type)]
@@ -626,21 +640,26 @@ mod wire {
                 CmdError::Conflict {
                     reason,
                     current_rev,
-                    expected_rev,
-                    changed_since,
+                    stale,
                     retry_after_ms,
                     holder,
                     detail,
-                } => CmdErrorWire::Conflict {
-                    reason,
-                    current_rev,
-                    expected_rev,
-                    changed_since,
-                    retry_after_ms,
-                    holder,
-                    detail,
-                    message,
-                },
+                } => {
+                    let (expected_rev, changed_since) = match stale {
+                        Some(stale) => (Some(stale.expected_rev), Some(stale.changed_since)),
+                        None => (None, None),
+                    };
+                    CmdErrorWire::Conflict {
+                        reason,
+                        current_rev,
+                        expected_rev,
+                        changed_since,
+                        retry_after_ms,
+                        holder,
+                        detail,
+                        message,
+                    }
+                }
                 CmdError::Invalid { path, msg } => CmdErrorWire::Invalid { path, msg, message },
                 CmdError::Forbidden { scope, msg } => CmdErrorWire::Forbidden {
                     scope,
@@ -672,8 +691,13 @@ mod wire {
                 } => CmdError::Conflict {
                     reason,
                     current_rev,
-                    expected_rev,
-                    changed_since,
+                    // `changed_since` alone says nothing; a bare `expected_rev` knows nothing.
+                    stale: expected_rev.map(|expected_rev| {
+                        Box::new(StaleRev {
+                            expected_rev,
+                            changed_since: changed_since.unwrap_or(ChangedSince::Unknown),
+                        })
+                    }),
                     retry_after_ms,
                     holder,
                     detail,
@@ -739,8 +763,7 @@ mod tests {
             CmdError::Conflict {
                 reason: ConflictReason::ItemInGesture,
                 current_rev: Some(Rev(2)),
-                expected_rev: None,
-                changed_since: None,
+                stale: None,
                 retry_after_ms: Some(250),
                 holder: Some(Actor::User),
                 detail: "item is being dragged".into(),

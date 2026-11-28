@@ -127,8 +127,7 @@ fn stale_expected_rev_is_a_conflict_with_the_current_rev() {
     let CmdError::Conflict {
         reason,
         current_rev,
-        expected_rev,
-        changed_since,
+        stale,
         ..
     } = &err
     else {
@@ -138,8 +137,10 @@ fn stale_expected_rev_is_a_conflict_with_the_current_rev() {
     assert_eq!(*current_rev, Some(Rev(2)));
     // WP-2I.04: the conflict names the revision the caller expected and the items touched
     // since (the second clip; the first was there at rev 1).
-    assert_eq!(*expected_rev, Some(Rev(1)));
-    assert_eq!(*changed_since, Some(ChangedSince::Items(vec![second])));
+    let stale = stale.as_deref().unwrap();
+    assert_eq!(stale.expected_rev, Rev(1));
+    assert_eq!(stale.changed_since, ChangedSince::Items(vec![second]));
+    assert_eq!(serde_json::to_value(&err).unwrap()["expected_rev"], 1);
     assert_eq!(
         serde_json::to_value(&err).unwrap()["changed_since"],
         json!({"items": [second]})
@@ -154,17 +155,9 @@ fn stale_expected_rev_is_a_conflict_with_the_current_rev() {
     let ahead =
         Submit::new(agent(), "project.rename", json!({"name": "C"})).with_expected_rev(Rev(9));
     let err = h.submit(ahead).wait().unwrap_err();
-    assert!(
-        matches!(
-            &err,
-            CmdError::Conflict {
-                current_rev: Some(Rev(3)),
-                expected_rev: Some(Rev(9)),
-                changed_since: Some(ChangedSince::Unknown),
-                ..
-            }
-        ),
-        "{err:?}"
+    assert_eq!(
+        err,
+        CmdError::stale_rev(Rev(9), Rev(3), ChangedSince::Unknown)
     );
     assert_eq!(
         serde_json::to_value(&err).unwrap()["changed_since"],
@@ -184,7 +177,7 @@ fn changed_since_is_bounded_and_unknown_beyond_what_is_kept() {
         let stale = Submit::new(agent(), "project.rename", json!({"name": "never"}))
             .with_expected_rev(Rev(expected));
         match h.submit(stale).wait().unwrap_err() {
-            CmdError::Conflict { changed_since, .. } => changed_since,
+            CmdError::Conflict { stale, .. } => stale.map(|s| s.changed_since),
             other => panic!("{other:?}"),
         }
     };

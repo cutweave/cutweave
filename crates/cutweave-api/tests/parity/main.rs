@@ -264,9 +264,9 @@ fn run(script: &Script, surface: Surface, root: &Path) -> Run {
         match &outcome {
             // Every successful result names the document's revision, on every surface.
             Ok(_) => {
-                revs.push(Some(driver.rev().unwrap_or_else(|| {
-                    panic!("{}: the result carries no revision", at(i))
-                })))
+                let rev = driver.rev();
+                assert!(rev.is_some(), "{}: the result carries no revision", at(i));
+                revs.push(rev);
             }
             Err(failed) => {
                 revs.push(None);

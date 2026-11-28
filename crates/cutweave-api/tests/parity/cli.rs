@@ -102,9 +102,7 @@ impl Cli<'_> {
 
     /// `--expected-rev N` for `cutweave exec`.
     fn expecting(expected_rev: Option<u64>) -> Vec<String> {
-        expected_rev
-            .map(|rev| vec!["--expected-rev".to_owned(), rev.to_string()])
-            .unwrap_or_default()
+        expected_rev.map_or_default(|rev| vec!["--expected-rev".to_owned(), rev.to_string()])
     }
 
     /// The stdout JSON of a finished step; remembers the revision it reports.
