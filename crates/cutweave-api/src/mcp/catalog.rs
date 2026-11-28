@@ -48,6 +48,10 @@ pub const EXECUTE: &str = "cutweave_execute";
 /// `cutweave_query{name, args}`.
 pub const QUERY: &str = "cutweave_query";
 
+/// The envelope argument of a mutating core tool (WP-2I.04): the document revision the caller
+/// last saw. See [`takes_expected_rev`].
+pub const EXPECTED_REV: &str = "expected_rev";
+
 /// The generic tools, in listing order.
 pub const GENERIC_TOOLS: [&str; 4] = [SEARCH, DESCRIBE, EXECUTE, QUERY];
 
@@ -210,6 +214,19 @@ impl Profile {
     /// ([`described_schema`]) instead of the [lean](lean_schema) form.
     #[must_use]
     pub const fn describes_parameters(self) -> bool {
+        matches!(self, Profile::Described)
+    }
+
+    /// Whether the listed input schema of every mutating core tool carries the
+    /// [`EXPECTED_REV`] envelope property (WP-2I.04).
+    ///
+    /// The described profile lists it. The standard, full and minimal lists do not: the
+    /// property on each mutating tool does not fit the standard budget (ADR-0041, proposed,
+    /// has the measured figures and the options). On those endpoints
+    /// `cutweave_execute{expected_rev}` is the listed way, and a core tool call that carries
+    /// the argument is honoured all the same ([`takes_expected_rev`]).
+    #[must_use]
+    pub const fn lists_expected_rev(self) -> bool {
         matches!(self, Profile::Described)
     }
 }
@@ -439,12 +456,60 @@ fn with_hints(tool: Tool) -> Tool {
     }
 }
 
-fn entry_tool(meta: &CommandMeta, profile: Profile) -> Tool {
-    let schema = if profile.describes_parameters() {
+/// Whether a call of `meta`'s core tool may carry [`EXPECTED_REV`] next to the command's own
+/// arguments (WP-2I.04): every tool that is not read-only. The argument belongs to the
+/// envelope, not to the command: the handler takes it out before the command sees its params,
+/// on every endpoint, whether or not the endpoint's list shows it
+/// ([`Profile::lists_expected_rev`]). A command with a parameter of that name of its own would
+/// keep it (none has one; a test fails if one appears).
+#[must_use]
+pub fn takes_expected_rev(meta: &CommandMeta) -> bool {
+    !meta.annotations.read_only
+        && meta
+            .input_schema
+            .pointer("/properties")
+            .is_none_or(|p| p.get(EXPECTED_REV).is_none())
+}
+
+/// What the described profile says about [`EXPECTED_REV`] on each mutating tool.
+const EXPECTED_REV_DOC: &str =
+    "Fail with a conflict, changing nothing, unless the document is at this revision";
+
+/// Adds the [`EXPECTED_REV`] envelope property to a listed input schema: one generator for
+/// every mutating tool, so no command's schema drifts from the others. The lean form is the
+/// type and its bound; the described form adds [`EXPECTED_REV_DOC`]. Never required.
+fn with_expected_rev(schema: &mut Value, described: bool) {
+    let Value::Object(root) = schema else {
+        return;
+    };
+    let mut property = json!({ "type": "integer", "minimum": 0 });
+    if described {
+        property["description"] = json!(EXPECTED_REV_DOC);
+    }
+    if let Value::Object(properties) = root.entry("properties").or_insert_with(|| json!({})) {
+        properties.insert(EXPECTED_REV.to_owned(), property);
+    }
+}
+
+/// The input schema `profile` lists for `meta`'s core tool: the registry's params schema in
+/// [lean](lean_schema) or [described](described_schema) form, plus the envelope's
+/// [`EXPECTED_REV`] where the profile shows it ([`Profile::lists_expected_rev`]) and the tool
+/// takes it ([`takes_expected_rev`]).
+#[must_use]
+pub fn listed_schema(meta: &CommandMeta, profile: Profile) -> Value {
+    let mut schema = if profile.describes_parameters() {
         described_schema(&meta.input_schema)
     } else {
         lean_schema(&meta.input_schema)
     };
+    if profile.lists_expected_rev() && takes_expected_rev(meta) {
+        with_expected_rev(&mut schema, profile.describes_parameters());
+    }
+    schema
+}
+
+fn entry_tool(meta: &CommandMeta, profile: Profile) -> Tool {
+    let schema = listed_schema(meta, profile);
     with_hints(
         Tool::new(meta.mcp_tool_name(), tool_description(meta), object(schema))
             .with_annotations(annotations(meta)),

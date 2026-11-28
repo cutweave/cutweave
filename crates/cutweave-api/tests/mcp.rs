@@ -465,12 +465,7 @@ fn the_always_load_hint_is_on_five_tools_and_nowhere_else() {
                 }
             }
             if let Some(entry) = registry.get_by_tool_name(name) {
-                let schema = &entry.meta.input_schema;
-                let expected = if profile.describes_parameters() {
-                    catalog::described_schema(schema)
-                } else {
-                    catalog::lean_schema(schema)
-                };
+                let expected = catalog::listed_schema(&entry.meta, profile);
                 assert_eq!(tool["inputSchema"], expected, "{name}");
             }
         }
@@ -720,9 +715,20 @@ fn the_described_profile_is_the_standard_list_with_parameter_docs() {
         let entry = registry.get_by_tool_name(name);
         if let Some(entry) = entry {
             // A core tool: both are forms of the registry's schema, one with the parameter
-            // docs, one without, and both accept what the registry's accepts.
+            // docs, one without, and both accept what the registry's accepts. The described
+            // list also shows the envelope's `expected_rev` on a mutating tool (WP-2I.04):
+            // the generator's property, not the command's, and accepted on `/mcp` as well.
+            let mut own = full.clone();
+            if catalog::takes_expected_rev(&entry.meta) {
+                let properties = own["properties"].as_object_mut().unwrap();
+                let envelope = properties.remove(catalog::EXPECTED_REV).unwrap();
+                assert!(documented(&envelope), "{name}");
+                if properties.is_empty() && entry.meta.input_schema.get("properties").is_none() {
+                    own.as_object_mut().unwrap().remove("properties");
+                }
+            }
             assert_eq!(
-                full,
+                own,
                 catalog::described_schema(&entry.meta.input_schema),
                 "{name}"
             );
@@ -794,6 +800,186 @@ async fn the_described_endpoint_serves_its_list_and_runs_the_same_tools() {
         assert_eq!(found["matches"][0]["call"], "tool clip_split");
         client.close().await;
     }
+}
+
+// ----- expected_rev on every mutating tool (WP-2I.04) ------------------------------------------
+
+/// WP-2I.04 acceptance, over MCP: two clients. A reads at rev N, B edits (rev N+1), A's call
+/// with `expected_rev: N` is a conflict that names both revisions and the item B touched, says
+/// to read `timeline_get` again, and changes nothing; A retries with the new revision and
+/// succeeds, and the result carries the next revision. On an endpoint whose list shows the
+/// argument and on one whose list does not, on both revisions.
+#[tokio::test]
+async fn two_clients_a_stale_tool_call_conflicts_and_the_retry_succeeds() {
+    let h = Harness::start(None);
+    for profile in [Profile::Standard, Profile::Described] {
+        for revision in Revision::ALL {
+            let a = h.client(profile, revision).await;
+            let b = h.client(profile, revision).await;
+            let (sequence, _, _, item) = project_with_a_clip(&h, &a).await;
+            let read = a
+                .call("timeline_get", json!({ "sequence": sequence, "depth": 2 }))
+                .await;
+            let n = rev_of(&read);
+
+            let by_b = b
+                .call(
+                    "item_set_props",
+                    json!({ "item": item, "props": { "name": "From B" } }),
+                )
+                .await;
+            assert_eq!(rev_of(&by_b), n + 1);
+            let before = timeline(&a, &sequence).await;
+
+            let stale = a
+                .err(
+                    "clip_split",
+                    json!({ "item": item, "at": "2s", "expected_rev": n }),
+                )
+                .await;
+            let error = &stale["error"];
+            assert_eq!(error["code"], "conflict", "{stale}");
+            assert_eq!(error["reason"], "stale_rev");
+            assert_eq!(error["current_rev"], n + 1);
+            assert_eq!(error["expected_rev"], n);
+            assert_eq!(error["changed_since"], json!({ "items": [item] }));
+            assert!(
+                error["hint"].as_str().unwrap().contains("timeline_get"),
+                "{error}"
+            );
+            assert_eq!(timeline(&a, &sequence).await, before);
+            assert_eq!(current_rev(&a).await, n + 1);
+
+            let retried = a
+                .call(
+                    "clip_split",
+                    json!({ "item": item, "at": "2s", "expected_rev": n + 1 }),
+                )
+                .await;
+            assert_ne!(retried.is_error, Some(true), "{}", text_of(&retried));
+            assert_eq!(rev_of(&retried), n + 2);
+            assert!(text_of(&retried).contains(&format!("document at rev {}", n + 2)));
+            a.close().await;
+            b.close().await;
+        }
+    }
+}
+
+/// Every mutating core tool takes the argument (a wrong type is `invalid` at `/expected_rev`,
+/// before the command runs); a read-only tool does not know it.
+#[tokio::test]
+async fn expected_rev_is_an_argument_of_every_mutating_core_tool_only() {
+    let h = Harness::start(None);
+    let client = h.client(Profile::Standard, Revision::Stateful).await;
+    project_with_a_clip(&h, &client).await;
+    let rev = current_rev(&client).await;
+    let registry = registry();
+    let catalog = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    let mut mutating = 0;
+    for entry in registry.list().filter(|e| catalog.lists(&e.meta)) {
+        let tool = entry.meta.mcp_tool_name();
+        // No command has a parameter of that name: the envelope owns it.
+        assert!(
+            entry.meta.input_schema["properties"]
+                .get(catalog::EXPECTED_REV)
+                .is_none(),
+            "{tool}"
+        );
+        if entry.meta.annotations.read_only {
+            assert!(!catalog::takes_expected_rev(&entry.meta), "{tool}");
+            continue;
+        }
+        assert!(catalog::takes_expected_rev(&entry.meta), "{tool}");
+        mutating += 1;
+        // Stale: refused before the command validates its own arguments.
+        let stale = client.err(&tool, json!({ "expected_rev": rev + 9 })).await;
+        assert_eq!(stale["error"]["code"], "conflict", "{tool}: {stale}");
+        assert_eq!(stale["error"]["reason"], "stale_rev", "{tool}");
+        assert_eq!(stale["error"]["current_rev"], rev, "{tool}");
+        assert_eq!(stale["error"]["expected_rev"], rev + 9, "{tool}");
+        let wrong = client.err(&tool, json!({ "expected_rev": "7" })).await;
+        assert_eq!(wrong["error"]["code"], "invalid", "{tool}: {wrong}");
+        assert_eq!(wrong["error"]["path"], "/expected_rev", "{tool}");
+    }
+    assert_eq!(mutating, 22);
+    assert_eq!(current_rev(&client).await, rev);
+
+    // A read-only tool: the command's schema refuses the unknown argument.
+    let read = client
+        .err("media_list", json!({ "expected_rev": rev }))
+        .await;
+    assert_eq!(read["error"]["code"], "invalid", "{read}");
+
+    // The current revision passes, and `null` is no expectation at all.
+    let made = client
+        .call(
+            "sequence_create",
+            json!({ "name": "At the revision", "expected_rev": rev }),
+        )
+        .await;
+    assert_ne!(made.is_error, Some(true), "{}", text_of(&made));
+    assert_eq!(rev_of(&made), rev + 1);
+    let made = client
+        .call(
+            "sequence_create",
+            json!({ "name": "No expectation", "expected_rev": null }),
+        )
+        .await;
+    assert_ne!(made.is_error, Some(true), "{}", text_of(&made));
+    client.close().await;
+}
+
+/// The listed schemas: one generator adds the same property to every mutating tool of a list
+/// that shows it (the described profile), and to no other tool; the lists that do not show it
+/// (standard, full, minimal: ADR-0041) are unchanged, and `cutweave_execute` lists
+/// `expected_rev` on every endpoint.
+#[test]
+fn the_generator_lists_expected_rev_uniformly() {
+    let registry = registry();
+    for profile in Profile::ALL {
+        let catalog = Catalog::new(Arc::clone(&registry), profile);
+        let execute = catalog.tool(catalog::EXECUTE).unwrap();
+        assert_eq!(
+            execute.input_schema["properties"]["expected_rev"]["type"], "integer",
+            "{profile:?}"
+        );
+        let mut shown = Vec::new();
+        for entry in registry.list().filter(|e| catalog.lists(&e.meta)) {
+            let tool = catalog.tool(&entry.meta.mcp_tool_name()).unwrap();
+            let property = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.get(catalog::EXPECTED_REV));
+            assert_eq!(
+                property.is_some(),
+                profile.lists_expected_rev() && catalog::takes_expected_rev(&entry.meta),
+                "{profile:?}: {}",
+                tool.name
+            );
+            if let Some(property) = property {
+                shown.push(property.clone());
+                let required = tool.input_schema.get("required").cloned();
+                assert!(
+                    !required
+                        .unwrap_or_default()
+                        .as_array()
+                        .is_some_and(|r| r.contains(&json!("expected_rev"))),
+                    "{}",
+                    tool.name
+                );
+            }
+        }
+        // No per-command drift: every tool shows the very same subschema.
+        shown.dedup();
+        assert!(shown.len() <= 1, "{profile:?}: {shown:?}");
+        assert_eq!(
+            shown.len() == 1,
+            profile.lists_expected_rev(),
+            "{profile:?}"
+        );
+    }
+    assert!(Profile::Described.lists_expected_rev());
+    assert!(!Profile::Standard.lists_expected_rev());
 }
 
 // ----- profiles and their budgets (WP-2I.05) ------------------------------------------------

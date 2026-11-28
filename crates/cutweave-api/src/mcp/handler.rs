@@ -174,11 +174,23 @@ impl CutweaveMcp {
         if name == frame::COMMAND {
             return self.render_frame(conn, tool, args, meta).await;
         }
+        // The envelope argument of a mutating tool (WP-2I.04) leaves the args before the
+        // command validates them: its own schema does not know it.
+        let mut args = args;
+        let argument = if catalog::takes_expected_rev(&entry.meta) {
+            match take_expected_rev(&mut args) {
+                Ok(rev) => rev,
+                Err(e) => return error_result(tool, &e, None),
+            }
+        } else {
+            None
+        };
         let mut call = DispatchCall::new(name, args.clone());
         match envelope(meta) {
             Ok((request_id, expected_rev)) => {
                 call.request_id = request_id;
-                call.expected_rev = expected_rev;
+                // The argument (the model's) wins over `_meta` (a proxy's).
+                call.expected_rev = argument.or(expected_rev);
             }
             Err(e) => return error_result(tool, &e, None),
         }
@@ -515,6 +527,24 @@ fn envelope(meta: &RequestMetaObject) -> Result<(Option<RequestId>, Option<Rev>)
         })?)),
     };
     Ok((request_id, expected_rev))
+}
+
+/// Takes the `expected_rev` argument of a mutating core tool call out of `args` (WP-2I.04):
+/// the revision, or `Invalid` at `/expected_rev` for anything but a non-negative integer.
+/// `null` counts as absent.
+fn take_expected_rev(args: &mut Value) -> Result<Option<Rev>, CmdError> {
+    let Some(value) = args
+        .as_object_mut()
+        .and_then(|map| map.remove(catalog::EXPECTED_REV))
+    else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    value.as_u64().map(|rev| Some(Rev(rev))).ok_or_else(|| {
+        CmdError::invalid("/expected_rev", "expected a non-negative integer revision")
+    })
 }
 
 /// Runs one blocking engine call on the blocking pool.
@@ -880,5 +910,24 @@ mod tests {
         assert_eq!(rev, Some(Rev(4)));
         meta.insert(META_EXPECTED_REV.into(), json!("four"));
         assert_eq!(envelope(&meta).unwrap_err().code(), "invalid");
+    }
+
+    #[test]
+    fn the_expected_rev_argument_leaves_the_args() {
+        let mut args = json!({ "item": "itm_1", "expected_rev": 4 });
+        assert_eq!(take_expected_rev(&mut args), Ok(Some(Rev(4))));
+        assert_eq!(args, json!({ "item": "itm_1" }));
+        assert_eq!(take_expected_rev(&mut args), Ok(None));
+        let mut absent = json!({ "expected_rev": null });
+        assert_eq!(take_expected_rev(&mut absent), Ok(None));
+        assert_eq!(absent, json!({}));
+        for wrong in [json!("4"), json!(-1), json!(1.5), json!([4])] {
+            let mut args = json!({ "expected_rev": wrong });
+            let e = take_expected_rev(&mut args).unwrap_err();
+            assert_eq!(
+                e,
+                CmdError::invalid("/expected_rev", "expected a non-negative integer revision")
+            );
+        }
     }
 }

@@ -158,6 +158,11 @@ expression: catalog.tools_json()
               }
             ],
             "description": "Sequence time (the playhead) to key at."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -280,6 +285,11 @@ expression: catalog.tools_json()
               null
             ],
             "description": "`keep` (default): keys stay at their item times; `scale`: they stretch with the speed."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -340,6 +350,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Audio sample grid."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -429,6 +444,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it\n(default `false`: trims keep every key)."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -479,6 +499,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "A note (at most 1000 characters)."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         }
       },
@@ -511,6 +536,11 @@ expression: catalog.tools_json()
             ],
             "description": "How many changes to redo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
             "minimum": 0
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         }
       },
@@ -536,6 +566,11 @@ expression: catalog.tools_json()
             "type": "boolean",
             "description": "Also revert other actors' changes made since the checkpoint.",
             "default": false
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -571,6 +606,11 @@ expression: catalog.tools_json()
             ],
             "description": "How many changes to undo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
             "minimum": 0
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         }
       },
@@ -911,6 +951,11 @@ expression: catalog.tools_json()
                 "type": "object"
               }
             }
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -955,6 +1000,11 @@ expression: catalog.tools_json()
               "pattern": "^itm_[0-9a-f]{32}$"
             },
             "description": "The items to delete, at least one."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -1071,6 +1121,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Audio sample grid."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "$defs": {
@@ -1365,6 +1420,11 @@ expression: catalog.tools_json()
               }
             ],
             "description": "Sequence time (the playhead) to key animated properties at."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -1733,6 +1793,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Snap to audio samples (audio properties)."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -1805,6 +1870,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Copy each new file into the project's `media/` folder first (default false)."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -2093,6 +2163,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Drop the open document's unsaved changes (`true`); otherwise they make the open fail."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -2199,6 +2274,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "`true`: `V1` is the magnetic main track. Absent: `false`."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -2315,6 +2395,11 @@ expression: catalog.tools_json()
               }
             ],
             "description": "How clips follow a new canvas size (default `fit`)."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -2420,6 +2505,11 @@ expression: catalog.tools_json()
               }
             ],
             "description": "`user` (default), `beat` or `chapter`."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -2672,6 +2762,11 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "`insert` ripples every track."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -2760,6 +2855,11 @@ expression: catalog.tools_json()
             ],
             "description": "Display position, 0 = top (clamped to the end).",
             "minimum": 0
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [
@@ -2779,7 +2879,14 @@ expression: catalog.tools_json()
       "description": "Read what the user sees in the app: playhead, selection, zoom, active sequence, source in/out marks. E.g. {}",
       "inputSchema": {
         "type": "object",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "properties": {
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": false,
@@ -3047,6 +3154,11 @@ expression: catalog.tools_json()
               }
             },
             "description": "The fields to change."
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail with a conflict, changing nothing, unless the document is at this revision"
           }
         },
         "required": [

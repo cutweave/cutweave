@@ -505,6 +505,25 @@ export type CellRect = {
 };
 
 /**
+ *  What changed between the `expected_rev` of a stale request and the current revision
+ *  (WP-2I.04), so the caller knows what to read again.
+ * 
+ *  On the wire: `{"items": ["itm_…", ...]}` or `"unknown"`.
+ */
+export type ChangedSince = 
+/**
+ *  The items the changes since `expected_rev` touched (added, removed, moved or edited),
+ *  in id order. Empty when they touched no item (a marker, a track, media, settings).
+ */
+{ items: ItemId[] } | 
+/**
+ *  Not known: `expected_rev` is older than the revisions the engine keeps this for (the
+ *  last 200 changes of the document it has open), is not a past revision at all, or the
+ *  changes touched more than 100 items. Read the document again.
+ */
+"unknown";
+
+/**
  *  Captures the committed document as a restore point (cheap: snapshots share structure).
  *  Open transactions are not included. At most 50 are kept, 20 of them named (least recently
  *  used first out); reusing a name moves it to the new checkpoint. Checkpoints are saved in the
@@ -1067,6 +1086,13 @@ message: string } |
 reason: ConflictReason; 
 /**  The document revision when the error was raised. */
 current_rev?: Rev | null; 
+/**  The revision the request expected (a stale `expected_rev` only). */
+expected_rev?: Rev | null; 
+/**
+ *  What changed between `expected_rev` and `current_rev`: the items touched, or
+ *  `unknown` (a stale `expected_rev` only).
+ */
+changed_since?: ChangedSince | null; 
 /**  When retrying may succeed. */
 retry_after_ms?: number | null; 
 /**  The actor holding the soft lock (`item_in_gesture` only). */
