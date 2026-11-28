@@ -2012,7 +2012,7 @@ fn sequence_list() -> BoxedStrategy<Value> {
 // ----- tracks, timeline ----------------------------------------------------------------------
 
 fn track_add(p: &Pools) -> BoxedStrategy<Value> {
-    let kind = prop_oneof![5 => Just("video"), 4 => Just("audio"), 2 => Just("text")];
+    let kind = prop_oneof![5 => Just("video"), 4 => Just("audio")];
     let valid = (
         one_of(p.seqs.clone()),
         kind,

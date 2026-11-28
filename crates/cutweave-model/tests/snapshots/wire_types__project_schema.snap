@@ -4,6 +4,32 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
 ---
 {
   "$defs": {
+    "AnimRef": {
+      "description": "A reference to a text animation (3C fills this in; always `None` until then).",
+      "properties": {
+        "id": {
+          "description": "The animation's ID.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "Animatable_Color": {
+      "description": "A static value, or keyed values over item time (keyframes §3.1).",
+      "oneOf": [
+        {
+          "description": "sRGB color with straight alpha: \"#rrggbb\" or \"#rrggbbaa\".",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/Keyframes_Color"
+        }
+      ]
+    },
     "Animatable_Vec2": {
       "description": "A static value, or keyed values over item time (keyframes §3.1).",
       "oneOf": [
@@ -93,6 +119,58 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       "required": [
         "gain",
         "pan"
+      ],
+      "type": "object"
+    },
+    "AutoFit": {
+      "description": "What happens when the text does not fit the box.",
+      "oneOf": [
+        {
+          "const": "none",
+          "description": "Nothing: the text may overflow.",
+          "type": "string"
+        },
+        {
+          "const": "shrink",
+          "description": "The font size shrinks until it fits.",
+          "type": "string"
+        },
+        {
+          "const": "grow_box",
+          "description": "The box grows to hold the text.",
+          "type": "string"
+        }
+      ]
+    },
+    "Background": {
+      "additionalProperties": false,
+      "description": "A coloured box behind the text.",
+      "properties": {
+        "color": {
+          "description": "Colour.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/BackgroundMode",
+          "description": "One box or one per line."
+        },
+        "padding": {
+          "description": "Space between text and box edge, in reference pixels, 0 to 4000.",
+          "format": "double",
+          "type": "number"
+        },
+        "radius": {
+          "description": "Corner radius in reference pixels, 0 to 4000.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "color",
+        "padding",
+        "radius",
+        "mode"
       ],
       "type": "object"
     },
@@ -188,6 +266,21 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         }
       ]
     },
+    "BackgroundMode": {
+      "description": "Whether a background box wraps the whole text or each line.",
+      "oneOf": [
+        {
+          "const": "block",
+          "description": "One rectangle behind all lines.",
+          "type": "string"
+        },
+        {
+          "const": "per_line",
+          "description": "One rectangle per line (a \"pill\" behind each).",
+          "type": "string"
+        }
+      ]
+    },
     "BlendMode": {
       "description": "How an item combines with what is below it (arch §8's core set).",
       "enum": [
@@ -213,6 +306,31 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         {
           "const": "main_track",
           "description": "The picture on the main track (the magnetic track; without one, the lowest video\ntrack).",
+          "type": "string"
+        }
+      ]
+    },
+    "CaseTransform": {
+      "description": "Letter case applied when laying out (the stored text is unchanged).",
+      "oneOf": [
+        {
+          "const": "none",
+          "description": "As typed.",
+          "type": "string"
+        },
+        {
+          "const": "upper",
+          "description": "ALL CAPS.",
+          "type": "string"
+        },
+        {
+          "const": "lower",
+          "description": "all lower.",
+          "type": "string"
+        },
+        {
+          "const": "title",
+          "description": "Each Word Capitalised.",
           "type": "string"
         }
       ]
@@ -635,6 +753,88 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         }
       ]
     },
+    "Fill": {
+      "description": "How the glyphs are filled. Gradients run over the text box.",
+      "oneOf": [
+        {
+          "description": "One colour (animatable).",
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/Animatable_Color",
+              "description": "The colour, `#rrggbb` or `#rrggbbaa`."
+            },
+            "kind": {
+              "const": "solid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "color"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A straight gradient.",
+          "properties": {
+            "angle": {
+              "description": "Direction in degrees, clockwise from \"left to right\" (0) .",
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "linear",
+              "type": "string"
+            },
+            "stops": {
+              "description": "Two to sixteen stops, ascending by `at`.",
+              "items": {
+                "$ref": "#/$defs/GradientStop"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "angle",
+            "stops"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A circular gradient.",
+          "properties": {
+            "center": {
+              "$ref": "#/$defs/Vec2",
+              "description": "Centre in box units (0.5, 0.5 is the middle)."
+            },
+            "kind": {
+              "const": "radial",
+              "type": "string"
+            },
+            "radius": {
+              "description": "Radius as a fraction of the box's larger side.",
+              "format": "double",
+              "type": "number"
+            },
+            "stops": {
+              "description": "Two to sixteen stops, ascending by `at`.",
+              "items": {
+                "$ref": "#/$defs/GradientStop"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "center",
+            "radius",
+            "stops"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Flip": {
       "description": "Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed\nflip switches at its keys.",
       "properties": {
@@ -650,6 +850,59 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       "required": [
         "horizontal",
         "vertical"
+      ],
+      "type": "object"
+    },
+    "FontAxis": {
+      "additionalProperties": false,
+      "description": "One variable-font axis setting (`wght`, `wdth`, `opsz`, ...).",
+      "properties": {
+        "tag": {
+          "description": "The four-letter axis tag.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Its value.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "tag",
+        "value"
+      ],
+      "type": "object"
+    },
+    "FontSpec": {
+      "description": "A font as the document names it: a family, weight and slant, plus variable-font axes. The\nfont manager (WP-3A.02) resolves it to a file, falling back deterministically.",
+      "properties": {
+        "axes": {
+          "description": "Variable-font axes, sorted by tag.",
+          "items": {
+            "$ref": "#/$defs/FontAxis"
+          },
+          "type": "array"
+        },
+        "family": {
+          "description": "Family name, e.g. `\"Inter\"`.",
+          "type": "string"
+        },
+        "italic": {
+          "description": "Italic or oblique.",
+          "type": "boolean"
+        },
+        "weight": {
+          "description": "Weight, 1 to 1000 (400 regular, 700 bold).",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "family",
+        "weight",
+        "italic"
       ],
       "type": "object"
     },
@@ -697,6 +950,54 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       },
       "required": [
         "at_source"
+      ],
+      "type": "object"
+    },
+    "Glow": {
+      "additionalProperties": false,
+      "description": "A soft halo around the glyphs.",
+      "properties": {
+        "color": {
+          "description": "Colour.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        },
+        "intensity": {
+          "description": "Strength, 0 to 4 (1 is a plain halo).",
+          "format": "double",
+          "type": "number"
+        },
+        "radius": {
+          "description": "Radius in reference pixels, 0 to 4000.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "radius",
+        "color",
+        "intensity"
+      ],
+      "type": "object"
+    },
+    "GradientStop": {
+      "additionalProperties": false,
+      "description": "One stop of a gradient.",
+      "properties": {
+        "at": {
+          "description": "Position along the gradient, 0.0 to 1.0.",
+          "format": "double",
+          "type": "number"
+        },
+        "color": {
+          "description": "The colour there.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "color"
       ],
       "type": "object"
     },
@@ -919,7 +1220,7 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       ]
     },
     "Item": {
-      "description": "Anything placed on a track (arch §4.2). Schema v1 has only [`Clip`]; matching code outside\nthis crate needs a wildcard arm for the kinds still to come.\n\nSerialized as the variant's object plus a `\"kind\"` tag (`{\"kind\": \"clip\", …}`).",
+      "description": "Anything placed on a track (arch §4.2): a media [`Clip`] or a [`TextItem`] (WP-3A.01).\nMatching code outside this crate needs a wildcard arm for the kinds still to come.\n\nSerialized as the variant's object plus a `\"kind\"` tag (`{\"kind\": \"clip\", …}`).",
       "oneOf": [
         {
           "$ref": "#/$defs/Clip",
@@ -934,8 +1235,47 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
             "kind"
           ],
           "type": "object"
+        },
+        {
+          "$ref": "#/$defs/TextItem",
+          "description": "Text on a text track.",
+          "properties": {
+            "kind": {
+              "const": "text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
         }
       ]
+    },
+    "Keyframe_Color": {
+      "description": "A key: a value at an item-relative time (flicks), and the easing of the segment to the next key (keyframes §3.1).",
+      "properties": {
+        "interp": {
+          "$ref": "#/$defs/Interp"
+        },
+        "t": {
+          "description": "Item-relative time in flicks (1/705600000 s); 0 is the item's first frame.",
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "value": {
+          "description": "sRGB color with straight alpha: \"#rrggbb\" or \"#rrggbbaa\".",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "value",
+        "interp"
+      ],
+      "type": "object"
     },
     "Keyframe_Vec2": {
       "description": "A key: a value at an item-relative time (flicks), and the easing of the segment to the next key (keyframes §3.1).",
@@ -1004,6 +1344,23 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "t",
         "value",
         "interp"
+      ],
+      "type": "object"
+    },
+    "Keyframes_Color": {
+      "description": "A keyed (animated) value: keys sorted by strictly increasing t (keyframes §3).",
+      "properties": {
+        "keyframes": {
+          "items": {
+            "$ref": "#/$defs/Keyframe_Color"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "keyframes"
       ],
       "type": "object"
     },
@@ -1655,6 +2012,124 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         }
       ]
     },
+    "RichText": {
+      "additionalProperties": false,
+      "description": "The words of a text item: runs, in order.",
+      "properties": {
+        "runs": {
+          "description": "The runs. Adjacent runs with equal overrides are kept merged.",
+          "items": {
+            "$ref": "#/$defs/Run"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "runs"
+      ],
+      "type": "object"
+    },
+    "Run": {
+      "additionalProperties": false,
+      "description": "A stretch of text with one style override.",
+      "properties": {
+        "style": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunStyle"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Overrides of the item's style for this run; absent: the item's style."
+        },
+        "text": {
+          "description": "The characters (may hold `\\n` line breaks).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "RunStyle": {
+      "additionalProperties": false,
+      "description": "A style override for a run: only the fields given replace the item's style for those\ncharacters. Static values only (no keys).",
+      "properties": {
+        "case_transform": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaseTransform"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Case."
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fill"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Fill."
+        },
+        "font": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FontSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Font."
+        },
+        "letter_spacing": {
+          "description": "Letter spacing in em.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "shadows": {
+          "description": "Shadows (replace the style's).",
+          "items": {
+            "$ref": "#/$defs/Shadow"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "size": {
+          "description": "Size in reference pixels.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "strokes": {
+          "description": "Outlines (replace the style's).",
+          "items": {
+            "$ref": "#/$defs/Stroke"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "Sequence": {
       "description": "A timeline (arch §4.2). A project may hold several (e.g. a long cut and its shorts); the v1\nUI shows one.",
       "properties": {
@@ -1784,6 +2259,32 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "sample_rate",
         "color_space",
         "background"
+      ],
+      "type": "object"
+    },
+    "Shadow": {
+      "additionalProperties": false,
+      "description": "A drop shadow.",
+      "properties": {
+        "blur": {
+          "description": "Blur radius in reference pixels, 0 to 4000.",
+          "format": "double",
+          "type": "number"
+        },
+        "color": {
+          "description": "Colour (alpha is the strength).",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        },
+        "offset": {
+          "$ref": "#/$defs/Vec2",
+          "description": "Offset in reference pixels (+y is down)."
+        }
+      },
+      "required": [
+        "offset",
+        "blur",
+        "color"
       ],
       "type": "object"
     },
@@ -1922,6 +2423,455 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "const": "attachment",
           "description": "Attached files (fonts, cover art).",
           "type": "string"
+        }
+      ]
+    },
+    "Stroke": {
+      "additionalProperties": false,
+      "description": "One outline. A style may stack several; they are drawn in list order.",
+      "properties": {
+        "color": {
+          "description": "Colour.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        },
+        "join": {
+          "$ref": "#/$defs/StrokeJoin",
+          "description": "Corner style."
+        },
+        "order": {
+          "$ref": "#/$defs/StrokeOrder",
+          "description": "Behind or over the fill."
+        },
+        "width": {
+          "description": "Width in reference pixels, 0 to 4000.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "width",
+        "join",
+        "color",
+        "order"
+      ],
+      "type": "object"
+    },
+    "StrokeJoin": {
+      "description": "How an outline's corners are drawn.",
+      "oneOf": [
+        {
+          "const": "miter",
+          "description": "Sharp corners.",
+          "type": "string"
+        },
+        {
+          "const": "round",
+          "description": "Rounded corners.",
+          "type": "string"
+        },
+        {
+          "const": "bevel",
+          "description": "Cut-off corners.",
+          "type": "string"
+        }
+      ]
+    },
+    "StrokeOrder": {
+      "description": "Whether an outline is drawn behind the fill or over it.",
+      "oneOf": [
+        {
+          "const": "behind",
+          "description": "Under the fill: the outline grows outward only.",
+          "type": "string"
+        },
+        {
+          "const": "over",
+          "description": "Over the fill: it also eats into the letter.",
+          "type": "string"
+        }
+      ]
+    },
+    "TextAlign": {
+      "description": "Horizontal alignment of lines in the box.",
+      "oneOf": [
+        {
+          "const": "left",
+          "description": "Flush left (flush start in right-to-left text is `start` in a later version).",
+          "type": "string"
+        },
+        {
+          "const": "center",
+          "description": "Centred.",
+          "type": "string"
+        },
+        {
+          "const": "right",
+          "description": "Flush right.",
+          "type": "string"
+        },
+        {
+          "const": "justify",
+          "description": "Stretched to both edges (the last line stays flush left).",
+          "type": "string"
+        }
+      ]
+    },
+    "TextAnimation": {
+      "description": "In, out and loop animations of a text item. WP-3A.01 never sets one; the field is `None`\nuntil WP-3C.",
+      "properties": {
+        "in": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Plays as the item appears."
+        },
+        "loop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Plays all the while."
+        },
+        "out": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Plays as the item leaves."
+        }
+      },
+      "type": "object"
+    },
+    "TextBox": {
+      "additionalProperties": false,
+      "description": "The rectangle text lays out in: it wraps at `width` and aligns inside `width` x `height`.\nSizes are canvas units; `None` is automatic (as wide or high as the text).",
+      "properties": {
+        "height": {
+          "default": null,
+          "description": "Height in canvas heights, above 0 and at most 4; `None`: as high as the text.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "width": {
+          "default": null,
+          "description": "Width in canvas widths, above 0 and at most 4; `None`: no wrapping.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "TextDirection": {
+      "description": "The base direction of the text.",
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "From the first strong character.",
+          "type": "string"
+        },
+        {
+          "const": "ltr",
+          "description": "Left to right.",
+          "type": "string"
+        },
+        {
+          "const": "rtl",
+          "description": "Right to left.",
+          "type": "string"
+        }
+      ]
+    },
+    "TextItem": {
+      "description": "A text item on a text track (arch §4.2).",
+      "properties": {
+        "animation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextAnimation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "In, out and loop animations; `None` until WP-3C."
+        },
+        "attached_to": {
+          "description": "The item this one follows when it moves.",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "box": {
+          "$ref": "#/$defs/TextBox",
+          "description": "The layout rectangle."
+        },
+        "color_label": {
+          "description": "The color label.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content": {
+          "$ref": "#/$defs/RichText",
+          "description": "The words."
+        },
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data.",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "Length on the timeline (positive)."
+        },
+        "enabled": {
+          "description": "Disabled items are kept but not rendered.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "The item ID (also its key in the track's `items`).",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "linked_group": {
+          "description": "Items with the same group move, trim and delete together.",
+          "pattern": "^grp_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "markers": {
+          "additionalProperties": false,
+          "description": "Markers in item-relative time.",
+          "patternProperties": {
+            "^mrk_[0-9a-f]{32}$": {
+              "$ref": "#/$defs/Marker"
+            }
+          },
+          "type": "object"
+        },
+        "name": {
+          "description": "Display name; `None` shows the start of the text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "Timeline position of the first frame."
+        },
+        "style": {
+          "$ref": "#/$defs/TextStyleRef",
+          "description": "The look: a built-in style by name, or one of its own."
+        },
+        "visual": {
+          "$ref": "#/$defs/VisualProps",
+          "description": "Placement and opacity (the same properties a clip has)."
+        }
+      },
+      "required": [
+        "id",
+        "start",
+        "duration",
+        "enabled",
+        "markers",
+        "content",
+        "style",
+        "box",
+        "visual",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "TextStyle": {
+      "description": "The look of a text item (WP-3A.01).",
+      "properties": {
+        "align": {
+          "$ref": "#/$defs/TextAlign",
+          "description": "Horizontal alignment."
+        },
+        "auto_fit": {
+          "$ref": "#/$defs/AutoFit",
+          "description": "What to do when the text does not fit."
+        },
+        "background": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Background"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A box behind the text, if any."
+        },
+        "case_transform": {
+          "$ref": "#/$defs/CaseTransform",
+          "description": "Case applied at layout."
+        },
+        "direction": {
+          "$ref": "#/$defs/TextDirection",
+          "description": "Base direction."
+        },
+        "fill": {
+          "$ref": "#/$defs/Fill",
+          "description": "The glyph fill."
+        },
+        "font": {
+          "$ref": "#/$defs/FontSpec",
+          "description": "The font."
+        },
+        "glow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Glow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A halo, if any."
+        },
+        "letter_spacing": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Extra space between letters in em, -1 to 10 (animatable: `text.letter_spacing`)."
+        },
+        "line_height": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Line height as a multiple of the size, 0.1 to 10 (animatable: `text.line_height`)."
+        },
+        "shadows": {
+          "default": [],
+          "description": "Drop shadows (at most 8).",
+          "items": {
+            "$ref": "#/$defs/Shadow"
+          },
+          "type": "array"
+        },
+        "size": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Font size in reference pixels, 1 to 4000 (animatable: `text.size`)."
+        },
+        "strokes": {
+          "default": [],
+          "description": "Outlines, drawn in order (at most 8).",
+          "items": {
+            "$ref": "#/$defs/Stroke"
+          },
+          "type": "array"
+        },
+        "v_align": {
+          "$ref": "#/$defs/VerticalAlign",
+          "description": "Vertical alignment in the box."
+        }
+      },
+      "required": [
+        "font",
+        "size",
+        "fill",
+        "letter_spacing",
+        "line_height",
+        "align",
+        "v_align",
+        "case_transform",
+        "auto_fit",
+        "direction"
+      ],
+      "type": "object"
+    },
+    "TextStyleRef": {
+      "description": "Where an item's style comes from.",
+      "oneOf": [
+        {
+          "description": "A built-in style by name (see [`builtin_styles`]).",
+          "properties": {
+            "name": {
+              "description": "`title`, `subtitle` or `body`.",
+              "type": "string"
+            },
+            "source": {
+              "const": "named",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A style of its own.",
+          "properties": {
+            "source": {
+              "const": "inline",
+              "type": "string"
+            },
+            "style": {
+              "$ref": "#/$defs/TextStyle",
+              "description": "The style."
+            }
+          },
+          "required": [
+            "source",
+            "style"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -2087,6 +3037,26 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "y"
       ],
       "type": "object"
+    },
+    "VerticalAlign": {
+      "description": "Vertical alignment of the text block in the box.",
+      "oneOf": [
+        {
+          "const": "top",
+          "description": "Against the top edge.",
+          "type": "string"
+        },
+        {
+          "const": "middle",
+          "description": "In the middle.",
+          "type": "string"
+        },
+        {
+          "const": "bottom",
+          "description": "Against the bottom edge.",
+          "type": "string"
+        }
+      ]
     },
     "VisualProps": {
       "description": "Visual properties of an item (arch §4.2 `VisualProps`; keyframes §7).",

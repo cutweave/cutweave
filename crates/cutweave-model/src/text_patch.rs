@@ -65,11 +65,66 @@ fn partial_schema<T: JsonSchema>(generator: &mut SchemaGenerator, what: &str) ->
     Schema::try_from(schema).unwrap_or_default()
 }
 
+/// The `patch` value at JSON Pointer `pointer`, if the patch names it.
+fn patch_at<'a>(patch: &'a Map<String, Value>, pointer: &str) -> Option<&'a Value> {
+    let mut cur: Option<&Value> = None;
+    for (i, seg) in pointer.split('/').skip(1).enumerate() {
+        let seg = seg.replace("~1", "/").replace("~0", "~");
+        cur = match (i, cur) {
+            (0, _) => patch.get(&seg),
+            (_, Some(Value::Object(m))) => m.get(&seg),
+            (_, Some(Value::Array(a))) => seg.parse::<usize>().ok().and_then(|n| a.get(n)),
+            _ => None,
+        };
+        cur?;
+    }
+    cur
+}
+
+/// serde cannot say where inside an internally tagged enum (a fill) a value is wrong: it names
+/// the enum. Narrow the path to the first key of the patch's value there that fails alone.
+fn refine<T: Serialize + serde::de::DeserializeOwned>(
+    base: &Value,
+    patch: &Map<String, Value>,
+    mut pointer: String,
+) -> String {
+    for _ in 0..4 {
+        let Some(Value::Object(inner)) = patch_at(patch, &pointer) else {
+            break;
+        };
+        let failing = inner.keys().find(|key| {
+            let mut one = Value::Object(Map::new());
+            // Build `{.. pointer ..: {key: value}}` and merge it onto the base.
+            let mut leaf = Map::new();
+            leaf.insert((*key).clone(), inner[*key].clone());
+            let mut node = Value::Object(leaf);
+            for seg in pointer.split('/').skip(1).collect::<Vec<_>>().into_iter().rev() {
+                let seg = seg.replace("~1", "/").replace("~0", "~");
+                let mut m = Map::new();
+                m.insert(seg, node);
+                node = Value::Object(m);
+            }
+            let mut merged = base.clone();
+            merge(&mut one, &node);
+            merge(&mut merged, &one);
+            serde_json::from_value::<T>(merged).is_err()
+        });
+        match failing {
+            Some(key) => {
+                pointer = format!("{pointer}/{}", key.replace('~', "~0").replace('/', "~1"));
+            }
+            None => break,
+        }
+    }
+    pointer
+}
+
 fn patched<T: Serialize + serde::de::DeserializeOwned>(
     base: &T,
     patch: &Map<String, Value>,
 ) -> Result<T, TextError> {
-    let mut merged = serde_json::to_value(base).map_err(|e| TextError::new("", e.to_string()))?;
+    let base_json = serde_json::to_value(base).map_err(|e| TextError::new("", e.to_string()))?;
+    let mut merged = base_json.clone();
     merge(&mut merged, &Value::Object(patch.clone()));
     serde_path_to_error::deserialize::<_, T>(&merged).map_err(|e| {
         let mut path = pointer_of(e.path());
@@ -78,6 +133,7 @@ fn patched<T: Serialize + serde::de::DeserializeOwned>(
         {
             path = format!("/{key}");
         }
+        let path = refine::<T>(&base_json, patch, path);
         TextError::new(path, e.inner().to_string())
     })
 }
@@ -203,7 +259,7 @@ mod tests {
         let e = patch(&json!({"fill": {"kind": "solid", "color": "red"}}))
             .apply(&style)
             .unwrap_err();
-        assert!(e.path.starts_with("/fill"), "{e}");
+        assert_eq!(e.path, "/fill/color", "{e}");
         let e = patch(&json!({"colour": "#fff"})).apply(&style).unwrap_err();
         assert_eq!(e.path, "/colour");
     }

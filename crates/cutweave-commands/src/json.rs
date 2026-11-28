@@ -224,6 +224,28 @@ fn edit_array(
 /// share no member, and their halfway states are not valid values (keyframes §9.1). So is a
 /// fraction `{num, den}` (a frame rate, a clip speed): it is kept in lowest terms, so a halfway
 /// `{2, 2}` would read back as `{1, 1}`.
+/// Whether two objects at `path` are different variants of a tagged union whose variants share
+/// no fields, so that their halfway states are not valid values (a text item's style, `source`
+/// `named` or `inline`, and a text fill, `kind` `solid`, `linear` or `radial`, WP-3A.01): such
+/// a value is replaced whole. Other `kind` fields (a marker's, a media asset's) are still
+/// diffed field by field.
+fn tag_differs(
+    path: &DocPath,
+    before: &serde_json::Map<String, Value>,
+    after: &serde_json::Map<String, Value>,
+) -> bool {
+    let key = match path.split_last() {
+        Some((_, last)) if last == "style" => "source",
+        Some((_, last)) if last == "fill" => "kind",
+        _ => return false,
+    };
+    let tag = |m: &serde_json::Map<String, Value>| {
+        m.get(key).and_then(Value::as_str).map(str::to_owned)
+    };
+    let (b, a) = (tag(before), tag(after));
+    b.is_some() && a.is_some() && b != a
+}
+
 pub(crate) fn diff(path: &DocPath, before: &Value, after: &Value, out: &mut Vec<PatchOp>) {
     if json_eq(before, after) {
         return;
@@ -234,6 +256,7 @@ pub(crate) fn diff(path: &DocPath, before: &Value, after: &Value, out: &mut Vec<
     if let (Value::Object(b), Value::Object(a)) = (before, after)
         && b.contains_key("keyframes") == a.contains_key("keyframes")
         && !(fraction(b) && fraction(a))
+        && !tag_differs(path, b, a)
     {
         for (key, old) in b {
             if !a.contains_key(key) {
@@ -283,6 +306,38 @@ mod tests {
             matches!(&out[0], PatchOp::Replace { path, .. } if path.to_string() == "/speed"),
             "{out:?}"
         );
+    }
+
+    #[test]
+    fn a_text_style_and_fill_that_change_variant_are_replaced_whole() {
+        let mut out = Vec::new();
+        let before = json!({"style": {"source": "named", "name": "title"}});
+        let after = json!({"style": {"source": "inline", "style": {"size": 4}}});
+        diff(&DocPath::root(), &before, &after, &mut out);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(out[0].path().to_string(), "/style");
+        // The same variant is diffed field by field, and so is another `kind` field.
+        let mut out = Vec::new();
+        let (b, a) = (
+            json!({"fill": {"kind": "solid", "color": "#000000"}}),
+            json!({"fill": {"kind": "solid", "color": "#ffffff"}}),
+        );
+        diff(&DocPath::root(), &b, &a, &mut out);
+        assert_eq!(out[0].path().to_string(), "/fill/color");
+        let mut out = Vec::new();
+        let (b, a) = (
+            json!({"fill": {"kind": "solid", "color": "#000000"}}),
+            json!({"fill": {"kind": "linear", "angle": 0, "stops": []}}),
+        );
+        diff(&DocPath::root(), &b, &a, &mut out);
+        assert_eq!(out.len(), 1, "{out:?}");
+        let mut out = Vec::new();
+        let (b, a) = (
+            json!({"marker": {"kind": "note"}}),
+            json!({"marker": {"kind": "chapter"}}),
+        );
+        diff(&DocPath::root(), &b, &a, &mut out);
+        assert_eq!(out[0].path().to_string(), "/marker/kind");
     }
 
     #[test]

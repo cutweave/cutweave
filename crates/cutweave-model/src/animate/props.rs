@@ -400,10 +400,19 @@ impl JsonSchema for PropId {
         "PropId".into()
     }
 
+    /// The schema lists the clip and visual properties only. The three text properties
+    /// (`text.size`, `text.letter_spacing`, `text.line_height`, WP-3A.01) are accepted all the
+    /// same and named in the description: listing them would change the `tools/list` result of
+    /// every profile (`keyframe_set` is a listed tool), which R37 keeps byte-identical until
+    /// the standard budget is next decided.
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        let ids: Vec<&str> = PropId::ALL.iter().map(|p| p.as_str()).collect();
+        let ids: Vec<&str> = PropId::ALL
+            .iter()
+            .filter(|p| !p.is_text_style())
+            .map(|p| p.as_str())
+            .collect();
         json_schema!({
-            "description": "An animatable property of an item.",
+            "description": "An animatable property of an item. Text items also take text.size, text.letter_spacing and text.line_height.",
             "type": "string",
             "enum": ids
         })
