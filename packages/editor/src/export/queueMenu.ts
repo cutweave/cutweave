@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The export queue row's menu (`export.row`, WP-2G.04, plan in research 09 §6): Cancel, Retry,
-// Move up, Move down, Open file, Reveal file, Copy error, Remove from list. The queue's own commands are UI
+// Move up, Move down, Open file, Reveal file, Copy error (the error code and the message, ADR-0038),
+// Remove from list. The queue's own commands are UI
 // commands over the engine's `export.*` queue commands, so the list follows at once; reveal and
 // copy are the shared host commands; Open file (WP-2G.04b) asks main to open the exported file.
 import type { MenuServices } from "../menus/services.ts";
 import type { MenuContext, MenuSurfaceDef, MenuTarget } from "../menus/types.ts";
 import type { QueueRowData } from "./ExportQueuePanel.tsx";
-import { moveTarget, queueStore } from "./exportQueue.ts";
+import { errorText, moveTarget, queueStore } from "./exportQueue.ts";
 import { exportQueue } from "./useExport.ts";
 
 const rowOf = (ctx: { readonly target: MenuTarget }): QueueRowData =>
@@ -77,7 +78,7 @@ export const EXPORT_ROW_SURFACE: MenuSurfaceDef = {
       label: { key: "exportQueue.menu.copyError" },
       enabledIf: (ctx) => rowOf(ctx).error !== null,
       reason: "exportQueue.menu.noError",
-      args: (ctx) => ({ text: rowOf(ctx).error ?? "" }),
+      args: (ctx) => ({ text: errorText(rowOf(ctx).error, rowOf(ctx).errorCode) }),
     },
     {
       command: "export.queue_remove",

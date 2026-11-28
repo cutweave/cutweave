@@ -5,12 +5,15 @@
 // picker lists it under "Your presets" and chooses it); export with it and minimize the window:
 // the OS notification says the export is complete; back in the app, the Exports panel opens the
 // file from its row and from the row's menu, and the file has the preset's size; with
-// Settings > Notifications > Finished exports off, the next export is not announced; delete the
-// preset in the dialog and bring it back with Undo; save, quit and start the app again: the
-// preset is still under "Your presets".
+// Settings > Notifications > Finished exports off, the next export is not announced; an export
+// queued into a folder that is then removed fails, and its row shows the engine's error code
+// before the message (ADR-0038; Copy error takes both); delete the preset in the dialog and bring
+// it back with Undo; save, quit and start the app again: the preset is still under "Your
+// presets" and the failed export still shows its code.
 // Needs the FFmpeg engine and the corpus (`just corpus`); without them the flow skips and says
 // why. Stubbed, in main, at the edge of the OS only: the save dialog, the shell's "open with the
 // default app" and the notification the OS would draw.
+import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures.ts";
@@ -113,20 +116,37 @@ async function minimize(app: ElectronApplication, minimized: boolean): Promise<v
     .toBe(minimized);
 }
 
-/** View > Panels > Exports, with real clicks. */
+/**
+ * View > Panels > Exports, with real clicks. The item is a checkbox: when the panel is already
+ * open (the layout came back with the project), the menu is closed again instead.
+ */
 async function openExportsPanel(page: Page): Promise<Locator> {
   await page
     .getByRole("menubar", { name: "Application menu" })
     .getByRole("menuitem", { name: "View", exact: true })
     .click();
   await page.getByRole("menu", { name: "View" }).getByRole("menuitem", { name: "Panels" }).click();
-  await page
+  const item = page
     .getByRole("menu", { name: "Panels" })
-    .getByRole("menuitemcheckbox", { name: "Exports", exact: true })
-    .click();
+    .getByRole("menuitemcheckbox", { name: "Exports", exact: true });
+  await expect(item).toBeVisible();
+  if ((await item.getAttribute("aria-checked")) === "true") {
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect(item).toBeHidden();
+  } else {
+    await item.click();
+  }
   const panel = page.getByTestId("export-queue");
   await expect(panel).toBeVisible();
   return panel;
+}
+
+/** A failed row's reason: the engine's error code as code text, then the message. */
+async function expectFailure(row: Locator, code: string): Promise<void> {
+  const why = row.getByRole("alert");
+  await expect(why.locator("code")).toHaveText(code);
+  await expect(why).toContainText(/Failed: .*lost\.mp4/);
 }
 
 const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
@@ -271,6 +291,35 @@ test.describe("F65 your own export preset, Open file and the notification", () =
       await expect(panel.getByRole("listitem", { name: "quiet.mp4, Done" })).toBeVisible(BOUND);
       expect(await os.notices()).toHaveLength(1);
 
+      // An export that cannot be written: queue it into a folder while the queue is paused,
+      // remove the folder (as in the file manager) and resume. The row says why: the engine's
+      // error code, then the message. Copy error takes both.
+      const drafts = path.join(work.dir, "Own", "drafts");
+      mkdirSync(drafts);
+      await panel.getByRole("button", { name: "Pause the queue" }).click();
+      await expect(panel.getByRole("button", { name: "Resume the queue" })).toBeVisible(BOUND);
+      await shortcut(app, "Control+M");
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel("Save to").fill(path.join(drafts, "lost.mp4"));
+      await dialog.getByRole("button", { name: "Add to queue" }).click();
+      await expect(dialog).toBeHidden();
+      await expect(panel.getByRole("listitem", { name: "lost.mp4, Waiting" })).toBeVisible(BOUND);
+      rmSync(drafts, { recursive: true });
+      await panel.getByRole("button", { name: "Resume the queue" }).click();
+      const lost = panel.getByRole("listitem", { name: "lost.mp4, Failed" });
+      await expect(lost).toBeVisible(EXPORT_BOUND);
+      await expectFailure(lost, "output_unwritable");
+      await expect(lost.getByRole("button", { name: "Retry export" })).toBeVisible();
+      await snapshot(page, info, "failed export with its code");
+      await lost.click({ button: "right" });
+      await page
+        .getByRole("menu", { name: "Export actions for lost.mp4" })
+        .getByRole("menuitem", { name: "Copy error" })
+        .click();
+      await expect
+        .poll(() => app.evaluate(({ clipboard }) => clipboard.readText()), BOUND)
+        .toMatch(/^output_unwritable: .*lost\.mp4/);
+
       // Delete the preset in the dialog; Undo brings it back.
       await shortcut(app, "Control+M");
       await expect(dialog).toBeVisible();
@@ -317,6 +366,13 @@ test.describe("F65 your own export preset, Open file and the notification", () =
       await kept.selectOption("review-copy");
       await expect(again.getByTestId("export-summary")).toContainText("1280 × 720", BOUND);
       await snapshot(relaunched.page, info, "preset after relaunch");
+      // The queue is the project's: the failed export is still listed, with its code.
+      await again.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(again).toBeHidden();
+      const reopened = await openExportsPanel(relaunched.page);
+      const still = reopened.getByRole("listitem", { name: "lost.mp4, Failed" });
+      await expect(still).toBeVisible(BOUND);
+      await expectFailure(still, "output_unwritable");
     } finally {
       await close();
       work.remove();

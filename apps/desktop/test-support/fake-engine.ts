@@ -332,6 +332,8 @@ const jobInfo = (job: FakeJob) => ({
   progress: { fraction: job.fraction, message: job.message },
   cancel_requested: job.cancelRequested,
   error: job.error,
+  // As the engine does (ADR-0038): a failed job has a code, `failed` when nothing more specific.
+  error_code: job.state === "failed" ? "failed" : null,
 });
 
 function finishJob(job: FakeJob, state: FakeJob["state"], error: string | null = null): void {

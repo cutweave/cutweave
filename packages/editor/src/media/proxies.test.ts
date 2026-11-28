@@ -50,6 +50,7 @@ const job = (n: number, state: JobInfo["state"], fraction = 0): JobInfo => ({
   progress: { fraction, message: null } as JobInfo["progress"],
   cancel_requested: false,
   error: state === "failed" ? "disk full" : null,
+  error_code: state === "failed" ? "failed" : null,
 });
 
 /** An engine that holds `proxies`; generating queues job 9 for each asset, deleting evicts. */
