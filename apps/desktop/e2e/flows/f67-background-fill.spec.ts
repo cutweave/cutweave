@@ -3,7 +3,8 @@
 // (9:16) sequence with black above and below it. In the Inspector's Sequence section, Fill >
 // Blurred picture fills the whole frame with a blurred, dimmer copy of the photo; Dim at 100%
 // takes it back to black, Undo brings it back; Fill > Color only removes it. Read from the
-// pixels on screen and from the document.
+// pixels on screen and from the document. Fill > Transparent: File > Export… says that a file
+// without an alpha channel shows the background black (a warning, issue #238).
 //
 // The photo is written by the flow (a flat-colour PNG): no media is committed. Needs an engine
 // built with FFmpeg (`just e2e-flows` builds it when the bundle is set up); without it the flow
@@ -14,6 +15,7 @@ import { deflateSync } from "node:zlib";
 import type { Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import {
+  chooseMenu,
   createProject,
   dropCard,
   editorCaughtUp,
@@ -274,6 +276,37 @@ test.describe("F67 background fill", () => {
         .toBeNull();
       await expect.poll(() => look(page), { timeout: 30_000 }).toBe("photo");
       await expect(panel.getByRole("slider", { name: "Blur" })).toBeHidden();
+
+      // File > Export… with the color background: nothing about transparency.
+      const dialog = page.getByRole("dialog", { name: "Export video" });
+      const notes = dialog.getByRole("list", { name: "Platform notes" });
+      const transparentNote = dialog.locator('[data-code="TransparentBackground"]');
+      const startExport = dialog.getByRole("button", { name: "Export", exact: true });
+      await editorCaughtUp(page);
+      await chooseMenu(page, app, "File", "Export…");
+      await expect(dialog).toBeVisible(BOUND);
+      await expect(startExport).toBeEnabled(BOUND);
+      await expect(transparentNote).toHaveCount(0);
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(dialog).toBeHidden();
+
+      // Transparent: the document has it, and Export says what an MP4 will show instead. It is
+      // a warning among the notes: Export stays possible.
+      await fill.selectOption({ label: "Transparent" });
+      await expect
+        .poll(async () => (await background(page)).background_fill, BOUND)
+        .toEqual({ kind: "transparent" });
+      await editorCaughtUp(page);
+      await chooseMenu(page, app, "File", "Export…");
+      await expect(dialog).toBeVisible(BOUND);
+      await expect(notes.locator('[data-code="TransparentBackground"]')).toContainText(
+        /background is transparent, but this format has no alpha channel.*black/,
+        BOUND,
+      );
+      await expect(startExport).toBeEnabled();
+      await snapshot(page, info, "transparent export warning");
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(dialog).toBeHidden();
     } finally {
       await closeApp();
       work.remove();

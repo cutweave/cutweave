@@ -376,6 +376,8 @@ export function warningText(
     }
     case "SoftwareEncoder":
       return { ...base, key: "export.warnings.software", vars: {} };
+    case "TransparentBackground":
+      return { ...base, key: "export.warnings.transparent", vars: {} };
     default:
       return { ...base, key: null, vars: {} };
   }

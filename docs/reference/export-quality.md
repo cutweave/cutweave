@@ -93,6 +93,10 @@ What each encoder takes:
 | `profile` | baseline, main, high | main, main10 | none | the six ProRes profiles | fixed by the encoder |
 | `pix_fmt` | yuv420p | yuv420p, yuv420p10le | the same | yuv422p10le, yuv444p10le, yuva444p10le (by profile) | by codec |
 
+- **Transparent background.** A sequence whose background fill is `transparent` exported to a file
+  without an alpha channel (everything but ProRes 4444 with `yuva444p10le`) has a black background
+  there. The export runs, with a `TransparentBackground` warning in the answer of
+  `export.resolve_preset`, `export.start` and `export.enqueue`; the Export dialog shows it.
 - **Hardware.** A setting only software takes makes a `hw: "auto"` export use the software encoder,
   with a `SoftwareEncoder` warning in the answer; with `hw: {"force": ...}` it is refused. The
   hardware mappings of `cbr` and the peak (NVENC `rc=cbr`, AMF `rc=cbr`, QSV `maxrate = b`, VA-API

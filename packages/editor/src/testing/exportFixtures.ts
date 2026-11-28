@@ -278,7 +278,7 @@ export function exportProject(
   width: number,
   height: number,
   seconds: number,
-  extra: { markers?: object; in_out?: object | null } = {},
+  extra: { markers?: object; in_out?: object | null; background_fill?: object | null } = {},
 ): Project {
   return {
     meta: { name: "Film" },
@@ -288,7 +288,12 @@ export function exportProject(
       seq_1: {
         id: "seq_1",
         name: "Main",
-        format: { width, height, frame_rate: { num: 30, den: 1 } },
+        format: {
+          width,
+          height,
+          frame_rate: { num: 30, den: 1 },
+          ...(extra.background_fill != null && { background_fill: extra.background_fill }),
+        },
         tracks: {
           trk_1: {
             id: "trk_1",
@@ -305,12 +310,39 @@ export function exportProject(
   } as unknown as Project;
 }
 
-/** A plausible `export.resolve_preset` answer, as the engine computes it for these presets. */
+/**
+ * A preset of the user's that keeps alpha (ProRes 4444 with the alpha pixel format): the only
+ * kind of preset whose file shows a transparent background (issue #238).
+ */
+export const ALPHA_PRESET: ExportPresetEntry = {
+  source: "user",
+  supported: true,
+  preset: spec({
+    id: "my-alpha",
+    name: "My alpha master",
+    container: "mov",
+    video: {
+      codec: "prores",
+      rate_control: { mode: "profile" },
+      profile: "4444",
+      pix_fmt: "yuva444p10le",
+      hw_preferred: false,
+    },
+    audio: { codec: "pcm", sample_rate: 48000, channels: 2 },
+  }),
+};
+
+/**
+ * A plausible `export.resolve_preset` answer, as the engine computes it for these presets.
+ * `transparent`: the sequence's background is transparent, which the engine warns about for
+ * every file that keeps no alpha channel.
+ */
 export function resolveFor(
   presetId: string,
-  seq: { width: number; height: number; seconds: number },
+  seq: { width: number; height: number; seconds: number; transparent?: boolean },
 ): ResolvePresetOutput {
-  const preset = PRESET_SPECS.find((p) => p.id === presetId) ?? PRESET_SPECS[0];
+  const preset =
+    [...PRESET_SPECS, ALPHA_PRESET.preset].find((p) => p.id === presetId) ?? PRESET_SPECS[0];
   const p = preset as ExportPresetSpec;
   const warnings: ResolvePresetOutput["warnings"] = [];
   let width = seq.width;
@@ -332,6 +364,10 @@ export function resolveFor(
   const max = p.limits?.max_duration_secs;
   if (max !== undefined && max !== null && seq.seconds > max) {
     warnings.push({ code: "DurationOverLimit", message: "too long" });
+  }
+  const alpha = p.video?.codec === "prores" && (p.video.pix_fmt ?? "").startsWith("yuva");
+  if (seq.transparent === true && !alpha) {
+    warnings.push({ code: "TransparentBackground", message: "transparent background" });
   }
   const rate = p.video?.rate_control;
   const kbps = rate?.mode === "vbr" || rate?.mode === "cbr" ? rate.bitrate_kbps : null;
