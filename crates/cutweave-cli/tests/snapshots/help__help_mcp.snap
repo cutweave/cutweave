@@ -16,7 +16,7 @@ Options:
           The tool profile: the same catalogs and budgets as the engine's HTTP endpoints. It is fixed for the whole session
 
           Possible values:
-          - minimal:   At most 12 tools, for small context windows; the rest through cutweave_execute
+          - minimal:   The smallest list, for small context windows; the rest through cutweave_execute
           - standard:  The core editing tools, for clients that load every tool definition at the start
           - full:      The standard list; every other command is found with cutweave_search_commands
           - described: The standard tools with parameter descriptions, for clients that load a tool's definition when it is needed (Claude Code, Copilot CLI)
