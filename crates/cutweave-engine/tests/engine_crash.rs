@@ -15,9 +15,10 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use cutweave_api::Credential;
+use cutweave_commands::{RequestId, TxId};
 use cutweave_engine::autosave::AutosaveConfig;
 use cutweave_engine::project_io::ProjectStore;
-use cutweave_engine::{Engine, EngineConfig, EngineMode};
+use cutweave_engine::{Call, Engine, EngineConfig, EngineMode};
 use engine_support::{TempDir, empty_project, must, wait_for};
 use serde_json::json;
 
@@ -207,4 +208,120 @@ fn a_save_after_project_recover_reports_clean() {
     engine.shutdown();
     let reopened = ProjectStore::open(&folder).unwrap();
     assert!(reopened.project.meta.name.starts_with("Edit "));
+}
+
+const OPEN_TX_CHILD_ENV: &str = "CUTWEAVE_ENGINE_CRASH_OPEN_TX_CHILD";
+
+/// Child half of the issue #251 test: one journaled rename, then a gesture with a rename in
+/// it that is still open when the parent kills us. Prints the gesture's id as `TX <id>`.
+#[test]
+fn child_engine_with_an_open_gesture() {
+    let Ok(folder) = std::env::var(OPEN_TX_CHILD_ENV) else {
+        return; // a normal test run: nothing to do
+    };
+    let mut config = EngineConfig::new(EngineMode::Headless);
+    config.project = Some(folder.into());
+    let engine = Engine::start(config).unwrap();
+    let conn = engine
+        .handle()
+        .connect(&Credential::Agent("cli".into()))
+        .unwrap();
+    must(&conn, "project.rename", json!({ "name": "Journaled" }));
+    let begin = json!({ "kind": "gesture", "label": "Drag" });
+    let opened = must(&conn, "edit.begin_tx", begin);
+    let tx: TxId = serde_json::from_value(opened["tx"].clone()).unwrap();
+    conn.call(Call::new("project.rename", json!({ "name": "Lost" })).in_tx(tx))
+        .unwrap();
+    let stdout = std::io::stdout();
+    {
+        let mut out = stdout.lock();
+        // Its own line: the test harness prints the test's name before the first one.
+        let _ = writeln!(out, "READY");
+        let _ = writeln!(out, "TX {tx}");
+        let _ = out.flush();
+    }
+    // The parent kills us; never shut down cleanly.
+    std::thread::sleep(Duration::from_secs(120));
+    drop(engine);
+}
+
+/// Issue #251: an engine is killed with gesture A open (the journal never saw it). After the
+/// restart a client opens gesture B and then sends A's commit and cancel again, naming A. The
+/// restarted engine numbers its transactions past every id the killed one issued, so neither
+/// reaches B: both are `not_found`, and B stays open with its change until its owner commits.
+#[test]
+fn a_close_sent_again_for_a_gesture_the_engine_died_with_never_reaches_a_new_one() {
+    let t = TempDir::new("crash-tx-ids");
+    let folder = empty_project(t.path(), "CrashTx");
+    {
+        let mut config = EngineConfig::new(EngineMode::Oneshot);
+        config.project = Some(folder.clone());
+        let engine = Engine::start(config).unwrap();
+        let conn = engine
+            .handle()
+            .connect(&Credential::Agent("cli".into()))
+            .unwrap();
+        must(&conn, "project.new", json!({ "name": "Saved" }));
+        must(&conn, "project.save", json!({}));
+    }
+    let a: TxId = {
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "child_engine_with_an_open_gesture",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(OPEN_TX_CHILD_ENV, &folder)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let lines = BufReader::new(child.stdout.take().unwrap()).lines();
+        let id = lines
+            .map_while(Result::ok)
+            .find_map(|line| line.strip_prefix("TX ").map(|id| id.trim().to_owned()));
+        child.kill().unwrap(); // no cleanup runs in the child
+        child.wait().unwrap();
+        id.expect("the child opened no gesture").parse().unwrap()
+    };
+
+    let mut config = EngineConfig::new(EngineMode::Headless);
+    config.project = Some(folder.clone());
+    config.autosave = Some(AutosaveConfig {
+        idle: Duration::from_secs(3600),
+        interval: Duration::from_secs(3600),
+        poll: Duration::from_secs(3600),
+        ..AutosaveConfig::default()
+    });
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let conn = h.connect(&Credential::Agent("cli".into())).unwrap();
+    must(&conn, "project.recover", json!({}));
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "Journaled");
+
+    let begin = json!({ "kind": "gesture", "label": "Drag" });
+    let opened = must(&conn, "edit.begin_tx", begin);
+    let b: TxId = serde_json::from_value(opened["tx"].clone()).unwrap();
+    assert!(b > a, "{b} was issued after a restart that followed {a}");
+    conn.call(Call::new("project.rename", json!({ "name": "During B" })).in_tx(b))
+        .unwrap();
+
+    for (n, close) in [(1, "edit.commit_tx"), (2, "edit.cancel_tx")] {
+        let id = RequestId::from_u128(0x0190_0000_0000_7000_8000_0000_0000_0000 | n);
+        let err = conn
+            .call(Call::new(close, json!({ "tx": a })).with_request_id(id))
+            .unwrap_err();
+        assert_eq!(err.code(), "not_found", "{close}: {err}");
+        let locks = must(&conn, "edit.locks", json!({}));
+        let open = locks["transactions"].as_array().unwrap();
+        assert_eq!(open.len(), 1, "{close}: {locks}");
+        assert_eq!(open[0]["tx"], json!(b), "{close}: {locks}");
+        assert_eq!(h.snapshot().unwrap().doc.meta.name, "During B");
+    }
+    let committed = must(&conn, "edit.commit_tx", json!({ "tx": b }));
+    assert_eq!(committed["changed"], true);
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "During B");
+    drop(conn);
+    engine.shutdown();
 }

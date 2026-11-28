@@ -552,3 +552,212 @@ fn a_cancel_or_commit_the_journal_never_had_is_refused_after_a_restart() {
     assert_eq!(h.snapshot().doc, saved.doc);
     assert_eq!(h.snapshot().rev, saved.rev);
 }
+
+/// One engine run of the issue #251 tests: an actor whose transaction ids are per run.
+fn run_of(
+    doc: cutweave_model::Project,
+    rev: Rev,
+    clock: &Arc<ManualClock>,
+    journal: &Remembering,
+) -> DocActor {
+    DocActor::spawn(
+        config(doc)
+            .with_rev(rev)
+            .with_clock(clock.clone())
+            .with_journal(Box::new(journal.clone()))
+            .with_tx_ids_per_run(),
+    )
+    .unwrap()
+}
+
+/// Opens a gesture under request id `id` and appends one clip to `track` in it.
+fn open_drag(
+    h: &cutweave_commands::DocHandle,
+    ctx: &ActorCtx,
+    id: u128,
+    track: cutweave_model::TrackId,
+) -> TxId {
+    let begin = json!({"kind": "gesture", "label": "Drag"});
+    let opened = h
+        .submit(request(id, ctx, "edit.begin_tx", begin))
+        .wait()
+        .unwrap();
+    let tx = opened_tx(&opened);
+    let step = append_with(RequestId::from_u128(id + 1), ctx, track);
+    h.submit(step.in_tx(tx)).wait().unwrap();
+    tx
+}
+
+/// Issue #251: the engine died with transaction A open (never journaled), so the restarted
+/// engine knows nothing of A's id. It must not hand that id to a later transaction: a commit
+/// or cancel of A sent again after the client opened B would then close B. With per-run ids the
+/// resend finds no such transaction and B is untouched.
+#[test]
+fn a_close_naming_a_transaction_from_before_a_restart_never_reaches_a_later_one() {
+    for close in ["edit.commit_tx", "edit.cancel_tx"] {
+        let (doc, tracks, _) = project(2);
+        let clock = clock();
+        let journal = Remembering::default();
+        let ctx = ui();
+        let (saved, a) = {
+            let actor = run_of(doc, Rev::ZERO, &clock, &journal);
+            let h = actor.handle();
+            let a = open_drag(&h, &ctx, 81, tracks[0]);
+            (h.committed_snapshot(), a)
+            // The engine dies here, with A open.
+        };
+        assert_eq!(journal.records.lock().unwrap().len(), 0);
+
+        clock.advance(Duration::from_secs(1));
+        let restarted = run_of(saved.doc.clone(), saved.rev, &clock, &journal);
+        let h = restarted.handle();
+        let b = open_drag(&h, &ctx, 84, tracks[1]);
+        assert!(b > a, "{b} was issued after a restart that followed {a}");
+        let live = h.snapshot();
+        assert_eq!(live.doc.item_count(), 1, "B's clip shows live");
+
+        // A's close, sent again under its request id and naming A.
+        let err = h
+            .submit(request(83, &ctx, close, json!({"tx": a})))
+            .wait()
+            .unwrap_err();
+        assert!(
+            matches!(&err, CmdError::NotFound { id, .. } if *id == a.to_string()),
+            "{close}: {err:?}"
+        );
+        // B is as it was: open, with its one step, still live and uncommitted.
+        let steps = h
+            .run(move |state| state.transaction(b).map(|t| t.steps))
+            .wait()
+            .unwrap();
+        assert_eq!(steps, Some(1), "{close}");
+        assert_eq!(h.snapshot().doc, live.doc);
+        assert_eq!(h.snapshot().rev, live.rev);
+        assert_eq!(h.committed_snapshot().doc, saved.doc);
+        // And its owner still closes it.
+        let closed = h
+            .submit(request(86, &ctx, "edit.commit_tx", json!({"tx": b})))
+            .wait()
+            .unwrap();
+        assert_eq!(closed.output["changed"], true);
+        assert_eq!(h.committed_snapshot().doc.item_count(), 1);
+    }
+}
+
+/// Per-run ids never go below what the journal holds: when the clock stepped back across the
+/// restart, numbering continues past the last journaled transaction. A frozen clock
+/// (`--deterministic-ids`) keeps the plain numbering.
+#[test]
+fn per_run_transaction_ids_continue_past_the_journaled_ones() {
+    let (doc, tracks, _) = project(1);
+    let clock = clock();
+    let journal = Remembering::default();
+    let ctx = ui();
+    let actor = run_of(doc, Rev::ZERO, &clock, &journal);
+    let h = actor.handle();
+    let first = open_drag(&h, &ctx, 1, tracks[0]);
+    h.submit(request(3, &ctx, "edit.commit_tx", json!({"tx": first})))
+        .wait()
+        .unwrap();
+    let saved = h.committed_snapshot();
+    drop(actor);
+
+    let earlier = Arc::new(ManualClock::new(WallTime::from_millis(1_000)));
+    let restarted = DocActor::spawn(
+        config(saved.doc.clone())
+            .with_rev(saved.rev)
+            .with_ids(Box::new(SeededGen::new(43)))
+            .with_clock(earlier)
+            .with_first_tx_id(TxId::new(first.get() + 1))
+            .with_tx_ids_per_run(),
+    )
+    .unwrap();
+    let next = open_drag(&restarted.handle(), &ctx, 4, tracks[0]);
+    assert_eq!(next.get(), first.get() + 1);
+
+    let (doc, tracks, _) = project(1);
+    let frozen = Arc::new(ManualClock::new(WallTime::UNIX_EPOCH));
+    let actor = run_of(doc, Rev::ZERO, &frozen, &Remembering::default());
+    assert_eq!(open_drag(&actor.handle(), &ctx, 1, tracks[0]), TxId::new(1));
+}
+
+/// What issue #251 left open (ADR-0043, Proposed): a commit or cancel that names no
+/// transaction means "this connection's open one", so one sent again after the client opened
+/// another transaction closes that one. Nothing in the request tells the engine it is a
+/// repeat; a client that sends a close again must name the transaction, as the editor, the
+/// CLI and the MCP server do. Pinned so it only changes on purpose.
+#[test]
+fn a_close_that_names_no_transaction_means_the_connections_open_one() {
+    let (doc, tracks, _) = project(2);
+    let clock = clock();
+    let journal = Remembering::default();
+    let ctx = ui();
+    let saved = {
+        let actor = run_of(doc, Rev::ZERO, &clock, &journal);
+        let h = actor.handle();
+        open_drag(&h, &ctx, 81, tracks[0]);
+        h.committed_snapshot()
+    };
+    clock.advance(Duration::from_secs(1));
+    let restarted = run_of(saved.doc.clone(), saved.rev, &clock, &journal);
+    let h = restarted.handle();
+    let b = open_drag(&h, &ctx, 84, tracks[1]);
+    let closed = h
+        .submit(request(83, &ctx, "edit.commit_tx", json!({})))
+        .wait()
+        .unwrap();
+    assert_eq!(closed.output["tx"], json!(b));
+    assert_eq!(h.committed_snapshot().doc.item_count(), 1);
+}
+
+/// Leftover of issue #235, pinned (ADR-0043, Proposed): a commit of a transaction that changed
+/// nothing writes no journal record. Live, its repeat gets the result back; after a restart
+/// nothing remembers it, and it is refused like a commit that never ran. Nothing was lost.
+#[test]
+fn an_empty_commit_sent_again_after_a_restart_is_refused() {
+    let (doc, _, _) = project(1);
+    let journal = Remembering::default();
+    let ctx = ui();
+    let commit = |tx: Option<TxId>| {
+        let params = tx.map_or(json!({}), |tx| json!({"tx": tx}));
+        request(92, &ctx, "edit.commit_tx", params)
+    };
+    let (saved, tx) = {
+        let actor = DocActor::spawn(config(doc).with_journal(Box::new(journal.clone()))).unwrap();
+        let h = actor.handle();
+        let begin = json!({"kind": "gesture", "label": "Drag"});
+        let opened = h
+            .submit(request(91, &ctx, "edit.begin_tx", begin))
+            .wait()
+            .unwrap();
+        let tx = opened_tx(&opened);
+        let committed = h.submit(commit(Some(tx))).wait().unwrap();
+        assert_eq!(committed.output["changed"], false);
+        assert_eq!(committed.rev, Rev::ZERO);
+        let again = h.submit(commit(Some(tx))).wait().unwrap();
+        assert!(again.replayed);
+        assert_eq!(again.output, committed.output);
+        (h.committed_snapshot(), tx)
+    };
+    assert_eq!(journal.records.lock().unwrap().len(), 0);
+
+    let restarted = DocActor::spawn(
+        config(saved.doc.clone())
+            .with_rev(saved.rev)
+            .with_first_tx_id(TxId::new(tx.get() + 1)),
+    )
+    .unwrap();
+    let h = restarted.handle();
+    let err = h.submit(commit(Some(tx))).wait().unwrap_err();
+    assert!(matches!(err, CmdError::NotFound { .. }), "{err:?}");
+    let err = h
+        .submit(request(93, &ctx, "edit.commit_tx", json!({})))
+        .wait()
+        .unwrap_err();
+    assert_eq!(
+        err,
+        CmdError::invalid("/tx", "this connection has no open transaction")
+    );
+    assert_eq!(h.snapshot().doc, saved.doc);
+    assert_eq!(h.snapshot().rev, saved.rev);
+}

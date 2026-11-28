@@ -263,6 +263,254 @@ describe("diffView and panel layout", () => {
     expect(store.getState().sourceMarks).toEqual({});
   });
 
+  // Issue #233: a project opened (or closed) in the running app shows its own view, as a
+  // launch on it does, and nothing of the project before.
+  const viewA = () =>
+    engineView({
+      playhead: 1_411_200_000,
+      zoom: 240,
+      scroll: { x: 50, y: 6 },
+      selection: [{ kind: "item", id: "itm_a" as never }],
+      master_gain: 0.5,
+      panel_layout: panelLayoutOf({ workspaceId: "long-form", aspect: "16:9", layouts: {} }),
+    });
+  const viewB = () =>
+    engineView({
+      playhead: 2_822_400_000,
+      zoom: 64,
+      scroll: { x: 9, y: 1 },
+      selection: [{ kind: "item", id: "itm_b" as never }],
+      master_gain: 2,
+      panel_layout: panelLayoutOf({ workspaceId: "short-form", aspect: "1:1", layouts: {} }),
+    });
+
+  function setupTwo(first: UiState) {
+    const held = { view: first, gets: 0 };
+    const transport = new MockTransport()
+      .handle("view.get", () => {
+        held.gets += 1;
+        return held.view;
+      })
+      .handle("view.set", () => held.view);
+    const store = createViewStore();
+    const timers = new FakeTimers();
+    const sync = new ViewSync({ store, rpc: new RpcClient(transport), timers });
+    const sets = () => transport.requests.filter((r) => r.method === "view.set");
+    return { held, transport, store, timers, sync, sets };
+  }
+
+  it("another project opened: its playhead, zoom, scroll, selection, gain and layout are read", async () => {
+    const { held, transport, store, timers, sync, sets } = setupTwo(viewA());
+    await sync.restore();
+    expect(store.getState().zoom).toBe(240);
+    held.view = viewB();
+    transport.emit("project.opened", { name: "B" });
+    await settle();
+    const s = store.getState();
+    expect(s.playhead).toBe(2_822_400_000);
+    expect(s.zoom).toBe(64);
+    expect(s.scroll).toEqual({ x: 9, y: 1 });
+    expect(s.selection).toEqual([{ kind: "item", id: "itm_b" }]);
+    expect(s.masterGain).toBe(2);
+    expect(s.workspaceId).toBe("short-form");
+    expect(s.aspect).toBe("1:1");
+    // What was read is the engine's own: none of it goes back.
+    timers.advance(5_000);
+    await settle();
+    expect(sets()).toHaveLength(0);
+    // And back: the first project's view again.
+    held.view = viewA();
+    transport.emit("project.opened", { name: "A" });
+    await settle();
+    expect(store.getState().playhead).toBe(1_411_200_000);
+    expect(store.getState().zoom).toBe(240);
+    expect(store.getState().workspaceId).toBe("long-form");
+    timers.advance(5_000);
+    await settle();
+    expect(sets()).toHaveLength(0);
+  });
+
+  it("another project opened: at once nothing of the one before is left", async () => {
+    const { held, transport, store, sync } = setupTwo(viewA());
+    await sync.restore();
+    store.getState().setKeyframeLanes(["itm_a"]);
+    store.getState().setMuted(true);
+    held.view = viewB();
+    transport.emit("project.opened", { name: "B" });
+    // Before `view.get` answers: the view of a project nothing is known about yet.
+    const s = store.getState();
+    expect(s.playhead).toBe(0);
+    expect(s.zoom).toBeNull();
+    expect(s.scroll).toEqual({ x: 0, y: 0 });
+    expect(s.selection).toEqual([]);
+    expect(s.keyframeLanes).toEqual([]);
+    expect(s.masterGain).toBe(1);
+    expect(s.muted).toBe(false);
+    // The panels stay where they are until the project's own layout is known.
+    expect(s.workspaceId).toBe("long-form");
+    await settle();
+    expect(store.getState().keyframeLanes).toEqual([]);
+    expect(store.getState().selection).toEqual([{ kind: "item", id: "itm_b" }]);
+  });
+
+  it("a change still waiting when another project opens is not sent to it", async () => {
+    const { held, transport, store, timers, sync, sets } = setupTwo(viewA());
+    await sync.restore();
+    store.getState().setZoom(300);
+    store.getState().setSelection([{ kind: "item", id: "itm_a2" as never }]);
+    expect(timers.pending).toBe(1);
+    held.view = viewB();
+    transport.emit("project.opened", { name: "B" });
+    timers.advance(5_000);
+    await settle();
+    expect(sets()).toHaveLength(0);
+    expect(store.getState().zoom).toBe(64);
+    // A change made in the opened project goes to it, and only that change.
+    store.getState().setZoom(80);
+    timers.advance(VIEW_SYNC_DEBOUNCE_MS);
+    await settle();
+    expect(sets().map((r) => r.params)).toEqual([{ patch: { zoom: 80 } }]);
+  });
+
+  it("a project without a saved layout keeps the panels as they are, and sends nothing", async () => {
+    const { held, transport, store, timers, sync, sets } = setupTwo(viewA());
+    await sync.restore();
+    held.view = engineView({ playhead: 5, zoom: 100 });
+    transport.emit("project.opened", { name: "New" });
+    await settle();
+    expect(store.getState().workspaceId).toBe("long-form");
+    expect(store.getState().aspect).toBe("16:9");
+    expect(store.getState().playhead).toBe(5);
+    timers.advance(5_000);
+    await settle();
+    expect(sets()).toHaveLength(0);
+  });
+
+  it("the project closed: the untitled document's view is read, as a launch without a project does", async () => {
+    const { held, transport, store, timers, sync, sets } = setupTwo(viewA());
+    await sync.restore();
+    store.getState().setKeyframeLanes(["itm_a"]);
+    const gets = held.gets;
+    held.view = engineView({ zoom: 100 });
+    transport.emit("project.closed", {});
+    expect(store.getState().selection).toEqual([]);
+    expect(store.getState().keyframeLanes).toEqual([]);
+    expect(store.getState().playhead).toBe(0);
+    await settle();
+    expect(held.gets).toBe(gets + 1);
+    expect(store.getState().zoom).toBe(100);
+    expect(store.getState().playhead).toBe(0);
+    timers.advance(5_000);
+    await settle();
+    expect(sets()).toHaveLength(0);
+  });
+
+  it("two opens in a row: only the view of the last one is taken", async () => {
+    const answers: ((ui: UiState) => void)[] = [];
+    let first = true;
+    const transport = new MockTransport()
+      .handle("view.get", () => {
+        if (first) {
+          first = false;
+          return viewA();
+        }
+        return new Promise<UiState>((resolve) => answers.push(resolve));
+      })
+      .handle("view.set", () => viewA());
+    const store = createViewStore();
+    const sync = new ViewSync({ store, rpc: new RpcClient(transport), timers: new FakeTimers() });
+    await sync.restore();
+    // The second open comes while the first one's view is on its way.
+    transport.emit("project.opened", { name: "B" });
+    await settle();
+    transport.emit("project.opened", { name: "C" });
+    await settle();
+    expect(answers).toHaveLength(2);
+    answers[1]?.(engineView({ playhead: 33, zoom: 33 }));
+    await settle();
+    answers[0]?.(viewB());
+    await settle();
+    expect(store.getState().playhead).toBe(33);
+    expect(store.getState().zoom).toBe(33);
+  });
+
+  // The view names clips of the opened project: it is read once that project's document is in
+  // the mirror, as after a handshake. Read earlier, the timeline would check the selection
+  // against the document of the project before and drop it (issue #233).
+  it("another project opened: its view is read only once its document is in", async () => {
+    const held = { view: viewA(), gets: 0 };
+    const transport = new MockTransport()
+      .handle("view.get", () => {
+        held.gets += 1;
+        return held.view;
+      })
+      .handle("view.set", () => held.view);
+    const store = createViewStore();
+    let documentIn: () => void = () => {};
+    let asked = 0;
+    const sync = new ViewSync({
+      store,
+      rpc: new RpcClient(transport),
+      timers: new FakeTimers(),
+      documentReady: () => {
+        asked += 1;
+        return new Promise<void>((resolve) => {
+          documentIn = resolve;
+        });
+      },
+    });
+    await sync.restore();
+    expect(asked).toBe(0); // a handshake has its document already
+    const gets = held.gets;
+    held.view = viewB();
+    transport.emit("project.opened", { name: "B" });
+    await settle();
+    expect(asked).toBe(1);
+    // The old view is gone at once; the new one waits for the document.
+    expect(held.gets).toBe(gets);
+    expect(store.getState().selection).toEqual([]);
+    documentIn();
+    await settle();
+    expect(held.gets).toBe(gets + 1);
+    expect(store.getState().selection).toEqual([{ kind: "item", id: "itm_b" }]);
+    expect(store.getState().zoom).toBe(64);
+  });
+
+  it("reads the opened project's view all the same when its document could not be read", async () => {
+    const held = { view: viewA() };
+    const transport = new MockTransport()
+      .handle("view.get", () => held.view)
+      .handle("view.set", () => held.view);
+    const store = createViewStore();
+    const errors: unknown[] = [];
+    const sync = new ViewSync({
+      store,
+      rpc: new RpcClient(transport),
+      timers: new FakeTimers(),
+      onError: (e) => errors.push(e),
+      documentReady: () => Promise.reject(new Error("no snapshot")),
+    });
+    await sync.restore();
+    held.view = viewB();
+    transport.emit("project.opened", { name: "B" });
+    await settle();
+    expect(store.getState().zoom).toBe(64);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("leave() sends what is still waiting before the project is left", async () => {
+    const { store, timers, sync, sets } = setupTwo(viewA());
+    await sync.restore();
+    store.getState().setZoom(300);
+    expect(timers.pending).toBe(1);
+    await sync.leave();
+    expect(sets().map((r) => r.params)).toEqual([{ patch: { zoom: 300 } }]);
+    expect(timers.pending).toBe(0);
+    // Nothing waiting: nothing sent.
+    await sync.leave();
+    expect(sets()).toHaveLength(1);
+  });
+
   it("panelLayoutFrom narrows the opaque engine value", () => {
     expect(panelLayoutFrom(null)).toBeNull();
     expect(panelLayoutFrom({})).toBeNull();

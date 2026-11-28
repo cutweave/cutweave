@@ -115,4 +115,25 @@ describe("File > Open with unsaved changes", () => {
     expect(sessionStore.getState().name).toBe("Film");
     expect(toastStore.getState().notices).toEqual([]);
   });
+
+  // Issue #233: the view changes still waiting to be sent belong to the project being left.
+  it("sends the waiting view changes before it leaves the project", async () => {
+    const order: string[] = [];
+    engine.answer("project.open", () => {
+      order.push("open");
+      return opened;
+    });
+    projectController().setBeforeLeave(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      order.push("view");
+    });
+    expect(await projectController().open("C:\\p\\Other")).toBe(true);
+    expect(order).toEqual(["view", "open"]);
+  });
+
+  it("opens all the same when the view could not be sent", async () => {
+    projectController().setBeforeLeave(() => Promise.reject(new Error("gone")));
+    expect(await projectController().open("C:\\p\\Other")).toBe(true);
+    expect(opens()).toEqual([{ path: "C:\\p\\Other" }]);
+  });
 });

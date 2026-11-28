@@ -23,6 +23,7 @@ import { preferences, prefsStore } from "./prefs/prefsStore.ts";
 import { desktopFromWindow } from "./session/desktop.ts";
 import { openNoticeToast } from "./session/openNotices.ts";
 import { sessionStore } from "./session/sessionStore.ts";
+import { projectController } from "./session/useProject.ts";
 import { EditorShell } from "./shell/EditorShell.tsx";
 import { docStore } from "./state/docStore.ts";
 import { jobStore } from "./state/jobStore.ts";
@@ -118,6 +119,8 @@ async function boot(): Promise<void> {
             ),
           ),
     });
+    // Leaving a project (open another, close, new) first saves its view, as quitting does (#233).
+    projectController().setBeforeLeave(() => runtime.viewSync.leave());
     // Real thumbnails, filmstrips and waveforms once the engine is up and has media (WP-1I.03).
     startMediaHttp({ bridge, engine: engineStore, doc: docStore, jobs: jobStore });
     // Which media files are missing, asked again when a project opens or the window is back
