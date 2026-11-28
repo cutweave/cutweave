@@ -7,18 +7,17 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use cutweave_commands::{
-    Access, Committed, Patch, Transaction, apply_patch, apply_patch_json, diff,
+    Access, Committed, DocPath, Patch, PatchOp, Transaction, apply_patch, apply_patch_json, diff,
     effort::json_conversions, invert, json_eq,
 };
 use cutweave_model::{
     Clip, Duration, IdGen, Item, ItemId, Marker, MarkerId, MediaId, Project, SeededGen, Sequence,
     SequenceFormat, SequenceId, Time, Track, TrackId, TrackKind,
 };
+use serde_json::json;
 
 const CLIP: i64 = 705_600_000; // one second, in flicks
 
-// The sequence and the track are for the tests of the edits that follow.
-#[allow(dead_code)]
 struct Scene {
     doc: Project,
     sequence: SequenceId,
@@ -86,6 +85,51 @@ fn assert_is_the_diff(before: &Project, done: &Committed) {
     assert!(json_eq(&mirror, &serde_json::to_value(&done.doc).unwrap()));
     apply_patch_json(&mut mirror, &invert(&done.patch)).unwrap();
     assert!(json_eq(&mirror, &serde_json::to_value(before).unwrap()));
+}
+
+/// Shifts every clip of the track by one clip length, as a ripple does: one write of the
+/// sequence.
+fn ripple(d: &Scene) -> (Committed, u64) {
+    let (sequence, track) = (d.sequence, d.track);
+    committed(&d.doc, |tx| {
+        tx.update_sequence(sequence, |s| {
+            let lane = s.tracks.get_mut(&track).expect("track");
+            let ids: Vec<ItemId> = lane.items.iter().map(Item::id).rev().collect();
+            for id in ids {
+                lane.items.update(&id, |item| {
+                    let start = item.start().flicks();
+                    item.set_start(Time::from_flicks(start + CLIP).unwrap());
+                });
+            }
+            Ok(())
+        })
+        .unwrap();
+    })
+}
+
+#[test]
+fn a_ripple_converts_no_more_for_two_thousand_clips_than_for_twenty() {
+    let (small, large) = (doc(20, 0), doc(2000, 0));
+    let (few, few_work) = ripple(&small);
+    let (many, many_work) = ripple(&large);
+    assert_eq!(few.patch.len(), 20);
+    assert_eq!(many.patch.len(), 2000);
+    // One op per clip, on its start alone.
+    let first = large.items[0];
+    let path = DocPath::item(large.sequence, large.track, first).join("start");
+    assert!(many.patch.iter().any(|op| {
+        *op == PatchOp::Replace {
+            path: path.clone(),
+            old: json!(0),
+            value: json!(CLIP),
+        }
+    }));
+    assert_is_the_diff(&small.doc, &few);
+    assert_is_the_diff(&large.doc, &many);
+    // The sequence's own fields are compared in their JSON form, the clips are not: before
+    // the fix this was nine conversions for every clip.
+    assert_eq!(many_work, few_work, "the work grew with the clips");
+    assert!(many_work <= 8, "{many_work} conversions for one ripple");
 }
 
 /// Committing one write converts nothing: its ops are the transaction's patch as they are.

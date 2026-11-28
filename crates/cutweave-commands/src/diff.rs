@@ -178,7 +178,10 @@ fn diff_items(
                 }
                 std::cmp::Ordering::Equal => {
                     if !std::ptr::eq::<Item>(*bv, *av) && bv != av {
-                        diff_value(&path.join(bk), *bv, *av, out)?;
+                        let path = path.join(bk);
+                        if !diff_moved(&path, bv, av, out) {
+                            diff_value(&path, *bv, *av, out)?;
+                        }
                     }
                     b.next();
                     a.next();
@@ -195,6 +198,40 @@ fn diff_items(
             (None, None) => return Ok(()),
         }
     }
+}
+
+/// The op for two versions of an item that differ in nothing but `start`: what a ripple does
+/// to every item it shifts, so a ripple of 2,000 items is 2,000 of these (issue #231). It is
+/// the op [`diff_value`] finds (`replace …/start`, flicks as JSON integers), without putting
+/// both items into their JSON form to find it. `false`, and nothing pushed, when the items
+/// differ in anything else.
+fn diff_moved(path: &DocPath, before: &Item, after: &Item, out: &mut Ops) -> bool {
+    if before.start() == after.start() {
+        return false;
+    }
+    let mut moved = before.clone();
+    moved.set_start(after.start());
+    if moved != *after {
+        return false;
+    }
+    let op = PatchOp::Replace {
+        path: path.join("start"),
+        old: Value::from(before.start().flicks()),
+        value: Value::from(after.start().flicks()),
+    };
+    // Debug builds (every test run) compute the general diff as well and compare.
+    #[cfg(debug_assertions)]
+    crate::effort::uncounted(|| {
+        let mut general = Vec::new();
+        debug_assert!(diff_value(path, before, after, &mut general).is_ok());
+        debug_assert_eq!(
+            general,
+            std::slice::from_ref(&op),
+            "the JSON diff of a moved item"
+        );
+    });
+    out.push(op);
+    true
 }
 
 fn diff_keyed<K, V>(

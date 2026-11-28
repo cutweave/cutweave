@@ -12,8 +12,8 @@
 use std::str::FromStr;
 
 use cutweave_model::{
-    EntityId, Item, ItemId, MediaAsset, MediaId, Project, Sequence, SequenceId, Track, TrackId,
-    TrackItems,
+    EntityId, Item, ItemId, MediaAsset, MediaId, Project, Sequence, SequenceId, Time, Track,
+    TrackId, TrackItems,
 };
 use imbl::OrdMap;
 use serde::{Serialize, de::DeserializeOwned};
@@ -331,6 +331,12 @@ fn edit_items(items: &mut TrackItems, segments: &[String], edit: Edit<'_>, path:
         if rest[0] == "id" {
             return Err(immutable(path));
         }
+        if let ([field], Edit::Replace { value, expect }) = (rest, &edit)
+            && field == "start"
+            && let Some(old) = replace_start(items, &id, value, *expect)
+        {
+            return Ok(Some(old));
+        }
         let mut value = to_json(items.get(&id).ok_or_else(|| not_found(path))?, path)?;
         let out = json::edit(&mut value, rest, edit, path)?;
         let item: Item = from_json(&value, path)?;
@@ -364,6 +370,54 @@ fn edit_items(items: &mut TrackItems, segments: &[String], edit: Edit<'_>, path:
             Ok(Some(old))
         }
     }
+}
+
+/// `replace …/items/<id>/start` with a JSON integer of flicks: the op a ripple applies to every
+/// item it shifts (issue #231). Sets the start on the typed item, which is what the general
+/// path arrives at through the item's JSON form (serialize, replace the member, read back and
+/// check the round trip). Returns the replaced value; `None`, and nothing changed, for anything
+/// but the plain case (no such item, a preimage that does not match, a value that is not an
+/// integer in range): the general path then decides and words the error.
+fn replace_start(
+    items: &mut TrackItems,
+    id: &ItemId,
+    value: &Value,
+    expect: Option<&Value>,
+) -> Option<Value> {
+    let start = Time::from_flicks(value.as_i64()?).ok()?;
+    let old = Value::from(items.get(id)?.start().flicks());
+    if expect.is_some_and(|expected| !json_eq(&old, expected)) {
+        return None;
+    }
+    // Debug builds (every test run) take the general path as well and compare.
+    #[cfg(debug_assertions)]
+    let general = effort::uncounted(|| replace_start_as_json(items.get(id)?, value, expect))?;
+    items.update(id, |item| item.set_start(start));
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(
+        (items.get(id), &old),
+        (Some(&general.0), &general.1),
+        "the JSON form of a start replaced"
+    );
+    Some(old)
+}
+
+/// What the general path makes of `replace …/start` on `item`: the item after it and the
+/// value it replaced.
+#[cfg(debug_assertions)]
+fn replace_start_as_json(
+    item: &Item,
+    value: &Value,
+    expect: Option<&Value>,
+) -> Option<(Item, Value)> {
+    let path = DocPath::root();
+    let mut json = to_json(item, &path).ok()?;
+    let edit = Edit::Replace {
+        value: value.clone(),
+        expect,
+    };
+    let old = json::edit(&mut json, &["start".to_owned()], edit, &path).ok()??;
+    Some((from_json(&json, &path).ok()?, old))
 }
 
 /// Edits a field of `entity` outside its nested collections: `take` swaps empty collections in
