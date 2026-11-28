@@ -325,6 +325,113 @@ async fn a_stale_expected_rev_is_a_conflict_carrying_the_current_rev() {
     f.engine.shutdown();
 }
 
+/// WP-2I.04 acceptance: two clients. A reads the document at rev N, B edits it (rev N+1), A's
+/// edit with `expected_rev: N` is a `conflict` naming both revisions and the item B touched,
+/// and changes nothing; A retries with the current revision and succeeds. Every successful
+/// mutating result carries the new revision.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_clients_a_stale_edit_conflicts_changes_nothing_and_the_retry_succeeds() {
+    let f = Fixture::start();
+    let mut a = f.client().await;
+    let mut b = f.client().await;
+    let (seq, track, media) = new_project(&mut a, &f.clip).await;
+    let insert = a
+        .mutate(
+            "timeline.insert",
+            json!({"sequence": seq, "track": track, "media": media, "at": 0, "duration": "10s"}),
+        )
+        .await;
+    let item = insert["clips"][0].clone();
+
+    // A reads at rev N.
+    let read = a
+        .call("timeline.get", json!({"sequence": seq, "depth": 2}))
+        .await;
+    let n = read["_meta"]["rev"].as_u64().unwrap();
+    assert_eq!(insert["_meta"]["rev"], n);
+
+    // B edits: rev N+1.
+    let by_b = b
+        .mutate(
+            "item.set_props",
+            json!({"item": item, "props": {"name": "B's"}}),
+        )
+        .await;
+    assert_eq!(by_b["_meta"]["rev"], n + 1);
+    let before = a.call("project.snapshot", json!({})).await;
+
+    // A's edit, made against rev N, is refused.
+    let stale = |rev: u64| {
+        with_meta(
+            json!({"item": item, "at": "4s"}),
+            json!({"request_id": request_id(), "expected_rev": rev}),
+        )
+    };
+    let e = a.error("clip.split", stale(n)).await;
+    assert_eq!(e["code"], codes::CONFLICT);
+    assert_eq!(e["data"]["code"], "conflict");
+    assert_eq!(e["data"]["reason"], "stale_rev");
+    assert_eq!(e["data"]["current_rev"], n + 1);
+    assert_eq!(e["data"]["expected_rev"], n);
+    assert_eq!(e["data"]["changed_since"], json!({"items": [item]}));
+    // The document is unchanged.
+    let after = a.call("project.snapshot", json!({})).await;
+    assert_eq!(after["rev"], n + 1);
+    assert!(json_eq(&after["doc"], &before["doc"]));
+
+    // A retries with the current revision.
+    let split = a.call("clip.split", stale(n + 1)).await;
+    assert_eq!(split["_meta"]["rev"], n + 2);
+    assert_eq!(split["left"], item);
+    f.engine.shutdown();
+}
+
+/// WP-2I.04: `expected_rev` is honoured by every mutating command, also the engine commands
+/// that run outside the document actor (`media.import`, `view.*`, `project.*`, `export.*`);
+/// reads ignore it.
+#[tokio::test(flavor = "multi_thread")]
+async fn engine_commands_outside_the_document_actor_check_expected_rev_too() {
+    let f = Fixture::start();
+    let mut c = f.client().await;
+    let out = c.mutate("project.new", json!({"name": "P"})).await;
+    let current = out["_meta"]["rev"].as_u64().unwrap();
+    let expecting = |params: Value, rev: u64| {
+        with_meta(
+            params,
+            json!({"request_id": request_id(), "expected_rev": rev}),
+        )
+    };
+    for (method, params) in [
+        ("media.import", json!({"paths": [f.clip]})),
+        ("view.set_playhead", json!({"at": "1s"})),
+    ] {
+        let e = c.error(method, expecting(params, current + 5)).await;
+        assert_eq!(e["code"], codes::CONFLICT, "{method}: {e}");
+        assert_eq!(e["data"]["reason"], "stale_rev", "{method}");
+        assert_eq!(e["data"]["current_rev"], current, "{method}");
+        assert_eq!(e["data"]["expected_rev"], current + 5, "{method}");
+        assert_eq!(e["data"]["changed_since"], "unknown", "{method}");
+    }
+    assert_eq!(live_rev(&mut c).await, Rev(current));
+    let listed = c.call("media.list", json!({})).await;
+    assert_eq!(listed["total"], 0, "{listed}");
+    // A read with a stale revision still answers.
+    c.call(
+        "media.list",
+        with_meta(json!({}), json!({"expected_rev": current + 5})),
+    )
+    .await;
+    // The current revision passes.
+    let imported = c
+        .call(
+            "media.import",
+            expecting(json!({"paths": [f.clip]}), current),
+        )
+        .await;
+    assert_eq!(imported["media_ids"].as_array().unwrap().len(), 1);
+    f.engine.shutdown();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn mutating_calls_without_a_request_id_are_invalid() {
     let f = Fixture::start();

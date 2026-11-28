@@ -21,7 +21,10 @@
 //!
 //! The actor is always the connection's, derived from the credential (ADR-0016): nothing in a
 //! [`Call`] can name another one. Engine commands outside the doc actor are not deduplicated
-//! by `request_id` and ignore `expected_rev`.
+//! by `request_id`. `expected_rev` is checked for every call that is not read-only
+//! (WP-2I.04): by the doc actor, atomically with the change, for what runs there; for an engine
+//! command outside it, against the live revision right before the command runs (the document
+//! may still change while such a command works). Reads outside a transaction ignore it.
 
 use std::any::TypeId;
 use std::sync::Arc;
@@ -286,6 +289,14 @@ impl Connection {
                 "`{name}` is an engine command without a context"
             )));
         };
+        if let Some(expected) = expected_rev
+            && !entry.meta.annotations.read_only
+        {
+            // On the actor thread, so the conflict names what changed since, like the actor's own.
+            core.doc()?
+                .run(move |state| state.check_expected_rev(expected))
+                .wait()??;
+        }
         core.run_engine(ctx, &name, params, context)
     }
 
