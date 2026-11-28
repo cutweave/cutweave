@@ -86,7 +86,7 @@ use cutweave_playback::transport::{
     PlayingQuality, PublisherSink, RenderConfig, SystemClock, Transport,
 };
 use cutweave_render::gpu::AdapterChoice;
-use cutweave_render::query::{RenderFrame, SharedBackend};
+use cutweave_render::query::SharedBackend;
 use serde_json::Value;
 
 pub use audio::AudioMode;
@@ -991,8 +991,8 @@ impl CacheControl for FullCacheControl {
 impl Subsystems for FullSubsystems {
     fn register(&self, registry: &mut Registry) -> Result<(), RegistryError> {
         cutweave_playback::transport::register(registry)?;
-        // `render.contact_sheet` stays out of the MCP surface until P2 (WP-1J.02).
-        registry.register::<RenderFrame>()?;
+        // The agent-vision queries (WP-1F.03, WP-2I.02): only an engine with a renderer has them.
+        cutweave_render::query::register(registry)?;
         Ok(())
     }
 

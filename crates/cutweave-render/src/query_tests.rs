@@ -81,13 +81,19 @@ fn invalid_path(e: &CmdError) -> &str {
 #[test]
 fn registered_as_read_only_idempotent_core_mcp_tools() {
     let r = registry();
-    for (name, tool) in [
-        ("render.frame", "render_frame"),
-        ("render.contact_sheet", "render_contact_sheet"),
+    // `render.contact_sheet` is a catalog query: listed, it does not fit the standard list's
+    // budget (ADR-0039, WP-2I.02).
+    for (name, tool, exposure) in [
+        ("render.frame", "render_frame", McpExposure::Core),
+        (
+            "render.contact_sheet",
+            "render_contact_sheet",
+            McpExposure::Catalog,
+        ),
     ] {
         let e = r.get(name).unwrap();
         assert_eq!(e.kind(), EntryKind::Query);
-        assert_eq!(e.meta.mcp, McpExposure::Core);
+        assert_eq!(e.meta.mcp, exposure);
         assert_eq!(e.meta.mcp_tool_name(), tool);
         assert!(e.meta.annotations.read_only && e.meta.annotations.idempotent);
         assert!(!e.meta.annotations.destructive && !e.meta.annotations.open_world);

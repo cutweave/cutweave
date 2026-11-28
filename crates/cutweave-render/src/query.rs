@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The agent-vision queries (arch §14 "seeing without screenshots"): `render.frame` and
-//! `render.contact_sheet`, registered with [`register`] and exposed over MCP as the core tools
-//! `render_frame` / `render_contact_sheet` (`readOnlyHint`, `idempotentHint`).
+//! `render.contact_sheet`, registered with [`register`] (`readOnlyHint`, `idempotentHint`).
+//! Over MCP `render.frame` is the core tool `render_frame`; `render.contact_sheet` is a catalog
+//! query, reached through `cutweave_query`: listed as a tool of its own it does not fit the
+//! standard list's 8,000 tokens (ADR-0039; the figures are in WP-2I.02's notes).
 //!
 //! # Results
 //!
@@ -9,7 +11,9 @@
 //! moves `data` into an image content block and keeps the rest as structured content), its
 //! size, and metadata: the sequence, the time (flicks), frame index and timecode, the document
 //! `rev`, and what is on screen ([`crate::inspect`]: visible items top first with their image
-//! rectangles, hidden items with a reason). Times outside the content render the background
+//! rectangles, hidden items with a reason). A contact sheet says for each cell its time, its
+//! place on the sheet and the items it shows, each with its track and its name; the names are
+//! text a person typed, which the MCP layer labels `untrusted` (arch §14). Times outside the content render the background
 //! and say so in `notes`; they are never an error. The same `(rev, params)` always gives
 //! byte-identical results on the same adapter (determinism, arch §8).
 //!
@@ -131,7 +135,7 @@ pub struct FrameImage {
 #[query(
     name = "render.contact_sheet",
     summary = "Render frames across a time range as one timecode-labelled grid image",
-    mcp = "core"
+    mcp = "catalog"
 )]
 pub struct RenderContactSheet {
     /// Sequence; optional when the project has one.
