@@ -213,7 +213,11 @@ export function buildCurves(inputs: CurveInputs, cache: CompiledCache): BuiltCur
   const found = selectedClips(inputs.project, inputs.sequence, inputs.items);
   const curves: EditorCurve[] = [];
   const groups: CurveGroup[] = [];
-  const several = found.length > 1;
+  // A clip's name goes before its properties only when more than one clip has curves.
+  const several =
+    found.filter(({ clip }) =>
+      ANIMATABLE_PROPS.some((prop) => (keysOf(animatableOf(clip, prop))?.length ?? 0) > 0),
+    ).length > 1;
   let color = 0;
   cache.begin();
   for (const { clip, locked } of found) {

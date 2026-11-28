@@ -357,24 +357,24 @@ test.describe("F70 graph editor", () => {
       await expect.poll(() => positionKeys(page, id)).toEqual(dragged);
       await t.tangent("Free").click();
 
-      // 7. The last key dragged to 7 s and up: it lands on the frame, its value follows the
+      // 7. The last key dragged to 5.5 s and up: it lands on the frame, its value follows the
       // pointer, the easing of the keys stays; one undo step.
       const last = at(g, 6, 100);
-      const lastTo = at(g, 7, 180);
+      const lastTo = at(g, 5.5, 180);
       await dragTo(page, last, lastTo);
-      await expect.poll(() => times(page, id)).toEqual([2, 4, 7]);
+      await expect.poll(() => times(page, id)).toEqual([2, 4, 5.5]);
       const wantValue = 100 + valueChange(g, lastTo.y - last.y);
       expect((await xs(page, id))[2]).toBeCloseTo(wantValue, 6);
       expect((await positionKeys(page, id))[2]?.value.y).toBe(0); // Y's curve was not dragged
       await expect(undo).toHaveAccessibleName("Undo Move keyframe");
-      await expect(t.time).toHaveValue("00:00:07:00");
+      await expect(t.time).toHaveValue("00:00:05:15");
       // With Shift the drag keeps to the axis it moved further along: time only.
       await page.keyboard.down("Shift");
       await dragTo(page, lastTo, { x: lastTo.x - 60, y: lastTo.y - 8 });
       await page.keyboard.up("Shift");
       await expect
         .poll(async () => (await times(page, id))[2])
-        .toBe(onFrame(7 - 60 * secondsPerPx(g)));
+        .toBe(onFrame(5.5 - 60 * secondsPerPx(g)));
       expect((await xs(page, id))[2]).toBeCloseTo(wantValue, 6);
       await shortcut(app, "Control+Z");
       await shortcut(app, "Control+Z");
@@ -407,7 +407,7 @@ test.describe("F70 graph editor", () => {
       // 9. A box around the last two keys of X selects both; the arrow keys nudge them: Right by
       // a frame, Up by one in value (X only: Y's points were not in the box).
       const corner = at(g, 3.5, 340);
-      const opposite = at(g, 6.6, 40);
+      const opposite = at(g, 6.3, 40);
       await dragTo(page, corner, opposite);
       await expect(t.time).toBeDisabled(); // two keys: no one time
       await expect(t.value).toHaveAttribute("placeholder", "Mixed");
@@ -532,11 +532,11 @@ test.describe("F70 graph editor", () => {
       await page.mouse.click(bigLast.x, bigLast.y);
       await expect(t.time).toHaveValue("00:00:06:00");
       await expect(t.value).toHaveValue("100");
-      const bigTo = at(big, 7, 100);
+      const bigTo = at(big, 5, 100);
       await page.keyboard.down("Shift");
       await dragTo(page, bigLast, bigTo);
       await page.keyboard.up("Shift");
-      await expect.poll(() => times(page, id)).toEqual([2, 4, 7]);
+      await expect.poll(() => times(page, id)).toEqual([2, 4, 5]);
       await shortcut(app, "Control+Z");
       await expect.poll(() => positionKeys(page, id)).toEqual(dragged);
       await setScale(app, page, 100);
