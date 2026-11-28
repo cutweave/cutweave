@@ -144,6 +144,33 @@ pub struct JobInfo {
     pub cancel_requested: bool,
     /// Why it failed, was skipped or was cancelled.
     pub error: Option<String>,
+    /// What kind of failure it was, for programs: a short stable code in lower snake case
+    /// ([`error_code`]; `failed` when nothing more specific is known). Only a failed job has
+    /// one; a cancelled job and a job stored before codes existed have none (ADR-0038).
+    #[serde(default)]
+    pub error_code: Option<String>,
+}
+
+/// The machine codes of failed jobs ([`JobInfo::error_code`], ADR-0038): lower snake case, few
+/// and stable. Export names the specific ones; every other failure is
+/// [`FAILED`](error_code::FAILED).
+pub mod error_code {
+    /// The general code: the job failed and nothing more specific is known.
+    pub const FAILED: &str = "failed";
+    /// The drive ran out of space while the output was written.
+    pub const DISK_FULL: &str = "disk_full";
+    /// The output file appeared after the job was queued and it may not replace it.
+    pub const OUTPUT_EXISTS: &str = "output_exists";
+    /// The output file could not be created, written or moved into place.
+    pub const OUTPUT_UNWRITABLE: &str = "output_unwritable";
+    /// Media the job needs is offline.
+    pub const MEDIA_OFFLINE: &str = "media_offline";
+    /// The encoder could not be opened or failed.
+    pub const ENCODER_FAILED: &str = "encoder_failed";
+    /// A frame could not be rendered.
+    pub const RENDER_FAILED: &str = "render_failed";
+    /// The engine part the job needs (media backend, renderer) is not running.
+    pub const ENGINE_UNAVAILABLE: &str = "engine_unavailable";
 }
 
 /// What to run: given to [`JobManager::submit`](crate::JobManager::submit) with the job's body.
@@ -216,14 +243,27 @@ pub enum JobError {
     #[error("cancelled")]
     Cancelled,
     /// It failed.
-    #[error("{0}")]
-    Failed(String),
+    #[error("{message}")]
+    Failed {
+        /// Why, for people.
+        message: String,
+        /// What kind of failure, for programs ([`error_code`]).
+        code: String,
+    },
 }
 
 impl JobError {
-    /// A failure with a message.
+    /// A failure with a message and the general code, [`error_code::FAILED`].
     pub fn failed(msg: impl Into<String>) -> JobError {
-        JobError::Failed(msg.into())
+        JobError::coded(error_code::FAILED, msg)
+    }
+
+    /// A failure with a message and its machine code (one of [`error_code`]).
+    pub fn coded(code: impl Into<String>, msg: impl Into<String>) -> JobError {
+        JobError::Failed {
+            message: msg.into(),
+            code: code.into(),
+        }
     }
 }
 
@@ -267,7 +307,35 @@ mod tests {
             progress: JobProgress::new(0.5, Some("half".into())),
             cancel_requested: false,
             error: None,
+            error_code: None,
         }
+    }
+
+    #[test]
+    fn a_job_written_before_error_codes_still_reads() {
+        let old = json!({
+            "id": "job_00000000000000000000000000000001",
+            "kind": "export",
+            "label": "export",
+            "media_id": null,
+            "state": "failed",
+            "progress": {"fraction": 0.0, "message": null},
+            "cancel_requested": false,
+            "error": "disk full"
+        });
+        let job: JobInfo = serde_json::from_value(old).unwrap();
+        assert_eq!(job.error.as_deref(), Some("disk full"));
+        assert_eq!(job.error_code, None);
+    }
+
+    #[test]
+    fn failures_carry_a_code_and_plain_ones_the_general_code() {
+        let plain = JobError::failed("boom");
+        assert_eq!(plain, JobError::coded(error_code::FAILED, "boom"));
+        assert_eq!(plain.to_string(), "boom");
+        let full = JobError::coded(error_code::DISK_FULL, "no space");
+        assert!(matches!(&full, JobError::Failed { code, .. } if code == "disk_full"));
+        assert_eq!(full.to_string(), "no space");
     }
 
     #[test]
@@ -285,7 +353,8 @@ mod tests {
                 "state": "running",
                 "progress": {"fraction": 0.5, "message": "half"},
                 "cancel_requested": false,
-                "error": null
+                "error": null,
+                "error_code": null
             })
         );
         assert_eq!(serde_json::from_value::<JobEvent>(v).unwrap(), e);

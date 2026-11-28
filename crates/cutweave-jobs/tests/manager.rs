@@ -303,6 +303,18 @@ fn failures_and_panics_fail_the_job_with_a_message() {
     let info = failed.wait(SETTLE).unwrap();
     assert_eq!(info.state, JobState::Failed);
     assert_eq!(info.error.as_deref(), Some("corrupt GOP"));
+    // A plain failure has the general code; a coded one its own (ADR-0038).
+    assert_eq!(info.error_code.as_deref(), Some("failed"));
+    let coded = jm.submit(spec("coded"), |_| {
+        Err(JobError::coded(
+            cutweave_jobs::error_code::DISK_FULL,
+            "no space left",
+        ))
+    });
+    let info = coded.wait(SETTLE).unwrap();
+    assert_eq!(info.error.as_deref(), Some("no space left"));
+    assert_eq!(info.error_code.as_deref(), Some("disk_full"));
+    assert_eq!(jm.status(coded.id()).unwrap().error_code, info.error_code);
 
     let panics = jm.submit(spec("panics"), |_| panic!("decoder exploded"));
     let info = panics.wait(SETTLE).unwrap();
@@ -311,9 +323,12 @@ fn failures_and_panics_fail_the_job_with_a_message() {
         info.error.as_deref().unwrap().contains("decoder exploded"),
         "{info:?}"
     );
-    // The manager keeps working.
+    assert_eq!(info.error_code.as_deref(), Some("failed"));
+    // The manager keeps working; a job that succeeds has no code.
     let ok = jm.submit(spec("ok"), |_| Ok(()));
-    assert_eq!(ok.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    let info = ok.wait(SETTLE).unwrap();
+    assert_eq!(info.state, JobState::Succeeded);
+    assert_eq!(info.error_code, None);
 }
 
 #[test]
@@ -342,6 +357,7 @@ fn dependencies_gate_jobs_without_holding_a_budget_slot() {
     gate.cancel();
     let info = waiting.wait(SETTLE).unwrap();
     assert_eq!(info.state, JobState::Cancelled);
+    assert_eq!(info.error_code, None, "a cancelled job has no code");
     assert!(info.error.unwrap().contains("gate"));
 
     // A failed dependency skips (fails) the dependant; a successful one lets it run after.
@@ -352,6 +368,7 @@ fn dependencies_gate_jobs_without_holding_a_budget_slot() {
     assert_eq!(second.wait(SETTLE).unwrap().state, JobState::Succeeded);
     let info = skipped.wait(SETTLE).unwrap();
     assert_eq!(info.state, JobState::Failed);
+    assert_eq!(info.error_code.as_deref(), Some("failed"));
     assert!(info.error.unwrap().starts_with("skipped"), "skipped");
     assert_eq!(*order.lock().unwrap(), ["free", "first", "second"]);
 }
@@ -601,6 +618,7 @@ fn a_held_job_can_be_cancelled_and_fresh_ids_skip_known_ones() {
         progress: JobProgress::new(1.0, None),
         cancel_requested: false,
         error: None,
+        error_code: None,
     });
     assert_eq!(jm.status(second).unwrap().state, JobState::Succeeded);
     let fresh = jm.mint();

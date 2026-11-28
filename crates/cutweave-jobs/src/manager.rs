@@ -36,7 +36,9 @@ use crate::{
     history::{DEFAULT_HISTORY_CAPACITY, JobHistory, MemoryHistory},
     hold::Hold,
     id::JobId,
-    types::{Budget, JobError, JobEvent, JobFilter, JobInfo, JobProgress, JobSpec, JobState},
+    types::{
+        Budget, JobError, JobEvent, JobFilter, JobInfo, JobProgress, JobSpec, JobState, error_code,
+    },
 };
 
 /// Default capacity of the `job.progress` broadcast; a slower subscriber gets `Lagged` and
@@ -134,6 +136,23 @@ struct Active {
 
 /// A job that just became final: its state and its completion callback.
 type Finished = (JobInfo, Option<OnDone>);
+
+/// Why a job ended without succeeding: the message and, when its body named one, the machine
+/// code.
+struct Failure {
+    message: String,
+    code: Option<String>,
+}
+
+impl Failure {
+    /// A message without a specific code (a failed job then reports `failed`).
+    fn plain(message: impl Into<String>) -> Failure {
+        Failure {
+            message: message.into(),
+            code: None,
+        }
+    }
+}
 
 type Table = BTreeMap<JobId, Active>;
 
@@ -237,16 +256,22 @@ impl Shared {
         table: &mut Table,
         id: JobId,
         state: JobState,
-        error: Option<String>,
+        error: Option<Failure>,
     ) -> Option<Finished> {
         let mut job = table.remove(&id)?;
         job.info.state = state;
         if state == JobState::Succeeded {
             job.info.progress.fraction = 1.0;
         }
+        let (error, code) = error.map(|f| (f.message, f.code)).unzip();
         if error.is_some() {
             job.info.error = error;
         }
+        // Only a failed job has a code (ADR-0038); without a specific one it is `failed`.
+        job.info.error_code = (state == JobState::Failed).then(|| {
+            code.flatten()
+                .unwrap_or_else(|| error_code::FAILED.to_owned())
+        });
         job.info.cancel_requested |= job.token.is_cancelled();
         self.history.record(&job.info);
         self.emit(&job.info);
@@ -265,7 +290,7 @@ impl Shared {
         Some(info)
     }
 
-    fn finish(&self, id: JobId, state: JobState, error: Option<String>) {
+    fn finish(&self, id: JobId, state: JobState, error: Option<Failure>) {
         let finished = {
             let mut table = self.lock();
             self.finish_locked(&mut table, id, state, error)
@@ -437,7 +462,7 @@ async fn run(
         }
     }
     if let Some((state, why)) = shared.blocked_by(&after) {
-        shared.finish(id, state, Some(why));
+        shared.finish(id, state, Some(Failure::plain(why)));
         return;
     }
     if let Some(hold) = hold {
@@ -463,7 +488,7 @@ async fn run(
         shared.finish(
             id,
             JobState::Failed,
-            Some("the job manager shut down".into()),
+            Some(Failure::plain("the job manager shut down")),
         );
         return;
     };
@@ -489,18 +514,29 @@ async fn run(
     let (state, error) = match result {
         Ok(Ok(Ok(()))) => (JobState::Succeeded, None),
         Ok(Ok(Err(JobError::Cancelled))) => (JobState::Cancelled, None),
-        Ok(Ok(Err(JobError::Failed(msg)))) if token.is_cancelled() => {
-            (JobState::Cancelled, Some(msg))
+        Ok(Ok(Err(JobError::Failed { message, .. }))) if token.is_cancelled() => {
+            (JobState::Cancelled, Some(Failure::plain(message)))
         }
-        Ok(Ok(Err(JobError::Failed(msg)))) => (JobState::Failed, Some(msg)),
+        Ok(Ok(Err(JobError::Failed { message, code }))) => (
+            JobState::Failed,
+            Some(Failure {
+                message,
+                code: Some(code),
+            }),
+        ),
         Ok(Err(payload)) => {
             let msg = panic_message(payload.as_ref());
             tracing::error!(job = %id, panic = %msg, "job panicked");
-            (JobState::Failed, Some(format!("the job panicked: {msg}")))
+            (
+                JobState::Failed,
+                Some(Failure::plain(format!("the job panicked: {msg}"))),
+            )
         }
         Err(e) => (
             JobState::Failed,
-            Some(format!("the job did not run to completion: {e}")),
+            Some(Failure::plain(format!(
+                "the job did not run to completion: {e}"
+            ))),
         ),
     };
     shared.finish(id, state, error);
@@ -895,6 +931,7 @@ impl JobManager {
                 progress: JobProgress::default(),
                 cancel_requested: false,
                 error: None,
+                error_code: None,
             };
             self.shared.emit(&info);
             table.insert(

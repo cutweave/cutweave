@@ -32,6 +32,8 @@ impl TaskCodec<Task> for Codec {
 enum End {
     Ok,
     Fail,
+    /// Fails with the machine code `disk_full`.
+    DiskFull,
 }
 
 /// What the tasks did and how the test ends them.
@@ -59,6 +61,10 @@ impl Rig {
                     return match end {
                         End::Ok => Ok(()),
                         End::Fail => Err(JobError::failed(format!("task {} failed", task.0))),
+                        End::DiskFull => Err(JobError::coded(
+                            crate::error_code::DISK_FULL,
+                            format!("task {} ran out of space", task.0),
+                        )),
                     };
                 }
                 ctx.check()?;
@@ -394,6 +400,69 @@ fn a_store_holds_the_queue_across_a_restart_and_interrupted_jobs_run_again() {
     assert!(![one, two, three].contains(&four));
     rig.end(4, End::Ok);
     wait(&jobs, four);
+    drop(q);
+    drop(jobs);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_failure_keeps_its_code_across_a_restart_and_a_retry_clears_it() {
+    let dir = temp("codes");
+    let file = dir.join(QUEUE_FILE);
+    let (full, plain);
+    {
+        let (jobs, rig) = (manager(), Rig::default());
+        let q = queue(&jobs, &rig);
+        q.attach(
+            Box::new(SqliteQueueStore::open(&file).unwrap()),
+            Attach::Suspend,
+        );
+        q.start();
+        full = q.enqueue(item(1), false).unwrap();
+        plain = q.enqueue(item(2), false).unwrap();
+        rig.await_started(1);
+        rig.end(1, End::DiskFull);
+        let info = wait(&jobs, full);
+        assert_eq!(info.error_code.as_deref(), Some("disk_full"));
+        rig.await_started(2);
+        rig.end(2, End::Fail);
+        assert_eq!(wait(&jobs, plain).error_code.as_deref(), Some("failed"));
+        // The queue reports what the manager reported.
+        let view = q.view();
+        assert_eq!(
+            view.entries[0].info.error_code.as_deref(),
+            Some("disk_full")
+        );
+        assert_eq!(view.entries[1].info.error_code.as_deref(), Some("failed"));
+        q.shutdown();
+    }
+    // The next engine reads the codes from the file (its manager never ran these jobs).
+    let (jobs, rig) = (manager(), Rig::default());
+    let q = queue(&jobs, &rig);
+    q.attach(
+        Box::new(SqliteQueueStore::open(&file).unwrap()),
+        Attach::Suspend,
+    );
+    let restored = jobs.status(full).unwrap();
+    assert_eq!(restored.state, JobState::Failed);
+    assert_eq!(restored.error.as_deref(), Some("task 1 ran out of space"));
+    assert_eq!(restored.error_code.as_deref(), Some("disk_full"));
+    assert_eq!(
+        q.entry(plain).unwrap().info.error_code.as_deref(),
+        Some("failed")
+    );
+    // A retry forgets the failure, in the queue and in the file.
+    q.retry(full).unwrap();
+    let again = q.entry(full).unwrap().info;
+    assert_eq!(
+        (again.state, again.error, again.error_code),
+        (JobState::Queued, None, None)
+    );
+    let stored = SqliteQueueStore::open(&file).unwrap().load().unwrap();
+    assert_eq!(stored.entries[0].error_code, None);
+    assert_eq!(stored.entries[1].error_code.as_deref(), Some("failed"));
+    q.shutdown();
+    jobs.cancel_all();
     drop(q);
     drop(jobs);
     let _ = std::fs::remove_dir_all(dir);

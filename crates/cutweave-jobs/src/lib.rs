@@ -46,6 +46,7 @@ pub use queue::{
 };
 pub use types::{
     Budget, JobError, JobEvent, JobFilter, JobInfo, JobKind, JobProgress, JobSpec, JobState,
+    error_code,
 };
 
 /// The events this crate broadcasts, as `(name, summary)`: input for the engine's event
