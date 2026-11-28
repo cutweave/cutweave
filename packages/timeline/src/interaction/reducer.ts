@@ -17,6 +17,7 @@ import type { Rect, SnapGuide, TimelineModel } from "../model.ts";
 import { FLICKS_PER_SECOND, frameDurationFlicks, snapToFrame } from "../time.ts";
 import {
   AUTO_SCROLL_EDGE_PX,
+  AUTO_SCROLL_INTENT_PX,
   AUTO_SCROLL_MAX_PX,
   DRAG_THRESHOLD_PX,
   NUDGE_FAR_FRAMES,
@@ -34,6 +35,7 @@ import {
   sameIds,
   toggled,
 } from "./selection.ts";
+import { snapFromHome } from "./snap-home.ts";
 import {
   type DragOrigin,
   type DroppingMode,
@@ -328,6 +330,19 @@ function snapAt(
     playhead: env.playhead,
     inOut: env.inOut,
   });
+}
+
+/** `raw` snapped for a gesture dragging a time that started at `home` (`snapFromHome`, #263). */
+function snapFrom(
+  st: Step,
+  model: TimelineModel,
+  exclude: ReadonlySet<string> | null,
+  home: number,
+  raw: number,
+  offsets: readonly number[],
+): SnapOutcome {
+  if (raw === home) return { t: home, target: null };
+  return snapFromHome(snapAt(st, model, exclude, raw, offsets), home, raw, model.fps);
 }
 
 // ---- hover and cursors --------------------------------------------------------------------------
@@ -718,12 +733,14 @@ function moversOf(model: TimelineModel, ids: readonly string[], unlink: boolean)
 }
 
 function newTx(gesture: number, edit: GestureEdit, noop: MachineCommand | null): TxState {
+  const noopKey = keyOf(noop);
   return {
     gesture,
     edit,
     pending: null,
     pendingKey: null,
-    sentKey: keyOf(noop),
+    sentKey: noopKey,
+    noopKey,
     sent: false,
     refusal: null,
     clamped: false,
@@ -936,13 +953,13 @@ function evaluate(st: Step): void {
     }
     case "trimming":
     case "ripple_trimming": {
-      const s = snapAt(st, snapshot, m.origin.exclude, m.edge0 + dt, [0]);
+      const s = snapFrom(st, snapshot, m.origin.exclude, m.edge0, m.edge0 + dt, [0]);
       const to = Math.max(0, s.t);
       place = { command: trimCommand(m.name, m, to), guide: s.target, preview: null };
       break;
     }
     case "rolling": {
-      const s = snapAt(st, snapshot, m.origin.exclude, m.cut0 + dt, [0]);
+      const s = snapFrom(st, snapshot, m.origin.exclude, m.cut0, m.cut0 + dt, [0]);
       place = {
         command: rollCommand(m.left, m.right, Math.max(0, s.t)),
         guide: s.target,
@@ -957,13 +974,13 @@ function evaluate(st: Step): void {
       break;
     }
     case "sliding": {
-      const s = snapAt(st, snapshot, m.origin.exclude, m.start0 + dt, [0, m.duration]);
+      const s = snapFrom(st, snapshot, m.origin.exclude, m.start0, m.start0 + dt, [0, m.duration]);
       const at = Math.max(0, s.t);
       place = { command: slideCommand(m.item, at - m.start0), guide: s.target, preview: null };
       break;
     }
     case "keyframe_dragging": {
-      const s = snapAt(st, snapshot, null, m.keyframeTime + dt, [0]);
+      const s = snapFrom(st, snapshot, null, m.keyframeTime, m.keyframeTime + dt, [0]);
       const t = Math.max(0, s.t);
       place = {
         command: st.deps.keyframes?.command(m.item, m.keyframeTime, t, m.prop) ?? null,
@@ -974,7 +991,8 @@ function evaluate(st: Step): void {
     }
   }
   const tx = withPending(next.tx, place.command);
-  const scroll = next.name === "slipping" ? null : autoScroll(st, p, next.name === "moving");
+  const scroll =
+    next.name === "slipping" ? null : autoScroll(st, p, m.origin, next.name === "moving");
   st.set({ ...next, tx, scroll });
   st.guides(place.guide === null || tx.clamped ? [] : [place.guide]);
   st.preview(place.preview);
@@ -1026,7 +1044,9 @@ function placeMove(
       };
     }
     const s =
-      axis === "y" ? { t: m.start0, target: null } : snapAt(st, snapshot, null, raw, m.offsets);
+      axis === "y"
+        ? { t: m.start0, target: null }
+        : snapFrom(st, snapshot, null, m.start0, raw, m.offsets);
     const at = Math.max(m.minStart, s.t);
     const end = at + m.duration;
     return {
@@ -1057,7 +1077,7 @@ function placeMove(
   const s =
     axis === "y"
       ? { t: m.start0, target: null }
-      : snapAt(st, snapshot, m.origin.exclude, raw, m.offsets);
+      : snapFrom(st, snapshot, m.origin.exclude, m.start0, raw, m.offsets);
   const at = Math.max(m.minStart, s.t);
   const end = at + m.duration;
   return {
@@ -1073,10 +1093,18 @@ function placeMove(
   };
 }
 
-/** The auto-scroll step near a lane edge (faster the deeper), or null away from them. */
+/**
+ * The auto-scroll step near a lane edge (faster the deeper), or null away from them. An edge
+ * scrolls only when the pointer is inside its zone and has also come `AUTO_SCROLL_INTENT_PX`
+ * nearer to it than the press (`origin`) was: a drag pressed inside a zone and moved along the
+ * edge, or away from it and back, scrolls nothing, so what is under a pointer that never moved
+ * toward the edge stays there (issue #262). A press further than that from a zone is not
+ * affected: it scrolls as soon as the pointer enters the zone.
+ */
 function autoScroll(
   st: Step,
   p: { x: number; y: number },
+  origin: { readonly x: number; readonly y: number },
   vertical: boolean,
 ): { dx: number; dy: number } | null {
   const l = st.deps.lanes();
@@ -1086,12 +1114,15 @@ function autoScroll(
   let dx = 0;
   let dy = 0;
   if (p.x < l.left + AUTO_SCROLL_EDGE_PX) {
-    if (env.scrollX > 0) dx = -step(l.left + AUTO_SCROLL_EDGE_PX - p.x);
-  } else if (p.x > l.right - AUTO_SCROLL_EDGE_PX) dx = step(p.x - (l.right - AUTO_SCROLL_EDGE_PX));
+    if (env.scrollX > 0 && p.x <= origin.x - AUTO_SCROLL_INTENT_PX)
+      dx = -step(l.left + AUTO_SCROLL_EDGE_PX - p.x);
+  } else if (p.x > l.right - AUTO_SCROLL_EDGE_PX && p.x >= origin.x + AUTO_SCROLL_INTENT_PX)
+    dx = step(p.x - (l.right - AUTO_SCROLL_EDGE_PX));
   if (vertical) {
     if (p.y < l.top + AUTO_SCROLL_EDGE_PX) {
-      if (env.scrollY > 0) dy = -step(l.top + AUTO_SCROLL_EDGE_PX - p.y);
-    } else if (p.y > l.bottom - AUTO_SCROLL_EDGE_PX)
+      if (env.scrollY > 0 && p.y <= origin.y - AUTO_SCROLL_INTENT_PX)
+        dy = -step(l.top + AUTO_SCROLL_EDGE_PX - p.y);
+    } else if (p.y > l.bottom - AUTO_SCROLL_EDGE_PX && p.y >= origin.y + AUTO_SCROLL_INTENT_PX)
       dy = step(p.y - (l.bottom - AUTO_SCROLL_EDGE_PX));
   }
   return dx === 0 && dy === 0 ? null : { dx, dy };
@@ -1107,12 +1138,19 @@ function flush(st: Step): void {
   st.set({ ...m, tx: { ...tx, sentKey: tx.pendingKey, sent: true } });
 }
 
-/** Release: the last update, then commit (or cancel when nothing ever went out). */
+/**
+ * Release: the last update, then commit. Nothing ever went out, or the gesture ends on the
+ * position it started from (pressed, moved away and brought back): there is nothing to keep, and
+ * it is cancelled as unchanged instead of becoming an undo step that does nothing (issue #263).
+ */
 function finishGesture(st: Step, label: string): void {
-  flush(st);
+  const held = st.s.mode;
+  const unchanged =
+    "tx" in held && held.tx.pending !== null && held.tx.pendingKey === held.tx.noopKey;
+  if (!unchanged) flush(st);
   const m = st.s.mode;
   if (!("tx" in m)) return;
-  if (m.tx.sent) st.emit({ type: "commit_tx", gesture: m.tx.gesture });
+  if (m.tx.sent && !unchanged) st.emit({ type: "commit_tx", gesture: m.tx.gesture });
   else st.emit({ type: "cancel_tx", gesture: m.tx.gesture, reason: "unchanged" });
   st.guides([]);
   if (m.name === "dropping") toIdle(st, label);

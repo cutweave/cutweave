@@ -514,30 +514,35 @@ interface DragTarget {
 }
 
 /**
- * A drag that comes this close to an edge of the lanes scrolls the timeline (the interaction
- * machine's `AUTO_SCROLL_EDGE_PX` is 32): the track under a pointer that never moved up or down
- * would change, and the move would become one onto another track.
+ * A drag carried toward an edge of the lanes scrolls the timeline once it is this close to it
+ * (the interaction machine's `AUTO_SCROLL_EDGE_PX`). The probe drags to the right and back, so
+ * only the right edge matters: the drag ends short of this zone and measures a move, not a
+ * scroll. A sideways drag pressed in a lane at the top or bottom edge, or beside the headers,
+ * scrolls nothing (issue #262), so those need no clearance.
  */
-const EDGE_CLEARANCE_PX = 48;
+const SCROLL_ZONE_PX = 32;
+/** The middle of a lane this far inside the lanes is a lane that shows, px. */
+const LANE_SHOWS_PX = 4;
+
+/** Whether the middle of the lane at page `y` shows. */
+const laneShows = (g: TimelineGeometry, y: number): boolean =>
+  y >= g.box.y + g.rulerHeight + LANE_SHOWS_PX && y <= g.box.y + g.box.height - LANE_SHOWS_PX;
 
 /**
  * A clip to drag: on a video track that is not the main track (so it moves freely inside the
  * stretch of track it has to itself, touching nothing), in a lane that shows, wide enough to
- * grab, with room to its right for the drag, and all of the drag clear of the lanes' edges.
+ * grab, with room to its right for the drag, which ends short of where a drag scrolls.
  */
 function dragTarget(g: TimelineGeometry, manifest: FixtureManifest): DragTarget | null {
-  const left = g.box.x + g.headerWidth + EDGE_CLEARANCE_PX;
-  const right = g.box.x + g.box.width - EDGE_CLEARANCE_PX;
-  // Nothing scrolls up while the first track is at the top.
-  const top = g.box.y + g.rulerHeight + (g.scrollY > 0 ? EDGE_CLEARANCE_PX : 4);
-  const bottom = g.box.y + g.box.height - EDGE_CLEARANCE_PX;
+  const left = g.box.x + g.headerWidth;
+  const right = g.box.x + g.box.width - SCROLL_ZONE_PX;
   const px = (frames: number) => (frames * manifest.frame * g.pxPerSec) / FLICKS;
   for (const track of manifest.tracks) {
     if (!track.video || track.main) continue;
     const name = g.tracks.find((t) => t.id === track.id)?.name;
     if (name === undefined) continue;
     const y = laneY(g, name);
-    if (y < top || y > bottom) continue;
+    if (!laneShows(g, y)) continue;
     for (const item of track.items.slice(0, 40)) {
       const x = xAt(g, item.start * manifest.frame);
       const grab = x + Math.min(px(item.duration) / 2, 20);
@@ -558,7 +563,7 @@ const MAIN_CLIP_MAX_PX = 60;
 
 /**
  * A clip of the magnetic main track to drag along it (issue #231): in a lane that shows, wide
- * enough to grab, with room to its right for the drag, all of it clear of the lanes' edges.
+ * enough to grab, with room to its right for the drag, which ends short of where a drag scrolls.
  * `clipPx` is how wide the clip is: the narrower, the more clips the drag carries it past, and
  * every one of them changes places with it (a ripple on each update).
  */
@@ -569,12 +574,10 @@ function mainDragTarget(
   const track = manifest.tracks.find((t) => t.main);
   const name = track === undefined ? undefined : g.tracks.find((t) => t.id === track.id)?.name;
   if (track === undefined || name === undefined) return null;
-  const left = g.box.x + g.headerWidth + EDGE_CLEARANCE_PX;
-  const right = g.box.x + g.box.width - EDGE_CLEARANCE_PX;
-  const top = g.box.y + g.rulerHeight + (g.scrollY > 0 ? EDGE_CLEARANCE_PX : 4);
-  const bottom = g.box.y + g.box.height - EDGE_CLEARANCE_PX;
+  const left = g.box.x + g.headerWidth;
+  const right = g.box.x + g.box.width - SCROLL_ZONE_PX;
   const y = laneY(g, name);
-  if (y < top || y > bottom) return null;
+  if (!laneShows(g, y)) return null;
   const px = (frames: number) => (frames * manifest.frame * g.pxPerSec) / FLICKS;
   // Not the last clip: the drag needs a clip to its right to pass.
   for (const item of track.items.slice(0, -1)) {
@@ -627,9 +630,9 @@ async function checkCostOf(
 /**
  * Drags the clip at `from` out by `reach` px and back at a hand's pace, in drags of
  * `scale.dragMoves` moves, until `scale.dragUpdates` updates came back (`scale.maxDrags` drags at
- * most). Each drag lets go where it pressed. With snapping on (the default, and part of what a
- * drag costs) the clip may then sit on a neighbour's edge a few pixels away, never further than
- * the snap distance, so the next drag presses the same clip at the same point.
+ * most). Each drag lets go where it pressed, and a clip let go where it was pressed stays where
+ * it was whatever is within the snap distance (issue #263), so the next drag presses the same
+ * clip at the same point.
  */
 async function dragRun(
   page: Page,
@@ -709,10 +712,7 @@ async function mainTrackDrag(
     const lanesTop = g.box.y + g.rulerHeight;
     const middle = lanesTop + (g.box.height - g.rulerHeight) / 2;
     const off = laneY(g, name) - middle;
-    const inView =
-      laneY(g, name) >= lanesTop + EDGE_CLEARANCE_PX &&
-      laneY(g, name) <= g.box.y + g.box.height - EDGE_CLEARANCE_PX;
-    if (inView) break;
+    if (laneShows(g, laneY(g, name))) break;
     await page.mouse.move(g.box.x + g.headerWidth + (g.box.width - g.headerWidth) / 2, middle);
     await page.mouse.wheel(0, off);
     await expect
@@ -736,7 +736,7 @@ async function mainTrackDrag(
   if (!(await look()) || found.target === null) {
     const g = await timelineGeometry(page);
     throw new Error(
-      "no clip of the main track can be dragged on screen, clear of the lanes' edges " +
+      "no clip of the main track can be dragged on screen, short of the right edge " +
         `(${round(g.pxPerSec, 2)} px/s, scroll ${g.scrollX}/${g.scrollY}, lanes ` +
         `${g.tracks.map((t) => t.name).join(",")})`,
     );
@@ -785,7 +785,7 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
     return found.target !== null;
   });
   if (found.target === null) {
-    throw new Error("no clip of the project can be dragged on screen, clear of the lanes' edges");
+    throw new Error("no clip of the project can be dragged on screen, short of the right edge");
   }
   const { from, reach, item, track } = found.target;
   const run = await dragRun(page, cdp, scale, from, reach);
