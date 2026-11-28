@@ -1,6 +1,6 @@
 # ADR-0045: A compact form for a ripple in patches and edit reports
 
-- **Status:** Proposed (drafted for issues #231 and #230; waits for the product owner)
+- **Status:** Accepted (product owner, 2026-11-28): not now; option 1 (issues #231 and #230)
 - **Date:** 2026-11-28
 - **Deciders:** Product owner
 - **Supersedes:** none. It would extend the patch format of [ADR-0005](0005-doc-actor-persistent-snapshots-patches.md) and the edit report of [ADR-0023](0023-timeline-edit-semantics.md) (timeline spec INV-21)
@@ -47,9 +47,13 @@ What is left grows with the number of shifted clips because the contracts say so
 
 ## Decision
 
-Not decided. The recommendation is **option 1 for now**: after this branch a ripple on P-5K is interactive without a format change, and the remaining cost matters at project sizes the product does not target yet. If drags on timelines of 10,000 clips and more become a goal, option 2 is the one that removes the linear cost at its source, and option 4 is the cheap way to shrink the responses of a drag; option 3 changes what agents rely on and should come last.
+**Option 1, not now** (product owner, 2026-11-28).
 
-**Question for the product owner:** should a ripple be recorded and broadcast as one compact `shift` op (and its report as a range), or do the formats stay per clip until a larger project size is a goal?
+A ripple keeps one patch op and one report entry per shifted clip. No compact `shift` op is built, and the patch, event, journal and report formats stay as they are.
+
+The reason: after the fixes for #231 and #230 a ripple on P-5K is interactive without a format change, and the cost that remains matters at project sizes the product does not target yet.
+
+The question comes back when drags on timelines of 10,000 clips and more become a goal. Option 2 is then the one that removes the linear cost at its source, and option 4 is the cheap way to shrink the responses of a drag.
 
 ## Consequences
 
