@@ -417,6 +417,9 @@ test.describe("F70 graph editor", () => {
       await expect(undo).toHaveAccessibleName("Undo Move keyframe");
       await shortcut(app, "Control+Z");
       await expect.poll(() => times(page, id)).toEqual([2, 4, 6]);
+      // The undo put the keys back where they were, unselected: the box again.
+      await dragTo(page, corner, opposite);
+      await expect(t.value).toHaveAttribute("placeholder", "Mixed");
       await page.keyboard.press("ArrowUp");
       await expect.poll(() => xs(page, id)).toEqual([-300, 301, 101]);
       expect((await positionKeys(page, id)).map((k) => k.value.y)).toEqual([0, 0, 0]);
@@ -439,7 +442,10 @@ test.describe("F70 graph editor", () => {
       await expect(t.time).toHaveAttribute("aria-invalid", "true");
       await t.time.press("Escape");
       await expect(t.time).toHaveValue("00:00:04:15");
+      // Ctrl+Z in a text field is the field's own: back to the graph first.
+      await graphCanvas(page).focus();
       await shortcut(app, "Control+Z");
+      await expect.poll(() => times(page, id)).toEqual([2, 4, 6]);
       await shortcut(app, "Control+Z");
       await expect.poll(() => positionKeys(page, id)).toEqual(dragged);
 
@@ -525,18 +531,23 @@ test.describe("F70 graph editor", () => {
       g = await settledGraph(page);
 
       // 15. At 150% interface scale a click still lands on the key under it, and a drag moves
-      // it by what the pointer moved.
+      // it by what the pointer moved. (The window is 960 CSS px wide now and the dock is wider
+      // than that, so this uses the keys that are in the window: the first and the middle.)
       await setScale(app, page, 150);
       const big = await settledGraph(page);
-      const bigLast = at(big, 6, 100);
-      await page.mouse.click(bigLast.x, bigLast.y);
-      await expect(t.time).toHaveValue("00:00:06:00");
-      await expect(t.value).toHaveValue("100");
-      const bigTo = at(big, 5, 100);
+      const bigFirst = at(big, 2, -300);
+      await page.mouse.click(bigFirst.x, bigFirst.y);
+      await expect(t.time).toHaveValue("00:00:02:00");
+      await expect(t.value).toHaveValue("-300");
+      const bigMiddle = at(big, 4, 300);
+      await page.mouse.click(bigMiddle.x, bigMiddle.y);
+      await expect(t.time).toHaveValue("00:00:04:00");
+      await expect(t.value).toHaveValue("300");
       await page.keyboard.down("Shift");
-      await dragTo(page, bigLast, bigTo);
+      await dragTo(page, bigMiddle, at(big, 3, 300));
       await page.keyboard.up("Shift");
-      await expect.poll(() => times(page, id)).toEqual([2, 4, 5]);
+      await expect.poll(() => times(page, id)).toEqual([2, 3, 6]);
+      expect(await xs(page, id)).toEqual([-300, 300, 100]);
       await shortcut(app, "Control+Z");
       await expect.poll(() => positionKeys(page, id)).toEqual(dragged);
       await setScale(app, page, 100);
