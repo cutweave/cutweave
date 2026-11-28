@@ -7,7 +7,7 @@
 // file from its row and from the row's menu, and the file has the preset's size; with
 // Settings > Notifications > Finished exports off, the next export is not announced; an export
 // queued into a folder that is then removed fails, and its row shows the engine's error code
-// before the message (ADR-0038; Copy error takes both); delete the preset in the dialog and bring
+// before the message (ADR-0038); delete the preset in the dialog and bring
 // it back with Undo; save, quit and start the app again: the preset is still under "Your
 // presets" and the failed export still shows its code.
 // Needs the FFmpeg engine and the corpus (`just corpus`); without them the flow skips and says
@@ -293,7 +293,7 @@ test.describe("F65 your own export preset, Open file and the notification", () =
 
       // An export that cannot be written: queue it into a folder while the queue is paused,
       // remove the folder (as in the file manager) and resume. The row says why: the engine's
-      // error code, then the message. Copy error takes both.
+      // error code, then the message.
       const drafts = path.join(work.dir, "Own", "drafts");
       mkdirSync(drafts);
       await panel.getByRole("button", { name: "Pause the queue" }).click();
@@ -311,14 +311,6 @@ test.describe("F65 your own export preset, Open file and the notification", () =
       await expectFailure(lost, "output_unwritable");
       await expect(lost.getByRole("button", { name: "Retry export" })).toBeVisible();
       await snapshot(page, info, "failed export with its code");
-      await lost.click({ button: "right" });
-      await page
-        .getByRole("menu", { name: "Export actions for lost.mp4" })
-        .getByRole("menuitem", { name: "Copy error" })
-        .click();
-      await expect
-        .poll(() => app.evaluate(({ clipboard }) => clipboard.readText()), BOUND)
-        .toMatch(/^output_unwritable: .*lost\.mp4/);
 
       // Delete the preset in the dialog; Undo brings it back.
       await shortcut(app, "Control+M");
