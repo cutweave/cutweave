@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Mirrors the persisted part of `viewStore` to the engine (`view.set`, debounced) and restores
-// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout, and the Source
+// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout (with the
+// sequence tabs), the sequence shown (WP-2B.03, sent at once: the engine plays it), and the Source
 // view's marks (WP-2A.14, sent at once: a mark is a deliberate act and must survive a quit). The preview
 // quality is a preference, not part of it (WP-2H.10). `view.*` commands never touch the document
 // and are not undoable.
@@ -58,7 +59,13 @@ function mirrored(state: ViewStore): Mirrored {
     scroll: state.scroll,
     selection: state.selection,
     sourceMarks: state.sourceMarks,
-    panel: { workspaceId: state.workspaceId, aspect: state.aspect, layouts: state.layouts },
+    activeSequence: state.activeSequence,
+    panel: {
+      workspaceId: state.workspaceId,
+      aspect: state.aspect,
+      layouts: state.layouts,
+      sequenceTabs: state.sequenceTabs,
+    },
   };
 }
 
@@ -80,9 +87,15 @@ export function diffView(sent: Mirrored | null, now: Mirrored): ViewPatch | null
     sent === null ||
     sent.panel.workspaceId !== now.panel.workspaceId ||
     sent.panel.aspect !== now.panel.aspect ||
-    sent.panel.layouts !== now.panel.layouts
+    sent.panel.layouts !== now.panel.layouts ||
+    sent.panel.sequenceTabs !== now.panel.sequenceTabs
   ) {
     patch.panel_layout = panelLayoutOf(now.panel);
+  }
+  // `view.set` treats null as "absent": "none chosen" cannot be sent, and need not be (the
+  // engine forgets a deleted sequence itself).
+  if ((sent?.activeSequence ?? null) !== now.activeSequence && now.activeSequence !== null) {
+    patch.active_sequence = now.activeSequence;
   }
   const marks = diffMarks(sent?.sourceMarks ?? {}, now.sourceMarks);
   if (marks !== null) patch.source_marks = marks;
@@ -210,7 +223,11 @@ export class ViewSync {
     if (this.#unsubscribe === null) {
       this.#unsubscribe = this.#store.subscribe((state, previous) => {
         if (this.#adopting) return; // the engine's own state: nothing to send
-        if (state.sourceMarks !== previous.sourceMarks) {
+        // A mark, and the sequence shown (the engine plays it: WP-2B.03), go at once.
+        if (
+          state.sourceMarks !== previous.sourceMarks ||
+          state.activeSequence !== previous.activeSequence
+        ) {
           this.flush().catch(this.#onError);
           return;
         }
@@ -221,7 +238,8 @@ export class ViewSync {
           state.selection !== previous.selection ||
           state.workspaceId !== previous.workspaceId ||
           state.aspect !== previous.aspect ||
-          state.layouts !== previous.layouts
+          state.layouts !== previous.layouts ||
+          state.sequenceTabs !== previous.sequenceTabs
         ) {
           this.#schedule();
         }

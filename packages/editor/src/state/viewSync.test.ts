@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { type MediaId, MockTransport, RpcClient, type UiState } from "@cutweave/protocol";
+import {
+  type MediaId,
+  MockTransport,
+  RpcClient,
+  type SequenceId,
+  type UiState,
+} from "@cutweave/protocol";
 import { describe, expect, it } from "vitest";
 import { createViewStore, initialViewState, panelLayoutFrom, panelLayoutOf } from "./viewStore.ts";
 import { diffView, VIEW_SYNC_DEBOUNCE_MS, ViewSync } from "./viewSync.ts";
@@ -198,7 +204,13 @@ describe("diffView and panel layout", () => {
       scroll: s.scroll,
       selection: s.selection,
       sourceMarks: s.sourceMarks,
-      panel: { workspaceId: s.workspaceId, aspect: s.aspect, layouts: s.layouts },
+      activeSequence: s.activeSequence,
+      panel: {
+        workspaceId: s.workspaceId,
+        aspect: s.aspect,
+        layouts: s.layouts,
+        sequenceTabs: s.sequenceTabs,
+      },
     };
     expect(Object.keys(diffView(null, now) ?? {}).sort()).toEqual([
       "panel_layout",
@@ -207,6 +219,45 @@ describe("diffView and panel layout", () => {
       "selection",
     ]);
     expect(diffView(now, { ...now })).toBeNull();
+  });
+
+  it("the sequence shown is restored, and a new choice goes to the engine at once (WP-2B.03)", async () => {
+    const a = "seq_a" as SequenceId;
+    const b = "seq_b" as SequenceId;
+    const { store, sync, sets, timers } = setup(engineView({ active_sequence: a }));
+    await sync.restore();
+    expect(store.getState().activeSequence).toBe(a);
+    expect(sets()).toHaveLength(0);
+    store.getState().setActiveSequence(b);
+    await settle();
+    // No debounce: the engine plays what the timeline shows.
+    expect(timers.pending).toBe(0);
+    expect(sets().at(-1)?.params).toEqual({ patch: { active_sequence: b } });
+    // The same choice again sends nothing.
+    store.getState().setActiveSequence(b);
+    await settle();
+    expect(sets()).toHaveLength(1);
+  });
+
+  it("the sequence tabs ride the panel layout and come back with it", async () => {
+    const a = "seq_a" as SequenceId;
+    const b = "seq_b" as SequenceId;
+    const { store, sync, sets, timers } = setup();
+    await sync.restore();
+    store.getState().setSequenceTabs({ order: [b, a], closed: [a] });
+    timers.advance(VIEW_SYNC_DEBOUNCE_MS);
+    await settle();
+    const sent = (sets().at(-1)?.params as { patch: { panel_layout: unknown } }).patch.panel_layout;
+    expect((sent as { sequenceTabs: unknown }).sequenceTabs).toEqual({ order: [b, a], closed: [a] });
+    // Another launch reads the same blob.
+    const next = setup(engineView({ panel_layout: sent as UiState["panel_layout"] }));
+    await next.sync.restore();
+    expect(next.store.getState().sequenceTabs).toEqual({ order: [b, a], closed: [a] });
+    // A blob from before there were tabs: every sequence has one.
+    expect(panelLayoutFrom({ ...(sent as object), sequenceTabs: undefined })?.sequenceTabs).toEqual({
+      order: [],
+      closed: [],
+    });
   });
 
   it("source marks go to the engine at once, per asset, and a cleared asset as {}", async () => {
