@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Shared fixtures of the MCP tests: a headless engine with the engine's production MCP mount
-//! (`cutweave_engine::mcp_mounts`; fake prober, a media folder inside the allowed roots), and
-//! rmcp Streamable HTTP clients for both spec revisions.
+//! Shared fixtures of the MCP tests: a headless engine with the MCP mount the engine uses
+//! (`cutweave_api::mcp::mount`, what `cutweave_engine::mcp_mounts` mounts, keeping its
+//! notifier; fake prober, a media folder inside the allowed roots), and rmcp Streamable HTTP
+//! clients for both spec revisions.
 
 #![allow(
     dead_code,
@@ -12,17 +13,21 @@
 )]
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
-use cutweave_api::Credential;
-use cutweave_api::mcp::{McpOptions, Profile};
+use cutweave_api::mcp::{McpOptions, Notifier, Profile};
+use cutweave_api::{Credential, Mounts};
 use cutweave_engine::{Call, Connection, Engine, EngineConfig, EngineMode, LogConfig, Subsystems};
 use cutweave_jobs::{JobCtx, JobError};
 use cutweave_ops::media::{AnalysisInput, AnalysisStage, AnalysisStages, FakeProbe, MediaProbe};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
-    model::{CallToolRequestParams, CallToolResult, ClientConfig, ContentBlock, ProtocolVersion},
-    service::{RunningService, ServiceError},
+    model::{
+        CallToolRequestParams, CallToolResult, ClientConfig, ContentBlock, ProtocolVersion,
+        ServerNotification, SubscriptionFilter, Tool,
+    },
+    service::{NotificationContext, RunningService, ServiceError, Subscription},
     transport::{
         IntoTransport, StreamableHttpClientTransport,
         streamable_http_client::StreamableHttpClientTransportConfig,
@@ -90,6 +95,8 @@ pub struct Harness {
     /// The `cli` agent token (actor `agent:cli`).
     pub cli_token: String,
     pub port: u16,
+    /// The mount's notifier: `tools_changed()` is what loading a plugin will call (WP-2I.05).
+    pub notifier: Arc<Notifier>,
 }
 
 /// Paths of the fake media files, inside the engine's allowed roots.
@@ -123,9 +130,20 @@ impl Harness {
             probe: Arc::new(probe),
             stages: Arc::new(stages),
         }));
-        // The production mount: `/mcp`, `/mcp/minimal`, `/mcp/full` over the engine handle.
-        config.api.mounts = Some(cutweave_engine::mcp_mounts(McpOptions::default()));
+        // The production mount (`/mcp` and one endpoint per other profile over the engine
+        // handle), built here so the test holds its notifier.
+        let notifier = Arc::new(OnceLock::new());
+        let slot = Arc::clone(&notifier);
+        config.api.mounts = Some(Box::new(move |handle| {
+            let (router, notifier) = cutweave_api::mcp::mount(handle, &McpOptions::default());
+            let _ = slot.set(notifier);
+            Mounts {
+                mcp: Some(router),
+                ..Mounts::default()
+            }
+        }));
         let engine = Engine::start(config).unwrap();
+        let notifier = Arc::clone(notifier.get().expect("the engine mounted /mcp"));
         let token = |label: &str| {
             engine
                 .credentials()
@@ -146,6 +164,7 @@ impl Harness {
             token,
             cli_token,
             port,
+            notifier,
         }
     }
 
@@ -313,6 +332,123 @@ impl Client {
     pub async fn execute(&self, steps: Value) -> CallToolResult {
         self.call("cutweave_execute", json!({ "steps": steps }))
             .await
+    }
+
+    pub async fn close(self) {
+        let _ = self.service.cancel().await;
+    }
+}
+
+/// A client that counts `notifications/tools/list_changed` and asks for one protocol version.
+#[derive(Clone)]
+pub struct ListWatching {
+    version: ProtocolVersion,
+    changed: tokio::sync::mpsc::UnboundedSender<()>,
+}
+
+impl ClientHandler for ListWatching {
+    fn get_info(&self) -> ClientConfig {
+        ClientConfig::default().with_protocol_version(self.version.clone())
+    }
+
+    async fn on_tool_list_changed(&self, _context: NotificationContext<RoleClient>) {
+        let _ = self.changed.send(());
+    }
+}
+
+/// A client that hears of tool-list changes the way its revision does it (WP-2I.05):
+/// 2025-11-25 gets `notifications/tools/list_changed` on its session; 2026-07-28 asks for
+/// `toolsListChanged` with `subscriptions/listen`.
+pub struct Watcher {
+    pub service: RunningService<RoleClient, ListWatching>,
+    pub revision: Revision,
+    changed: tokio::sync::mpsc::UnboundedReceiver<()>,
+    listening: Option<Subscription>,
+}
+
+impl Watcher {
+    /// Connects over `transport` speaking `revision`, and listens.
+    pub async fn over<T, E, A>(transport: T, revision: Revision) -> Watcher
+    where
+        T: IntoTransport<RoleClient, E, A>,
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        let (tx, changed) = tokio::sync::mpsc::unbounded_channel();
+        let handler = ListWatching {
+            version: revision.version(),
+            changed: tx,
+        };
+        let (service, listening) = match revision {
+            Revision::Stateful => (handler.serve(transport).await.expect("initialize"), None),
+            Revision::Stateless => {
+                let service = handler
+                    .serve_with_lifecycle(
+                        transport,
+                        ClientLifecycleMode::Discover {
+                            preferred_versions: vec![revision.version()],
+                        },
+                    )
+                    .await
+                    .expect("server/discover");
+                let filter = SubscriptionFilter::builder().tools_list_changed().build();
+                let listening = service.peer().listen(filter).await.expect("listen");
+                assert_eq!(listening.acknowledged().tools_list_changed, Some(true));
+                (service, Some(listening))
+            }
+        };
+        Watcher {
+            service,
+            revision,
+            changed,
+            listening,
+        }
+    }
+
+    /// Connects to `h`'s `profile` endpoint over HTTP.
+    pub async fn http(h: &Harness, profile: Profile, revision: Revision) -> Watcher {
+        let transport = StreamableHttpClientTransport::from_config(
+            StreamableHttpClientTransportConfig::with_uri(h.url(profile)).auth_header(&h.token),
+        );
+        Watcher::over(transport, revision).await
+    }
+
+    /// Whether the server declares `tools.listChanged`.
+    pub fn declared(&self) -> bool {
+        let info = self.service.peer_info().expect("peer info");
+        info.capabilities
+            .tools
+            .as_ref()
+            .is_some_and(|tools| tools.list_changed == Some(true))
+    }
+
+    pub async fn tools(&self) -> Vec<Tool> {
+        self.service
+            .list_tools(None)
+            .await
+            .expect("tools/list")
+            .tools
+    }
+
+    /// Whether a tool-list change notification arrives within `within`.
+    pub async fn hears_a_change(&mut self, within: Duration) -> bool {
+        match &mut self.listening {
+            None => tokio::time::timeout(within, self.changed.recv())
+                .await
+                .is_ok_and(|received| received.is_some()),
+            Some(listening) => {
+                let deadline = tokio::time::Instant::now() + within;
+                loop {
+                    match tokio::time::timeout_at(deadline, listening.next()).await {
+                        Err(_) => return false,
+                        Ok(Ok(Some(ServerNotification::ToolListChangedNotification(_)))) => {
+                            return true;
+                        }
+                        Ok(Ok(Some(_))) => {}
+                        Ok(other) => panic!("the subscription ended: {other:?}"),
+                    }
+                }
+            }
+        }
     }
 
     pub async fn close(self) {

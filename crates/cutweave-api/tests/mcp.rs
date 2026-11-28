@@ -30,10 +30,10 @@ use cutweave_api::mcp::{
 use cutweave_commands::Registry;
 use cutweave_engine::Call;
 use mcp_support::{
-    Client, Harness, INJECTION, Revision, SEC, example_args, http_client, must, schema_error,
-    text_of,
+    Client, Harness, INJECTION, Revision, SEC, Watcher, example_args, http_client, must,
+    schema_error, text_of,
 };
-use rmcp::model::{CallToolResult, Tool};
+use rmcp::model::{CallToolResult, ServerNotification, SubscriptionFilter, Tool};
 use serde_json::{Value, json};
 
 fn registry() -> Arc<Registry> {
@@ -974,6 +974,99 @@ async fn execute_reaches_every_command_under_minimal() {
             .contains("cutweave_search_commands")
     );
     client.close().await;
+}
+
+/// A change of the tool list (what loading a plugin will be, from Phase 6) reaches a client of
+/// every endpoint through the mechanism of its revision: `notifications/tools/list_changed` on
+/// a 2025-11-25 session, and on a 2026-07-28 `subscriptions/listen` that asked for it. Nothing
+/// else sends it, and it moves no connection to another list: a client that re-reads gets its
+/// endpoint's list again, so `/mcp/minimal` never sees the standard tools.
+#[tokio::test]
+async fn a_tool_list_change_reaches_both_revisions_and_no_list_moves() {
+    let h = Harness::start(None);
+    let registry = h.engine.handle().registry();
+    let mut watchers = Vec::new();
+    for profile in Profile::ALL {
+        for revision in Revision::ALL {
+            let watcher = Watcher::http(&h, profile, revision).await;
+            assert!(watcher.declared(), "{profile:?} {revision:?}");
+            let before = watcher.tools().await;
+            assert_eq!(
+                before,
+                Catalog::new(Arc::clone(&registry), profile).tools(),
+                "{profile:?} {revision:?}"
+            );
+            watchers.push((profile, watcher, before));
+        }
+    }
+    // A 2026-07-28 client that did not ask for it is not told.
+    let quiet = h.client(Profile::Standard, Revision::Stateless).await;
+    let filter = SubscriptionFilter::builder()
+        .resource_subscription("cutweave://project")
+        .build();
+    let mut unasked = quiet.service.peer().listen(filter).await.unwrap();
+    assert_eq!(unasked.acknowledged().tools_list_changed, None);
+
+    // Editing, and replacing the document, change no tool list: nobody is told.
+    let setup = h.direct("setup");
+    must(&setup, "project.new", json!({ "name": "Lists" }));
+    must(&setup, "sequence.create", json!({ "name": "Second" }));
+    for (profile, watcher, _) in &mut watchers {
+        let (revision, heard) = (
+            watcher.revision,
+            watcher.hears_a_change(Duration::from_millis(100)).await,
+        );
+        assert!(
+            !heard,
+            "{profile:?} {revision:?}: an edit is not a list change"
+        );
+    }
+
+    h.notifier.tools_changed();
+    for (profile, watcher, before) in &mut watchers {
+        let revision = watcher.revision;
+        assert!(
+            watcher.hears_a_change(Duration::from_secs(10)).await,
+            "{profile:?} {revision:?}: no notifications/tools/list_changed"
+        );
+        // The list is the endpoint's, as before: the same tools in the same order.
+        let after = watcher.tools().await;
+        assert_eq!(&after, before, "{profile:?} {revision:?}");
+        if *profile == Profile::Minimal {
+            assert!(after.len() <= Profile::Minimal.budget().max_tools);
+            assert!(!after.iter().any(|t| t.name == "clip_split"));
+        }
+        // One change is one notification.
+        assert!(
+            !watcher.hears_a_change(Duration::from_millis(100)).await,
+            "{profile:?} {revision:?}: a second notification"
+        );
+    }
+    // The client that asked for the project only got the project's update (the edit above) and
+    // no list change.
+    loop {
+        match tokio::time::timeout(Duration::from_millis(200), unasked.next()).await {
+            Err(_) => break,
+            Ok(note) => assert!(
+                matches!(
+                    note,
+                    Ok(Some(ServerNotification::ResourceUpdatedNotification(_)))
+                ),
+                "{note:?}"
+            ),
+        }
+    }
+    // A client that connects after the change is not told about it.
+    let mut late = Watcher::http(&h, Profile::Standard, Revision::Stateful).await;
+    let _ = late.tools().await;
+    assert!(!late.hears_a_change(Duration::from_millis(100)).await);
+    h.notifier.tools_changed();
+    assert!(late.hears_a_change(Duration::from_secs(10)).await);
+    late.close().await;
+    quiet.close().await;
+    for (_, watcher, _) in watchers {
+        watcher.close().await;
+    }
 }
 
 // ----- the core tool table (WP-2I.01) -------------------------------------------------------
