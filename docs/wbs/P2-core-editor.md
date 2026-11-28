@@ -712,6 +712,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `audio.get_levels` for a −20 dBFS test tone returns −20 ± 0.2 dB RMS; −23 LUFS pink-noise reference returns −23 ± 0.3 LUFS.
 - **Tests:** DSP unit tests, soak, no-alloc.
 - **Out of scope:** sidechain ducking, EQ, reverb.
+- **Follow-up (#203, WP-2E.02b):** track pan, keyframed track gain and the master settings in the document, by [ADR-0034](../adr/0034-track-pan-gain-automation-and-master-bus-in-the-project.md) (accepted 2026-11-28): `Track.pan`, `Track.gain` animatable (sequence-time keys), `Sequence.mix` per sequence, in v2 (no v3); `track.set_gain{track, db, at?}`, `track.set_pan`, `audio.set_master{sequence?, gain?, limiter?}`, the `keyframe.*` commands on a track gain target, and the mixer and exports reading them. Pass criteria as in the ADR.
 
 ### WP-2E.03 — Loudness normalization and extract audio
 - **Area:** crates/cutweave-ops/src/audio/{normalize.rs, extract.rs}, crates/cutweave-jobs
@@ -1623,7 +1624,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Out of scope:** video understanding, scene detection (P5).
 - **As built (2026-11-28, #252):**
   - Three read-only catalog commands, the same over RPC, the CLI and MCP (`cutweave_query`). `render.contact_sheet{sequence?, from, to, count | every | at, columns, max_size, labels}` (`cutweave-render`, full engine only like `render.frame`): `at` is `"cuts"` (the first frame of each clip on a video track), `"markers"` or a list of times; the result is one JPEG and, per cell, its time, its place on the sheet and the items it shows (id, track, name). `media.filmstrip{media, from, to, count, max_size}` and `audio.waveform{target, from, to, width, height, channels, scale_db, loudness}` (`cutweave-ops/src/visual.rs`; the engine side is `cutweave-engine/src/visual.rs`). The filmstrip of a whole clip is the entry the timeline and `GET /media/{id}/filmstrip` use; a part of a clip is `ThumbCache::filmstrip_range`. The waveform's `target` is `{kind: "media", media, stream?}` (the cached peak pyramid), `{kind: "item", item}` (one clip as it plays) or `{kind: "range", sequence?}` (the mix, as an export hears it); the picture is drawn by `cutweave-render/src/wave.rs`.
-  - **Not listed.** `render_contact_sheet` costs 1,186 bytes (297 tokens) as a listed tool and the standard list has 511 bytes (127 tokens) free; tightening the other descriptions without losing a fact recovers about 95 bytes. All three are catalog commands, the lists of every profile are byte-identical to before, and the question is ADR-0044 (proposed).
+  - **Not listed.** `render_contact_sheet` costs 1,186 bytes (297 tokens) as a listed tool and the standard list has 511 bytes (127 tokens) free; tightening the other descriptions without losing a fact recovers about 95 bytes. All three are catalog commands, the lists of every profile are byte-identical to before, and [ADR-0044](../adr/0044-listing-render-contact-sheet.md) (accepted 2026-11-28) keeps it so until the standard budget is next decided.
   - **Sizes.** A sheet or a strip is at most 2048 px, a waveform 2048 x 1024 px; the 12-frame golden sheet at default settings is a JPEG of 55 KB (the limit is 400 KB). Over MCP a filmstrip or a media file's waveform asked for above 1568 px is a resource link to its `/media/...` route over HTTP; a contact sheet has no route and is inline (a `/media/sheet` route would be a follow-up).
   - **Annotations.** Silences (at least 0.3 s at or below -60 dBFS) are found on 256-sample blocks, for every target. Loudness (`loudness: true`: integrated LUFS and the short-term value every 100 ms) is measured for a clip or a mix with `cutweave-audio`'s `LoudnessMeter`; for a media file it is refused with a hint, because the peak pyramid carries no loudness and decoding the file to measure it is what `audio.get_levels` on a sequence does.
   - **Budget.** A 12-frame sheet of a 1080p sequence renders and encodes in about 25 ms warm on the reference machine's GPUs and 61 ms on WARP (synthetic sources; the budget is 1.5 s), one frame after another: nothing needed to run in parallel.
@@ -1664,6 +1665,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Schema snapshots updated; no per-command schema drift.
 - **Tests:** integration, parity.
 - **Out of scope:** automatic merge/rebase of agent edits.
+- **Decided (2026-11-28):** the generator lists `expected_rev` on the mutating core tools of `/mcp/described` only; `/mcp`, `/mcp/full` and `/mcp/minimal` accept it unlisted and list it on `cutweave_execute` ([ADR-0041](../adr/0041-expected-rev-in-the-listed-tool-schemas.md), accepted).
 
 ### WP-2I.05 — Tool profiles, change notifications and tools/list budget
 - **Area:** crates/cutweave-api/src/mcp/profiles.rs, crates/cutweave-cli

@@ -1,6 +1,6 @@
 # ADR-0034: Store track pan, keyframed track gain and the master bus settings in the project
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-28)
 - **Date:** 2026-11-26
 - **Deciders:** Cutweave maintainers, on the review of WP-2E.02 (before the follow-up that adds the fields)
 - **Supersedes:** none
@@ -31,6 +31,8 @@ The model has `Track.gain` (a plain dB number), `Track.muted` and `Track.solo`, 
 4. **Keep it all out of the document** (engine or app preferences): no format change, but the mix would not travel with the project and an agent could not see or change it.
 
 ## Decision
+
+Accepted by the product owner on 2026-11-28: option 1, with the master settings per sequence (`Sequence.mix`), and the keyframed track gain joins the unreleased v2 (arch §17, "One v2"): no v3 and no schema version bump.
 
 **Decided by:** the maintainers' review of WP-2E.02. Pass criteria for the follow-up (WP-2E.02b): a round-trip test (a document without the fields opens with the defaults and saves byte-identical; a document with them opens in an older build, which keeps `pan` and `mix` in `extra`); undo identity and CLI = MCP = RPC parity for the new commands; the mixer applies them in playback and export alike (null test between the real-time render and the mixdown under −120 dBFS, keyframed gain without zipper noise: the 64-frame control points of WP-2E.01); the v2 golden fixtures unchanged.
 
