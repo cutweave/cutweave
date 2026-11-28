@@ -405,15 +405,31 @@ fn count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
+/// The words of a text item as a label: the first line, at most 60 characters.
+fn text_label(text: &cutweave_model::TextItem) -> Option<String> {
+    let plain = text.content.to_plain();
+    let line = plain.lines().next().unwrap_or_default().trim();
+    if line.is_empty() {
+        return None;
+    }
+    let mut label: String = line.chars().take(60).collect();
+    if line.chars().count() > 60 {
+        label.push('…');
+    }
+    Some(label)
+}
+
 pub(crate) fn item_summary(item: &Item) -> ItemSummary {
     ItemSummary {
         id: item.id(),
         name: match item {
             Item::Clip(c) => c.name.clone(),
+            Item::Text(t) => t.name.clone().or_else(|| text_label(t)),
             _ => None,
         },
         kind: match item {
             Item::Clip(_) => "clip",
+            Item::Text(_) => "text",
             _ => "other",
         }
         .to_owned(),

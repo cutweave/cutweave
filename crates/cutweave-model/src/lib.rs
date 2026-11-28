@@ -76,7 +76,7 @@ pub use item::{
     AudioProps, BlendMode, Clip, Crop, Fade, FadeCurve, Flip, Item, PropMut, PropRef, Transform,
     Vec2, VisualProps,
 };
-pub use text::TextItem;
+pub use text::{NamedStyle, TextItem};
 pub use text_patch::{RunStylePatch, TextStylePatch};
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
