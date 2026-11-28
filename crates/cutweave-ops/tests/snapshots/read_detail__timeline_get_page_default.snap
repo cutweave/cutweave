@@ -1,0 +1,5 @@
+---
+source: crates/cutweave-ops/tests/read_detail.rs
+expression: "wire(&get(&h, p, json!({\"depth\": 2, \"limit\": 2, \"fields\": [\"tracks\"]})))"
+---
+{"id":"seq_000000000001728ea8c5c5607e51aeb3","track_count":2,"item_count":4,"tracks":[{"id":"trk_00000000000275fdb7ee40b8a0cac642","kind":"video","name":"Picture","muted":true,"hidden":false,"locked":false,"solo":false,"magnetic":false,"height":96,"gain":0.0,"item_count":3,"end":57859200000,"items":[{"id":"itm_0000000000077cbb900f1e596bc68105","kind":"clip","start":0,"duration":42336000000,"media":"med_000000000004709b90035e27460a4efb","linked_group":"grp_00000000000674b5a94a9f653c219f74","enabled":true,"color_label":"#ff8800"},{"id":"itm_000000000009738ab9233f0ca6296043","name":"Opening title","kind":"clip","start":49392000000,"duration":2822400000,"media":"med_0000000000057329a83277ed2c8d146c","linked_group":null,"enabled":true}]},{"id":"trk_00000000000376549cec3098cb8b0e21","kind":"audio","name":"A1","muted":false,"hidden":false,"locked":false,"solo":false,"magnetic":false,"height":null,"gain":-3.0,"item_count":1,"end":42336000000,"items":[]}],"next_cursor":"itm_000000000009738ab9233f0ca6296043"}

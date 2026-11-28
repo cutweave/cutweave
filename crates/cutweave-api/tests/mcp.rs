@@ -1507,6 +1507,35 @@ async fn search_and_describe_reach_the_long_tail() {
     client.close().await;
 }
 
+/// WP-2I.08: the snapshots are from before the discovery tools took `detail` and `names`: a
+/// call without them still returns those bytes.
+#[tokio::test]
+async fn search_and_describe_without_the_new_parameters_are_unchanged() {
+    let h = Harness::start(None);
+    let client = h.client(Profile::Standard, Revision::Stateless).await;
+    for (snapshot, tool, args) in [
+        (
+            "search_default",
+            "cutweave_search_commands",
+            json!({ "query": "split clip", "limit": 3 }),
+        ),
+        (
+            "search_no_match_default",
+            "cutweave_search_commands",
+            json!({ "query": "zzzz" }),
+        ),
+        (
+            "describe_default",
+            "cutweave_describe_command",
+            json!({ "name": "edit.redo" }),
+        ),
+    ] {
+        let out = client.ok(tool, args).await;
+        insta::assert_snapshot!(snapshot, serde_json::to_string(&out).unwrap());
+    }
+    client.close().await;
+}
+
 /// The actor of every MCP change is `agent:<token label>`, derived from the credential.
 #[tokio::test]
 async fn the_actor_comes_from_the_token() {
