@@ -3,8 +3,10 @@
 //!
 //! ```text
 //! cutweave-bench gen [...]      write fixture projects (same as `cargo xtask gen-bench-project`)
-//! cutweave-bench run [--smoke] [--with-media] [--out FILE]
+//! cutweave-bench run [--smoke] [--with-media] [--long] [--editing] [--out FILE]
 //!                               the engine suite without criterion: table and result JSON
+//!                               (`--long`: the editing session goes on to 50,000 commands;
+//!                               `--editing`: only the editing session on P-5K)
 //! cutweave-bench engine [...]   an engine process (the launch protocol), which the start and
 //!                               memory probes measure
 //! cutweave-bench crash [...]    the crash-injection harness (WP-2J.05): kill the engine during
@@ -19,13 +21,15 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use cutweave_bench::probes::{Scale, Workspace, run_all};
+use cutweave_bench::probes::{LONG_SESSION, Scale, Workspace, editing, run_all};
 use cutweave_bench::{BenchError, cli, workspace_root};
 
 const USAGE: &str = "usage: cutweave-bench <gen|run|engine|crash|agent-eval> [options]
   gen [...]     write fixture projects (`gen --help`)
-  run [--smoke] [--with-media] [--out FILE]
-                run the engine suite once and write the result JSON
+  run [--smoke] [--with-media] [--long] [--editing] [--out FILE]
+                run the engine suite once and write the result JSON (--long: the editing
+                session goes on to 50,000 commands, for `command_rtt_at_50k_*`; --editing:
+                only the editing session on P-5K, with no engine process)
   engine [...]  run an engine process (docs/reference/launch-protocol.md)
   crash [--count N] [--seed S] [...]
                 kill the engine N times during editing work and check its recovery
@@ -35,12 +39,15 @@ const USAGE: &str = "usage: cutweave-bench <gen|run|engine|crash|agent-eval> [op
                 tools; needs ANTHROPIC_API_KEY, never part of the gate (`agent-eval --help`)";
 
 fn run(args: &[String]) -> Result<bool, BenchError> {
-    let (mut scale, mut with_media, mut out) = (Scale::full(), false, None);
+    let (mut scale, mut with_media, mut out, mut long) = (Scale::full(), false, None, false);
+    let mut only_editing = false;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--smoke" => scale = Scale::smoke(),
             "--with-media" => with_media = true,
+            "--long" => long = true,
+            "--editing" => only_editing = true,
             "--out" => {
                 out =
                     Some(PathBuf::from(it.next().ok_or_else(|| {
@@ -49,6 +56,9 @@ fn run(args: &[String]) -> Result<bool, BenchError> {
             }
             other => return Err(BenchError::Spec(format!("unknown option `{other}`"))),
         }
+    }
+    if long {
+        scale.long_session = Some(LONG_SESSION);
     }
     let root = workspace_root();
     // The folder `cargo bench` uses too, so the source files are made once.
@@ -59,7 +69,11 @@ fn run(args: &[String]) -> Result<bool, BenchError> {
         .join(scale.suite);
     let exe = std::env::current_exe().map_err(|e| BenchError::Other(e.to_string()))?;
     let workspace = Workspace::prepare(&scale, &scratch, with_media)?;
-    let outcome = run_all(&workspace, &scale, &exe)?;
+    let outcome = if only_editing {
+        editing(&workspace, &scale)?
+    } else {
+        run_all(&workspace, &scale, &exe)?
+    };
     let finished = cli::finish(&root, &scale, &outcome, out.as_deref())?;
     print!("{}", finished.report());
     Ok(finished.failed.is_empty() && finished.not_run.is_empty())

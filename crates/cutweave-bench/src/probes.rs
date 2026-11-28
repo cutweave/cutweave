@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::BenchError;
 use crate::fixture::{FixtureManifest, FixtureSpec, generate};
-use crate::harness::{BenchEngine, ChildEngine, ChildSpec, call};
+use crate::harness::{BenchEngine, ChildEngine, ChildSpec, WsClient, call};
 use crate::result::Metric;
 use crate::stats::{BUCKETS_MS, Summary, summarize};
 use crate::workload::Workload;
@@ -50,7 +50,17 @@ pub struct Scale {
     pub stub_media: bool,
     /// Start the engine process the way the app does (`Gui` mode) instead of headless.
     pub gui_engine: bool,
+    /// Keep the round-trip session going until this many commands have run, then measure
+    /// again (`command_rtt_at_50k_*`); `None`: the session ends with the round-trip probe.
+    pub long_session: Option<usize>,
+    /// Updates of the main-track drag.
+    pub drag_updates: usize,
+    /// How many clips away the main-track drag carries its clip.
+    pub drag_reach: usize,
 }
+
+/// The commands of a long session (`cutweave-bench run --long`).
+pub const LONG_SESSION: usize = 50_000;
 
 impl Scale {
     /// The real suite: P-400, P-5K, 10,000 commands, 60 s idle.
@@ -70,6 +80,9 @@ impl Scale {
             starts: 3,
             stub_media: false,
             gui_engine: true,
+            long_session: None,
+            drag_updates: 60,
+            drag_reach: 300,
         }
     }
 
@@ -94,6 +107,9 @@ impl Scale {
             starts: 1,
             stub_media: true,
             gui_engine: false,
+            long_session: Some(120),
+            drag_updates: 4,
+            drag_reach: 300,
         }
     }
 }
@@ -238,9 +254,29 @@ pub fn open_and_query(ws: &Workspace, scale: &Scale) -> Result<Vec<Metric>, Benc
     ])
 }
 
+/// The in-process calls of one window of the session (`command_rtt_start_*`, `…_at_10k_*`,
+/// `…_at_50k_*`): a twentieth of the probe's.
+fn session_window(scale: &Scale) -> usize {
+    (scale.commands / 20).max(1)
+}
+
+fn window_metrics(at: &str, ms: &[f64]) -> [Metric; 2] {
+    let s = summarize(ms);
+    [
+        Metric::new(&format!("command_rtt_{at}_p95_ms"), s.p95, "ms", s.samples),
+        Metric::new(&format!("command_rtt_{at}_p50_ms"), s.p50, "ms", s.samples),
+    ]
+}
+
 /// Command round trip on P-5K: `scale.commands` mixed commands in process and as many over the
 /// WebSocket (request, response and the `doc.patched` it causes), taking turns so both see the
 /// same document as it grows. `command_roundtrip_p95_ms` is the WebSocket p95.
+///
+/// How the cost changes over the session (issue #230) is in the in-process calls of two
+/// windows: `command_rtt_start_*` (the first ones) and `command_rtt_at_10k_*` (the ones that
+/// follow half of the probe's commands: 10,000 at full scale). With `scale.long_session` the
+/// session goes on in process until that many commands have run, and one more window is
+/// `command_rtt_at_50k_*`.
 pub fn command_rtt(
     engine: &BenchEngine,
     workload: &mut Workload,
@@ -268,14 +304,128 @@ pub fn command_rtt(
         websocket: summarize(&remote),
     };
     let (l, r) = (&histogram.in_process, &histogram.websocket);
-    let metrics = vec![
+    let mut metrics = vec![
         Metric::new("command_roundtrip_p95_ms", r.p95, "ms", r.samples),
         Metric::new("command_roundtrip_p50_ms", r.p50, "ms", r.samples),
         Metric::new("command_roundtrip_max_ms", r.max, "ms", r.samples),
         Metric::new("command_rtt_in_process_p95_ms", l.p95, "ms", l.samples),
         Metric::new("command_rtt_in_process_p50_ms", l.p50, "ms", l.samples),
     ];
+    let window = session_window(scale).min(local.len());
+    let middle = (local.len() / 2).min(local.len() - window);
+    metrics.extend(window_metrics("start", &local[..window]));
+    metrics.extend(window_metrics("at_10k", &local[middle..middle + window]));
+    if let Some(total) = scale.long_session {
+        for _ in 2 * scale.commands..total {
+            let step = workload.next_step();
+            call(&conn, step.command, step.params)?;
+        }
+        let mut late = Vec::with_capacity(window);
+        for _ in 0..window {
+            let step = workload.next_step();
+            let t0 = Instant::now();
+            call(&conn, step.command, step.params)?;
+            late.push(ms(t0));
+        }
+        metrics.extend(window_metrics("at_50k", &late));
+    }
     Ok((metrics, histogram))
+}
+
+/// One gesture on the main track, as the editor sends it during a drag: `item.move` updates
+/// with `_meta.replace` that carry `item` to the start of the main-track clip `away` clips
+/// before `from`, one update per entry; the gesture is then cancelled, so the document is as
+/// before. Returns the metrics `{id}_rtt_p95_ms`, `{id}_rtt_p50_ms` (an update's round trip:
+/// request, response and the `doc.patched` it causes) and `{id}_kb_per_update` (what the
+/// socket received for it).
+fn gesture_on_main(
+    client: &mut WsClient,
+    manifest: &FixtureManifest,
+    id: &str,
+    item: &str,
+    from: usize,
+    away: &[usize],
+) -> Result<Vec<Metric>, BenchError> {
+    let Some(main) = manifest.tracks.iter().find(|t| t.main) else {
+        return Ok(Vec::new());
+    };
+    let opened = client.mutate(
+        "edit.begin_tx",
+        json!({"kind": "gesture", "label": "Move clip"}),
+    )?;
+    let tx = &opened["tx"];
+    let mut times = Vec::with_capacity(away.len());
+    let received = client.received_bytes();
+    for clips in away {
+        let start = main.items[from - clips].start * manifest.frame;
+        let t0 = Instant::now();
+        client.gesture_update(
+            "item.move",
+            json!({"item": item, "to_track": main.id, "start": start}),
+            tx,
+        )?;
+        times.push(ms(t0));
+    }
+    let received = client.received_bytes() - received;
+    client.mutate("edit.cancel_tx", json!({"tx": tx}))?;
+    let s = summarize(&times);
+    #[allow(clippy::cast_precision_loss)]
+    let kb = received as f64 / 1024.0 / times.len() as f64;
+    Ok(vec![
+        Metric::new(&format!("{id}_rtt_p95_ms"), s.p95, "ms", s.samples),
+        Metric::new(&format!("{id}_rtt_p50_ms"), s.p50, "ms", s.samples),
+        Metric::new(&format!("{id}_kb_per_update"), kb, "KB", s.samples),
+    ])
+}
+
+/// Drags on the magnetic main track of P-5K (issue #231), over the WebSocket with
+/// `doc.patched` subscribed, each update landing on another clip's start `scale.drag_reach`
+/// clips towards the start of the track and back in `scale.drag_updates` updates:
+///
+/// - `main_drag_p5k_*`: the clip in the middle of the main track is carried along it (the
+///   clips it passes change places with it);
+/// - `main_insert_drag_p5k_*`: a clip of another video track is dragged onto the middle of
+///   the main track and along it (every clip after it makes room: half the track ripples).
+pub fn main_drag(
+    engine: &BenchEngine,
+    ws: &Workspace,
+    scale: &Scale,
+) -> Result<Vec<Metric>, BenchError> {
+    let manifest = &ws.stress_manifest;
+    let Some(main) = manifest.tracks.iter().find(|t| t.main) else {
+        return Ok(Vec::new());
+    };
+    let from = main.items.len() / 2;
+    let reach = scale.drag_reach.min(from);
+    let half = scale.drag_updates.div_ceil(2);
+    if reach == 0 || half == 0 {
+        return Ok(Vec::new());
+    }
+    let mut away: Vec<usize> = (1..=half)
+        .chain((1..half).rev())
+        .map(|k| (reach * k).div_ceil(half))
+        .collect();
+    away.dedup();
+    let mut client = engine.ws()?;
+    client.subscribe_patches()?;
+    let along = &main.items[from].id;
+    let mut metrics = gesture_on_main(&mut client, manifest, "main_drag_p5k", along, from, &away)?;
+    let visitor = manifest
+        .tracks
+        .iter()
+        .filter(|t| t.video && !t.main)
+        .find_map(|t| t.items.first());
+    if let Some(visitor) = visitor {
+        metrics.extend(gesture_on_main(
+            &mut client,
+            manifest,
+            "main_insert_drag_p5k",
+            &visitor.id,
+            from,
+            &away,
+        )?);
+    }
+    Ok(metrics)
 }
 
 /// `doc.patched` fan-out: one command, timed until every one of N WebSocket subscribers has
@@ -433,19 +583,32 @@ pub struct Outcome {
     pub failed: Vec<String>,
 }
 
+/// The probes of one editing session on P-5K, in one engine of this process: the main-track
+/// drag, the command round trip, the fan-out and the ripple (`cutweave-bench run --editing`
+/// runs these alone: no engine process, no GPU).
+pub fn editing(ws: &Workspace, scale: &Scale) -> Result<Outcome, BenchError> {
+    let engine = ws.stress_engine()?;
+    let mut workload = Workload::new(&ws.stress_manifest, scale.stress.seed);
+    // First, on the project as it was opened: the session below grows it.
+    let drag = main_drag(&engine, ws, scale)?;
+    let (mut metrics, rtt) = command_rtt(&engine, &mut workload, scale)?;
+    metrics.extend(drag);
+    metrics.extend(fan_out(&engine, &mut workload, scale)?);
+    metrics.extend(ripple(&engine, ws, scale)?);
+    Ok(Outcome {
+        metrics,
+        rtt,
+        failed: Vec::new(),
+    })
+}
+
 /// Runs every probe at `scale`. `exe` is the `cutweave-bench` executable (the engine process
 /// of the start and memory probes).
 pub fn run_all(ws: &Workspace, scale: &Scale, exe: &Path) -> Result<Outcome, BenchError> {
     let mut metrics = open_and_query(ws, scale)?;
-    let rtt = {
-        let engine = ws.stress_engine()?;
-        let mut workload = Workload::new(&ws.stress_manifest, scale.stress.seed);
-        let (rtt_metrics, rtt) = command_rtt(&engine, &mut workload, scale)?;
-        metrics.extend(rtt_metrics);
-        metrics.extend(fan_out(&engine, &mut workload, scale)?);
-        metrics.extend(ripple(&engine, ws, scale)?);
-        rtt
-    };
+    let session = editing(ws, scale)?;
+    metrics.extend(session.metrics);
+    let rtt = session.rtt;
     // The engine process depends on the machine (GPU, audio device): when it does not come
     // up, the measurements above are still worth reporting.
     let mut failed = Vec::new();
