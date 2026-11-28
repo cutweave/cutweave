@@ -185,6 +185,93 @@ fn only_sequence(doc: &Project) -> Result<SequenceId, CmdError> {
 }
 
 impl TextAdd {
+    /// The text track the item goes on: the given one (checked), the first free one, or a new
+    /// one.
+    fn slot(
+        &self,
+        doc: &Project,
+        sequence: &Sequence,
+        start: Time,
+        end: Time,
+    ) -> Result<Slot, CmdError> {
+        let Some(t) = self.track else {
+            return Ok(sequence
+                .tracks_in_order()
+                .find(|t| t.kind == TrackKind::Text && !t.locked && !busy(t, start, end))
+                .map_or(Slot::New, |t| Slot::Existing(t.id)));
+        };
+        let track = sequence.track(&t).ok_or_else(|| {
+            if doc.sequences.values().any(|s| s.track(&t).is_some()) {
+                CmdError::invalid(
+                    "/track",
+                    format!("track `{t}` is not in sequence `{}`", sequence.id),
+                )
+            } else {
+                CmdError::not_found(EntityKind::Track, t)
+            }
+        })?;
+        if track.kind != TrackKind::Text {
+            return Err(CmdError::invalid(
+                "/track",
+                format!(
+                    "track `{t}` is a {} track; text goes on a text track",
+                    track.kind
+                ),
+            ));
+        }
+        if track.locked {
+            return Err(CmdError::locked(EntityKind::Track, t));
+        }
+        if let Some(other) = track
+            .items
+            .iter()
+            .find(|i| i.start() < end && i.end().unwrap_or(Time::MAX) > start)
+        {
+            return Err(CmdError::invalid(
+                "/at",
+                format!(
+                    "the text would overlap item `{}` on track `{}`; choose a free time \
+                     or leave `track` out",
+                    other.id(),
+                    track.name
+                ),
+            ));
+        }
+        Ok(Slot::Existing(t))
+    }
+
+    /// The style: a built-in by name, or that built-in patched into an inline style when
+    /// `style` is given.
+    fn style_ref(&self) -> Result<TextStyleRef, CmdError> {
+        let name = self.style_name.as_deref().unwrap_or("title");
+        let base = cutweave_model::text::builtin_style(name).ok_or_else(|| {
+            CmdError::invalid(
+                "/style_name",
+                format!("unknown style `{name}`; use title, subtitle or body"),
+            )
+        })?;
+        Ok(match &self.style {
+            Some(patch) => TextStyleRef::Inline {
+                style: Box::new(patch.apply(&base).map_err(|e| text_error("/style", e))?),
+            },
+            None => TextStyleRef::Named {
+                name: name.to_owned(),
+            },
+        })
+    }
+}
+
+/// [`DEFAULT_TEXT_SECONDS`] on the frame grid.
+fn default_duration(rate: cutweave_model::FrameRate) -> Result<Duration, CmdError> {
+    let bad = |e: &dyn std::fmt::Display| CmdError::invalid("/duration", e.to_string());
+    let five = Time::from_secs(DEFAULT_TEXT_SECONDS).map_err(|e| bad(&e))?;
+    let snapped = rate
+        .snap_to_frame(five, Rounding::Nearest)
+        .map_err(|e| bad(&e))?;
+    Duration::try_from(snapped).map_err(|e| bad(&e))
+}
+
+impl TextAdd {
     fn plan(&self, doc: &Project) -> Result<AddPlan, CmdError> {
         let content = RichText::plain(self.text.clone());
         if content.runs.is_empty() {
@@ -214,84 +301,17 @@ impl TextAdd {
         if start < Time::ZERO {
             return Err(CmdError::invalid("/at", "the start must not be negative"));
         }
-        let duration = match self.duration {
-            Some(d) => resolve_frame_duration("/duration", d, rate)?,
-            None => {
-                let five = Time::from_secs(DEFAULT_TEXT_SECONDS)
-                    .map_err(|e| CmdError::invalid("/duration", e.to_string()))?;
-                let snapped = rate
-                    .snap_to_frame(five, Rounding::Nearest)
-                    .map_err(|e| CmdError::invalid("/duration", e.to_string()))?;
-                Duration::try_from(snapped)
-                    .map_err(|e| CmdError::invalid("/duration", e.to_string()))?
-            }
+        let duration = if let Some(d) = self.duration {
+            resolve_frame_duration("/duration", d, rate)?
+        } else {
+            default_duration(rate)?
         };
         let end = (start + duration)
             .ok()
             .filter(|e| e.flicks() <= MAX_SAFE_FLICKS)
             .ok_or_else(|| CmdError::invalid("/duration", "the item ends past the time range"))?;
-        let slot = match self.track {
-            Some(t) => {
-                let track = sequence.track(&t).ok_or_else(|| {
-                    if doc.sequences.values().any(|s| s.track(&t).is_some()) {
-                        CmdError::invalid(
-                            "/track",
-                            format!("track `{t}` is not in sequence `{sequence_id}`"),
-                        )
-                    } else {
-                        CmdError::not_found(EntityKind::Track, t)
-                    }
-                })?;
-                if track.kind != TrackKind::Text {
-                    return Err(CmdError::invalid(
-                        "/track",
-                        format!(
-                            "track `{t}` is a {} track; text goes on a text track",
-                            track.kind
-                        ),
-                    ));
-                }
-                if track.locked {
-                    return Err(CmdError::locked(EntityKind::Track, t));
-                }
-                if let Some(other) = track
-                    .items
-                    .iter()
-                    .find(|i| i.start() < end && i.end().unwrap_or(Time::MAX) > start)
-                {
-                    return Err(CmdError::invalid(
-                        "/at",
-                        format!(
-                            "the text would overlap item `{}` on track `{}`; choose a free time \
-                             or leave `track` out",
-                            other.id(),
-                            track.name
-                        ),
-                    ));
-                }
-                Slot::Existing(t)
-            }
-            None => sequence
-                .tracks_in_order()
-                .find(|t| t.kind == TrackKind::Text && !t.locked && !busy(t, start, end))
-                .map_or(Slot::New, |t| Slot::Existing(t.id)),
-        };
-        // The style: a built-in by name, patched into an inline one when `style` is given.
-        let name = self.style_name.as_deref().unwrap_or("title");
-        let base = cutweave_model::text::builtin_style(name).ok_or_else(|| {
-            CmdError::invalid(
-                "/style_name",
-                format!("unknown style `{name}`; use title, subtitle or body"),
-            )
-        })?;
-        let style = match &self.style {
-            Some(patch) => TextStyleRef::Inline {
-                style: Box::new(patch.apply(&base).map_err(|e| text_error("/style", e))?),
-            },
-            None => TextStyleRef::Named {
-                name: name.to_owned(),
-            },
-        };
+        let slot = self.slot(doc, sequence, start, end)?;
+        let style = self.style_ref()?;
         if let Some(b) = &self.text_box {
             b.check().map_err(|e| text_error("/box", e))?;
         }

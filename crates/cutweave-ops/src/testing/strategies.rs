@@ -492,7 +492,8 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         | "export.queue"
         | "media.list_folders"
         | "media.list_tags"
-        | "media.list_collections" => (1, no_params()),
+        | "media.list_collections"
+        | "text.list_styles" => (1, no_params()),
         "media.add_tags" => (if no_media { 1 } else { 3 }, media_tags(p)),
         "media.remove_tags" => (1, media_tags(p)),
         "media.rename_tag" => (1, media_rename_tag()),
@@ -622,7 +623,6 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "text.set_box" => (2, text_set_box(p)),
         "text.add_emoji" => (2, text_add_emoji(p)),
         "text.get" => (1, text_get(p)),
-        "text.list_styles" => (1, no_params()),
         "edit.begin_tx" => (2, begin_tx()),
         "edit.commit_tx" => (2, tx_ref()),
         "edit.cancel_tx" => (1, tx_ref()),

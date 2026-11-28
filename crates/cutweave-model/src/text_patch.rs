@@ -133,14 +133,13 @@ fn patched<T: Serialize + serde::de::DeserializeOwned>(
     let mut merged = base_json.clone();
     merge(&mut merged, &Value::Object(patch.clone()));
     serde_path_to_error::deserialize::<_, T>(&merged).map_err(|e| {
-        let mut path = pointer_of(e.path());
-        if path.is_empty()
+        let mut at = pointer_of(e.path());
+        if at.is_empty()
             && let Some(key) = patch.keys().next()
         {
-            path = format!("/{key}");
+            at = format!("/{key}");
         }
-        let path = refine::<T>(&base_json, patch, path);
-        TextError::new(path, e.inner().to_string())
+        TextError::new(refine::<T>(&base_json, patch, at), e.inner().to_string())
     })
 }
 
@@ -240,8 +239,10 @@ mod tests {
 
     #[test]
     fn merges_nested_objects_and_clears_with_null() {
-        let mut style = TextStyle::default();
-        style.glow = None;
+        let style = TextStyle {
+            glow: None,
+            ..TextStyle::default()
+        };
         let out = patch(&json!({
             "size": 40.0,
             "font": {"family": "Lora"},

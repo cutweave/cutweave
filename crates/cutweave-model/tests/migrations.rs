@@ -488,6 +488,7 @@ fn expected_image_sequence() -> Project {
 
 /// `v3/text.cutweave` (WP-3A.01, R37: text joined v3, no version bump): a title with a styled
 /// run, an animated size and a box, a subtitle on a built-in style, next to a video clip.
+#[allow(clippy::too_many_lines)] // one fixture, field by field
 fn expected_text() -> Project {
     use cutweave_model::{
         Interp, Keyframe, Keyframes,

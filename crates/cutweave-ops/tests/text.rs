@@ -125,7 +125,7 @@ fn bad_values_are_invalid_with_a_path() {
     assert_invalid(
         h.run(
             "text.set_style",
-            json!({"item": item, "patch": {"size": 100000}}),
+            json!({"item": item, "patch": {"size": 100_000}}),
         ),
         "/patch/size",
     );
@@ -353,7 +353,7 @@ fn style_properties_are_keyed_with_the_keyframe_commands() {
     let text = text_of(&h, item);
     let style = match &text.style {
         cutweave_model::text::TextStyleRef::Inline { style } => style,
-        other => panic!("detached: {other:?}"),
+        other @ cutweave_model::text::TextStyleRef::Named { .. } => panic!("detached: {other:?}"),
     };
     assert!(style.size.is_animated());
     // The item's visual properties key the same way.
@@ -412,9 +412,9 @@ fn style_properties_are_keyed_with_the_keyframe_commands() {
 
 #[test]
 fn the_generic_edits_treat_text_like_any_item() {
-    let (mut h, p) = project();
-    let a = add(&mut h, json!({"text": "A", "at": "0s", "duration": "4s"}));
-    let item = item_id(&a["item"]);
+    let (mut h, ids) = project();
+    let first = add(&mut h, json!({"text": "A", "at": "0s", "duration": "4s"}));
+    let item = item_id(&first["item"]);
     // Trimming and splitting are clip edits.
     assert_code(
         h.run("clip.split", json!({"item": item, "at": "2s"})),
@@ -424,18 +424,18 @@ fn the_generic_edits_treat_text_like_any_item() {
     h.ok("item.move", json!({"item": item, "start": "10s"}));
     assert_eq!(text_of(&h, item).start.flicks(), 10 * 705_600_000);
     assert_code(
-        h.run("item.move", json!({"item": item, "to_track": p.video})),
+        h.run("item.move", json!({"item": item, "to_track": ids.video})),
         "invalid",
     );
     // Duplicating copies it with a new id.
     let dup = h.ok("item.duplicate", json!({"items": [item], "offset": "5s"}));
     assert!(dup.to_string().contains("itm_"), "{dup}");
     // A text track takes no media.
-    let v = h.add_video("/m/a.mp4", 10, false);
+    let video = h.add_video("/m/a.mp4", 10, false);
     assert_code(
         h.run(
             "timeline.insert",
-            json!({"sequence": p.sequence, "track": a["track"], "media": v, "at": 0}),
+            json!({"sequence": ids.sequence, "track": first["track"], "media": video, "at": 0}),
         ),
         "invalid",
     );
@@ -443,8 +443,11 @@ fn the_generic_edits_treat_text_like_any_item() {
     h.ok("item.delete", json!({"items": [item]}));
     assert!(h.doc().find_item(&item).is_none());
     // `track.add` takes `text` now.
-    let t = h.ok("track.add", json!({"sequence": p.sequence, "kind": "text"}));
-    assert!(t["track"].is_string());
+    let added = h.ok(
+        "track.add",
+        json!({"sequence": ids.sequence, "kind": "text"}),
+    );
+    assert!(added["track"].is_string());
     let _: &Project = &h.doc();
     let _ = Item::Text;
 }

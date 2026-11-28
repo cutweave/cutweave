@@ -1193,8 +1193,10 @@ mod tests {
 
     #[test]
     fn checks_name_the_path() {
-        let mut s = TextStyle::default();
-        s.size = 0.0.into();
+        let s = TextStyle {
+            size: 0.0.into(),
+            ..TextStyle::default()
+        };
         assert_eq!(s.check().unwrap_err().path, "/size");
         let mut s = TextStyle::default();
         s.strokes.push(Stroke {
@@ -1207,13 +1209,15 @@ mod tests {
         let mut s = TextStyle::default();
         s.font.weight = 0;
         assert_eq!(s.check().unwrap_err().path, "/font/weight");
-        let mut s = TextStyle::default();
-        s.fill = Fill::Linear {
-            angle: 0.0,
-            stops: vec![GradientStop {
-                at: 0.0,
-                color: Color::BLACK,
-            }],
+        let s = TextStyle {
+            fill: Fill::Linear {
+                angle: 0.0,
+                stops: vec![GradientStop {
+                    at: 0.0,
+                    color: Color::BLACK,
+                }],
+            },
+            ..TextStyle::default()
         };
         assert_eq!(s.check().unwrap_err().path, "/fill/stops");
     }
