@@ -2246,7 +2246,7 @@ body {
   color: var(--text-secondary);
 }
 .cw-graph-panel__entry .cw-field {
-  width: calc(var(--space-12) * 2);
+  width: calc(var(--space-12) * 2.5);
 }
 .cw-graph-panel__body {
   display: flex;
