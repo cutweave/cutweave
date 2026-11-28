@@ -16,6 +16,7 @@ import { openArchiveDialog } from "../media/ArchiveDialog.tsx";
 import { openCollectDialog } from "../media/CollectDialog.tsx";
 import { usePref } from "../prefs/prefsStore.ts";
 import { openProjectSettings } from "../project/projectSettings.ts";
+import { createSequence, openSequenceSettings, showNeighbour } from "../sequences/actions.ts";
 import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session/desktop.ts";
 import { redoText, undoText } from "../session/historyLabels.ts";
 import type { ProjectController } from "../session/projectController.ts";
@@ -84,6 +85,18 @@ export function runAppCommand(command: AppCommand, deps: AppCommandDeps): void {
       return;
     case "projectSettings":
       openProjectSettings();
+      return;
+    case "newSequence":
+      void createSequence();
+      return;
+    case "sequenceSettings":
+      openSequenceSettings();
+      return;
+    case "nextSequence":
+      showNeighbour(1);
+      return;
+    case "previousSequence":
+      showNeighbour(-1);
       return;
     case "quit":
       void desktop?.app?.quit().catch(ignore);

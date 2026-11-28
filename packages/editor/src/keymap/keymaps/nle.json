@@ -20,6 +20,18 @@
       "keys": ["Mod+Shift+S"]
     },
     {
+      "command": "sequences.new",
+      "keys": ["Mod+Alt+N"]
+    },
+    {
+      "command": "sequences.next",
+      "keys": ["Mod+PageDown"]
+    },
+    {
+      "command": "sequences.previous",
+      "keys": ["Mod+PageUp"]
+    },
+    {
       "command": "export.start",
       "keys": ["Mod+M"]
     },
