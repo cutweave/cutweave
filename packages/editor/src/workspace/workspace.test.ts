@@ -92,6 +92,7 @@ describe("the panel registry", () => {
       "timeline",
       "history",
       "exports",
+      "graph-editor",
     ]);
   });
 
@@ -192,6 +193,7 @@ describe("closing and reopening panels (WP-2H.01)", () => {
       Timeline: "true",
       History: "false",
       Exports: "false",
+      "Graph editor": "false",
     });
 
     await togglePanelInMenu(user, "Inspector");
