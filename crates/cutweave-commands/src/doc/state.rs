@@ -33,6 +33,7 @@ use super::{
     identity::{Actor, ActorCtx, ConnId},
     locks::{ItemLocks, LockList, TxLocks},
     request::{Applied, RequestId, Submit, TxClosed, TxId, TxInfo, TxKind, TxOutcome},
+    revlog::RevLog,
 };
 use crate::{
     diff::diff,
@@ -768,6 +769,8 @@ pub struct DocState {
     claimed: Option<Applied>,
     outbox: Vec<DocEvent>,
     changes: Changes,
+    /// What the recent revisions touched, for `Conflict.changed_since` (WP-2I.04).
+    revlog: RevLog,
 }
 
 impl fmt::Debug for DocState {
@@ -829,6 +832,7 @@ impl DocState {
             claimed: None,
             outbox: Vec::new(),
             changes: Changes::default(),
+            revlog: RevLog::new(config.rev),
         }
     }
 
@@ -988,6 +992,8 @@ impl DocState {
         CmdError::Conflict {
             reason: ConflictReason::ItemInGesture,
             current_rev: None,
+            expected_rev: None,
+            changed_since: None,
             retry_after_ms,
             holder: Some(t.actor.clone()),
             detail: format!(
@@ -1059,6 +1065,24 @@ impl DocState {
 
     // ----- requests --------------------------------------------------------------------------
 
+    /// The `expected_rev` check (WP-2I.04): `Conflict{reason: stale_rev, current_rev,
+    /// expected_rev, changed_since}` unless the live document is at `expected`. The conflict
+    /// names the items the revisions in between touched, as far as the engine remembers them
+    /// (the last 200 changes; `unknown` beyond that).
+    ///
+    /// # Errors
+    /// The conflict.
+    pub fn check_expected_rev(&self, expected: Rev) -> Result<(), CmdError> {
+        if expected == self.rev {
+            return Ok(());
+        }
+        Err(CmdError::stale_rev(
+            expected,
+            self.rev,
+            self.revlog.since(expected, self.rev),
+        ))
+    }
+
     /// Runs a request: dedup by `request_id`, `expected_rev` check, then the command in an
     /// implicit transaction, in the open transaction named by `tx`, or (engine commands)
     /// against this state. Failures change nothing; `Conflict` errors carry the current
@@ -1102,13 +1126,8 @@ impl DocState {
         if let Some(applied) = self.replay(request_id, fingerprint, at)? {
             return Ok(applied);
         }
-        if let Some(expected) = expected_rev
-            && expected != self.rev
-        {
-            return Err(CmdError::conflict(
-                ConflictReason::StaleRev,
-                format!("expected revision {expected}; refresh and retry"),
-            ));
+        if let Some(expected) = expected_rev {
+            self.check_expected_rev(expected)?;
         }
         let call = Call {
             ctx,
@@ -1250,6 +1269,13 @@ impl DocState {
         request_id: Option<RequestId>,
         delta: LiveDelta,
     ) {
+        self.revlog.record(
+            self.rev,
+            match &delta {
+                LiveDelta::Ops(ops) => Some(ops),
+                LiveDelta::Reset => None,
+            },
+        );
         let event = match delta {
             LiveDelta::Ops(ops) => DocEvent::Patched(DocPatched {
                 rev: self.rev,

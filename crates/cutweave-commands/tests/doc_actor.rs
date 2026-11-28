@@ -17,8 +17,9 @@ use std::{
 };
 
 use cutweave_commands::{
-    Actor, ActorCtx, ActorOptions, CmdError, CommitRecord, ConflictReason, DocActor, DocEvent,
-    DocMetrics, Outcome, PatchCause, REDACTED, RecvError, RequestSample, Rev, Submit, TryRecvError,
+    Actor, ActorCtx, ActorOptions, CHANGED_SINCE_REVS, ChangedSince, CmdError, CommitRecord,
+    ConflictReason, DocActor, DocEvent, DocMetrics, Outcome, PatchCause, REDACTED, RecvError,
+    RequestSample, Rev, Submit, TryRecvError,
 };
 use doc_support::{
     GATE, Mirror, agent, append, config, drain, item_name, next_patched, project, spawn, submit, ui,
@@ -118,7 +119,7 @@ fn stale_expected_rev_is_a_conflict_with_the_current_rev() {
     let actor = spawn(doc);
     let h = actor.handle();
     append(&h, &ui(), tracks[0], 10);
-    append(&h, &ui(), tracks[0], 10);
+    let second = append(&h, &ui(), tracks[0], 10);
 
     let stale =
         Submit::new(agent(), "project.rename", json!({"name": "B"})).with_expected_rev(Rev(1));
@@ -126,6 +127,8 @@ fn stale_expected_rev_is_a_conflict_with_the_current_rev() {
     let CmdError::Conflict {
         reason,
         current_rev,
+        expected_rev,
+        changed_since,
         ..
     } = &err
     else {
@@ -133,6 +136,14 @@ fn stale_expected_rev_is_a_conflict_with_the_current_rev() {
     };
     assert_eq!(*reason, ConflictReason::StaleRev);
     assert_eq!(*current_rev, Some(Rev(2)));
+    // WP-2I.04: the conflict names the revision the caller expected and the items touched
+    // since (the second clip; the first was there at rev 1).
+    assert_eq!(*expected_rev, Some(Rev(1)));
+    assert_eq!(*changed_since, Some(ChangedSince::Items(vec![second])));
+    assert_eq!(
+        serde_json::to_value(&err).unwrap()["changed_since"],
+        json!({"items": [second]})
+    );
     assert_eq!(h.snapshot().doc.meta.name, "Doc actor fixture");
     assert_eq!(h.snapshot().rev, Rev(2));
 
@@ -142,13 +153,65 @@ fn stale_expected_rev_is_a_conflict_with_the_current_rev() {
     // A future revision is just as stale.
     let ahead =
         Submit::new(agent(), "project.rename", json!({"name": "C"})).with_expected_rev(Rev(9));
-    assert!(matches!(
-        h.submit(ahead).wait(),
-        Err(CmdError::Conflict {
-            current_rev: Some(Rev(3)),
-            ..
-        })
-    ));
+    let err = h.submit(ahead).wait().unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            CmdError::Conflict {
+                current_rev: Some(Rev(3)),
+                expected_rev: Some(Rev(9)),
+                changed_since: Some(ChangedSince::Unknown),
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(
+        serde_json::to_value(&err).unwrap()["changed_since"],
+        json!("unknown")
+    );
+}
+
+/// WP-2I.04: `changed_since` covers the last 200 changes of the document the engine has open;
+/// an older `expected_rev`, or one from before it was opened, gets `unknown`. A change that
+/// touched no item (a rename) is an empty list. The other conflicts carry neither field.
+#[test]
+fn changed_since_is_bounded_and_unknown_beyond_what_is_kept() {
+    let (doc, tracks, _) = project(1);
+    let actor = DocActor::spawn(config(doc).with_rev(Rev(10))).unwrap();
+    let h = actor.handle();
+    let changed = |expected: u64| {
+        let stale = Submit::new(agent(), "project.rename", json!({"name": "never"}))
+            .with_expected_rev(Rev(expected));
+        match h.submit(stale).wait().unwrap_err() {
+            CmdError::Conflict { changed_since, .. } => changed_since,
+            other => panic!("{other:?}"),
+        }
+    };
+    let first = append(&h, &ui(), tracks[0], 10);
+    submit(&h, &ui(), "project.rename", json!({"name": "B"})).unwrap();
+    assert_eq!(h.snapshot().rev, Rev(12));
+    assert_eq!(changed(10), Some(ChangedSince::Items(vec![first])));
+    assert_eq!(changed(11), Some(ChangedSince::Items(vec![])));
+    // Before this actor opened the document: nothing is known about those revisions.
+    assert_eq!(changed(9), Some(ChangedSince::Unknown));
+
+    for n in 0..CHANGED_SINCE_REVS {
+        submit(
+            &h,
+            &ui(),
+            "project.rename",
+            json!({"name": format!("n{n}")}),
+        )
+        .unwrap();
+    }
+    let now = 12 + CHANGED_SINCE_REVS as u64;
+    assert_eq!(h.snapshot().rev, Rev(now));
+    assert_eq!(changed(now - 200), Some(ChangedSince::Items(vec![])));
+    assert_eq!(changed(now - 201), Some(ChangedSince::Unknown));
+    assert_eq!(changed(10), Some(ChangedSince::Unknown));
+    // Nothing changed through any of that.
+    assert_eq!(h.snapshot().rev, Rev(now));
 }
 
 #[test]

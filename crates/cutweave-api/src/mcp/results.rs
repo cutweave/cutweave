@@ -532,6 +532,8 @@ mod tests {
         let in_use = |holder: Actor, retry_after_ms| CmdError::Conflict {
             reason: ConflictReason::ItemInGesture,
             current_rev: Some(Rev(7)),
+            expected_rev: None,
+            changed_since: None,
             retry_after_ms,
             holder: Some(holder),
             detail: "item `itm_1` is being edited".into(),

@@ -42,6 +42,7 @@ mod metrics;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod pending;
 mod request;
+mod revlog;
 mod state;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod sync;
@@ -81,6 +82,7 @@ pub use request::{
     Applied, RequestId, RequestIdError, Submit, TxClosed, TxId, TxIdError, TxInfo, TxKind,
     TxOutcome,
 };
+pub use revlog::{CHANGED_SINCE_ITEMS, CHANGED_SINCE_REVS};
 pub use state::{
     Changes, CommitRecord, CommitSink, DocConfig, DocState, GESTURE_IDLE_TIMEOUT, JournalStep,
     JournaledCommit, NoJournal, SOFT_LOCK_RETRY_MS,

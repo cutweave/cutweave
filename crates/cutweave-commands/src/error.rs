@@ -4,7 +4,7 @@
 
 use std::{borrow::Cow, fmt};
 
-use cutweave_model::EntityKind;
+use cutweave_model::{EntityKind, ItemId};
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -137,6 +137,23 @@ impl fmt::Display for ResourceKind {
     }
 }
 
+/// What changed between the `expected_rev` of a stale request and the current revision
+/// (WP-2I.04), so the caller knows what to read again.
+///
+/// On the wire: `{"items": ["itm_…", ...]}` or `"unknown"`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, specta::Type)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ChangedSince {
+    /// The items the changes since `expected_rev` touched (added, removed, moved or edited),
+    /// in id order. Empty when they touched no item (a marker, a track, media, settings).
+    Items(Vec<ItemId>),
+    /// Not known: `expected_rev` is older than the revisions the engine keeps this for (the
+    /// last 200 changes of the document it has open), is not a past revision at all, or the
+    /// changes touched more than 100 items. Read the document again.
+    Unknown,
+}
+
 /// Machine-readable reason of a [`CmdError::Conflict`].
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, specta::Type,
@@ -228,6 +245,11 @@ pub enum CmdError {
         reason: ConflictReason,
         /// The document revision when the error was raised (filled in by the engine).
         current_rev: Option<Rev>,
+        /// The revision the request expected (`stale_rev` from an `expected_rev`, WP-2I.04);
+        /// none for the other conflicts.
+        expected_rev: Option<Rev>,
+        /// What changed between `expected_rev` and `current_rev`; set with `expected_rev`.
+        changed_since: Option<ChangedSince>,
         /// When retrying may succeed (soft locks): the time left until the holding gesture's
         /// idle deadline; none for a proposal, which waits for a person (WP-2A.12).
         retry_after_ms: Option<u64>,
@@ -314,9 +336,25 @@ impl CmdError {
         CmdError::Conflict {
             reason,
             current_rev: None,
+            expected_rev: None,
+            changed_since: None,
             retry_after_ms: None,
             holder: None,
             detail: detail.into(),
+        }
+    }
+
+    /// `Conflict{reason: stale_rev}` for a request whose `expected_rev` is not the current
+    /// revision (WP-2I.04): it names both revisions and what changed between them.
+    pub fn stale_rev(expected: Rev, current: Rev, changed_since: ChangedSince) -> CmdError {
+        CmdError::Conflict {
+            reason: ConflictReason::StaleRev,
+            current_rev: Some(current),
+            expected_rev: Some(expected),
+            changed_since: Some(changed_since),
+            retry_after_ms: None,
+            holder: None,
+            detail: format!("expected revision {expected}; refresh and retry"),
         }
     }
 
@@ -481,7 +519,7 @@ impl JsonSchema for CmdError {
 mod wire {
     use serde::{Deserialize, Serialize};
 
-    use super::{Actor, CmdError, ConflictReason, ResourceKind, Rev, Scope};
+    use super::{Actor, ChangedSince, CmdError, ConflictReason, ResourceKind, Rev, Scope};
 
     /// A command error: tagged by `code`, with a human `message`.
     #[derive(Serialize, Deserialize, schemars::JsonSchema, specta::Type)]
@@ -520,6 +558,13 @@ mod wire {
             /// The document revision when the error was raised.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             current_rev: Option<Rev>,
+            /// The revision the request expected (a stale `expected_rev` only).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            expected_rev: Option<Rev>,
+            /// What changed between `expected_rev` and `current_rev`: the items touched, or
+            /// `unknown` (a stale `expected_rev` only).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            changed_since: Option<ChangedSince>,
             /// When retrying may succeed.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             #[specta(type = Option<specta_typescript::Number>)]
@@ -581,12 +626,16 @@ mod wire {
                 CmdError::Conflict {
                     reason,
                     current_rev,
+                    expected_rev,
+                    changed_since,
                     retry_after_ms,
                     holder,
                     detail,
                 } => CmdErrorWire::Conflict {
                     reason,
                     current_rev,
+                    expected_rev,
+                    changed_since,
                     retry_after_ms,
                     holder,
                     detail,
@@ -614,6 +663,8 @@ mod wire {
                 CmdErrorWire::Conflict {
                     reason,
                     current_rev,
+                    expected_rev,
+                    changed_since,
                     retry_after_ms,
                     holder,
                     detail,
@@ -621,6 +672,8 @@ mod wire {
                 } => CmdError::Conflict {
                     reason,
                     current_rev,
+                    expected_rev,
+                    changed_since,
                     retry_after_ms,
                     holder,
                     detail,
@@ -682,9 +735,12 @@ mod tests {
                 by: Some("agent:claude".into()),
                 tx: Some("tx_9".into()),
             },
+            CmdError::stale_rev(Rev(3), Rev(5), ChangedSince::Unknown),
             CmdError::Conflict {
                 reason: ConflictReason::ItemInGesture,
                 current_rev: Some(Rev(2)),
+                expected_rev: None,
+                changed_since: None,
                 retry_after_ms: Some(250),
                 holder: Some(Actor::User),
                 detail: "item is being dragged".into(),

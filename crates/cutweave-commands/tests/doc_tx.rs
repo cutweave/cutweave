@@ -336,6 +336,7 @@ fn other_connections_edit_untouched_items_and_fail_fast_on_touched_ones() {
         current_rev,
         holder,
         detail,
+        ..
     } = &err
     else {
         panic!("{err:?}")
