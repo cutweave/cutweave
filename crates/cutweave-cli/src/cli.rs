@@ -338,7 +338,7 @@ pub struct RenderCmd {
 /// The MCP tool profile (arch §14).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Profile {
-    /// At most 12 tools, for small context windows; the rest through cutweave_execute.
+    /// The smallest list, for small context windows; the rest through cutweave_execute.
     Minimal,
     /// The core editing tools, for clients that load every tool definition at the start.
     Standard,

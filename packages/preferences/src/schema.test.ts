@@ -285,6 +285,7 @@ describe("agents and notifications (WP-1J.05)", () => {
       expect(validatePreference("agents.allowed_folders", bad).ok, JSON.stringify(bad)).toBe(false);
     }
     expect(validatePreference("agents.client_profile", "full").ok).toBe(true);
+    expect(validatePreference("agents.client_profile", "described").ok).toBe(true);
     expect(validatePreference("agents.client_profile", "huge").ok).toBe(false);
   });
 

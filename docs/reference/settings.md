@@ -199,7 +199,7 @@ Keys that cannot be bound: F10 and Alt+F, E, V, H (the menu bar), Shift+F10 and 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
 | `agents.allowed_folders` | Folders agents can use, besides the open project's (added only with the OS folder picker in main, stored resolved; at most 64) | None | Machine (never exported or imported; the editor cannot write it) | Main (`--allow-root` at every engine start and restart; `project.set_allowed_roots`, UI-only, on change) | Read (`project.info.allowed_roots`) | WP-1J.05 |
-| `agents.client_profile` | Tool set in copied client setups: minimal, standard, full (`cutweave mcp --profile`) | Standard | App | Main (builds the setups) | — | WP-1J.05 |
+| `agents.client_profile` | Tool set in copied client setups: minimal, standard, described, full (`cutweave mcp --profile`). With standard, the Claude Code setup uses described (WP-2I.05) | Standard | App | Main (builds the setups) | — | WP-1J.05 |
 | — | Whether agents can connect; Connect a client (copy the Claude Code, Claude Desktop, Cursor, Codex or stdio setup: the bundled CLI's absolute path with `mcp --attach`, never a pid, port or token; main writes the clipboard); Connected agents (`project.connections`, read-only) | Information and actions | — | — | `project.connections` (read) | WP-1J.05 |
 | `agents.budget_action` | Agent spending per action without asking | $0 | App | Engine (UI-only) | Read | WP-5F.07 |
 | `agents.budget_session` | Agent spending per session | $0 | App | Engine (UI-only) | Read | WP-5F.07 |

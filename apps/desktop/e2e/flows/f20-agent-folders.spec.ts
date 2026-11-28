@@ -238,7 +238,9 @@ test.describe("F20 agent folders and connections", () => {
         copied.replace("claude mcp add cutweave -- ", ""),
       );
       expect(path.resolve(command ?? "")).toBe(path.resolve(cliBin));
-      expect(args).toEqual(["mcp", "--attach"]);
+      // Claude Code loads a tool's definition when it needs it, so its setup asks for the
+      // list with parameter descriptions (WP-2I.05).
+      expect(args).toEqual(["mcp", "--attach", "--profile", "described"]);
       expect(copied).not.toMatch(/--pid|--port|token/i);
       const port = await app.evaluate(() => globalThis.__cutweaveTest?.enginePort() ?? null);
       if (typeof port === "number") expect(copied).not.toContain(String(port));
