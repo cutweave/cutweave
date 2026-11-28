@@ -35,7 +35,7 @@ use crate::{
         notify::{Changed, Notifier, Subscriptions, updated_uris},
         resources::{self, Kind, Uri},
         results::{self, META_EXPECTED_REV, META_REQUEST_ID},
-        search,
+        search, visual,
     },
     server::Authenticated,
 };
@@ -159,6 +159,9 @@ impl CutweaveMcp {
         }
     }
 
+    /// Runs the registry entry `name` for `tool`. `origin` is this server's HTTP origin when
+    /// the request came over HTTP: what a picture's resource link points at
+    /// ([`visual`]).
     async fn call_entry(
         &self,
         conn: Arc<dyn DispatchConn>,
@@ -166,6 +169,7 @@ impl CutweaveMcp {
         name: &'static str,
         args: Value,
         meta: &RequestMetaObject,
+        origin: Option<&str>,
     ) -> CallToolResult {
         let Some(entry) = self.catalog.registry().get(name) else {
             return error_result(tool, &CmdError::internal("tool without a command"), None);
@@ -198,11 +202,25 @@ impl CutweaveMcp {
             Ok(reply) => {
                 let mut output = reply.output;
                 results::wrap_untrusted(name, &mut output);
-                results::success(
-                    results::summary(name, read_only, reply.rev),
-                    output,
-                    Some((reply.rev, reply.committed_rev)),
-                )
+                let revs = (reply.rev, reply.committed_rev);
+                let Some(size_param) = visual::size_param(name) else {
+                    return results::success(
+                        results::summary(name, read_only, reply.rev),
+                        output,
+                        Some(revs),
+                    );
+                };
+                visual::result(tool, name, output, &args, revs, origin).unwrap_or_else(|size| {
+                    let e = CmdError::invalid(
+                        format!("/{size_param}"),
+                        format!(
+                            "the image is {size} bytes, over the {} byte result limit; lower \
+                             {size_param}",
+                            frame::MAX_PAYLOAD
+                        ),
+                    );
+                    error_result(tool, &e, Some(&args))
+                })
             }
             Err(e) => error_result(tool, &e, Some(&args)),
         }
@@ -316,6 +334,7 @@ impl CutweaveMcp {
         conn: Arc<dyn DispatchConn>,
         args: &Value,
         meta: &RequestMetaObject,
+        origin: Option<&str>,
     ) -> CallToolResult {
         let tool = catalog::QUERY;
         if let Some(key) = args
@@ -359,7 +378,9 @@ impl CutweaveMcp {
             }
         };
         let name = entry.meta.name;
-        let mut result = self.call_entry(conn, tool, name, params, meta).await;
+        let mut result = self
+            .call_entry(conn, tool, name, params, meta, origin)
+            .await;
         // Errors point into `args`.
         if result.is_error == Some(true)
             && let Some(path) = result
@@ -670,6 +691,20 @@ impl CutweaveMcp {
     }
 }
 
+/// This server's HTTP origin as the request named it (`http://127.0.0.1:<port>`), or `None`
+/// over stdio. The server's middleware has already checked that `Host` is exactly its loopback
+/// address and port.
+fn http_origin(ctx: &RequestContext<RoleServer>) -> Option<String> {
+    let host = ctx
+        .extensions
+        .get::<Parts>()?
+        .headers
+        .get(axum::http::header::HOST)?
+        .to_str()
+        .ok()?;
+    Some(format!("http://{host}"))
+}
+
 /// Whether `uri` is a resource a client can subscribe to.
 fn subscribable(uri: &str) -> bool {
     matches!(
@@ -871,12 +906,13 @@ impl ServerHandler for CutweaveMcp {
         };
         let args = Value::Object(request.arguments.clone().unwrap_or_default());
         let meta = request.meta.clone().unwrap_or_else(|| ctx.meta.clone());
+        let origin = http_origin(&ctx);
         let result = match target {
             Target::Search => self.search(&args),
             Target::Describe => self.describe(&args),
             Target::Entry(name) => {
                 let conn = self.connection(&ctx)?;
-                self.call_entry(conn, &request.name, name, args, &meta)
+                self.call_entry(conn, &request.name, name, args, &meta, origin.as_deref())
                     .await
             }
             Target::Execute => {
@@ -885,7 +921,7 @@ impl ServerHandler for CutweaveMcp {
             }
             Target::Query => {
                 let conn = self.connection(&ctx)?;
-                self.query(conn, &args, &meta).await
+                self.query(conn, &args, &meta, origin.as_deref()).await
             }
         };
         Ok(result.into())
