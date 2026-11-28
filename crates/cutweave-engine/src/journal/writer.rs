@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use cutweave_commands::{
     CheckpointId, CheckpointLedger, CheckpointRecord, Clock, CmdError, CommitRecord, CommitSink,
     DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, JournaledCommit, Patch, Registry, Rev, SystemClock,
-    WallTime, diff,
+    TxMarker, WallTime, diff,
 };
 use cutweave_model::Project;
 
@@ -22,7 +22,7 @@ use super::{
     JournalError,
     format::{
         CarriedCheckpoint, Carry, CommitEntry, Entry, FORMAT_VERSION, MAGIC, SegmentHeader,
-        checkpoint_frame, commit_frame, entry_frame,
+        checkpoint_frame, commit_frame, entry_frame, tx_frame,
     },
     ids::IdTracker,
 };
@@ -188,10 +188,20 @@ pub(crate) enum Start {
         next_generation: u64,
         /// The checkpoints the recovery rebuilt (to carry over the next save).
         checkpoints: Box<CheckpointLedger>,
+        /// The highest transaction id the journal said may be handed out (ADR-0043).
+        tx_issued: u64,
     },
 }
 
 impl Start {
+    /// The highest transaction id the journal said may be handed out (none for a new segment).
+    fn tx_issued(&self) -> u64 {
+        match self {
+            Start::Fresh { .. } => 0,
+            Start::Resume { tx_issued, .. } => *tx_issued,
+        }
+    }
+
     /// The checkpoints to start with (none for a new segment).
     fn take_checkpoints(&mut self) -> CheckpointLedger {
         match self {
@@ -323,6 +333,9 @@ struct State {
     /// The checkpoints (WP-2I.03), mirrored from their markers with their documents (shared
     /// with the doc actor's): the ones older than a save are carried into the next segment.
     checkpoints: CheckpointLedger,
+    /// The highest transaction id a marker said may be handed out (ADR-0043), carried into
+    /// the next segment on rotation: ids are never reused.
+    tx_issued: u64,
     dirty_since: Option<Instant>,
     last_sync: Instant,
     /// Appends so far, and how many of them are known durable.
@@ -475,6 +488,7 @@ fn carry_over(
         requests: st.requests.iter().cloned().collect(),
         checkpoints: carried(&st.checkpoints, base_rev, patches),
         checkpoints_issued: st.checkpoints.issued(),
+        tx_issued: st.tx_issued,
     }
 }
 
@@ -543,13 +557,14 @@ fn fresh_segment(
     })
 }
 
-/// The existing segment `path`, cut back to `valid_len` (its last valid entry).
+/// The existing segment `path`, cut back to `valid_len` (its last valid entry), and whether
+/// anything was cut.
 fn resume_segment(
     path: PathBuf,
     header: SegmentHeader,
     valid_len: u64,
     revs: Vec<(Rev, u64)>,
-) -> Result<Segment, JournalError> {
+) -> Result<(Segment, bool), JournalError> {
     let file = open_rw(&path).map_err(|e| JournalError::io("open journal", &path, e))?;
     let on_disk = file
         .metadata()
@@ -564,14 +579,51 @@ fn resume_segment(
             .map_err(|e| JournalError::io("sync journal", &path, e))?;
     }
     let sync_file = open_sync(&path).map_err(|e| JournalError::io("open journal", &path, e))?;
-    Ok(Segment {
+    let segment = Segment {
         path,
         file,
         sync_file: Arc::new(sync_file),
         header,
         len: valid_len,
         revs,
-    })
+    };
+    Ok((segment, on_disk != valid_len))
+}
+
+/// After the tail of the resumed segment was cut (discarded work, or a torn record): it may
+/// have held the marker that said which transaction ids were handed out, so it is said again,
+/// and they stay taken if this engine dies before it opens a transaction (ADR-0043).
+fn restate_tx_issued(
+    state: &mut State,
+    now: WallTime,
+    ids: Option<&IdTracker>,
+) -> Result<(), JournalError> {
+    if state.tx_issued == 0 {
+        return Ok(());
+    }
+    let marker = TxMarker {
+        issued: state.tx_issued,
+        at: now,
+        closed: None,
+        steps: &[],
+    };
+    let frame = tx_frame(&marker, ids.map(IdTracker::state))?;
+    write_frame(state, &frame).map(drop)
+}
+
+/// The group-commit flusher thread, if the policy has one.
+fn spawn_flusher(shared: &Arc<Shared>, dir: &Path) -> Result<Option<JoinHandle<()>>, JournalError> {
+    match shared.sync {
+        SyncPolicy::Group { max_delay } => {
+            let shared = Arc::clone(shared);
+            std::thread::Builder::new()
+                .name("cutweave-journal".to_owned())
+                .spawn(move || flush_loop(&shared, max_delay))
+                .map(Some)
+                .map_err(|e| JournalError::io("start journal flusher", dir, e))
+        }
+        SyncPolicy::EveryCommit | SyncPolicy::Manual => Ok(None),
+    }
 }
 
 impl Journal {
@@ -583,6 +635,8 @@ impl Journal {
     ) -> Result<Journal, JournalError> {
         let now = config.clock.now();
         let checkpoints = start.take_checkpoints();
+        let tx_issued = start.tx_issued();
+        let mut cut = false;
         let (seg, chain, retained, next_generation, last_rev, requests) = match start {
             Start::Fresh {
                 base_rev,
@@ -626,7 +680,8 @@ impl Journal {
                 next_generation,
                 ..
             } => {
-                let seg = resume_segment(path, header, valid_len, revs)?;
+                let (seg, truncated) = resume_segment(path, header, valid_len, revs)?;
+                cut = truncated;
                 (seg, chain, retained, next_generation, last_rev, requests)
             }
         };
@@ -643,6 +698,7 @@ impl Journal {
             last_rev,
             requests: VecDeque::new(),
             checkpoints,
+            tx_issued,
             dirty_since: None,
             last_sync: Instant::now(),
             written: 0,
@@ -652,6 +708,9 @@ impl Journal {
             stats: JournalStats::default(),
         };
         state.remember(requests.into_iter(), now, config.dedup_window);
+        if cut {
+            restate_tx_issued(&mut state, now, config.ids.as_ref())?;
+        }
         let shared = Arc::new(Shared {
             state: Mutex::new(state),
             wake: Condvar::new(),
@@ -661,18 +720,7 @@ impl Journal {
             registry: config.registry,
             ids: config.ids,
         });
-        let flusher = match config.sync {
-            SyncPolicy::Group { max_delay } => {
-                let shared = Arc::clone(&shared);
-                Some(
-                    std::thread::Builder::new()
-                        .name("cutweave-journal".to_owned())
-                        .spawn(move || flush_loop(&shared, max_delay))
-                        .map_err(|e| JournalError::io("start journal flusher", dir, e))?,
-                )
-            }
-            SyncPolicy::EveryCommit | SyncPolicy::Manual => None,
-        };
+        let flusher = spawn_flusher(&shared, dir)?;
         Ok(Journal {
             handle: Arc::new(Handle {
                 shared,
@@ -743,6 +791,26 @@ impl Journal {
         }
         write_frame(&mut st, &frame)?;
         st.checkpoints.record(record);
+        st.remember(
+            record.steps.iter().map(|s| s.record.clone()),
+            now,
+            shared.window,
+        );
+        made_durable(shared, &mut st)
+    }
+
+    /// Appends one transaction marker (ADR-0043): written to the OS before this returns (and
+    /// synced per the [`SyncPolicy`]). It has no revision; the journal keeps its requests and
+    /// the highest id it names to carry them over the next save. On error nothing is appended.
+    pub fn append_tx(&self, record: &TxMarker<'_>) -> Result<(), JournalError> {
+        let shared = &self.handle.shared;
+        let ids = shared.ids.as_ref().map(IdTracker::state);
+        let frame = tx_frame(record, ids)?;
+        let now = shared.clock.now();
+        let mut st = shared.lock();
+        st.writable()?;
+        write_frame(&mut st, &frame)?;
+        st.tx_issued = st.tx_issued.max(record.issued);
         st.remember(
             record.steps.iter().map(|s| s.record.clone()),
             now,
@@ -1166,6 +1234,15 @@ impl CommitSink for JournalSink {
             tracing::error!(rev = %record.rev, error = %e, "journal write failed; the transaction was not applied");
             CmdError::internal(format!(
                 "the change could not be journaled and was not applied: {e}"
+            ))
+        })
+    }
+
+    fn tx_marker(&mut self, record: &TxMarker<'_>) -> Result<(), CmdError> {
+        self.journal.append_tx(record).map_err(|e| {
+            tracing::error!(issued = record.issued, error = %e, "journal write failed; the transaction marker was not written");
+            CmdError::internal(format!(
+                "the journal could not be written: {e}"
             ))
         })
     }

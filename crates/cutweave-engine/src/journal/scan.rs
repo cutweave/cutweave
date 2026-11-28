@@ -354,6 +354,7 @@ fn replay_inner(scan: &DirScan, base: &Project, apply: bool, check_each: bool) -
                         out.max_tx = out.max_tx.max(r.applied.tx_id.map_or(0, TxId::get));
                     }
                     out.requests.extend(carry.requests.iter().cloned());
+                    out.max_tx = out.max_tx.max(carry.tx_issued);
                     out.checkpoints.issue(carry.checkpoints_issued);
                     // The chain's first segment carries the checkpoints made before its save, as
                     // patches from the saved document; a later segment's carry repeats what
@@ -383,6 +384,19 @@ fn replay_inner(scan: &DirScan, base: &Project, apply: bool, check_each: bool) -
                     // Its request id may have come from the deterministic stream. A copy (a
                     // later segment repeating it) is older than what replay has: positions
                     // only move forward.
+                    if let Some(ids) = entry.ids {
+                        out.ids = Some(out.ids.map_or(ids, |cur| IdState {
+                            entity: cur.entity.max(ids.entity),
+                            request: cur.request.max(ids.request),
+                        }));
+                    }
+                }
+                Entry::Tx(entry) => {
+                    // No revision and no change: only what it remembers. A copy (a later
+                    // segment repeating it) remembers the same again.
+                    out.max_tx = out.max_tx.max(entry.tx.issued);
+                    out.requests
+                        .extend(entry.tx.steps.iter().map(|s| s.record.clone()));
                     if let Some(ids) = entry.ids {
                         out.ids = Some(out.ids.map_or(ids, |cur| IdState {
                             entity: cur.entity.max(ids.entity),
@@ -448,5 +462,24 @@ fn replay_inner(scan: &DirScan, base: &Project, apply: bool, check_each: bool) -
             break;
         }
     }
+    // Ids are never reused, whatever was replayed: also past the transactions a discard or a
+    // stop left out.
+    out.max_tx = out.max_tx.max(highest_tx(scan.chain()));
     Some(out)
+}
+
+/// The highest transaction id the readable entries of `chain` name: a committed
+/// transaction's, or one a marker (or a carry) said may have been handed out.
+fn highest_tx(chain: &[SegmentScan]) -> u64 {
+    chain
+        .iter()
+        .flat_map(|segment| &segment.entries)
+        .map(|decoded| match &decoded.entry {
+            Entry::Commit(entry) => entry.commit.tx_id.get(),
+            Entry::Tx(entry) => entry.tx.issued,
+            Entry::Carry(carry) => carry.tx_issued,
+            Entry::Header(_) | Entry::Checkpoint(_) | Entry::Unknown => 0,
+        })
+        .max()
+        .unwrap_or(0)
 }

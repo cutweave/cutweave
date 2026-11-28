@@ -325,3 +325,159 @@ fn a_close_sent_again_for_a_gesture_the_engine_died_with_never_reaches_a_new_one
     drop(conn);
     engine.shutdown();
 }
+
+const CLOSES_CHILD_ENV: &str = "CUTWEAVE_ENGINE_CRASH_CLOSES_CHILD";
+
+fn close_id(n: u128) -> RequestId {
+    RequestId::from_u128(0x0190_0000_0000_7000_8000_0000_0000_0100 | n)
+}
+
+/// Child half of the ADR-0043 kill test: one journaled rename; a gesture with a rename in it,
+/// cancelled; a batch that changes nothing, committed. Prints both transaction ids and both
+/// results, then waits to be killed (with a third gesture open, so nothing shuts down).
+#[test]
+fn child_engine_that_closes_transactions_without_a_change() {
+    let Ok(folder) = std::env::var(CLOSES_CHILD_ENV) else {
+        return; // a normal test run: nothing to do
+    };
+    let mut config = EngineConfig::new(EngineMode::Headless);
+    config.project = Some(folder.into());
+    let engine = Engine::start(config).unwrap();
+    let conn = engine
+        .handle()
+        .connect(&Credential::Agent("cli".into()))
+        .unwrap();
+    must(&conn, "project.rename", json!({ "name": "Journaled" }));
+    let begin = json!({ "kind": "gesture", "label": "Drag" });
+    let opened = must(&conn, "edit.begin_tx", begin.clone());
+    let a: TxId = serde_json::from_value(opened["tx"].clone()).unwrap();
+    conn.call(Call::new("project.rename", json!({ "name": "Dropped" })).in_tx(a))
+        .unwrap();
+    let cancelled = conn
+        .call(Call::new("edit.cancel_tx", json!({ "tx": a })).with_request_id(close_id(1)))
+        .unwrap();
+    let opened = must(&conn, "edit.begin_tx", json!({ "label": "Batch" }));
+    let b: TxId = serde_json::from_value(opened["tx"].clone()).unwrap();
+    let committed = conn
+        .call(Call::new("edit.commit_tx", json!({ "tx": b })).with_request_id(close_id(2)))
+        .unwrap();
+    must(&conn, "edit.begin_tx", begin);
+    let stdout = std::io::stdout();
+    {
+        let mut out = stdout.lock();
+        // Its own line: the test harness prints the test's name before the first one.
+        let _ = writeln!(out, "READY");
+        let _ = writeln!(out, "CANCELLED {a} {}", cancelled.output);
+        let _ = writeln!(out, "COMMITTED {b} {}", committed.output);
+        let _ = writeln!(out, "DONE");
+        let _ = out.flush();
+    }
+    // The parent kills us; never shut down cleanly.
+    std::thread::sleep(Duration::from_secs(120));
+    drop(engine);
+}
+
+/// ADR-0043 through a real kill: the engine cancelled one transaction and committed another
+/// that changed nothing, acknowledged both, and was killed. After the restart the same
+/// requests sent again get the results the killed engine gave, marked as repeats; nothing is
+/// open, the document is the journaled one, and a close the journal never saw is refused.
+#[test]
+fn a_cancel_and_an_empty_commit_sent_again_after_a_kill_get_their_results_back() {
+    let t = TempDir::new("crash-closes");
+    let folder = empty_project(t.path(), "CrashCloses");
+    {
+        let mut config = EngineConfig::new(EngineMode::Oneshot);
+        config.project = Some(folder.clone());
+        let engine = Engine::start(config).unwrap();
+        let conn = engine
+            .handle()
+            .connect(&Credential::Agent("cli".into()))
+            .unwrap();
+        must(&conn, "project.new", json!({ "name": "Saved" }));
+        must(&conn, "project.save", json!({}));
+    }
+    let (cancelled, committed) = {
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "child_engine_that_closes_transactions_without_a_change",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CLOSES_CHILD_ENV, &folder)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+        let (mut cancelled, mut committed) = (None, None);
+        for line in lines.by_ref().map_while(Result::ok) {
+            let closed = |rest: &str| {
+                let (tx, output) = rest.split_once(' ').unwrap();
+                let tx: TxId = tx.parse().unwrap();
+                let output: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+                (tx, output)
+            };
+            if let Some(rest) = line.strip_prefix("CANCELLED ") {
+                cancelled = Some(closed(rest));
+            } else if let Some(rest) = line.strip_prefix("COMMITTED ") {
+                committed = Some(closed(rest));
+            } else if line.starts_with("DONE") {
+                break;
+            }
+        }
+        child.kill().unwrap(); // no cleanup runs in the child
+        child.wait().unwrap();
+        (
+            cancelled.expect("the child cancelled nothing"),
+            committed.expect("the child committed nothing"),
+        )
+    };
+
+    let mut config = EngineConfig::new(EngineMode::Headless);
+    config.project = Some(folder.clone());
+    config.autosave = Some(AutosaveConfig {
+        idle: Duration::from_secs(3600),
+        interval: Duration::from_secs(3600),
+        poll: Duration::from_secs(3600),
+        ..AutosaveConfig::default()
+    });
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let conn = h.connect(&Credential::Agent("cli".into())).unwrap();
+    must(&conn, "project.recover", json!({}));
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "Journaled");
+
+    for _ in 0..2 {
+        for (n, close, (tx, output)) in [
+            (1, "edit.cancel_tx", &cancelled),
+            (2, "edit.commit_tx", &committed),
+        ] {
+            let again = conn
+                .call(Call::new(close, json!({ "tx": tx })).with_request_id(close_id(n)))
+                .unwrap_or_else(|e| panic!("{close} sent again was refused: {e}"));
+            assert_eq!(&again.output, output, "{close}");
+            assert!(again.applied.is_some_and(|a| a.replayed), "{close}");
+        }
+    }
+    assert_eq!(committed.1["changed"], false);
+    let locks = must(&conn, "edit.locks", json!({}));
+    assert_eq!(
+        locks["transactions"].as_array().unwrap().len(),
+        0,
+        "{locks}"
+    );
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "Journaled");
+    // The same closes under request ids the killed engine never saw: honest refusals.
+    for (n, close, (tx, _)) in [
+        (3, "edit.cancel_tx", &cancelled),
+        (4, "edit.commit_tx", &committed),
+    ] {
+        let err = conn
+            .call(Call::new(close, json!({ "tx": tx })).with_request_id(close_id(n)))
+            .unwrap_err();
+        assert_eq!(err.code(), "not_found", "{close}: {err}");
+    }
+    drop(conn);
+    engine.shutdown();
+}

@@ -64,18 +64,19 @@ pub use cutweave_commands_derive::{command, query, wire};
 pub use diff::diff;
 pub use doc::{
     Actor, ActorCtx, ActorError, ActorStacks, Applied, CHANGED_SINCE_ITEMS, CHANGED_SINCE_REVS,
-    Changes, CheckpointId, CheckpointInfo, CheckpointLedger, CheckpointRecord, Clock,
+    Changes, CheckpointId, CheckpointInfo, CheckpointLedger, CheckpointRecord, Clock, ClosedTx,
     CommandPanicked, CommitRecord, CommitSink, ConnId, DEDUP_CAPACITY, DEDUP_WINDOW,
     DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES, DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH,
     DedupRecord, DocConfig, DocEvent, DocPatched, DocReset, DocSnapshot, DocState, EVENT_CATALOG,
     EntryCause, EntryStatus, EventInfo, Fingerprint, GESTURE_IDLE_TIMEOUT, GestureCancelReason,
     GestureCancelled, HistoryChange, HistoryChanged, HistoryEntry, HistoryLimits, HistoryMoved,
     HistoryPage, HistoryScope, HistoryUsage, JournalStep, JournaledCheckpoint, JournaledCommit,
-    LatestStacks, LatestTop, LedgerEntry, LockList, MAX_AGENT_LABEL_CHARS,
+    JournaledTxMarker, LatestStacks, LatestTop, LedgerEntry, LockList, MAX_AGENT_LABEL_CHARS,
     MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS, MAX_HISTORY_PAGE,
     MAX_NAMED_CHECKPOINTS, MAX_PLUGIN_ID_CHARS, MAX_UNDO_DEPTH, ManualClock, NoJournal, PatchCause,
     RequestId, RequestIdError, Restored, RevertedChanges, SOFT_LOCK_RETRY_MS, StackTop, Submit,
-    TxActivity, TxClosed, TxEnded, TxId, TxIdError, TxInfo, TxKind, TxLocks, TxOutcome, WallTime,
+    TX_IDS_RESERVED, TxActivity, TxClosed, TxEnded, TxId, TxIdError, TxInfo, TxKind, TxLocks,
+    TxMarker, TxOutcome, WallTime,
 };
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use doc::{

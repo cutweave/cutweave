@@ -21,6 +21,11 @@
 //! - once the in-flight commands are settled, the document equals the reference's, compared
 //!   by structure ([`compare`]): **no acknowledged command is lost, and a command that was in
 //!   flight is there whole or not at all** (a half-applied one would differ from both);
+//! - a gesture that was cancelled and a batch that was committed empty before the kill, both
+//!   acknowledged, get the same results when sent again (ADR-0043: the journal keeps them as
+//!   markers); after a kill with a gesture open, a new gesture gets another transaction id
+//!   and a commit or cancel naming the old one is refused and leaves the new one open
+//!   (issue #251);
 //! - the checkpoints are the reference's, the export queue's pause is what was acknowledged,
 //!   the document on disk is a readable project file, and a save after the recovery leaves no
 //!   temporary file ([`disk::check`]).

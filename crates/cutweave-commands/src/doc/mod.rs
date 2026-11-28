@@ -84,6 +84,7 @@ pub use request::{
 };
 pub use revlog::{CHANGED_SINCE_ITEMS, CHANGED_SINCE_REVS};
 pub use state::{
-    Changes, CommitRecord, CommitSink, DocConfig, DocState, GESTURE_IDLE_TIMEOUT, JournalStep,
-    JournaledCommit, NoJournal, SOFT_LOCK_RETRY_MS,
+    Changes, ClosedTx, CommitRecord, CommitSink, DocConfig, DocState, GESTURE_IDLE_TIMEOUT,
+    JournalStep, JournaledCommit, JournaledTxMarker, NoJournal, SOFT_LOCK_RETRY_MS,
+    TX_IDS_RESERVED, TxMarker,
 };

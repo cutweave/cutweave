@@ -65,6 +65,11 @@ struct Flight {
     unanswered: Vec<Op>,
     /// A drag whose commit was not answered.
     drag: Option<Drag>,
+    /// Closes that committed nothing and were acknowledged (ADR-0043): a cancelled gesture
+    /// and a batch committed empty. Sent again after the recovery, each must get this output.
+    closes: Vec<(Op, Value)>,
+    /// The transaction of the gesture the engine was killed with.
+    lost_tx: Option<String>,
     /// The engine is gone.
     died: bool,
     /// It died without the harness killing it or asking it to.
@@ -409,7 +414,7 @@ impl Session {
                 false
             }
             Ok(None) => false,
-            Ok(Some(_)) => match end {
+            Ok(Some(tx)) => match end {
                 DragEnd::Commit => {
                     let op = &drag.commit;
                     let answer =
@@ -433,6 +438,7 @@ impl Session {
                         None => flight.unanswered.push(agent),
                     }
                     flight.died = true;
+                    flight.lost_tx = Some(tx);
                     true
                 }
                 DragEnd::KillAtCommit(micros) => {
@@ -482,8 +488,58 @@ impl Session {
                 return Ok(flight);
             }
         }
+        self.close_without_change(&mut flight)?;
+        if flight.died {
+            flight.unexpected = true;
+            return Ok(flight);
+        }
         self.strike(point, &mut flight)?;
         Ok(flight)
+    }
+
+    /// Before the kill: a gesture cancelled and a batch committed with nothing in it, both
+    /// acknowledged. Neither changes the document, so the reference is not told; the journal
+    /// keeps each as a marker (ADR-0043), and [`settle`](Self::settle) sends them again.
+    fn close_without_change(&mut self, flight: &mut Flight) -> Result<(), BenchError> {
+        for (kind, close) in [("gesture", "edit.cancel_tx"), ("batch", "edit.commit_tx")] {
+            let begin = json!({"label": "Nothing", "kind": kind});
+            let begin = self.script.editor_op("edit.begin_tx", begin);
+            let close_id = self.script.request_id();
+            let Some(live) = self.subject.as_mut() else {
+                return Err(BenchError::Other(
+                    "the engine under test is not running".into(),
+                ));
+            };
+            let opened =
+                live.editor
+                    .call(begin.command, &begin.params, Some(&begin.request_id), None);
+            let tx = match opened {
+                Ok(Answer::Done { output, .. }) => output["tx"].clone(),
+                Ok(Answer::Refused(why)) => return Err(BenchError::command(begin.command, &why)),
+                Err(_) => {
+                    flight.died = true;
+                    return Ok(());
+                }
+            };
+            let op = Op {
+                who: Who::Editor,
+                command: close,
+                params: json!({"tx": tx}),
+                request_id: close_id,
+            };
+            match live
+                .editor
+                .call(op.command, &op.params, Some(&op.request_id), None)
+            {
+                Ok(Answer::Done { output, .. }) => flight.closes.push((op, output)),
+                Ok(Answer::Refused(why)) => return Err(BenchError::command(close, &why)),
+                Err(_) => {
+                    flight.died = true;
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
     }
 
     fn strike(&mut self, point: Point, flight: &mut Flight) -> Result<(), BenchError> {
@@ -942,6 +998,10 @@ impl Session {
     /// either had one (its original result comes back) or it runs now.
     fn settle(&mut self, flight: Flight, row: &mut Row) -> Result<(), String> {
         let recovered = row.recovered_rev;
+        self.closes_again(&flight.closes)?;
+        if let Some(lost) = &flight.lost_tx {
+            self.lost_gesture(lost)?;
+        }
         for op in flight.unanswered {
             let live = self.subject()?;
             let answer = match op.who {
@@ -997,6 +1057,75 @@ impl Session {
             }
         }
         Ok(())
+    }
+
+    /// The acknowledged closes that committed nothing, sent again under their request ids:
+    /// the journal had each as a marker, so each gets the result the killed engine gave.
+    fn closes_again(&mut self, closes: &[(Op, Value)]) -> Result<(), String> {
+        for (op, was) in closes {
+            let live = self.subject()?;
+            let answer = live
+                .editor
+                .call(op.command, &op.params, Some(&op.request_id), None)
+                .map_err(|e| format!("`{}` sent again got no answer: {e}", op.command))?;
+            match answer {
+                Answer::Done { output, .. } if output == *was => {}
+                Answer::Done { output, .. } => {
+                    return Err(format!(
+                        "`{}` was acknowledged with {was} before the kill and answered {output} \
+                         when sent again",
+                        op.command
+                    ));
+                }
+                Answer::Refused(why) => {
+                    return Err(format!(
+                        "`{}` was acknowledged before the kill, but sent again it was \
+                         refused: {why}",
+                        op.command
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The engine was killed with gesture `lost` open, so the journal never saw it. A gesture
+    /// opened now must get another id, and a commit and a cancel that name `lost` must be
+    /// refused and leave the new one open (issue #251).
+    fn lost_gesture(&mut self, lost: &str) -> Result<(), String> {
+        let begin = json!({"label": "After the kill", "kind": "gesture"});
+        let ids: Vec<String> = (0..4).map(|_| self.script.request_id()).collect();
+        let live = self.subject()?;
+        let mut call = |method: &str, params: &Value, id: &str| {
+            live.editor
+                .call(method, params, Some(id), None)
+                .map_err(|e| format!("`{method}` after the recovery got no answer: {e}"))
+        };
+        let now = match call("edit.begin_tx", &begin, &ids[0])? {
+            Answer::Done { output, .. } => output["tx"].as_str().unwrap_or_default().to_owned(),
+            Answer::Refused(why) => {
+                return Err(format!("a gesture after the recovery was refused: {why}"));
+            }
+        };
+        if now == lost {
+            return Err(format!(
+                "transaction id {lost} of the gesture the engine was killed with was issued again"
+            ));
+        }
+        for (close, id) in [("edit.commit_tx", &ids[1]), ("edit.cancel_tx", &ids[2])] {
+            if let Answer::Done { output, .. } = call(close, &json!({"tx": lost}), id)? {
+                return Err(format!(
+                    "`{close}` of {lost}, which the engine was killed with, closed something: \
+                     {output}"
+                ));
+            }
+        }
+        match call("edit.cancel_tx", &json!({"tx": now}), &ids[3])? {
+            Answer::Done { .. } => Ok(()),
+            Answer::Refused(why) => Err(format!(
+                "the gesture opened after the recovery was closed by a close of {lost}: {why}"
+            )),
+        }
     }
 
     /// Gives the reference engine what the engine under test acknowledged, in revision order.
