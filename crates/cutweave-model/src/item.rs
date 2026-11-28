@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Timeline items (arch §4.2), restricted to schema v2: media clips with audio gain and pan,
-//! transform, opacity, crop, flip and blend mode. Text, captions, compositions, generators,
-//! adjustments, effects and masks arrive in later versions. Animatable properties may be keyed
+//! Timeline items (arch §4.2): media clips with audio gain and pan, transform, opacity, crop,
+//! flip and blend mode, and text items (WP-3A.01). Captions, compositions, generators,
+//! adjustments, effects and masks arrive later. Animatable properties may be keyed
 //! (WP-2C.03, [`Animatable`] lives in `animate`).
 
 use std::borrow::Cow;
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Animatable, Custom, Duration, Extra, Freeze, GroupId, ItemId, Markers, MediaId, PropId, Speed,
-    Time, TimeError,
+    TextItem, Time, TimeError,
 };
 
 /// A 2D vector (positions, scales, anchors).
@@ -420,11 +420,11 @@ pub enum PropMut<'a> {
 }
 
 impl Clip {
-    /// The animatable property with registry ID `id` (keyframes §7).
+    /// The animatable property with registry ID `id` (keyframes §7); `None` for a text property.
     #[must_use]
-    pub fn prop(&self, id: PropId) -> PropRef<'_> {
+    pub fn prop(&self, id: PropId) -> Option<PropRef<'_>> {
         let v = &self.visual;
-        match id {
+        Some(match id {
             PropId::TransformPosition => PropRef::Vec2(&v.transform.position),
             PropId::TransformScale => PropRef::Vec2(&v.transform.scale),
             PropId::TransformRotation => PropRef::Scalar(&v.transform.rotation),
@@ -438,13 +438,14 @@ impl Clip {
             PropId::FlipVertical => PropRef::Bool(&v.flip.vertical),
             PropId::AudioGain => PropRef::Scalar(&self.audio.gain),
             PropId::AudioPan => PropRef::Scalar(&self.audio.pan),
-        }
+            PropId::TextSize | PropId::TextLetterSpacing | PropId::TextLineHeight => return None,
+        })
     }
 
-    /// The mutable animatable property with registry ID `id`.
-    pub fn prop_mut(&mut self, id: PropId) -> PropMut<'_> {
+    /// The mutable animatable property with registry ID `id`; `None` for a text property.
+    pub fn prop_mut(&mut self, id: PropId) -> Option<PropMut<'_>> {
         let v = &mut self.visual;
-        match id {
+        Some(match id {
             PropId::TransformPosition => PropMut::Vec2(&mut v.transform.position),
             PropId::TransformScale => PropMut::Vec2(&mut v.transform.scale),
             PropId::TransformRotation => PropMut::Scalar(&mut v.transform.rotation),
@@ -458,12 +459,13 @@ impl Clip {
             PropId::FlipVertical => PropMut::Bool(&mut v.flip.vertical),
             PropId::AudioGain => PropMut::Scalar(&mut self.audio.gain),
             PropId::AudioPan => PropMut::Scalar(&mut self.audio.pan),
-        }
+            PropId::TextSize | PropId::TextLetterSpacing | PropId::TextLineHeight => return None,
+        })
     }
 }
 
-/// Anything placed on a track (arch §4.2). Schema v1 has only [`Clip`]; matching code outside
-/// this crate needs a wildcard arm for the kinds still to come.
+/// Anything placed on a track (arch §4.2): a media [`Clip`] or a [`TextItem`] (WP-3A.01).
+/// Matching code outside this crate needs a wildcard arm for the kinds still to come.
 ///
 /// Serialized as the variant's object plus a `"kind"` tag (`{"kind": "clip", …}`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
@@ -472,31 +474,37 @@ impl Clip {
 pub enum Item {
     /// A media clip.
     Clip(Clip),
+    /// Text on a text track.
+    Text(TextItem),
+}
+
+/// The same code on either kind: `$c` is bound to the clip or the text item.
+macro_rules! each {
+    ($item:expr, $c:ident => $body:expr) => {
+        match $item {
+            Item::Clip($c) => $body,
+            Item::Text($c) => $body,
+        }
+    };
 }
 
 impl Item {
     /// The item ID.
     #[must_use]
     pub fn id(&self) -> ItemId {
-        match self {
-            Item::Clip(c) => c.id,
-        }
+        each!(self, c => c.id)
     }
 
     /// Timeline position of the first frame.
     #[must_use]
     pub fn start(&self) -> Time {
-        match self {
-            Item::Clip(c) => c.start,
-        }
+        each!(self, c => c.start)
     }
 
     /// Length on the timeline.
     #[must_use]
     pub fn duration(&self) -> Duration {
-        match self {
-            Item::Clip(c) => c.duration,
-        }
+        each!(self, c => c.duration)
     }
 
     /// The first time after the item, `start + duration`; `Err` if that leaves the safe range
@@ -513,41 +521,31 @@ impl Item {
     /// Whether the item is rendered and heard.
     #[must_use]
     pub fn enabled(&self) -> bool {
-        match self {
-            Item::Clip(c) => c.enabled,
-        }
+        each!(self, c => c.enabled)
     }
 
     /// The linked group, if any.
     #[must_use]
     pub fn linked_group(&self) -> Option<GroupId> {
-        match self {
-            Item::Clip(c) => c.linked_group,
-        }
+        each!(self, c => c.linked_group)
     }
 
     /// The item this one is attached to (follows), if any.
     #[must_use]
     pub fn attached_to(&self) -> Option<ItemId> {
-        match self {
-            Item::Clip(c) => c.attached_to,
-        }
+        each!(self, c => c.attached_to)
     }
 
     /// Markers in item-relative time.
     #[must_use]
     pub fn markers(&self) -> &Markers {
-        match self {
-            Item::Clip(c) => &c.markers,
-        }
+        each!(self, c => &c.markers)
     }
 
     /// The color label, if the item has one.
     #[must_use]
     pub fn color_label(&self) -> Option<crate::Color> {
-        match self {
-            Item::Clip(c) => c.color_label,
-        }
+        each!(self, c => c.color_label)
     }
 
     /// The media the item plays, if it plays one.
@@ -555,65 +553,50 @@ impl Item {
     pub fn media(&self) -> Option<MediaId> {
         match self {
             Item::Clip(c) => Some(c.media),
+            Item::Text(_) => None,
         }
     }
 
     /// Plugin data.
     #[must_use]
     pub fn custom(&self) -> &Custom {
-        match self {
-            Item::Clip(c) => &c.custom,
-        }
+        each!(self, c => &c.custom)
     }
 
     /// Moves the item. On a track, change it through `TrackItems::update`
     /// so the start index stays correct.
     pub fn set_start(&mut self, start: Time) {
-        match self {
-            Item::Clip(c) => c.start = start,
-        }
+        each!(self, c => c.start = start);
     }
 
     /// Changes the length.
     pub fn set_duration(&mut self, duration: Duration) {
-        match self {
-            Item::Clip(c) => c.duration = duration,
-        }
+        each!(self, c => c.duration = duration);
     }
 
     /// Enables or disables the item.
     pub fn set_enabled(&mut self, enabled: bool) {
-        match self {
-            Item::Clip(c) => c.enabled = enabled,
-        }
+        each!(self, c => c.enabled = enabled);
     }
 
     /// Sets or clears the linked group.
     pub fn set_linked_group(&mut self, group: Option<GroupId>) {
-        match self {
-            Item::Clip(c) => c.linked_group = group,
-        }
+        each!(self, c => c.linked_group = group);
     }
 
     /// Sets or clears the item this one is attached to.
     pub fn set_attached_to(&mut self, parent: Option<ItemId>) {
-        match self {
-            Item::Clip(c) => c.attached_to = parent,
-        }
+        each!(self, c => c.attached_to = parent);
     }
 
     /// Sets or clears the color label.
     pub fn set_color_label(&mut self, color: Option<crate::Color>) {
-        match self {
-            Item::Clip(c) => c.color_label = color,
-        }
+        each!(self, c => c.color_label = color);
     }
 
     /// The markers, mutably.
     pub fn markers_mut(&mut self) -> &mut Markers {
-        match self {
-            Item::Clip(c) => &mut c.markers,
-        }
+        each!(self, c => &mut c.markers)
     }
 
     /// The clip, if this is one.
@@ -621,6 +604,7 @@ impl Item {
     pub fn as_clip(&self) -> Option<&Clip> {
         match self {
             Item::Clip(c) => Some(c),
+            Item::Text(_) => None,
         }
     }
 
@@ -628,7 +612,65 @@ impl Item {
     pub fn as_clip_mut(&mut self) -> Option<&mut Clip> {
         match self {
             Item::Clip(c) => Some(c),
+            Item::Text(_) => None,
         }
+    }
+
+    /// The text item, if this is one.
+    #[must_use]
+    pub fn as_text(&self) -> Option<&TextItem> {
+        match self {
+            Item::Text(t) => Some(t),
+            Item::Clip(_) => None,
+        }
+    }
+
+    /// The text item, mutably, if this is one.
+    pub fn as_text_mut(&mut self) -> Option<&mut TextItem> {
+        match self {
+            Item::Text(t) => Some(t),
+            Item::Clip(_) => None,
+        }
+    }
+
+    /// The animatable property `id`, if this kind of item has it.
+    #[must_use]
+    pub fn prop(&self, id: PropId) -> Option<PropRef<'_>> {
+        match self {
+            Item::Clip(c) => c.prop(id),
+            Item::Text(t) => t.prop(id),
+        }
+    }
+
+    /// The mutable animatable property `id`, if this kind of item has it.
+    pub fn prop_mut(&mut self, id: PropId) -> Option<PropMut<'_>> {
+        match self {
+            Item::Clip(c) => c.prop_mut(id),
+            Item::Text(t) => t.prop_mut(id),
+        }
+    }
+
+    /// The visual properties, if the item has them.
+    #[must_use]
+    pub fn visual(&self) -> &VisualProps {
+        each!(self, c => &c.visual)
+    }
+
+    /// The visual properties, mutably.
+    pub fn visual_mut(&mut self) -> &mut VisualProps {
+        each!(self, c => &mut c.visual)
+    }
+
+    /// The display name, if the item has one.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        each!(self, c => c.name.as_deref())
+    }
+}
+
+impl From<TextItem> for Item {
+    fn from(text: TextItem) -> Item {
+        Item::Text(text)
     }
 }
 
