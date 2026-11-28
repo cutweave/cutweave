@@ -9,6 +9,7 @@
  */
 export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "audio.get_levels",
+  "audio.waveform",
   "edit.history",
   "edit.list_checkpoints",
   "edit.locks",
@@ -27,6 +28,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "keyframe.eval",
   "media.cache_status",
   "media.capabilities",
+  "media.filmstrip",
   "media.find_missing",
   "media.list",
   "media.list_collections",

@@ -216,6 +216,24 @@ export type AudioInfo = {
 	channels: number,
 };
 
+/**  The levels of a waveform's range. */
+export type AudioLevels = {
+	/**  The loudest sample peak in dBFS; null when the range is silent. */
+	peak_db: number | null,
+	/**  The peak of each of up to 64 equal slices of the range, in dBFS (null: silent). */
+	peaks_db: (number | null)[],
+	/**  Length of one slice (flicks). */
+	slice: Duration,
+	/**  A peak at or below this, in dBFS, counts as silence. */
+	silence_below_db: number | null,
+	/**  The silent stretches of at least 0.3 s, in time order. */
+	silences: TimeSpan[],
+	/**  Integrated loudness in LUFS (with `loudness`; null below the gate). */
+	lufs_integrated?: number | null,
+	/**  Short-term loudness (3 s window) over the range (with `loudness`). */
+	lufs_short_term?: LoudnessPoint[],
+};
+
 /**  Audio properties of an item (arch §4.2 `audio{…}`, v1 subset). */
 export type AudioProps = {
 	/**  Gain in decibels (0.0 = unchanged). */
@@ -334,6 +352,43 @@ export type AudioSpec = {
 	sample_rate: number,
 	/**  Channel count. */
 	channels: number,
+};
+
+/**
+ *  Draws sound as a picture (PNG): the peaks of a media file, of one clip as it plays, or of a
+ *  sequence's mix, over a time ruler, so loud, quiet and silent stretches can be seen. Also
+ *  returns `audio_levels`: the loudest peak, the peak of up to 64 equal slices of the range and
+ *  the silent stretches (at least 0.3 s at or below -60 dBFS), and with `loudness` the
+ *  integrated loudness and its short-term course in LUFS. Read-only. A clip or a mix is decoded
+ *  and mixed while the call waits (at most one hour of it per call); a media file is read from
+ *  its cached peaks.
+ */
+export type AudioWaveform = {
+	/**
+	 *  What to draw: `{"kind":"media","media":id}`, `{"kind":"item","item":id}` or
+	 *  `{"kind":"range"}` (a sequence's mix; add `sequence` when the project has several).
+	 */
+	target: WaveTarget,
+	/**
+	 *  Start: flicks, "2.5s", "f:60" or a timecode. Media time for a media file, else sequence
+	 *  time (default: the start of the file, the clip or the sequence).
+	 */
+	from?: TimeInput | null,
+	/**  End, exclusive (default: the end of the file, the clip or the sequence). */
+	to?: TimeInput | null,
+	/**  Picture width in px (64-2048, default 768). */
+	width?: number | null,
+	/**  Picture height in px (32-1024, default 192). */
+	height?: number | null,
+	/**  `mix` (default: one lane) or `split` (one lane per channel). */
+	channels?: WaveChannels | null,
+	/**
+	 *  Draw on a dB scale of this range (12-144; e.g. 60 puts -60 dBFS at the lane's middle and
+	 *  0 dBFS at its edge) so quiet sound shows. Default: linear.
+	 */
+	scale_db?: number | null,
+	/**  Also measure loudness (LUFS). For a clip or a sequence's mix, not for a media file. */
+	loudness?: boolean | null,
 };
 
 /**  Payload of `project.autosave_failed`. */
@@ -2105,6 +2160,37 @@ export type FadeCurve =
 /**  Gentle at both ends: `(1 - cos(x*pi)) / 2`. */
 "s_curve";
 
+/**  Result of `media.filmstrip`. */
+export type FilmstripOutput = {
+	/**  MIME type of `data` (`image/jpeg`). */
+	mime: string,
+	/**  The strip, base64 (returned over MCP as image content). */
+	data: string,
+	/**  Encoded size in bytes. */
+	bytes: number,
+	/**  Strip width in px. */
+	width: number,
+	/**  Strip height in px. */
+	height: number,
+	/**  The asset. */
+	media: MediaId,
+	/**  Start of the part shown (media time, flicks). */
+	from: Time,
+	/**  End of the part shown, exclusive. */
+	to: Time,
+	/**  Width of one tile in px. */
+	tile_width: number,
+	/**  The tiles, left to right. */
+	tiles: StripTile[],
+	/**  Entity tag of the picture: the asset's content hash and a hash of the parameters. */
+	etag: string,
+	/**
+	 *  The `/media/...` path that serves the same JPEG over HTTP with that tag (the whole
+	 *  clip's strip only).
+	 */
+	link?: string | null,
+};
+
 /**
  *  Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed
  *  flip switches at its keys.
@@ -3843,6 +3929,14 @@ export type LockList = {
 	committed_rev: Rev,
 };
 
+/**  A loudness reading. */
+export type LoudnessPoint = {
+	/**  When (flicks): the short-term window ends here. */
+	t: Time,
+	/**  Short-term loudness in LUFS; null below the -70 LUFS gate or before any sound. */
+	lufs: number | null,
+};
+
 /**  The loudness target of a preset (applied by the mixer once WP-2G.05 lands). */
 export type LoudnessSpec = {
 	/**  Integrated loudness target in LUFS (for example -14). */
@@ -4126,6 +4220,25 @@ export type MediaDeleteFolder = {
 export type MediaDeleteProxy = {
 	/**  The video assets (1..=256, no repeats). */
 	media: MediaId[],
+};
+
+/**
+ *  Frames of a video asset at even intervals, side by side in one JPEG: a quick look at what a
+ *  clip shows before placing or trimming it. Without `from` and `to` it is the whole clip (the
+ *  strip the timeline shows, from the thumbnail cache); with them, that part of it. `tiles`
+ *  says which media time each tile shows. Read-only; the first call for a clip decodes it.
+ */
+export type MediaFilmstrip = {
+	/**  The video (or image-sequence) asset. */
+	media: MediaId,
+	/**  Start in media time: flicks, "2.5s", "f:60" or a timecode (default: the clip's start). */
+	from?: TimeInput | null,
+	/**  End in media time, exclusive (default: the clip's end). */
+	to?: TimeInput | null,
+	/**  Tiles (default 8, at most 64). */
+	count?: number | null,
+	/**  Longer side of the strip in px (64-2048, default 768). Tiles are never upscaled. */
+	max_size?: number | null,
 };
 
 /**
@@ -6813,6 +6926,14 @@ export type StreamKind =
 /**  Attached files (fonts, cover art). */
 "attachment";
 
+/**  One tile of a filmstrip. */
+export type StripTile = {
+	/**  Media time of the frame it shows (flicks). */
+	t: Time,
+	/**  Its left edge on the strip, in px. */
+	x: number,
+};
+
 /**  One tag of the project. */
 export type TagCount = {
 	/**  The tag, in the spelling of the first asset (by ID) that has it. */
@@ -6838,6 +6959,14 @@ export type Time = number;
  *  `"00:01:02;03"`; in TypeScript `number | string`.
  */
 export type TimeInput = number | string;
+
+/**  A stretch of time. */
+export type TimeSpan = {
+	/**  Start (flicks). */
+	from: Time,
+	/**  End, exclusive. */
+	to: Time,
+};
 
 /**
  *  Adds a marker to a sequence, or to an item of it when `item` is given (then `t` is relative
@@ -8038,3 +8167,81 @@ export type VisualProps = {
 
 /**  A wall-clock instant: milliseconds since the Unix epoch. */
 export type WallTime = number;
+
+/**  Which signals a waveform shows. */
+export type WaveChannels = 
+/**  One lane: all channels mixed. */
+"mix" | 
+/**  One lane per channel (left and right for a clip or a mix). */
+"split";
+
+/**  One lane of a waveform picture. */
+export type WaveLane = {
+	/**  The signal: `mix`, `left`, `right`, or `ch1`, `ch2`, ... of a media file. */
+	channel: string,
+	/**  Left edge on the picture, in px. */
+	x: number,
+	/**  Top edge, in px. */
+	y: number,
+	/**  Width in px (the whole range). */
+	width: number,
+	/**  Height in px (full scale at the top and the bottom edge). */
+	height: number,
+};
+
+/**  What `audio.waveform` draws. */
+export type WaveTarget = 
+/**  A media file's own sound (its cached peaks; `from` and `to` are media times). */
+{ kind: "media"; 
+/**  The asset. */
+media: MediaId; 
+/**  The audio stream by container index (default: the first). */
+stream?: number | null } | 
+/**
+ *  One clip as it plays on the timeline, with its speed, gain and fades (`from` and `to`
+ *  are sequence times inside the clip).
+ */
+{ kind: "item"; 
+/**  The clip. */
+item: ItemId } | 
+/**  The mix of a sequence over a range, as an export hears it. */
+{ kind: "range"; 
+/**  The sequence; optional when the project has one. */
+sequence?: SequenceId | null };
+
+/**  Result of `audio.waveform`. */
+export type WaveformOutput = {
+	/**  MIME type of `data` (`image/png`). */
+	mime: string,
+	/**  The picture, base64 (returned over MCP as image content). */
+	data: string,
+	/**  Encoded size in bytes. */
+	bytes: number,
+	/**  Picture width in px. */
+	width: number,
+	/**  Picture height in px. */
+	height: number,
+	/**  Start of the range drawn (flicks; media time for a media file, else sequence time). */
+	from: Time,
+	/**  End of the range drawn, exclusive. */
+	to: Time,
+	/**  The sequence, for a clip or a mix. */
+	sequence?: SequenceId | null,
+	/**  Sample rate of the sound measured, in Hz. */
+	sample_rate: number,
+	/**  The lanes, top to bottom; the ruler is under them. */
+	lanes: WaveLane[],
+	/**  The dB range of the vertical axis; absent: linear. */
+	scale_db?: number | null,
+	/**  Peaks, silences and (on request) loudness of the range. */
+	audio_levels: AudioLevels,
+	/**  Clips whose sound could not be decoded (drawn as silence). */
+	source_errors: number,
+	/**  Document revision drawn. */
+	rev: Rev,
+	/**
+	 *  The `/media/...` path that serves the same peaks over HTTP (a media file only), as a
+	 *  plain PNG without the ruler.
+	 */
+	link?: string | null,
+};

@@ -722,6 +722,17 @@ impl<'s> Harness<'s> {
             .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
     }
 
+    /// Runs `media.filmstrip` or `audio.waveform` (WP-2I.02) against a maker that draws
+    /// nothing: a picture never changes the document.
+    fn visual(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut call = cutweave_ops::visual::VisualCall {
+            snapshot: Arc::new(self.lock().snapshot()),
+            service: Some(Arc::new(testing::BlankPictures)),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
     /// Runs a `job.*` command against the job manager.
     fn job(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let mut jobs = self.jobs.clone();
@@ -852,6 +863,12 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<LevelsCtx>() => {
                 self.levels(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<cutweave_ops::visual::VisualCall>() => {
+                self.visual(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })

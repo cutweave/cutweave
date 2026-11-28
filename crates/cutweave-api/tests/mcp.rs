@@ -506,6 +506,10 @@ fn the_core_table_names_real_generic_tools_namespaces_and_commands() {
     );
     let catalog = Catalog::new(Arc::clone(&registry), Profile::Standard);
     for command in table.keywords.keys() {
+        // Only the full engine registers it (tests/mcp_visual.rs searches there).
+        if command == "render.contact_sheet" {
+            continue;
+        }
         let entry = catalog
             .reachable(command)
             .unwrap_or_else(|| panic!("[keywords]: `{command}` is not a reachable command"));
@@ -1277,15 +1281,23 @@ fn the_core_table_names_the_registry_core_tools_and_the_budget() {
         "a core tool is added or removed in mcp_core.toml and in the registry together"
     );
     assert_eq!(table.profiles.standard, *STANDARD_BUDGET);
-    // WBS WP-2I.01: at most 32 core tools with the visual tools of WP-2I.02, 36 with the
-    // generic ones.
+    // WBS WP-2I.01 planned 31 core tools. ADR-0039 keeps `media_filmstrip` and
+    // `audio_waveform` in the catalog, so the P2 set is 29: the 28 listed and
+    // `render_contact_sheet`, whose command exists (WP-2I.02) and which waits for room in the
+    // standard list.
     let planned = table.tools.len()
         + table
             .pending
             .iter()
-            .filter(|p| p.arrives == "WP-2I.02")
+            .filter(|p| p.name == "render_contact_sheet")
             .count();
-    assert_eq!(planned, 31);
+    assert_eq!(planned, 29);
+    for catalog_only in ["media_filmstrip", "audio_waveform"] {
+        assert!(table.pending.iter().all(|p| p.name != catalog_only));
+        let entry = registry.get_by_tool_name(catalog_only).unwrap();
+        assert_eq!(entry.meta.mcp, cutweave_commands::McpExposure::Catalog);
+        assert!(entry.meta.annotations.read_only);
+    }
     assert!(planned + catalog::GENERIC_TOOLS.len() <= table.profiles.standard.max_tools);
     for pending in &table.pending {
         assert!(
