@@ -31,6 +31,10 @@ export type AppCommand =
   | "collect"
   | "archive"
   | "projectSettings"
+  | "newSequence"
+  | "sequenceSettings"
+  | "nextSequence"
+  | "previousSequence"
   | "quit"
   | "undo"
   | "redo"
@@ -66,6 +70,10 @@ export const COMMAND_IDS: Readonly<Record<AppCommand, string>> = {
   collect: "project.collect",
   archive: "project.archive",
   projectSettings: "project.set_settings",
+  newSequence: "sequences.new",
+  sequenceSettings: "sequences.settings",
+  nextSequence: "sequences.next",
+  previousSequence: "sequences.previous",
   quit: "app.quit",
   undo: "edit.undo",
   redo: "edit.redo",
@@ -140,6 +148,10 @@ export const KEYED: readonly AppCommand[] = [
   "save",
   "saveAs",
   "export",
+  "newSequence",
+  "sequenceSettings",
+  "nextSequence",
+  "previousSequence",
   "settings",
   "quit",
   "undo",
@@ -288,6 +300,9 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
     command("collect", t("menu.collect"), live && !recovering),
     command("archive", t("menu.archive"), live && !recovering),
     sep("file-3"),
+    // A sequence more, and the settings of the one that shows (WP-2B.03).
+    command("newSequence", t("menu.newSequence"), live && !readOnly && !recovering),
+    command("sequenceSettings", t("menu.sequenceSettings"), live && !recovering),
     // The settings saved in the project (WP-2H.08), then the app's own.
     command("projectSettings", t("menu.projectSettings"), live && !recovering),
     // App preferences (the theme); the engine need not be connected.
@@ -325,6 +340,9 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
       label: t("workspace.resetAll"),
       enabled: true,
     },
+    sep("view-seq"),
+    command("nextSequence", t("menu.nextSequence"), live),
+    command("previousSequence", t("menu.previousSequence"), live),
     sep("view-0"),
     command("toggleFullScreen", t("menu.toggleFullScreen"), desktop),
     ...(desktop && state.dev

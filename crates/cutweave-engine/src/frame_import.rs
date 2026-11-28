@@ -51,6 +51,8 @@ pub(crate) struct EngineFrames {
     pub(crate) project_root: Option<PathBuf>,
     /// `--deterministic-ids`.
     pub(crate) seed: Option<u64>,
+    /// The sequence the editor shows (`view.set_active_sequence`); `None`: the first one.
+    pub(crate) shown: Option<SequenceId>,
 }
 
 /// What one call renders.
@@ -118,10 +120,14 @@ fn source_pointer(error: CmdError) -> CmdError {
 
 /// What `source` stands for in `doc`: the sequence the editor shows, or the own timeline of a
 /// video or image-sequence asset.
-fn target(doc: &Project, source: FrameOf) -> Result<Target<'_>, CmdError> {
+fn target(
+    doc: &Project,
+    source: FrameOf,
+    shown: Option<SequenceId>,
+) -> Result<Target<'_>, CmdError> {
     match source {
         FrameOf::Sequence => {
-            let sequence = active_sequence(doc)
+            let sequence = active_sequence(doc, shown)
                 .and_then(|id| doc.sequences.get(&id))
                 .ok_or_else(|| {
                     CmdError::invalid("/source", "the project has no sequence to take a frame of")
@@ -170,7 +176,7 @@ impl FrameGrabber for EngineFrames {
                  save the project first (project.save_as), then add the frame",
             ));
         };
-        let target = target(&self.snapshot.doc, source)?;
+        let target = target(&self.snapshot.doc, source, self.shown)?;
         let rate = target
             .doc
             .sequences
@@ -238,6 +244,7 @@ mod tests {
             backend: None,
             project_root: root,
             seed,
+            shown: None,
         }
     }
 
@@ -306,7 +313,7 @@ mod tests {
             ),
         );
         // The run: its own timeline, 64 x 36, one second long, named after its first file.
-        let found = target(&doc, FrameOf::Media(run_id)).unwrap();
+        let found = target(&doc, FrameOf::Media(run_id), None).unwrap();
         assert_eq!(found.sequence, SOURCE_SEQUENCE);
         assert_eq!(found.length, Duration::from_secs(1).ok());
         assert_eq!(found.name, "shot_0001.png");
@@ -321,7 +328,8 @@ mod tests {
             1
         );
         // A still has no frame to take.
-        let Err(CmdError::Invalid { path, .. }) = target(&doc, FrameOf::Media(still_id)) else {
+        let Err(CmdError::Invalid { path, .. }) = target(&doc, FrameOf::Media(still_id), None)
+        else {
             panic!("a still must be refused");
         };
         assert_eq!(path, "/source/media");

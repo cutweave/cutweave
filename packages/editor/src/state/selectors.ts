@@ -24,10 +24,28 @@ import {
   type TrackKind,
 } from "@cutweave/timeline";
 
-/** The sequence the editor shows: v1 projects have one; with several, the lowest ID. */
+/**
+ * The sequence the person chose to see (`viewStore.activeSequence`, WP-2B.03); `null`: none.
+ * Set by `bindShownSequence` only, which also republishes the document so everything derived
+ * from "the active sequence" is derived again.
+ */
+let chosen: SequenceId | null = null;
+
+/** Chooses the sequence `selectActiveSequenceId` answers with (while the project has it). */
+export function setChosenSequence(sequence: SequenceId | null): void {
+  chosen = sequence;
+}
+
+/**
+ * The sequence the editor shows: the chosen one while the project has it, else the lowest ID
+ * (what the engine plays when none is chosen).
+ */
 export function selectActiveSequenceId(project: Project | null): SequenceId | null {
   if (project === null) {
     return null;
+  }
+  if (chosen !== null && project.sequences[chosen] !== undefined) {
+    return chosen;
   }
   const ids = Object.keys(project.sequences).sort();
   return (ids[0] as SequenceId | undefined) ?? null;

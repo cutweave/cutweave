@@ -1042,6 +1042,48 @@ body {
   min-height: 0;
   background: var(--surface-1);
 }
+/* The sequence tabs above the timeline tools (WP-2B.03): the design system's tab strip, each
+   tab with a small close button that shows on hover and on the active tab; "+" sits after. */
+.cw-seqtabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+.cw-seqtabs__list.cw-tabs {
+  flex: 0 1 auto;
+  border-bottom: 0;
+}
+.cw-seqtabs__tab {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: stretch;
+}
+.cw-seqtabs__tab .cw-tabs__tab {
+  max-width: var(--layer-width-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cw-seqtabs__close.cw-iconbtn {
+  align-self: center;
+  opacity: 0;
+}
+.cw-seqtabs__tab:hover .cw-seqtabs__close,
+.cw-seqtabs__tab[data-active="true"] .cw-seqtabs__close {
+  opacity: 1;
+}
+.cw-seqtabs__rename.cw-inline-rename {
+  align-self: center;
+  width: var(--layer-width-sm);
+}
+/* Sequence settings: never taller than 60% of the window. */
+.cw-dialog.cw-sequence-settings {
+  max-height: 60vh;
+}
 /* A full-width strip, not a floating toolbar: no box, but padding on every side so the tools
    don't touch the panel edge or the ruler. */
 .cw-timeline__tools.cw-toolbar {

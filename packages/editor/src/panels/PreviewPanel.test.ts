@@ -3,8 +3,9 @@
 // The preview panel's path choice (WP-1M.04): the GPU path when the desktop bridge can present
 // the engine's ring, the JPEG fallback with a banner that says why otherwise, and the overlay.
 // jsdom has no canvas: drawing itself is covered by the presenter tests and the Playwright e2e.
+import { MockTransport, RpcClient } from "@cutweave/protocol";
 import { TooltipProvider } from "@cutweave/ui";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -138,7 +139,7 @@ describe("PreviewPanel", () => {
     expect(document.querySelector(".cw-preview__readout")?.textContent).toBe("00:00:02:00");
   });
 
-  it("the aspect switch shows the sequence's shape, not the workspace's, and is off", () => {
+  it("the aspect switch shows the sequence's shape, and a choice gives the sequence that preset (WP-2B.03)", async () => {
     desktop();
     viewStore.getState().setAspect("9:16");
     renderPanel();
@@ -149,7 +150,19 @@ describe("PreviewPanel", () => {
         .map((r) => r.textContent);
     // The fixture's sequence is 1920x1080.
     expect(checked()).toEqual(["16:9"]);
-    expect(screen.getByRole("radio", { name: "16:9" }).hasAttribute("disabled")).toBe(true);
+    // A choice is one `sequence.set_format` with the preset's canvas; the workspace's own
+    // aspect (the empty frame's) is left alone.
+    const transport = new MockTransport().handle("sequence.set_format", () => ({}));
+    engineStore.setState({ rpc: new RpcClient(transport) });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "9:16" }));
+    });
+    expect(transport.requests.map((r) => [r.method, r.params])).toEqual([
+      ["sequence.set_format", { sequence: "seq_1", width: 1080, height: 1920, reframe: "fit" }],
+    ]);
+    expect(viewStore.getState().aspect).toBe("9:16");
+    // The menu beside it lists every size and Custom size….
+    expect(screen.getByRole("button", { name: "More sizes and sequence settings" })).toBeTruthy();
     // A shape no preset matches selects none.
     act(() => {
       const project = docStore.getState().project;
