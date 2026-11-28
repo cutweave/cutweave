@@ -52,6 +52,7 @@ use cutweave_ops::media::{
 use cutweave_ops::project::collect::on_import::ProjectFolder;
 use cutweave_ops::project::collect::{CollectCtx, CollectHost};
 use cutweave_ops::view::{UiState, ViewCtx};
+use cutweave_ops::visual::{VisualCall, VisualService};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
@@ -368,6 +369,21 @@ impl Core {
                 snapshot: self.doc()?.snapshot(),
                 analyzer: self.deps.subsystems.export_services().map(|services| {
                     Arc::new(EngineLevels::new(services.sources)) as Arc<dyn LevelsAnalyzer>
+                }),
+            };
+            let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+            return Ok(self.reply(output));
+        }
+        if context == TypeId::of::<VisualCall>() {
+            // `media.filmstrip` and `audio.waveform` (WP-2I.02) decode, or mix a range, on
+            // this (non-async) thread, like `audio.get_levels`.
+            let subsystems = &self.deps.subsystems;
+            let mut call = VisualCall {
+                snapshot: self.doc()?.snapshot(),
+                service: subsystems.media_state().map(|state| {
+                    let sources = subsystems.export_services().map(|services| services.sources);
+                    Arc::new(crate::visual::EngineVisual::new(state, sources))
+                        as Arc<dyn VisualService>
                 }),
             };
             let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
