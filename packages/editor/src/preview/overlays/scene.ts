@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // What the overlay draws handles for (WP-2H.06): the selected clips that show a picture at the
 // playhead, each with its placement there, and the other pictures on screen (snap targets).
-import type { Item, Project, SelectionRef } from "@cutweave/protocol";
+import type { ClipItem as Item, Project, SelectionRef } from "@cutweave/protocol";
 import { selectActiveSequenceId } from "../../state/selectors.ts";
 import {
   type LayerGeom,

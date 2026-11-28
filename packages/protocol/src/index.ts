@@ -41,6 +41,11 @@ export type { CmdErrorCode, CommandMap, QueryMap, RpcMap } from "./generated/com
 export type { EventMap } from "./generated/events.ts";
 export { SCHEMA_HASH } from "./generated/schema-hash.ts";
 export type * from "./generated/types.ts";
+
+import type { Item as AnyItem } from "./generated/types.ts";
+
+/** A media clip of a track (an `Item` of kind `clip`); text items are `TextItem`s (WP-3A.01). */
+export type ClipItem = Extract<AnyItem, { kind: "clip" }>;
 export { needsRequestId, READ_ONLY_METHODS } from "./mutating.ts";
 export type { OutboxEntryView } from "./outbox.ts";
 export { Outbox } from "./outbox.ts";

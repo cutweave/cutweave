@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (168 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (176 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -147,6 +147,14 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | sequence | `sequence.rename` | Rename a sequence | command, undoable, idempotent | catalog |
 | sequence | `sequence.set_background` | Fill a sequence's background with a color, a blur of the picture, an image or nothing | command, undoable, idempotent | catalog |
 | sequence | `sequence.set_format` | Change a sequence's size, frame rate, sample rate or background | command, undoable, destructive, idempotent | core |
+| text | `text.add` | Add a text item (title, subtitle, words on the picture) to a text track | command, undoable | catalog |
+| text | `text.add_emoji` | Insert an emoji into a text item | command, undoable | catalog |
+| text | `text.get` | Get a text item: content, style, box, visual properties | query | catalog |
+| text | `text.list_styles` | List the built-in text styles | query | catalog |
+| text | `text.set_box` | Set the width and height text wraps and aligns in | command, undoable, idempotent | catalog |
+| text | `text.set_content` | Replace the words of a text item | command, undoable, idempotent | catalog |
+| text | `text.set_run_style` | Style part of a text item's words (colour, size, font of a range) | command, undoable, idempotent | catalog |
+| text | `text.set_style` | Change the font, size, colour, outline, shadow or box of a text item | command, undoable, idempotent | catalog |
 | timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | core |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |
 | timeline | `timeline.copy` | Copy items and their linked partners into a clipboard payload | query | catalog |

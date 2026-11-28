@@ -60,15 +60,16 @@ impl Query for KeyframeEval {
 
     fn run(&self, ctx: &QueryCtx<'_>) -> Result<KeyframeEvalOutput, CmdError> {
         let at = ctx.item(self.item)?;
-        let clip = at
-            .item
-            .as_clip()
-            .ok_or_else(|| CmdError::unsupported("only clips have animatable properties"))?;
+        let mut clip = at.item.clone();
+        if let Some(text) = clip.as_text_mut() {
+            text.detach_style();
+        }
+        let start = clip.start();
         let rate = at.sequence.format.frame_rate;
         let target = super::Target {
             id: self.item,
-            start: clip.start,
-            duration: clip.duration.flicks(),
+            start,
+            duration: clip.duration().flicks(),
             rate,
             samples: at.sequence.format.sample_rate,
         };
@@ -79,7 +80,7 @@ impl Query for KeyframeEval {
                 .map_err(|e| CmdError::invalid(pointer, e.to_string()))
         };
         let item_time = |pointer: &str, abs: i64| -> Result<Time, CmdError> {
-            abs.checked_sub(clip.start.flicks())
+            abs.checked_sub(start.flicks())
                 .and_then(|v| Time::from_flicks(v).ok())
                 .ok_or_else(|| CmdError::invalid(pointer, "the time is out of range"))
         };
@@ -109,13 +110,15 @@ impl Query for KeyframeEval {
         let clamp = self.prop.spec().clamp;
         let samples = times
             .into_iter()
-            .map(|t| EvalSample {
-                at: sequence_time(&target, t),
-                t,
-                value: on_prop!(clip, self.prop, a => a.eval_clamped(t, clamp).wrap()),
-                in_item: !super::outside(&target, t),
+            .map(|t| {
+                Ok(EvalSample {
+                    at: sequence_time(&target, t),
+                    t,
+                    value: on_prop!(clip, self.prop, a => a.eval_clamped(t, clamp).wrap()),
+                    in_item: !super::outside(&target, t),
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, CmdError>>()?;
         Ok(KeyframeEvalOutput {
             prop: self.prop,
             samples,

@@ -533,11 +533,10 @@ fn plan_duplicate(
             .map(|g| *groups.entry(g).or_insert_with(|| e.mint(ids)));
         let id: ItemId = e.mint(ids);
         let mut copy = src.clone();
-        if let Item::Clip(c) = &mut copy {
-            c.id = id;
-            c.linked_group = group;
-            c.markers = remint(&c.markers, &mut e, ids);
-        }
+        copy.set_id(id);
+        copy.set_linked_group(group);
+        let markers = remint(copy.markers(), &mut e, ids);
+        *copy.markers_mut() = markers;
         copy_of.insert(src.id(), id);
         copies.push((*t, src.clone(), copy));
     }

@@ -529,14 +529,10 @@ impl Command for AudioSetGain {
         let mut changed = false;
         for target in &targets {
             changed |= tx.update_item(target.id, |item| {
-                let clip = item
-                    .as_clip_mut()
-                    .ok_or_else(|| CmdError::unsupported("only clips have audio properties"))?;
-                Ok(keyframe::set_static(
-                    clip,
-                    PropId::AudioGain,
-                    &KeyValue::Number(db),
-                ))
+                if item.as_clip().is_none() {
+                    return Err(CmdError::unsupported("only clips have audio properties"));
+                }
+                keyframe::set_static(item, PropId::AudioGain, &KeyValue::Number(db))
             })?;
         }
         let first = clip_of(tx.doc(), targets[0].id)?;

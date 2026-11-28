@@ -3,7 +3,7 @@
 //! commands that fill and read it.
 
 use cutweave_commands::{CmdError, Command, Query, QueryCtx, Tx, command, query, wire};
-use cutweave_model::{Clip, Interp, ItemId, Project, PropId, Time, TimeInput};
+use cutweave_model::{Interp, Item, ItemId, Project, PropId, Time, TimeInput};
 
 use super::{KeyRef, KeySet};
 use super::{
@@ -64,10 +64,11 @@ impl Query for KeyframeCopy {
             ));
         }
         let at = ctx.item(self.item)?;
-        let clip = at
-            .item
-            .as_clip()
-            .ok_or_else(|| CmdError::unsupported("only clips have animatable properties"))?;
+        let mut detached = at.item.clone();
+        if let Some(text) = detached.as_text_mut() {
+            text.detach_style();
+        }
+        let clip = &detached;
         let mut keys = Vec::with_capacity(self.keys.len());
         for k in &self.keys {
             let found = on_prop!(clip, k.prop, a => a.keyframes().and_then(|ks| {
@@ -236,7 +237,7 @@ impl KeyframePaste {
         Ok(grouped)
     }
 
-    fn run(&self, clip: &mut Clip, target: &Target) -> Result<Vec<PastedKey>, CmdError> {
+    fn run(&self, clip: &mut Item, target: &Target) -> Result<Vec<PastedKey>, CmdError> {
         let mut out = Vec::new();
         for (prop, reqs) in self.plan_item(target)? {
             let (list, idx): (Vec<KeyReq>, Vec<usize>) = reqs.into_iter().unzip();
@@ -260,10 +261,15 @@ impl KeyframePaste {
     }
 }
 
-fn clip_of(doc: &Project, id: ItemId) -> Result<&Clip, CmdError> {
-    doc.find_item(&id)
-        .and_then(|at| at.item.as_clip())
-        .ok_or_else(|| CmdError::unsupported("only clips have animatable properties"))
+fn clip_of(doc: &Project, id: ItemId) -> Result<Item, CmdError> {
+    let mut item = doc
+        .find_item(&id)
+        .map(|at| at.item.clone())
+        .ok_or_else(|| CmdError::not_found(cutweave_model::EntityKind::Item, id))?;
+    if let Some(text) = item.as_text_mut() {
+        text.detach_style();
+    }
+    Ok(item)
 }
 
 impl Command for KeyframePaste {
@@ -271,7 +277,7 @@ impl Command for KeyframePaste {
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
         for target in targets(ctx.doc(), self.item, self.items.as_deref())? {
-            let mut clip = clip_of(ctx.doc(), target.id)?.clone();
+            let mut clip = clip_of(ctx.doc(), target.id)?;
             self.run(&mut clip, &target)?;
         }
         Ok(())
@@ -283,10 +289,10 @@ impl Command for KeyframePaste {
         for target in all {
             let mut done = Vec::new();
             tx.update_item(target.id, |item| {
-                let clip = item.as_clip_mut().ok_or_else(|| {
-                    CmdError::unsupported("only clips have animatable properties")
-                })?;
-                done = self.run(clip, &target)?;
+                if let Some(text) = item.as_text_mut() {
+                    text.detach_style();
+                }
+                done = self.run(item, &target)?;
                 Ok(())
             })?;
             keys.extend(done);

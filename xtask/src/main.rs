@@ -190,7 +190,17 @@ fn main() -> ExitCode {
         Some("bench-check") => bench::bench_check(&workspace_root(), &args[1..]),
         Some("gen-bench-project") => gen_bench_project(&args[1..]),
         Some("tokens") => tokens::run(&workspace_root(), &args[1..]),
-        Some("gen") => schema_gen::run(&workspace_root(), &args[1..]),
+        // The type walk of the TypeScript export is deep; the main thread of a Windows debug
+        // build has 1 MB of stack, so run it on a thread with room (WP-3A.01).
+        Some("gen") => {
+            let rest = args[1..].to_vec();
+            std::thread::Builder::new()
+                .stack_size(256 * 1024 * 1024)
+                .spawn(move || schema_gen::run(&workspace_root(), &rest))
+                .ok()
+                .and_then(|handle| handle.join().ok())
+                .unwrap_or(false)
+        }
         Some("golden") => golden::golden(&workspace_root(), &args[1..]),
         Some("golden-projects") => golden::golden_projects(&workspace_root(), &args[1..]),
         Some("check-fixtures") => fixtures::run(&workspace_root(), &args[1..]),

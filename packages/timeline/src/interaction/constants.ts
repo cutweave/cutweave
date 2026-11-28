@@ -11,6 +11,13 @@ export const DEFAULT_SNAP_PX = 8;
 /** Auto-scroll starts this close (CSS px) to an edge of the lane area during a drag. */
 export const AUTO_SCROLL_EDGE_PX = 32;
 
+/**
+ * A drag pressed inside an edge's zone (or within this distance of it) scrolls only once the
+ * pointer is this much (CSS px) nearer that edge than the press was: moving along an edge is not
+ * asking to scroll past it (issue #262). Four times the drag threshold, above a hand's wobble.
+ */
+export const AUTO_SCROLL_INTENT_PX = 12;
+
 /** Fastest auto-scroll step, CSS px per frame (at or past the edge). */
 export const AUTO_SCROLL_MAX_PX = 24;
 

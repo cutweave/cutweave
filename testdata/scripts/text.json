@@ -1,0 +1,31 @@
+{
+  "description": "Text items (WP-3A.01): one call adds a titled text, then style, run style, emoji, box, keyed size, the reads, and the errors (a bad size is invalid, a locked track is locked)",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Text parity" } },
+    { "cmd": "text.add", "args": { "text": "Launch day" } },
+    { "cmd": "text.set_style", "args": {
+      "item": { "$ref": "steps[1].output.item" },
+      "patch": { "size": 80, "fill": { "kind": "solid", "color": "#ffd400" },
+                 "strokes": [{ "width": 4, "join": "round", "color": "#000000", "order": "behind" }] }
+    } },
+    { "cmd": "text.set_run_style", "args": {
+      "item": { "$ref": "steps[1].output.item" },
+      "start": 7, "end": 10, "patch": { "size": 120 }
+    } },
+    { "cmd": "text.add_emoji", "args": { "item": { "$ref": "steps[1].output.item" }, "emoji": "🎉" } },
+    { "cmd": "text.set_box", "args": { "item": { "$ref": "steps[1].output.item" }, "box": { "width": 0.6 } } },
+    { "cmd": "keyframe.set", "args": {
+      "item": { "$ref": "steps[1].output.item" }, "prop": "text.size",
+      "keys": [{ "t": "0s", "value": 40, "easing": "ease_out" }, { "t": "1s", "value": 80 }]
+    } },
+    { "cmd": "text.set_content", "args": { "item": { "$ref": "steps[1].output.item" }, "text": "Launch day!" } },
+    { "cmd": "text.get", "args": { "item": { "$ref": "steps[1].output.item" } } },
+    { "cmd": "text.list_styles" },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
+    { "cmd": "text.set_style", "args": { "item": { "$ref": "steps[1].output.item" }, "patch": { "size": 0 } },
+      "expect": { "error": "invalid" } },
+    { "cmd": "track.set", "args": { "track": { "$ref": "steps[1].output.track" }, "locked": true } },
+    { "cmd": "text.set_content", "args": { "item": { "$ref": "steps[1].output.item" }, "text": "No" },
+      "expect": { "error": "locked" } }
+  ]
+}

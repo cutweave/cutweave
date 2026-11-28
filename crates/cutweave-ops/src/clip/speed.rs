@@ -307,9 +307,10 @@ fn scale_keys(clip: &mut Clip, (num, den): (u64, u64), start: i64, rate: FrameRa
     };
     for id in PropId::ALL {
         match clip.prop_mut(id) {
-            PropMut::Scalar(a) => one(a, &f),
-            PropMut::Vec2(a) => one(a, &f),
-            PropMut::Bool(a) => one(a, &f),
+            Some(PropMut::Scalar(a)) => one(a, &f),
+            Some(PropMut::Vec2(a)) => one(a, &f),
+            Some(PropMut::Bool(a)) => one(a, &f),
+            None => {}
         }
     }
 }
@@ -670,9 +671,10 @@ fn freeze_props(clip: &mut Clip, rel: Time) {
     for id in PropId::ALL {
         let range = id.spec().stored;
         match clip.prop_mut(id) {
-            PropMut::Scalar(a) => one(a, rel, range),
-            PropMut::Vec2(a) => one(a, rel, range),
-            PropMut::Bool(a) => one(a, rel, range),
+            Some(PropMut::Scalar(a)) => one(a, rel, range),
+            Some(PropMut::Vec2(a)) => one(a, rel, range),
+            Some(PropMut::Bool(a)) => one(a, rel, range),
+            None => {}
         }
     }
 }

@@ -41,6 +41,8 @@ mod snap;
 mod speed;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+pub mod text;
+mod text_patch;
 mod time;
 mod timecode;
 mod validate;
@@ -100,6 +102,8 @@ pub use snap::{SnapError, SnapIndex, SnapKind, SnapKinds, SnapOptions, SnapTarge
 pub use speed::{
     Freeze, MAX_SPEED_TERM, SourceMap, Speed, SpeedError, fit as fit_source_in, source_time,
 };
+pub use text::{NamedStyle, TextItem};
+pub use text_patch::{RunStylePatch, TextStylePatch};
 pub use time::{
     ABSOLUTE_TIME_PATTERN, Duration, FLICKS_PER_SECOND, MAX_SAFE_FLICKS, Time, TimeError,
 };

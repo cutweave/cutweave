@@ -112,6 +112,8 @@ export interface TxState {
   readonly pendingKey: string | null;
   /** Key of the last update sent (before the first: the key of "nothing changed", if any). */
   readonly sentKey: string | null;
+  /** Key of the update that changes nothing (the gesture's starting position), if it has one. */
+  readonly noopKey: string | null;
   /** An update went out. */
   readonly sent: boolean;
   /** The engine refused the latest update (it keeps the previous one, spec INV-302). */

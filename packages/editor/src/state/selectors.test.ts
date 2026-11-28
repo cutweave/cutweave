@@ -239,6 +239,51 @@ describe("selectTimelineModel", () => {
   });
 });
 
+describe("text items (WP-3A.01)", () => {
+  const text = (id: string, words: string, extra: object = {}) => ({
+    kind: "text",
+    id,
+    name: null,
+    start: 10,
+    duration: 90,
+    enabled: true,
+    linked_group: null,
+    attached_to: null,
+    markers: {},
+    content: { runs: [{ text: words }] },
+    style: { source: "named", name: "title" },
+    box: { width: null, height: null },
+    animation: null,
+    visual: { transform: {}, opacity: 1 },
+    custom: {},
+    ...extra,
+  });
+
+  it("shows a text item as a plain clip on the graphics lane, labelled by its words", () => {
+    const p = project();
+    const seq = (p.sequences as unknown as Record<string, unknown>).seq_1 as {
+      tracks: Record<string, unknown>;
+      track_order: string[];
+    };
+    seq.tracks.t1 = track("t1", "text", [
+      text("itm_9", "Launch day\nsecond line"),
+      text("itm_10", "x", { name: "Opening" }),
+    ]);
+    seq.track_order.unshift("t1");
+    const model = selectTimelineModel(p);
+    const byId = Object.fromEntries(model.items.map((i) => [i.id, i]));
+    expect(byId.itm_9).toMatchObject({
+      trackId: "t1",
+      kind: "graphics",
+      start: 10,
+      duration: 90,
+      label: "Launch day",
+    });
+    expect(byId.itm_10?.label).toBe("Opening");
+    expect(model.tracks[0]).toMatchObject({ id: "t1", kind: "graphics" });
+  });
+});
+
 describe("selectMedia", () => {
   it("lists the media by ID with names and durations", () => {
     expect(selectMedia(project())).toEqual([

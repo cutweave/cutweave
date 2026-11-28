@@ -411,7 +411,7 @@ impl Command for SequenceDuplicate {
                 .take(MAX_NAME_CHARS)
                 .collect()
         };
-        let copy = copy::deep_copy(tx, &source, name.clone())?;
+        let copy = copy::deep_copy(tx, &source, name.clone());
         tx.insert_sequence(&copy)?;
         Ok(SequenceDuplicateOutput {
             sequence: copy.id,

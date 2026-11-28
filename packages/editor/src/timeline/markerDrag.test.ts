@@ -58,7 +58,10 @@ const pointer = (
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function setup(handlers: Record<string, (params: unknown) => unknown> = {}) {
+function setup(
+  handlers: Record<string, (params: unknown) => unknown> = {},
+  candidate: number = OTHER.t,
+) {
   const transport = new MockTransport()
     .handle("edit.begin_tx", () => ({ tx: "tx_1", kind: "gesture", label: "Move marker", rev: 1 }))
     .handle("edit.commit_tx", () => ({
@@ -101,9 +104,9 @@ function setup(handlers: Record<string, (params: unknown) => unknown> = {}) {
       // The shared snap index takes whole flicks only.
       if (!Number.isInteger(raw)) throw new RangeError(`${raw} is not an integer`);
       snapped.push({ model, raw, suspended });
-      // Within 10 px of the other marker lands on it; else the frame grid.
-      if (!suspended && Math.abs(raw - OTHER.t) <= F / 10) {
-        return { t: OTHER.t, target: { kind: "marker", t: OTHER.t } };
+      // Within 10 px of the other marker (or `candidate`) lands on it; else the frame grid.
+      if (!suspended && Math.abs(raw - candidate) <= F / 10) {
+        return { t: candidate, target: { kind: "marker", t: candidate } };
       }
       return { t: Math.round(raw / FRAME) * FRAME, target: null };
     },
@@ -199,6 +202,43 @@ describe("MarkerDrag", () => {
       OTHER.t,
       Math.round((4.95 * F) / FRAME) * FRAME,
     ]);
+  });
+
+  it("brought back to where it was pressed, the marker stays and nothing is committed (#263)", async () => {
+    // A snap candidate 8 px before the marker: inside the snap distance of its own position.
+    const near = MARKER.t - 0.08 * F;
+    const { drag, sent, transport, guides } = setup({}, near);
+    drag.handle(pointer("down", 200));
+    drag.handle(pointer("move", 260));
+    await flush();
+    drag.handle(pointer("move", 200));
+    await flush();
+    expect(guides).toHaveBeenLastCalledWith([]);
+    drag.handle(pointer("up", 200));
+    await drag.settled();
+    expect(sent("timeline.move_marker").map((r) => (r.params as { t: number }).t)).toEqual([
+      2.6 * F,
+      MARKER.t,
+    ]);
+    expect(transport.requests.at(-1)?.method).toBe("edit.cancel_tx");
+    expect(sent("edit.commit_tx")).toEqual([]);
+  });
+
+  it("a candidate wins once it is nearer than the marker's own position (#263)", async () => {
+    const near = MARKER.t - 0.08 * F;
+    const { drag, sent } = setup({}, near);
+    drag.handle(pointer("down", 200));
+    drag.handle(pointer("move", 197)); // 3 px toward it, 5 px away: the frame grid
+    await flush();
+    drag.handle(pointer("move", 195)); // 5 px toward it, 3 px away: it snaps
+    await flush();
+    drag.handle(pointer("up", 195));
+    await drag.settled();
+    expect(sent("timeline.move_marker").map((r) => (r.params as { t: number }).t)).toEqual([
+      Math.round((1.97 * F) / FRAME) * FRAME,
+      near,
+    ]);
+    expect(sent("edit.commit_tx")).toHaveLength(1);
   });
 
   it("never moves a marker before time 0", async () => {

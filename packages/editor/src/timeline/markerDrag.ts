@@ -3,13 +3,15 @@
 // this, not to the scrub: a click goes to the marker, a drag moves it. The drag is one gesture
 // transaction of `timeline.move_marker` updates (the marker follows the pointer, one undo step),
 // snapped as every timeline drag snaps: to clip edges, other markers, the playhead and the in/out
-// points, else to the frame; Ctrl or Cmd held, or snapping off, leaves the frame grid only. Esc,
-// a lost pointer or a lost window rolls it back.
+// points, else to the frame; Ctrl or Cmd held, or snapping off, leaves the frame grid only. A snap
+// never pulls further than the pointer has carried the marker, and a marker brought back to where
+// it was is not an edit (issue #263). Esc, a lost pointer or a lost window rolls it back.
 import type { MarkerId, RpcClient, RpcError } from "@cutweave/protocol";
 import {
   DRAG_THRESHOLD_PX,
   type SnapGuide,
   type SnapOutcome,
+  snapFromHome,
   type TimelineMarker,
   type TimelineModel,
   type TimelinePointerEvent,
@@ -109,7 +111,8 @@ export class MarkerDrag {
         this.#press = null;
         this.#deps.guides(NO_GUIDES);
         if (press.session === null) this.#deps.seek(press.marker.t);
-        else this.#finish(press.session, true);
+        // Brought back to where it was: nothing to keep, and no undo step that does nothing.
+        else this.#finish(press.session, press.t !== press.marker.t);
         return true;
       case "cancel":
         this.cancel();
@@ -154,7 +157,13 @@ export class MarkerDrag {
       0,
       Math.round(press.marker.t + (e.x - press.x0) * this.#deps.flicksPerPx()),
     );
-    const snapped = this.#deps.snap(press.others, raw, e.ctrlKey || e.metaKey);
+    // Back at the press point the marker is home, whatever is within the snap distance (#263).
+    const snapped = snapFromHome(
+      this.#deps.snap(press.others, raw, e.ctrlKey || e.metaKey),
+      press.marker.t,
+      raw,
+      press.others.fps,
+    );
     const t = Math.max(0, snapped.t);
     this.#deps.guides(snapped.target === null ? NO_GUIDES : [snapped.target]);
     if (t === press.t) return;

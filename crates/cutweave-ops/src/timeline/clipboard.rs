@@ -441,11 +441,10 @@ fn plan_paste(
         let (rel, len) = spans[&src.id()];
         copy.set_start(time(rel));
         copy.set_duration(dur(len));
-        if let Item::Clip(clip) = &mut copy {
-            clip.id = id;
-            clip.linked_group = group;
-            clip.markers = remint(&clip.markers, &mut e, ids);
-        }
+        copy.set_id(id);
+        copy.set_linked_group(group);
+        let markers = remint(copy.markers(), &mut e, ids);
+        *copy.markers_mut() = markers;
         copy_of.insert(src.id(), id);
         copies.push((dest[c.track as usize], src.id(), copy, rel));
     }

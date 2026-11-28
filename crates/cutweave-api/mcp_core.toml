@@ -237,7 +237,7 @@ arrives = "room in the standard list (ADR-0039); the command exists: cutweave_qu
 
 [[pending]]
 name = "text_add"
-arrives = "P3-P5"
+arrives = "the standard list is at 7,873 of 8,000 tokens; decided at the next standard-budget change (ADR-0040/0041/0044). The command exists (R37): cutweave_execute text.add"
 
 [[pending]]
 name = "caption_generate"
@@ -323,6 +323,10 @@ name = "sequence"
 purpose = "timelines of the project: create, duplicate, size and frame rate, background"
 
 [[namespace]]
+name = "text"
+purpose = "words on the picture: add a title or subtitle, its style, parts of the text, emoji, the layout box"
+
+[[namespace]]
 name = "timeline"
 purpose = "read a sequence and place things on it: insert, overwrite, gaps, ripple delete, markers, copy and paste"
 
@@ -383,6 +387,14 @@ purpose = "what the user sees in the app: playhead, selection, zoom"
 "sequence.duplicate" = ["timeline", "version", "clone"]
 "sequence.set_background" = ["blurred", "fill", "bars"]
 "sequence.set_format" = ["resolution", "fps", "aspect", "vertical", "portrait", "landscape", "ratio", "rate", "resize", "framerate"]
+"text.add" = ["title", "subtitle", "heading", "caption", "words", "write", "type", "headline", "credits", "lower", "overlay", "text"]
+"text.add_emoji" = ["emoji", "emoticon", "smiley", "symbol", "icon"]
+"text.get" = ["title", "words", "read"]
+"text.list_styles" = ["fonts", "presets", "looks", "title", "subtitle"]
+"text.set_box" = ["wrap", "width", "margin", "area", "align"]
+"text.set_content" = ["words", "retype", "edit", "rewrite", "change", "title", "caption"]
+"text.set_run_style" = ["highlight", "word", "color", "colour", "bold", "partial", "emphasis"]
+"text.set_style" = ["font", "color", "colour", "outline", "stroke", "shadow", "glow", "size", "bold", "background", "title", "style"]
 "timeline.add_marker" = ["note", "bookmark", "flag", "chapter", "mark"]
 "timeline.delete_gap" = ["remove", "empty", "space", "hole", "blank"]
 "timeline.extract" = ["remove", "section", "part", "range"]

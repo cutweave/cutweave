@@ -234,7 +234,7 @@ export type CancelReason =
   | "pointer_cancel"
   /** The window lost focus. */
   | "blur"
-  /** Released before any update went out: there is nothing to keep. */
+  /** Released before any update went out, or back on the starting position: nothing to keep. */
   | "unchanged"
   /** The dragged item disappeared (another actor deleted it, the document was reset). */
   | "target_gone"

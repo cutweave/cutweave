@@ -24,6 +24,7 @@ pub mod report;
 pub mod sequence;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod text;
 pub mod timeline;
 pub mod track;
 mod util;
@@ -44,6 +45,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     item::register(registry)?;
     audio::register(registry)?;
     keyframe::register(registry)?;
+    text::register(registry)?;
     job::register(registry)?;
     export::register(registry)?;
     visual::register(registry)?;
