@@ -228,7 +228,7 @@ export const selectorWork = { items: 0 };
 
 /** The timeline's item for `item`: the one derived before while nothing it is made of changed. */
 function itemOf(item: Item, track: Track, project: Project): TimelineItem {
-  const media = project.media[item.media];
+  const media = item.kind === "clip" ? project.media[item.media] : undefined;
   const known = derivedItems.get(item);
   if (
     known !== undefined &&

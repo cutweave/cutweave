@@ -9,7 +9,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Clip, Project, SequenceId } from "@cutweave/protocol";
+import type { ClipItem, Project, SequenceId } from "@cutweave/protocol";
 import { mathModuleBytes } from "@cutweave/protocol/test-support/math-wasm";
 import { initMath, math } from "@cutweave/protocol/wasm";
 import { type GraphTheme, GraphView } from "@cutweave/ui";
@@ -59,7 +59,7 @@ const noopContext = new Proxy(
 
 const F = 705_600_000;
 
-const keyCount = (clip: Clip): number =>
+const keyCount = (clip: ClipItem): number =>
   ANIMATABLE_PROPS.reduce((n, prop) => n + (storedKeys(clip, prop)?.length ?? 0), 0);
 
 const p95 = (values: number[]): number => {
@@ -77,9 +77,9 @@ describe("the graph editor on the P-5K benchmark project", () => {
     () => {
       const project = JSON.parse(readFileSync(join(FOLDER, DOCUMENT as string), "utf8")) as Project;
       const sequence = Object.keys(project.sequences)[0] as SequenceId;
-      const clips = Object.values(project.sequences[sequence]?.tracks ?? {}).flatMap((track) =>
-        Object.values(track.items),
-      );
+      const clips = Object.values(project.sequences[sequence]?.tracks ?? {})
+        .flatMap((track) => Object.values(track.items))
+        .filter((item): item is ClipItem => item.kind === "clip");
       expect(clips.length).toBe(5000);
       const heavy = [...clips].sort((a, b) => keyCount(b) - keyCount(a));
 

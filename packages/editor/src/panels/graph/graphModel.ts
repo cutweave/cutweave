@@ -199,7 +199,8 @@ export function selectedClips(
     if (out.length >= MAX_CLIPS) break;
     for (const track of Object.values(tracks)) {
       const clip = track.items[id as ItemId];
-      if (clip !== undefined) {
+      // Text items get curves with their own UI (WP-3A.07); the graph shows clips.
+      if (clip !== undefined && clip.kind === "clip") {
         out.push({ clip, locked: track.locked === true });
         break;
       }
