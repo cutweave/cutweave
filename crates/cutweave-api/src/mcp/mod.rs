@@ -37,6 +37,14 @@
 //! behind one [`Notifier`]; [`frame`] maps `render.frame` to an image content block under a
 //! 1 MB payload cap.
 //!
+//! # Profiles and the tool list (WP-2I.05, ADR-0040)
+//!
+//! A profile belongs to an endpoint (or to `cutweave mcp --profile`), never to a connection:
+//! every connection to an endpoint gets the same list in the same order, and the budgets of
+//! the lists are in `mcp_core.toml` (`[profiles]`). `notifications/tools/list_changed` is sent
+//! only when the set of commands changes ([`Notifier::tools_changed`]; a plugin loads, from
+//! Phase 6), through the same two mechanisms.
+//!
 //! # Security
 //!
 //! The server's middleware has already checked `Host` (exact loopback `host:port`), `Origin`
@@ -68,7 +76,8 @@ use rmcp::transport::streamable_http_server::{
 };
 
 pub use catalog::{
-    Budget, Catalog, DESCRIBED_BUDGET, ListSize, MINIMAL_BUDGET, Profile, STANDARD_BUDGET,
+    Budget, Catalog, DESCRIBED_BUDGET, ListSize, MINIMAL_BUDGET, OverBudget, Profile,
+    STANDARD_BUDGET,
 };
 pub use dispatch::{Dispatch, DispatchCall, DispatchConn, DispatchReply};
 pub use handler::CutweaveMcp;
@@ -96,6 +105,13 @@ impl Default for McpOptions {
 /// The `/mcp` mount ([`Mounts::mcp`](crate::Mounts)): one Streamable HTTP endpoint per
 /// [`Profile`] over `dispatch`.
 pub fn router(dispatch: impl Dispatch, options: &McpOptions) -> Router {
+    mount(dispatch, options).0
+}
+
+/// [`router`], with the mount's [`Notifier`]: what loads a plugin (Phase 6) calls
+/// [`Notifier::tools_changed`] on it once the endpoints list the new tools, and every client
+/// is told through the mechanism of its revision (WP-2I.05).
+pub fn mount(dispatch: impl Dispatch, options: &McpOptions) -> (Router, Arc<Notifier>) {
     let dispatch: Arc<dyn Dispatch> = Arc::new(dispatch);
     let registry = dispatch.registry();
     // One notifier for every profile and session of this engine.
@@ -122,5 +138,5 @@ pub fn router(dispatch: impl Dispatch, options: &McpOptions) -> Router {
         );
         router = router.route_service(profile.route(), service);
     }
-    router
+    (router, notifier)
 }

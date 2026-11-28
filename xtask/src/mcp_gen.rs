@@ -61,24 +61,26 @@ fn overview(out: &mut String, registry: &Arc<Registry>, table: &CoreTable) {
     let _ = writeln!(
         out,
         "- **Listed:** {} tools ({} core and the {} generic ones), {} bytes, about {} tokens \
-         (`ceil(bytes / 4)`). The budget is {} tools and {} tokens.",
+         (`ceil(bytes / 4)`). The budget is {} tools and {} tokens. Every profile's budget is \
+         in the table's `[profiles]`, and only there.",
         size.tools,
         table.tools.len(),
         catalog::GENERIC_TOOLS.len(),
         size.bytes,
         size.tokens(),
-        table.budget.max_tools,
-        table.budget.max_tokens
+        table.profiles.standard.max_tools,
+        table.profiles.standard.max_tokens
     );
     for profile in [Profile::Minimal, Profile::Full, Profile::Described] {
         let size = Catalog::new(Arc::clone(registry), profile).size();
         let budget = profile.budget();
         let _ = writeln!(
             out,
-            "- **`/mcp{}`** ({}): {} tools, about {} tokens of {}.",
+            "- **`/mcp{}`** (`--profile {}`): {} tools of {}, about {} tokens of {}.",
             profile.route(),
             profile.name(),
             size.tools,
+            budget.max_tools,
             size.tokens(),
             budget.max_tokens
         );

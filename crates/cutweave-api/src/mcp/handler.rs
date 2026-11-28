@@ -22,7 +22,7 @@ use rmcp::{
         ResourceContents, ServerCapabilities, ServerConfig, SubscribeRequestParams,
         SubscriptionFilter, Tool, UnsubscribeRequestParams,
     },
-    service::{RequestContext, SubscriptionContext},
+    service::{NotificationContext, RequestContext, SubscriptionContext},
 };
 use serde_json::{Value, json};
 
@@ -59,6 +59,9 @@ pub struct CutweaveMcp {
     subscriptions: Arc<Subscriptions>,
     /// The notifier's generation when the last `subscriptions/listen` was accepted.
     listen_from: Arc<AtomicU64>,
+    /// The notifier's tool-list generation when the session began, or when its last
+    /// `subscriptions/listen` was accepted: a change after it is one the client has to hear of.
+    tools_from: Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for CutweaveMcp {
@@ -93,15 +96,24 @@ impl CutweaveMcp {
             notifier,
             subscriptions: Arc::default(),
             listen_from: Arc::default(),
+            tools_from: Arc::default(),
         }
     }
 
-    /// Uses `notifier` (one per engine, shared by every handler of a mount) for resource change
+    /// Uses `notifier` (one per engine, shared by every handler of a mount) for change
     /// notifications.
     #[must_use]
     pub fn with_notifier(mut self, notifier: Arc<Notifier>) -> CutweaveMcp {
+        self.tools_from = Arc::new(AtomicU64::new(notifier.tools_generation()));
         self.notifier = notifier;
         self
+    }
+
+    /// The notifier of this handler: [`Notifier::tools_changed`] tells its clients that the
+    /// tool list changed.
+    #[must_use]
+    pub fn notifier(&self) -> &Arc<Notifier> {
+        &self.notifier
     }
 
     /// The catalog this handler lists.
@@ -643,12 +655,24 @@ impl ServerHandler for CutweaveMcp {
         ServerConfig::new(
             ServerCapabilities::builder()
                 .enable_tools()
+                // Sent only when the set of commands itself changes (a plugin loads): WP-2I.05.
+                .enable_tool_list_changed()
                 .enable_resources()
                 .enable_resources_subscribe()
                 .build(),
         )
         .with_server_info(Implementation::new("cutweave", env!("CARGO_PKG_VERSION")))
         .with_instructions(self.catalog.instructions())
+    }
+
+    /// 2025-11-25 and older: the session is up, so tool-list changes can reach its peer
+    /// (2026-07-28 has no `initialized`; a client there asks with `subscriptions/listen`).
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+        self.subscriptions.watch_tools(
+            &self.notifier,
+            &context.peer,
+            self.tools_from.load(Ordering::SeqCst),
+        );
     }
 
     async fn list_tools(
@@ -739,6 +763,8 @@ impl ServerHandler for CutweaveMcp {
         self.notifier.start();
         self.listen_from
             .store(self.notifier.generation(), Ordering::SeqCst);
+        self.tools_from
+            .store(self.notifier.tools_generation(), Ordering::SeqCst);
         let uris: Vec<String> = requested
             .resource_subscriptions
             .iter()
@@ -746,48 +772,57 @@ impl ServerHandler for CutweaveMcp {
             .filter(|u| subscribable(u))
             .cloned()
             .collect();
-        Some(
-            SubscriptionFilter::builder()
-                .resource_subscriptions(uris)
-                .build(),
-        )
+        let filter = SubscriptionFilter::builder().resource_subscriptions(uris);
+        // rmcp keeps this only when the client asked for it.
+        Some(filter.tools_list_changed().build())
     }
 
     async fn listen(&self, context: SubscriptionContext) -> Result<(), McpError> {
-        let accepted = context
+        use tokio::sync::broadcast::error::RecvError;
+        let uris = context
             .accepted()
             .resource_subscriptions
             .clone()
             .unwrap_or_default();
-        if accepted.is_empty() {
+        let tools = context.accepted().tools_list_changed == Some(true);
+        if uris.is_empty() && !tools {
             context.cancelled().await;
             return Ok(());
         }
-        let mut stream = self.notifier.subscribe();
-        let mut pending = (self.notifier.generation() > self.listen_from.load(Ordering::SeqCst))
+        let mut documents = self.notifier.subscribe();
+        let mut lists = self.notifier.subscribe_tools();
+        // A change that landed between the acknowledgment and here is replayed.
+        let mut changed = (self.notifier.generation() > self.listen_from.load(Ordering::SeqCst))
             .then_some(Changed::ALL);
+        let mut listed =
+            tools && self.notifier.tools_generation() > self.tools_from.load(Ordering::SeqCst);
         loop {
-            let changed = if let Some(replayed) = pending.take() {
-                replayed
-            } else {
-                tokio::select! {
-                    () = context.cancelled() => return Ok(()),
-                    received = stream.recv() => match received {
-                        Ok(next) => next,
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => Changed::ALL,
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                            context.cancelled().await;
-                            return Ok(());
-                        }
-                    },
-                }
-            };
-            for uri in updated_uris(changed, &accepted) {
+            if std::mem::take(&mut listed)
+                && context.sink().notify_tool_list_changed().await.is_err()
+            {
+                return Ok(());
+            }
+            for uri in updated_uris(changed.take().unwrap_or_default(), &uris) {
                 if context.sink().notify_resource_updated(uri).await.is_err() {
                     return Ok(());
                 }
             }
+            tokio::select! {
+                () = context.cancelled() => return Ok(()),
+                received = documents.recv() => match received {
+                    Ok(next) => changed = Some(next),
+                    Err(RecvError::Lagged(_)) => changed = Some(Changed::ALL),
+                    Err(RecvError::Closed) => break,
+                },
+                received = lists.recv() => match received {
+                    // Several changes this listener fell behind on are one "the list changed".
+                    Ok(()) | Err(RecvError::Lagged(_)) => listed = tools,
+                    Err(RecvError::Closed) => break,
+                },
+            }
         }
+        context.cancelled().await;
+        Ok(())
     }
 
     async fn call_tool(

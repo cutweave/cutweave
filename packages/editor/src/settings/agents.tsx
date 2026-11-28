@@ -304,6 +304,7 @@ function FolderList({ ctx }: { ctx: SettingsContext }) {
 const PROFILE_LABELS: Record<ClientProfile, TKey> = {
   minimal: "settings.rows.clientProfile.minimal",
   standard: "settings.rows.clientProfile.standard",
+  described: "settings.rows.clientProfile.described",
   full: "settings.rows.clientProfile.full",
 };
 const profileOptions: readonly ChoiceOption[] = CLIENT_PROFILES.map((profile) => ({

@@ -32,8 +32,8 @@ use std::time::Duration;
 use futures_util::{FutureExt as _, StreamExt as _, stream::FuturesUnordered};
 use rmcp::{
     model::{
-        ClientJsonRpcMessage, ClientNotification, ErrorCode, ErrorData, JsonRpcMessage, RequestId,
-        ServerJsonRpcMessage,
+        ClientJsonRpcMessage, ClientNotification, ClientRequest, ErrorCode, ErrorData,
+        JsonRpcMessage, RequestId, ServerJsonRpcMessage,
     },
     service::{RoleClient, RoleServer},
     transport::{
@@ -286,7 +286,7 @@ where
                                             "the client moved to engine {}; this request did not finish",
                                             target.pid
                                         );
-                                        for pending in flight.pending.drain() {
+                                        for pending in flight.unanswered() {
                                             let _ = down.send(switched_error(pending, &note)).await;
                                         }
                                         flight.busy.store(false, Ordering::Relaxed);
@@ -332,7 +332,7 @@ where
     };
     if let ProxyEnd::Lost { message } = &end {
         tracing::warn!(%message, "MCP proxy: lost the engine");
-        for id in flight.pending.drain() {
+        for id in flight.unanswered() {
             let _ = down.send(lost_error(id, message, pid)).await;
         }
         // No upstream close: the engine cannot answer a DELETE any more.
@@ -355,6 +355,10 @@ where
 #[derive(Default)]
 struct InFlight {
     pending: HashSet<RequestId>,
+    /// Open `subscriptions/listen` requests (2026-07-28). One stays open until the client
+    /// cancels it, so it is not something to wait for: it does not keep the proxy alive after
+    /// stdin closes, and it does not make the watchdog poll at the busy cadence.
+    listening: HashSet<RequestId>,
     /// Whether anything is pending (the watchdog's cadence).
     busy: Arc<AtomicBool>,
     /// Asks the watchdog to check the engine now.
@@ -371,6 +375,13 @@ impl InFlight {
         let JsonRpcMessage::Request(request) = message else {
             return None;
         };
+        if matches!(
+            request.request,
+            ClientRequest::SubscriptionsListenRequest(_)
+        ) {
+            self.listening.insert(request.id.clone());
+            return Some(request.id.clone());
+        }
         self.pending.insert(request.id.clone());
         if !self.busy.swap(true, Ordering::Relaxed) {
             // The first request after an idle spell: check the engine now.
@@ -393,8 +404,14 @@ impl InFlight {
         self.remove(id)
     }
 
+    /// Every request without an answer, the open subscriptions included; none is left.
+    fn unanswered(&mut self) -> Vec<RequestId> {
+        self.busy.store(false, Ordering::Relaxed);
+        self.pending.drain().chain(self.listening.drain()).collect()
+    }
+
     fn remove(&mut self, id: &RequestId) -> bool {
-        let removed = self.pending.remove(id);
+        let removed = self.pending.remove(id) | self.listening.remove(id);
         self.busy.store(!self.pending.is_empty(), Ordering::Relaxed);
         removed
     }
@@ -497,6 +514,32 @@ mod tests {
         assert_eq!(answered(&error), Some(&RequestId::Number(3)));
         let note = server(r#"{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}"#);
         assert_eq!(answered(&note), None);
+    }
+
+    /// WP-2I.05: an open `subscriptions/listen` is not a request in flight: it neither holds
+    /// the proxy after stdin closes nor makes the watchdog busy, and it still gets its error
+    /// when the engine is lost.
+    #[test]
+    fn an_open_subscription_is_not_a_request_in_flight() {
+        let listen = client(
+            r#"{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}"#,
+        );
+        let mut flight = InFlight::default();
+        assert_eq!(flight.sent(&listen), Some(RequestId::Number(1)));
+        assert!(flight.pending.is_empty() && !flight.busy.load(Ordering::Relaxed));
+        let call = client(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
+        assert_eq!(flight.sent(&call), Some(RequestId::Number(2)));
+        assert!(flight.busy.load(Ordering::Relaxed));
+        flight.answered(&server(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#));
+        assert!(flight.pending.is_empty() && !flight.busy.load(Ordering::Relaxed));
+        // Lost engine: the subscription is answered with an error like any other request.
+        assert_eq!(flight.unanswered(), [RequestId::Number(1)]);
+        // A cancelled subscription is forgotten.
+        flight.sent(&listen);
+        flight.sent(&client(
+            r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}"#,
+        ));
+        assert_eq!(flight.unanswered(), Vec::<RequestId>::new());
     }
 
     #[test]

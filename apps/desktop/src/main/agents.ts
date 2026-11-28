@@ -9,7 +9,8 @@
 // - "Connect a client": the setup each agent host needs to run the bundled CLI as a stdio MCP
 //   server, `<cli> mcp --attach`, with no pid (the engine of the window used last, WP-1J.04),
 //   no port and no token (the attach proxy reads the run-file). Main builds the text and puts it
-//   on the clipboard itself; the renderer only names which client.
+//   on the clipboard itself; the renderer only names which client. The tool list is the setup's
+//   `--profile` (WP-2I.05): Claude Code gets `described` unless the person chose another.
 
 import { existsSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
@@ -150,6 +151,17 @@ export function mcpArgs(profile: ClientProfile): string[] {
   return profile === "standard" ? ["mcp", "--attach"] : ["mcp", "--attach", "--profile", profile];
 }
 
+/**
+ * The profile of `client`'s setup when the person chose `chosen` (WP-2I.05, ADR-0040). Standard,
+ * the default, means "the list that suits the client": Claude Code defers tool definitions (tool
+ * search), so it gets `described`, the same tools with their parameter descriptions; the other
+ * clients load every definition at the start and get `standard`. Any other choice is taken as it
+ * is. The profile is part of the copied text, so it is fixed for the session it starts.
+ */
+export function clientProfile(client: AgentClient, chosen: ClientProfile): ClientProfile {
+  return chosen === "standard" && client === "claude-code" ? "described" : chosen;
+}
+
 /** One argument for the shell the person pastes into: quoted when it needs to be. */
 export function shellQuote(arg: string, platform: NodeJS.Platform): string {
   if (platform === "win32") {
@@ -179,18 +191,19 @@ export function clientSetups(
   profile: ClientProfile,
   platform: NodeJS.Platform,
 ): ClientSetup[] {
-  const args = mcpArgs(profile);
-  const commandLine = [cli, ...args].map((a) => shellQuote(a, platform)).join(" ");
+  const args = (client: AgentClient) => mcpArgs(clientProfile(client, profile));
+  const commandLine = (client: AgentClient) =>
+    [cli, ...args(client)].map((a) => shellQuote(a, platform)).join(" ");
   const text: Record<AgentClient, string> = {
-    "claude-code": `claude mcp add cutweave -- ${commandLine}`,
-    "claude-desktop": mcpServersJson(cli, args),
-    cursor: mcpServersJson(cli, args),
+    "claude-code": `claude mcp add cutweave -- ${commandLine("claude-code")}`,
+    "claude-desktop": mcpServersJson(cli, args("claude-desktop")),
+    cursor: mcpServersJson(cli, args("cursor")),
     codex: [
       "[mcp_servers.cutweave]",
       `command = ${tomlString(cli)}`,
-      `args = ${JSON.stringify(args).replaceAll(",", ", ")}`,
+      `args = ${JSON.stringify(args("codex")).replaceAll(",", ", ")}`,
     ].join("\n"),
-    stdio: commandLine,
+    stdio: commandLine("stdio"),
   };
   return AGENT_CLIENTS.map((client) => ({ client, text: text[client] }));
 }

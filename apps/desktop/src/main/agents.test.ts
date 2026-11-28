@@ -5,6 +5,7 @@ import { MAX_AGENT_FOLDERS } from "../../../../packages/preferences/src/index.ts
 import { AGENT_CLIENTS } from "../shared/api.ts";
 import {
   addFolder,
+  clientProfile,
   clientSetups,
   engineAllowRoots,
   mcpArgs,
@@ -66,7 +67,10 @@ describe("the client setups", () => {
       expect(text, client).toContain("--attach");
     }
     const byClient = Object.fromEntries(setups.map((s) => [s.client, s.text]));
-    expect(byClient["claude-code"]).toBe(`claude mcp add cutweave -- "${cli}" mcp --attach`);
+    // Claude Code defers tool definitions: its setup gets the described list (WP-2I.05).
+    expect(byClient["claude-code"]).toBe(
+      `claude mcp add cutweave -- "${cli}" mcp --attach --profile described`,
+    );
     expect(JSON.parse(byClient["claude-desktop"] ?? "")).toEqual({
       mcpServers: { cutweave: { command: cli, args: ["mcp", "--attach"] } },
     });
@@ -85,6 +89,28 @@ describe("the client setups", () => {
     );
     const full = clientSetups("/opt/cutweave/cutweave", "full", "linux");
     expect(full.find((s) => s.client === "cursor")?.text).toContain('"--profile",\n');
+  });
+
+  it("give each client the list that suits it, unless another is chosen", () => {
+    for (const client of AGENT_CLIENTS) {
+      expect(clientProfile(client, "standard"), client).toBe(
+        client === "claude-code" ? "described" : "standard",
+      );
+      for (const chosen of ["minimal", "described", "full"] as const) {
+        expect(clientProfile(client, chosen), client).toBe(chosen);
+      }
+    }
+    // Described, chosen: every setup carries it (Copilot CLI through "Other (stdio)").
+    const described = clientSetups("/opt/cutweave/cutweave", "described", "linux");
+    for (const { client, text } of described) {
+      expect(text, client).toContain("described");
+    }
+    expect(described.find((s) => s.client === "stdio")?.text).toBe(
+      "/opt/cutweave/cutweave mcp --attach --profile described",
+    );
+    // Minimal, chosen: Claude Code gets minimal too.
+    const minimal = clientSetups("/opt/cutweave/cutweave", "minimal", "linux");
+    expect(minimal.find((s) => s.client === "claude-code")?.text).toContain("--profile minimal");
   });
 
   it("quote a path for the shell it is pasted into", () => {

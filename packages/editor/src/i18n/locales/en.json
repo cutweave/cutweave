@@ -520,10 +520,11 @@
       },
       "clientProfile": {
         "label": "Tools in copied setups",
-        "description": "How many tools an agent sees: Minimal suits small context windows, Full lists everything.",
-        "keywords": "agent, MCP, profile, tools, minimal, standard, full, context",
+        "description": "Which tool list an agent gets. Standard gives each client the list that suits it; the Claude Code setup then uses Described. Described is the standard tools with parameter descriptions, for clients that load a tool only when they need it. Minimal suits small context windows. Full lists the same tools as Standard for now.",
+        "keywords": "agent, MCP, profile, tools, minimal, standard, described, full, context, parameters, tool search",
         "minimal": "Minimal",
         "standard": "Standard",
+        "described": "Described",
         "full": "Full"
       },
       "connectClient": {

@@ -28,13 +28,16 @@
 //! plus the search-based long tail, so it lists exactly the standard tools for now. `outputSchema`s are not listed (Spike S5: about 45% of the bytes); results
 //! still carry `structuredContent`.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, LazyLock},
+};
 
 use cutweave_commands::{CommandMeta, Entry, EntryKind, McpExposure, Registry, Scope};
 use rmcp::model::{JsonObject, MetaObject, Tool, ToolAnnotations};
 use serde_json::{Value, json};
 
-use crate::mcp::core::{CoreTable, CoreTool, META_ALWAYS_LOAD};
+use crate::mcp::core::{CoreTable, CoreTool, META_ALWAYS_LOAD, Profiles};
 
 /// `cutweave_search_commands{query, limit?, detail?}`.
 pub const SEARCH: &str = "cutweave_search_commands";
@@ -61,13 +64,30 @@ pub const MINIMAL_CORE: &[&str] = &[
     "edit.undo",
 ];
 
-/// A tool-list budget.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Budget {
-    /// Most tools listed.
-    pub max_tools: usize,
-    /// Most estimated tokens of the `tools/list` result ([`ListSize::tokens`]).
-    pub max_tokens: usize,
+/// A tool-list budget: most tools listed and most estimated tokens of the `tools/list` result
+/// ([`ListSize::tokens`]). The figures of every profile are in `mcp_core.toml` (`[profiles]`)
+/// and nowhere else; [`Profile::budget`] reads them.
+pub use crate::mcp::core::TableBudget as Budget;
+
+/// How a list leaves its [`Budget`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum OverBudget {
+    /// More tools than the budget allows.
+    #[error("{listed} tools are listed and the budget is {max}")]
+    Tools {
+        /// Tools listed.
+        listed: usize,
+        /// The budget's `max_tools`.
+        max: usize,
+    },
+    /// More estimated tokens than the budget allows.
+    #[error("the list is about {listed} tokens and the budget is {max}")]
+    Tokens {
+        /// Estimated tokens of the list.
+        listed: usize,
+        /// The budget's `max_tokens`.
+        max: usize,
+    },
 }
 
 impl Budget {
@@ -76,29 +96,39 @@ impl Budget {
     pub const fn fits(self, size: ListSize) -> bool {
         size.tools <= self.max_tools && size.tokens() <= self.max_tokens
     }
+
+    /// The budget check the tests run on every profile's list (WP-2I.05).
+    ///
+    /// # Errors
+    /// What `size` exceeds: the tool count first, then the tokens.
+    pub const fn check(self, size: ListSize) -> Result<(), OverBudget> {
+        if size.tools > self.max_tools {
+            return Err(OverBudget::Tools {
+                listed: size.tools,
+                max: self.max_tools,
+            });
+        }
+        if size.tokens() > self.max_tokens {
+            return Err(OverBudget::Tokens {
+                listed: size.tokens(),
+                max: self.max_tokens,
+            });
+        }
+        Ok(())
+    }
 }
 
-/// The arch §14 budget of the minimal profile: <= 12 tools and <= 3k tokens.
-pub const MINIMAL_BUDGET: Budget = Budget {
-    max_tools: 12,
-    max_tokens: 3_000,
-};
+/// The arch §14 budget of the minimal profile (`[profiles] minimal`).
+pub static MINIMAL_BUDGET: LazyLock<Budget> = LazyLock::new(|| Profile::Minimal.budget());
 
 /// The arch §14 budget of the standard (and full) profile, the gate of the `/mcp` tool list
-/// (R36, since M1; it replaced the Phase 1 gate of <= 20 tools / <= 5k tokens, R33): <= 36 tools
-/// and <= 8k tokens.
-pub const STANDARD_BUDGET: Budget = Budget {
-    max_tools: 36,
-    max_tokens: 8_000,
-};
+/// (R36, since M1; it replaced the Phase 1 gate of <= 20 tools / <= 5k tokens, R33):
+/// `[profiles] standard`.
+pub static STANDARD_BUDGET: LazyLock<Budget> = LazyLock::new(|| Profile::Standard.budget());
 
 /// The budget of the described profile (ADR-0040, question 2; WP-2I.07): the standard
-/// profile's tools, in at most 16k tokens. It is stated in `mcp_core.toml`
-/// (`[described_budget]`) and a test holds the two equal.
-pub const DESCRIBED_BUDGET: Budget = Budget {
-    max_tools: 36,
-    max_tokens: 16_000,
-};
+/// profile's tools with their parameter docs, `[profiles] described`.
+pub static DESCRIBED_BUDGET: LazyLock<Budget> = LazyLock::new(|| Profile::Described.budget());
 
 /// A tool profile, chosen by the endpoint (`/mcp`, `/mcp/minimal`, `/mcp/full`,
 /// `/mcp/described`) or, on stdio, by `--profile` (WP-1J.03).
@@ -159,13 +189,20 @@ impl Profile {
         }
     }
 
-    /// The arch §14 budget.
+    /// The budget of this profile's list, from `mcp_core.toml` (`[profiles]`).
     #[must_use]
-    pub const fn budget(self) -> Budget {
+    pub fn budget(self) -> Budget {
+        self.budget_in(&CoreTable::get().profiles)
+    }
+
+    /// The budget `profiles` gives this profile. Full lists exactly the standard tools and has
+    /// the standard budget.
+    #[must_use]
+    pub const fn budget_in(self, profiles: &Profiles) -> Budget {
         match self {
-            Profile::Minimal => MINIMAL_BUDGET,
-            Profile::Standard | Profile::Full => STANDARD_BUDGET,
-            Profile::Described => DESCRIBED_BUDGET,
+            Profile::Minimal => profiles.minimal,
+            Profile::Standard | Profile::Full => profiles.standard,
+            Profile::Described => profiles.described,
         }
     }
 
@@ -325,6 +362,15 @@ impl Catalog {
     #[must_use]
     pub fn size(&self) -> ListSize {
         ListSize::of(&self.tools)
+    }
+
+    /// Checks this endpoint's list against its profile's budget.
+    ///
+    /// # Errors
+    /// See [`Budget::check`].
+    pub fn check_budget(&self) -> Result<ListSize, OverBudget> {
+        let size = self.size();
+        self.profile.budget().check(size).map(|()| size)
     }
 }
 
@@ -1260,7 +1306,34 @@ mod tests {
             bytes: 100
         }));
         assert!(!Profile::Minimal.budget().fits(size));
-        assert_eq!(Profile::Full.budget(), STANDARD_BUDGET);
+        assert_eq!(Profile::Full.budget(), *STANDARD_BUDGET);
+        assert_eq!(Profile::Minimal.budget(), *MINIMAL_BUDGET);
+        assert_eq!(Profile::Described.budget(), *DESCRIBED_BUDGET);
+        // The check names what a list exceeds: the tool count first.
+        let standard = *STANDARD_BUDGET;
+        assert_eq!(standard.check(size), Ok(()));
+        assert_eq!(
+            standard.check(ListSize {
+                tools: standard.max_tools + 1,
+                bytes: 100
+            }),
+            Err(OverBudget::Tools {
+                listed: standard.max_tools + 1,
+                max: standard.max_tools
+            })
+        );
+        let over = standard.check(ListSize {
+            tools: 20,
+            bytes: standard.max_tokens * 4 + 1,
+        });
+        assert_eq!(
+            over,
+            Err(OverBudget::Tokens {
+                listed: standard.max_tokens + 1,
+                max: standard.max_tokens
+            })
+        );
+        assert!(over.unwrap_err().to_string().contains("budget is"));
     }
 
     #[test]

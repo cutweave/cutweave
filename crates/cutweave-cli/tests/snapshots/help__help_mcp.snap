@@ -10,17 +10,21 @@ Usage: cutweave mcp [OPTIONS]
 
 Options:
       --attach
-          Proxy to a running engine's MCP endpoint (`/mcp`, `/mcp/minimal` or `/mcp/full` for --profile) with its run-file's `mcp` agent token, so the agent edits the document the desktop app shows. This is the default when no spawn flag is given
+          Proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal`, `/mcp/full` and `/mcp/described` for --profile) with its run-file's `mcp` agent token, so the agent edits the document the desktop app shows. This is the default when no spawn flag is given
 
       --profile <PROFILE>
-          The tool profile: the same catalogs and budgets as the engine's HTTP endpoints
+          The tool profile: the same catalogs and budgets as the engine's HTTP endpoints. It is fixed for the whole session
 
           Possible values:
-          - minimal:  The smallest tool set
-          - standard: The default tool set
-          - full:     Every tool
+          - minimal:   The smallest list, for small context windows; the rest through cutweave_execute
+          - standard:  The core editing tools, for clients that load every tool definition at the start
+          - full:      The standard list; every other command is found with cutweave_search_commands
+          - described: The standard tools with parameter descriptions, for clients that load a tool's definition when it is needed (Claude Code, Copilot CLI)
           
           [default: standard]
+
+      --print-tools
+          Print the `tools/list` result of --profile as JSON, with its size and budget, and exit. It needs no engine: the list is the one a full engine serves
 
       --run-file <PATH>
           The run-file of the engine to attach to (instead of --run-dir and --pid)

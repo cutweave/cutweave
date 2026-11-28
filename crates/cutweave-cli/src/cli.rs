@@ -338,25 +338,34 @@ pub struct RenderCmd {
 /// The MCP tool profile (arch §14).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Profile {
-    /// The smallest tool set.
+    /// The smallest list, for small context windows; the rest through cutweave_execute.
     Minimal,
-    /// The default tool set.
+    /// The core editing tools, for clients that load every tool definition at the start.
     Standard,
-    /// Every tool.
+    /// The standard list; every other command is found with cutweave_search_commands.
     Full,
+    /// The standard tools with parameter descriptions, for clients that load a tool's
+    /// definition when it is needed (Claude Code, Copilot CLI).
+    Described,
 }
 
 /// `cutweave mcp`.
 #[derive(Debug, Args)]
 pub struct McpCmd {
-    /// Proxy to a running engine's MCP endpoint (`/mcp`, `/mcp/minimal` or `/mcp/full` for
-    /// --profile) with its run-file's `mcp` agent token, so the agent edits the document the
-    /// desktop app shows. This is the default when no spawn flag is given.
+    /// Proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal`, `/mcp/full` and
+    /// `/mcp/described` for --profile) with its run-file's `mcp` agent token, so the agent
+    /// edits the document the desktop app shows. This is the default when no spawn flag is
+    /// given.
     #[arg(long, conflicts_with_all = ["headless"])]
     pub attach: bool,
-    /// The tool profile: the same catalogs and budgets as the engine's HTTP endpoints.
+    /// The tool profile: the same catalogs and budgets as the engine's HTTP endpoints. It is
+    /// fixed for the whole session.
     #[arg(long, value_enum, default_value = "standard")]
     pub profile: Profile,
+    /// Print the `tools/list` result of --profile as JSON, with its size and budget, and exit.
+    /// It needs no engine: the list is the one a full engine serves.
+    #[arg(long, conflicts_with_all = ["attach", "headless", "run_file", "log_dir", "no_log"])]
+    pub print_tools: bool,
     /// The run-file of the engine to attach to (instead of --run-dir and --pid).
     #[arg(
         long,

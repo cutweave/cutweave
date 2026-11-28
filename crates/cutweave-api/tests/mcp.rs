@@ -30,10 +30,10 @@ use cutweave_api::mcp::{
 use cutweave_commands::Registry;
 use cutweave_engine::Call;
 use mcp_support::{
-    Client, Harness, INJECTION, Revision, SEC, example_args, http_client, must, schema_error,
-    text_of,
+    Client, Harness, INJECTION, Revision, SEC, Watcher, example_args, http_client, must,
+    schema_error, text_of,
 };
-use rmcp::model::{CallToolResult, Tool};
+use rmcp::model::{CallToolResult, ServerNotification, SubscriptionFilter, Tool};
 use serde_json::{Value, json};
 
 fn registry() -> Arc<Registry> {
@@ -677,14 +677,8 @@ fn documented(param: &Value) -> bool {
 fn the_described_profile_is_the_standard_list_with_parameter_docs() {
     let registry = registry();
     let table = CoreTable::get();
-    assert_eq!(
-        (
-            table.described_budget.max_tools,
-            table.described_budget.max_tokens
-        ),
-        (DESCRIBED_BUDGET.max_tools, DESCRIBED_BUDGET.max_tokens)
-    );
-    assert_eq!(Profile::Described.budget(), DESCRIBED_BUDGET);
+    assert_eq!(table.profiles.described, *DESCRIBED_BUDGET);
+    assert_eq!(Profile::Described.budget(), *DESCRIBED_BUDGET);
     assert_eq!(Profile::parse("described"), Some(Profile::Described));
     assert_eq!(Profile::Described.route(), "/described");
 
@@ -802,6 +796,279 @@ async fn the_described_endpoint_serves_its_list_and_runs_the_same_tools() {
     }
 }
 
+// ----- profiles and their budgets (WP-2I.05) ------------------------------------------------
+
+/// The budget check of every profile: each list, as served, fits the budget `mcp_core.toml`
+/// (`[profiles]`) gives its profile. `[profiles]` is the only place the figures are written:
+/// raising one is a diff to that file.
+#[test]
+fn every_profile_list_fits_its_budget() {
+    let registry = registry();
+    let table = CoreTable::get();
+    for profile in Profile::ALL {
+        let catalog = Catalog::new(Arc::clone(&registry), profile);
+        let budget = profile.budget();
+        assert_eq!(budget, profile.budget_in(&table.profiles));
+        let size = catalog
+            .check_budget()
+            .unwrap_or_else(|over| panic!("/mcp{} ({}): {over}", profile.route(), profile.name()));
+        println!(
+            "{}: {} tools of {}, {} bytes, ~{} tokens of {}",
+            profile.name(),
+            size.tools,
+            budget.max_tools,
+            size.bytes,
+            size.tokens(),
+            budget.max_tokens
+        );
+        assert!(budget.max_tools > 0 && budget.max_tokens > 0);
+    }
+    // Full has no figures of its own: it lists the standard tools within the standard budget.
+    assert_eq!(Profile::Full.budget(), table.profiles.standard);
+}
+
+/// The failing sample: the same check refuses a list that leaves its budget. For each profile,
+/// a table whose budget is one token (or one tool) below the list as served fails it, and so
+/// does the real budget once the list grows by one more tool's worth.
+#[test]
+fn the_budget_check_fails_a_list_that_leaves_its_budget() {
+    let registry = registry();
+    let real = CoreTable::get().profiles;
+    for profile in Profile::ALL {
+        let catalog = Catalog::new(Arc::clone(&registry), profile);
+        let size = catalog.size();
+        let sample = |max_tools: usize, max_tokens: usize| {
+            let budget = format!("{{ max_tools = {max_tools}, max_tokens = {max_tokens} }}");
+            let text = format!(
+                "[profiles]\nminimal = {budget}\nstandard = {budget}\ndescribed = {budget}\n"
+            );
+            profile.budget_in(&CoreTable::parse(&text).unwrap().profiles)
+        };
+        // Exactly the list's size passes; one token or one tool less does not.
+        assert_eq!(sample(size.tools, size.tokens()).check(size), Ok(()));
+        assert_eq!(
+            sample(size.tools, size.tokens() - 1).check(size),
+            Err(catalog::OverBudget::Tokens {
+                listed: size.tokens(),
+                max: size.tokens() - 1
+            }),
+            "{profile:?}"
+        );
+        assert_eq!(
+            sample(size.tools - 1, size.tokens()).check(size),
+            Err(catalog::OverBudget::Tools {
+                listed: size.tools,
+                max: size.tools - 1
+            }),
+            "{profile:?}"
+        );
+        // The committed budget refuses the list once every tool is listed twice.
+        let mut grown = catalog.tools().to_vec();
+        grown.extend(catalog.tools().iter().cloned());
+        let over = profile.budget_in(&real).check(ListSize::of(&grown));
+        assert!(over.is_err(), "{profile:?}: {over:?}");
+    }
+    // The standard list is close to its budget: its largest tool listed once more leaves it.
+    let standard = Catalog::new(registry, Profile::Standard);
+    let mut grown = standard.tools().to_vec();
+    let largest = grown
+        .iter()
+        .max_by_key(|t| ListSize::of(std::slice::from_ref(*t)).bytes)
+        .unwrap()
+        .clone();
+    grown.push(largest);
+    assert!(matches!(
+        Profile::Standard.budget().check(ListSize::of(&grown)),
+        Err(catalog::OverBudget::Tokens { .. })
+    ));
+}
+
+/// Full lists exactly the standard tools; minimal lists a part of them, the same definitions in
+/// the same order; described lists the same names in the same order. A list is built the same
+/// way every time, so it is the same for every connection (ADR-0040).
+#[test]
+fn the_profiles_list_one_set_of_tools_in_one_order() {
+    let registry = registry();
+    let list = |profile| Catalog::new(Arc::clone(&registry), profile);
+    let standard = list(Profile::Standard);
+    assert_eq!(list(Profile::Full).tools(), standard.tools());
+    assert_eq!(
+        names(list(Profile::Described).tools()),
+        names(standard.tools())
+    );
+    let minimal = list(Profile::Minimal);
+    assert!(minimal.tools().len() < standard.tools().len());
+    let mut rest = standard.tools().iter();
+    for tool in minimal.tools() {
+        assert!(
+            rest.any(|t| t == tool),
+            "{}: not the standard tool, or out of order",
+            tool.name
+        );
+    }
+    for profile in Profile::ALL {
+        assert_eq!(
+            list(profile).tools_json().to_string(),
+            list(profile).tools_json().to_string(),
+            "{profile:?}"
+        );
+    }
+}
+
+/// `cutweave_execute` reaches every command under minimal: the generic tools resolve every
+/// entry that is not hidden, whatever the endpoint lists, and a live `/mcp/minimal` connection
+/// gets past "unknown command" for each of them (a dry run with no arguments: nothing changes).
+#[tokio::test]
+async fn execute_reaches_every_command_under_minimal() {
+    let registry = registry();
+    let minimal = Catalog::new(Arc::clone(&registry), Profile::Minimal);
+    let standard = Catalog::new(Arc::clone(&registry), Profile::Standard);
+    let reachable: Vec<&str> = minimal.reachable_entries().map(|e| e.meta.name).collect();
+    assert_eq!(
+        reachable,
+        standard
+            .reachable_entries()
+            .map(|e| e.meta.name)
+            .collect::<Vec<_>>()
+    );
+    assert!(reachable.len() > 150, "{} entries", reachable.len());
+    for entry in registry.list() {
+        let hidden = entry.meta.mcp == cutweave_commands::McpExposure::Hidden;
+        assert_eq!(minimal.reachable(entry.meta.name).is_some(), !hidden);
+    }
+
+    let h = Harness::start(None);
+    let client = h.client(Profile::Minimal, Revision::Stateful).await;
+    let listed = names(&client.service.list_tools(None).await.unwrap().tools);
+    let mut unlisted = 0;
+    for name in &reachable {
+        unlisted += usize::from(!listed.contains(&name.replace('.', "_")));
+        let result = client
+            .call(
+                "cutweave_execute",
+                json!({ "steps": [{ "cmd": name }], "dry_run": true }),
+            )
+            .await;
+        let unknown = result.is_error == Some(true)
+            && result.structured_content.as_ref().is_some_and(|e| {
+                e["error"]["code"] == "not_found"
+                    && e["error"]["hint"]
+                        .as_str()
+                        .is_some_and(|hint| hint.contains("cutweave_search_commands"))
+            });
+        assert!(!unknown, "{name}: {}", text_of(&result));
+    }
+    assert!(unlisted > 150, "most of them are not listed under minimal");
+    // A name that is not a command is told so, so the loop above proves something.
+    let e = client
+        .err(
+            "cutweave_execute",
+            json!({ "steps": [{ "cmd": "clip.explode" }], "dry_run": true }),
+        )
+        .await;
+    assert_eq!(e["error"]["code"], "not_found");
+    assert!(
+        e["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("cutweave_search_commands")
+    );
+    client.close().await;
+}
+
+/// A change of the tool list (what loading a plugin will be, from Phase 6) reaches a client of
+/// every endpoint through the mechanism of its revision: `notifications/tools/list_changed` on
+/// a 2025-11-25 session, and on a 2026-07-28 `subscriptions/listen` that asked for it. Nothing
+/// else sends it, and it moves no connection to another list: a client that re-reads gets its
+/// endpoint's list again, so `/mcp/minimal` never sees the standard tools.
+#[tokio::test]
+async fn a_tool_list_change_reaches_both_revisions_and_no_list_moves() {
+    let h = Harness::start(None);
+    let registry = h.engine.handle().registry();
+    let mut watchers = Vec::new();
+    for profile in Profile::ALL {
+        for revision in Revision::ALL {
+            let watcher = Watcher::http(&h, profile, revision).await;
+            assert!(watcher.declared(), "{profile:?} {revision:?}");
+            let before = watcher.tools().await;
+            assert_eq!(
+                before,
+                Catalog::new(Arc::clone(&registry), profile).tools(),
+                "{profile:?} {revision:?}"
+            );
+            watchers.push((profile, watcher, before));
+        }
+    }
+    // A 2026-07-28 client that did not ask for it is not told.
+    let quiet = h.client(Profile::Standard, Revision::Stateless).await;
+    let filter = SubscriptionFilter::builder()
+        .resource_subscription("cutweave://project")
+        .build();
+    let mut unasked = quiet.service.peer().listen(filter).await.unwrap();
+    assert_eq!(unasked.acknowledged().tools_list_changed, None);
+
+    // Editing, and replacing the document, change no tool list: nobody is told.
+    let setup = h.direct("setup");
+    must(&setup, "project.new", json!({ "name": "Lists" }));
+    must(&setup, "sequence.create", json!({ "name": "Second" }));
+    for (profile, watcher, _) in &mut watchers {
+        let (revision, heard) = (
+            watcher.revision,
+            watcher.hears_a_change(Duration::from_millis(100)).await,
+        );
+        assert!(
+            !heard,
+            "{profile:?} {revision:?}: an edit is not a list change"
+        );
+    }
+
+    h.notifier.tools_changed();
+    for (profile, watcher, before) in &mut watchers {
+        let revision = watcher.revision;
+        assert!(
+            watcher.hears_a_change(Duration::from_secs(10)).await,
+            "{profile:?} {revision:?}: no notifications/tools/list_changed"
+        );
+        // The list is the endpoint's, as before: the same tools in the same order.
+        let after = watcher.tools().await;
+        assert_eq!(&after, before, "{profile:?} {revision:?}");
+        if *profile == Profile::Minimal {
+            assert!(after.len() <= Profile::Minimal.budget().max_tools);
+            assert!(!after.iter().any(|t| t.name == "clip_split"));
+        }
+        // One change is one notification.
+        assert!(
+            !watcher.hears_a_change(Duration::from_millis(100)).await,
+            "{profile:?} {revision:?}: a second notification"
+        );
+    }
+    // The client that asked for the project only got the project's update (the edit above) and
+    // no list change.
+    loop {
+        match tokio::time::timeout(Duration::from_millis(200), unasked.next()).await {
+            Err(_) => break,
+            Ok(note) => assert!(
+                matches!(
+                    note,
+                    Ok(Some(ServerNotification::ResourceUpdatedNotification(_)))
+                ),
+                "{note:?}"
+            ),
+        }
+    }
+    // A client that connects after the change is not told about it.
+    let mut late = Watcher::http(&h, Profile::Standard, Revision::Stateful).await;
+    let _ = late.tools().await;
+    assert!(!late.hears_a_change(Duration::from_millis(100)).await);
+    h.notifier.tools_changed();
+    assert!(late.hears_a_change(Duration::from_secs(10)).await);
+    late.close().await;
+    quiet.close().await;
+    for (_, watcher, _) in watchers {
+        watcher.close().await;
+    }
+}
+
 // ----- the core tool table (WP-2I.01) -------------------------------------------------------
 
 /// `mcp_core.toml` is the checked-in gate of the list: it names exactly the registry's core
@@ -823,10 +1090,7 @@ fn the_core_table_names_the_registry_core_tools_and_the_budget() {
         listed, expected,
         "a core tool is added or removed in mcp_core.toml and in the registry together"
     );
-    assert_eq!(
-        (table.budget.max_tools, table.budget.max_tokens),
-        (STANDARD_BUDGET.max_tools, STANDARD_BUDGET.max_tokens)
-    );
+    assert_eq!(table.profiles.standard, *STANDARD_BUDGET);
     // WBS WP-2I.01: at most 32 core tools with the visual tools of WP-2I.02, 36 with the
     // generic ones.
     let planned = table.tools.len()
@@ -836,7 +1100,7 @@ fn the_core_table_names_the_registry_core_tools_and_the_budget() {
             .filter(|p| p.arrives == "WP-2I.02")
             .count();
     assert_eq!(planned, 31);
-    assert!(planned + catalog::GENERIC_TOOLS.len() <= table.budget.max_tools);
+    assert!(planned + catalog::GENERIC_TOOLS.len() <= table.profiles.standard.max_tools);
     for pending in &table.pending {
         assert!(
             registry

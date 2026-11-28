@@ -26,7 +26,7 @@ use cutweave_api::mcp::proxy::{self, ProxyEnd, Upstream};
 use cutweave_api::mcp::stdio::{self, Ended};
 use cutweave_api::mcp::{Catalog, CutweaveMcp, Dispatch, ListSize, Profile, STANDARD_BUDGET};
 use cutweave_engine::Call;
-use mcp_support::{Client, Harness, Revision, SEC, client_over, must};
+use mcp_support::{Client, Harness, Revision, SEC, Watcher, client_over, must};
 use rmcp::model::Tool;
 use rmcp::service::ServiceError;
 use serde_json::{Value, json};
@@ -271,6 +271,73 @@ async fn the_shutdown_future_ends_a_stdio_session() {
     .await;
     assert_eq!(ended.unwrap(), Ended::Shutdown);
     drop(client_io);
+}
+
+/// WP-2I.05: a tool-list change reaches a stdio client on both revisions, in-process
+/// (`--headless`) and through the attach proxy, which passes the engine's notification on; the
+/// list a client then reads is still its profile's.
+#[tokio::test]
+async fn a_tool_list_change_reaches_stdio_clients_on_both_revisions() {
+    let h = Harness::start(None);
+    for revision in Revision::ALL {
+        // In-process: the handler's own notifier.
+        let handler = stdio_handler(&h, Profile::Minimal);
+        let notifier = Arc::clone(handler.notifier());
+        let (client_io, server_io) = tokio::io::duplex(1 << 20);
+        let (read, write) = tokio::io::split(server_io);
+        let server = tokio::spawn(stdio::serve(
+            handler,
+            read,
+            write,
+            std::future::pending::<()>(),
+        ));
+        let mut agent = Watcher::over(client_io, revision).await;
+        assert!(agent.declared(), "{revision:?}");
+        let before = agent.tools().await;
+        assert!(
+            !agent.hears_a_change(Duration::from_millis(100)).await,
+            "{revision:?}"
+        );
+        notifier.tools_changed();
+        assert!(
+            agent.hears_a_change(Duration::from_secs(10)).await,
+            "stdio {revision:?}: no notifications/tools/list_changed"
+        );
+        assert_eq!(agent.tools().await, before, "{revision:?}");
+        assert!(!before.iter().any(|t| t.name == "clip_split"));
+        agent.close().await;
+        let _ = tokio::time::timeout(Duration::from_secs(10), server).await;
+
+        // Attached: the engine's notification comes through the proxy.
+        let alive = Arc::new(AtomicBool::new(true));
+        let upstream = upstream(h.port, &h.token, Profile::Minimal, alive);
+        let (client_io, proxy_io) = tokio::io::duplex(1 << 20);
+        let (read, write) = tokio::io::split(proxy_io);
+        let proxy = tokio::spawn(proxy::proxy(
+            upstream,
+            read,
+            write,
+            std::future::pending::<()>(),
+        ));
+        let mut agent = Watcher::over(client_io, revision).await;
+        assert!(agent.declared(), "{revision:?}");
+        let before = agent.tools().await;
+        h.notifier.tools_changed();
+        assert!(
+            agent.hears_a_change(Duration::from_secs(10)).await,
+            "attach {revision:?}: no notifications/tools/list_changed"
+        );
+        assert_eq!(agent.tools().await, before, "{revision:?}");
+        assert!(!before.iter().any(|t| t.name == "clip_split"));
+        // Closing stdin ends the proxy at once, also while a `subscriptions/listen` is open:
+        // a subscription is not a request the proxy waits out.
+        agent.close().await;
+        let end = tokio::time::timeout(Duration::from_secs(4), proxy)
+            .await
+            .expect("the proxy ends when its input closes")
+            .unwrap();
+        assert_eq!(end, ProxyEnd::InputClosed, "{revision:?}");
+    }
 }
 
 // ----- attach proxy -------------------------------------------------------------------------

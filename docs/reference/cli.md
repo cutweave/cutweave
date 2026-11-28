@@ -27,8 +27,10 @@ So an agent configured with plain `cutweave mcp --attach` edits what the person 
 
 `cutweave mcp` is the command an agent host (Claude Code, Codex, Gemini CLI, Cursor) starts as a stdio MCP server; [mcp-clients.md](mcp-clients.md) has the setup for each.
 
-- **Attach (default, `--attach`).** A proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal` and `/mcp/full` for `--profile`), found like `exec` finds its engine (or named with `--run-file`), with the two proxy tools of [Choosing an engine](#choosing-an-engine), and authenticated with the run-file's `mcp` agent token: the agent edits the document the desktop app shows, as `agent:mcp`. Messages pass through unchanged, so the agent negotiates the MCP revision with the engine (2025-11-25 or 2026-07-28).
+- **Attach (default, `--attach`).** A proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal`, `/mcp/full` and `/mcp/described` for `--profile`), found like `exec` finds its engine (or named with `--run-file`), with the two proxy tools of [Choosing an engine](#choosing-an-engine), and authenticated with the run-file's `mcp` agent token: the agent edits the document the desktop app shows, as `agent:mcp`. Messages pass through unchanged, so the agent negotiates the MCP revision with the engine (2025-11-25 or 2026-07-28).
 - **Headless (`--headless`, `--project`, `--allow-root`, ...).** An engine in this process, with no HTTP server and no run-file, serves MCP over stdio as `agent:mcp`, on either revision. It logs to `~/.cutweave/logs` like `cutweave engine` (`--log-dir`, `--no-log`).
+- **Profiles (`--profile`).** `standard` (the default) is for clients that load every tool definition at the start; `described` lists the same tools with their parameter descriptions, for clients that load a definition when it is needed (Claude Code, Copilot CLI); `minimal` is the smallest list; `full` lists what `standard` lists. The profile is fixed for the session, and every list has a budget in `crates/cutweave-api/mcp_core.toml` (`[profiles]`). [mcp-clients.md](mcp-clients.md#which-profile) says which to use.
+- **`--print-tools`** prints the `tools/list` result of `--profile` as JSON with its size and budget (`profile`, `count`, `bytes`, `tokens`, `budget`, `tools`) and exits. It starts no engine; the list is the one a full engine serves.
 
 Stdout carries protocol frames only. Closing stdin ends the session, and the engine rolls back a transaction the session left open. When an attached engine goes away, requests in flight get a JSON-RPC error (`data.code` `connection_lost`) and the process exits 3.
 
@@ -346,17 +348,21 @@ Usage: cutweave mcp [OPTIONS]
 
 Options:
       --attach
-          Proxy to a running engine's MCP endpoint (`/mcp`, `/mcp/minimal` or `/mcp/full` for --profile) with its run-file's `mcp` agent token, so the agent edits the document the desktop app shows. This is the default when no spawn flag is given
+          Proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal`, `/mcp/full` and `/mcp/described` for --profile) with its run-file's `mcp` agent token, so the agent edits the document the desktop app shows. This is the default when no spawn flag is given
 
       --profile <PROFILE>
-          The tool profile: the same catalogs and budgets as the engine's HTTP endpoints
+          The tool profile: the same catalogs and budgets as the engine's HTTP endpoints. It is fixed for the whole session
 
           Possible values:
-          - minimal:  The smallest tool set
-          - standard: The default tool set
-          - full:     Every tool
+          - minimal:   The smallest list, for small context windows; the rest through cutweave_execute
+          - standard:  The core editing tools, for clients that load every tool definition at the start
+          - full:      The standard list; every other command is found with cutweave_search_commands
+          - described: The standard tools with parameter descriptions, for clients that load a tool's definition when it is needed (Claude Code, Copilot CLI)
           
           [default: standard]
+
+      --print-tools
+          Print the `tools/list` result of --profile as JSON, with its size and budget, and exit. It needs no engine: the list is the one a full engine serves
 
       --run-file <PATH>
           The run-file of the engine to attach to (instead of --run-dir and --pid)

@@ -42,7 +42,7 @@ pub fn tool_name(command: &str) -> String {
     command.replace('.', "_")
 }
 
-/// The budget the table states (the standard profile's, arch §14).
+/// A tool-list budget, as the table states it for one profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TableBudget {
@@ -50,6 +50,19 @@ pub struct TableBudget {
     pub max_tools: usize,
     /// Most estimated tokens of the `tools/list` result.
     pub max_tokens: usize,
+}
+
+/// `[profiles]`: the budget of every profile's list. The figures are written here and nowhere
+/// else (WP-2I.05); [`Profile::budget`](crate::mcp::Profile::budget) reads them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Profiles {
+    /// `/mcp/minimal` (arch §14).
+    pub minimal: TableBudget,
+    /// `/mcp`, and `/mcp/full`, which lists exactly the standard tools (arch §14, R36).
+    pub standard: TableBudget,
+    /// `/mcp/described` (ADR-0040, question 2).
+    pub described: TableBudget,
 }
 
 /// One listed core tool.
@@ -113,10 +126,8 @@ pub struct Namespace {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CoreTable {
-    /// The budget of the standard profile's list.
-    pub budget: TableBudget,
-    /// The budget of the described profile's list (`/mcp/described`; ADR-0040, WP-2I.07).
-    pub described_budget: TableBudget,
+    /// The budget of every profile's list.
+    pub profiles: Profiles,
     /// The listed core tools.
     #[serde(rename = "tool", default)]
     pub tools: Vec<CoreTool>,
@@ -153,8 +164,11 @@ impl CoreTable {
                     max_tokens: 0,
                 };
                 CoreTable {
-                    budget: none,
-                    described_budget: none,
+                    profiles: Profiles {
+                        minimal: none,
+                        standard: none,
+                        described: none,
+                    },
                     tools: Vec::new(),
                     pending: Vec::new(),
                     generic: Vec::new(),
@@ -304,9 +318,18 @@ mod tests {
 
     #[test]
     fn a_table_with_an_unknown_key_is_refused() {
-        let text = "[budget]\nmax_tools = 1\nmax_tokens = 1\n[described_budget]\n\
-                    max_tools = 1\nmax_tokens = 1\n[[tool]]\nname = \"a_b\"\n\
-                    command = \"a.b\"\ndescription = \"X.\"\nexample = '{}'\nextra = 1\n";
-        assert!(CoreTable::parse(text).unwrap_err().contains("extra"));
+        let one = "{ max_tools = 1, max_tokens = 1 }";
+        let profiles =
+            format!("[profiles]\nminimal = {one}\nstandard = {one}\ndescribed = {one}\n");
+        assert!(CoreTable::parse(&profiles).is_ok());
+        let text = format!(
+            "{profiles}[[tool]]\nname = \"a_b\"\ncommand = \"a.b\"\n\
+             description = \"X.\"\nexample = '{{}}'\nextra = 1\n"
+        );
+        assert!(CoreTable::parse(&text).unwrap_err().contains("extra"));
+        // A profile the table does not know, and a table without its budgets, are refused too.
+        let unknown = format!("{profiles}huge = {one}\n");
+        assert!(CoreTable::parse(&unknown).unwrap_err().contains("huge"));
+        assert!(CoreTable::parse("[profiles]\n").is_err());
     }
 }

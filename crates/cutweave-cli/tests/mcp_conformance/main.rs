@@ -643,7 +643,14 @@ async fn conformance(transport: Transport, revision: Revision, tamper: Option<Ta
     // Resources (WP-1J.02): the capability is offered with subscriptions; the project and the
     // command catalog list and read as JSON text.
     let info = session.service.peer_info().unwrap();
-    assert!(info.capabilities.tools.is_some(), "{label}");
+    // WP-2I.05: the server says it sends `notifications/tools/list_changed` (when a plugin
+    // changes the commands; nothing else sends it).
+    let tools_capability = info.capabilities.tools.as_ref();
+    assert_eq!(
+        tools_capability.and_then(|tools| tools.list_changed),
+        Some(true),
+        "{label}"
+    );
     let resources = info
         .capabilities
         .resources

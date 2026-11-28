@@ -104,8 +104,12 @@ export type HwDecodeChoice = (typeof HW_DECODE_CHOICES)[number];
 /** "Don't ask again" choices dialogs remember, by dialog id. */
 export type DialogChoices = Record<string, string>;
 
-/** The tool set of a copied agent client setup (`cutweave mcp --profile`, WP-1J.05). */
-export const CLIENT_PROFILES = ["minimal", "standard", "full"] as const;
+/**
+ * The tool set of a copied agent client setup (`cutweave mcp --profile`, WP-1J.05). `described`
+ * is the standard tools with parameter descriptions, for clients that load a tool's definition
+ * when it is needed (WP-2I.05, ADR-0040).
+ */
+export const CLIENT_PROFILES = ["minimal", "standard", "described", "full"] as const;
 export type ClientProfile = (typeof CLIENT_PROFILES)[number];
 
 /** The most folders "Folders agents can use" holds (the engine takes no more, WP-1J.05). */
