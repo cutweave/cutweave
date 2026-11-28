@@ -200,6 +200,9 @@ describe("warnings in words", () => {
     expect(warningText({ code: "FrameRateCapped", message: "x" }, reels)).toMatchObject({
       vars: { max: "30", fps: "30" },
     });
+    expect(warningText({ code: "TransparentBackground", message: "x" }, reels)).toMatchObject({
+      key: "export.warnings.transparent",
+    });
     expect(warningText({ code: "Mystery" as never, message: "engine says" }, reels)).toMatchObject({
       key: null,
       message: "engine says",
