@@ -7,6 +7,8 @@
 //! - [`ThumbCache::filmstrip`]: `count` frames at even intervals over the clip, packed into one
 //!   JPEG sprite (a grid of equal tiles, at most [`MAX_SPRITE_WIDTH`] wide, row-major) and a
 //!   [`FilmstripManifest`] that says where tile `i` is and what time it shows.
+//! - [`ThumbCache::filmstrip_range`]: the same over a part of the clip (`media.filmstrip`,
+//!   WP-2I.02), an entry of its own.
 //! - [`submit_prefetch`]: the poster thumbnail and the default filmstrip as a background job
 //!   under the decode budget, started after import; cancellable.
 //!
@@ -34,6 +36,7 @@
 //! The display (pixel) aspect ratio is not applied, and colour is not converted (RGBA out of the
 //! decoder is treated as sRGB).
 
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -497,13 +500,100 @@ impl ThumbCache {
         let start = index.start_time().ok_or_else(|| no_pictures(media))?;
         let total = index.duration().map_or(0, Duration::flicks);
         let interval = (total / i64::from(spec.count)).max(1);
+        let params = self.filmstrip_params(media, spec);
+        self.make_strip(media, &index, spec, (start, interval), &params, cancel, progress)
+    }
+
+    fn range_params(&self, media: &MediaRef, spec: FilmstripSpec, range: &Range<Time>) -> String {
+        self.params_hash(
+            "filmstrip-range",
+            media,
+            &[
+                i64::from(spec.count),
+                i64::from(spec.tile_w),
+                range.start.flicks(),
+                range.end.flicks(),
+            ],
+        )
+    }
+
+    /// The ETag [`filmstrip_range`](Self::filmstrip_range) returns for these parameters (no I/O).
+    pub fn filmstrip_range_etag(
+        &self,
+        media: &MediaRef,
+        spec: FilmstripSpec,
+        range: &Range<Time>,
+    ) -> Result<String, CacheError> {
+        check_spec(spec)?;
+        check_range(range)?;
+        Ok(ThumbCache::etag(media, &self.range_params(media, spec, range)))
+    }
+
+    /// A filmstrip of a part of the clip (WP-2I.02, `media.filmstrip`): `spec.count` frames at
+    /// even intervals over the media-time `range` (tile `i` at `range.start + i * interval`,
+    /// `interval` = the range's length / `count`; times past the stream show its last frame),
+    /// as one sprite: from the cache, or decoded front to back through one decoder, shrunk,
+    /// packed, encoded and stored under a key of its own (the whole-clip strip of
+    /// [`filmstrip`](Self::filmstrip) is a different entry).
+    ///
+    /// Errors as [`filmstrip`](Self::filmstrip), with [`CacheError::InvalidParams`] for an
+    /// empty or reversed range.
+    pub fn filmstrip_range(
+        &self,
+        media: &MediaRef,
+        spec: FilmstripSpec,
+        range: Range<Time>,
+        cancel: &CancelToken,
+    ) -> Result<Filmstrip, CacheError> {
+        check_spec(spec)?;
+        check_range(&range)?;
+        let params = self.range_params(media, spec, &range);
+        if let Some(entry) =
+            self.disk
+                .get(DiskKind::Filmstrip, &media.hash, &format!("{params}.jpg"))?
+            && let Some(manifest) = FilmstripManifest::from_meta(&entry.meta)
+        {
+            return Ok(Filmstrip {
+                jpeg: entry.bytes,
+                manifest,
+                etag: ThumbCache::etag(media, &params),
+            });
+        }
+        cancel.check()?;
+        let index = self.index(media)?;
+        let span = range.end.flicks().saturating_sub(range.start.flicks());
+        let interval = (span / i64::from(spec.count)).max(1);
+        self.make_strip(
+            media,
+            &index,
+            spec,
+            (range.start, interval),
+            &params,
+            cancel,
+            &mut |_| {},
+        )
+    }
+
+    /// Decodes, packs, encodes and stores (as `params`) the sprite of `spec.count` tiles from
+    /// `start`, `interval` flicks apart.
+    #[allow(clippy::too_many_arguments)]
+    fn make_strip(
+        &self,
+        media: &MediaRef,
+        index: &Arc<FrameIndex>,
+        spec: FilmstripSpec,
+        (start, interval): (Time, i64),
+        params: &str,
+        cancel: &CancelToken,
+        progress: &mut dyn FnMut(f64),
+    ) -> Result<Filmstrip, CacheError> {
         let tile_at = |i: u32| {
             let t = start.flicks().saturating_add(interval * i64::from(i));
-            clamp_to_stream(&index, Time::from_flicks(t).unwrap_or(start))
+            clamp_to_stream(index, Time::from_flicks(t).unwrap_or(start))
         };
 
         let turns = quarter_turns(media.rotation);
-        let mut lease = self.checkout(media, &index, start, cancel)?;
+        let mut lease = self.checkout(media, index, tile_at(0), cancel)?;
         let mut sprite: Option<(Image, FilmstripManifest)> = None;
         for i in 0..spec.count {
             cancel.check()?;
@@ -528,7 +618,6 @@ impl ThumbCache {
         }
         let (img, manifest) = sprite.ok_or_else(|| no_pictures(media))?;
         let jpeg = self.encode(&img)?;
-        let params = self.filmstrip_params(media, spec);
         self.disk.put(
             DiskKind::Filmstrip,
             &media.hash,
@@ -539,7 +628,7 @@ impl ThumbCache {
         Ok(Filmstrip {
             jpeg,
             manifest,
-            etag: ThumbCache::etag(media, &params),
+            etag: ThumbCache::etag(media, params),
         })
     }
 
@@ -647,6 +736,16 @@ fn check_spec(spec: FilmstripSpec) -> Result<(), CacheError> {
             "tile count {} is outside 1..={MAX_FILMSTRIP_TILES}",
             spec.count
         )))
+    }
+}
+
+fn check_range(range: &Range<Time>) -> Result<(), CacheError> {
+    if range.start < range.end {
+        Ok(())
+    } else {
+        Err(CacheError::InvalidParams(
+            "the range is empty: its end must be after its start".to_owned(),
+        ))
     }
 }
 
@@ -1279,6 +1378,81 @@ mod tests {
         let again = r.cache.filmstrip(&r.media, spec, &c).expect("cached");
         assert_eq!(again, fs);
         assert_eq!(r.backend.decoded_frames(), before);
+    }
+
+    /// WP-2I.02: a strip of a part of the clip shows the frames of that part, is cached under
+    /// a key of its own and refuses an empty range.
+    #[test]
+    fn a_range_filmstrip_shows_its_part_of_the_clip_and_is_cached() {
+        let r = rig("strip-range", 64, 36, 4, u64::MAX);
+        let c = CancelToken::new();
+        let spec = FilmstripSpec {
+            count: 4,
+            tile_w: 64,
+        };
+        let fs = r
+            .cache
+            .filmstrip_range(&r.media, spec, at(1)..at(3), &c)
+            .expect("strip");
+        let m = fs.manifest;
+        assert_eq!((m.tile_w, m.tile_h, m.count, m.columns), (64, 36, 4, 4));
+        assert_eq!(m.start, at(1));
+        assert_eq!(m.interval.flicks(), secs(1).flicks() / 2);
+        let img = decode_jpeg(&fs.jpeg);
+        assert_eq!((img.width, img.height), (256, 36));
+        // Tile i is the frame at 1 s + i * 0.5 s: the picture `thumb` gives for that time.
+        let same_as_thumb = |img: &Image, tile: u32, t: Time| {
+            let thumb = r.cache.thumb(&r.media, t, 64, &c).expect("thumb");
+            let want = decode_jpeg(&thumb.jpeg);
+            for (x, y) in [(3, 3), (20, 9), (40, 18), (60, 30)] {
+                let (got, want) = (img.pixel(tile * 64 + x, y), want.pixel(x, y));
+                for ch in 0..3 {
+                    assert!(
+                        got[ch].abs_diff(want[ch]) <= 8,
+                        "tile {tile} at ({x}, {y}): {got:?}, the frame is {want:?}"
+                    );
+                }
+            }
+        };
+        let half = secs(1).flicks() / 2;
+        for i in 0..4 {
+            let t = Time::from_flicks(at(1).flicks() + half * i64::from(i)).expect("time");
+            same_as_thumb(&img, i, t);
+        }
+        assert_ne!(img.pixel(5, 5), img.pixel(64 + 5, 5), "tiles differ");
+        // Its ETag names the range; the whole clip's strip is another entry.
+        let etag = r
+            .cache
+            .filmstrip_range_etag(&r.media, spec, &(at(1)..at(3)))
+            .expect("etag");
+        assert_eq!(fs.etag, etag);
+        assert_ne!(etag, r.cache.filmstrip_etag(&r.media, spec).expect("etag"));
+        let other = r
+            .cache
+            .filmstrip_range_etag(&r.media, spec, &(at(1)..at(2)))
+            .expect("etag");
+        assert_ne!(etag, other);
+
+        // Second request: nothing decoded, the same bytes.
+        let before = r.backend.decoded_frames();
+        let again = r
+            .cache
+            .filmstrip_range(&r.media, spec, at(1)..at(3), &c)
+            .expect("cached");
+        assert_eq!(again, fs);
+        assert_eq!(r.backend.decoded_frames(), before);
+
+        // A range past the end shows the last frame; an empty one is refused.
+        let late = r
+            .cache
+            .filmstrip_range(&r.media, spec, at(3)..at(9), &c)
+            .expect("strip");
+        let img = decode_jpeg(&late.jpeg);
+        same_as_thumb(&img, 3, at(9));
+        assert!(matches!(
+            r.cache.filmstrip_range(&r.media, spec, at(2)..at(2), &c),
+            Err(CacheError::InvalidParams(_))
+        ));
     }
 
     #[test]
