@@ -289,7 +289,10 @@ test.describe("F69 sequence tabs, settings and aspect", () => {
         await tab(page, "Reel").click();
         await chooseMenu(page, app, "File", "Sequence settings…");
         await expect(dialog).toBeVisible();
-        await expect(dialog.getByRole("spinbutton", { name: "Width" })).toHaveValue(/1000/);
+        await expect(dialog.getByRole("spinbutton", { name: "Width" })).toHaveAttribute(
+          "aria-valuenow",
+          "1000",
+        );
         await page.keyboard.press("Escape");
         await expect(dialog).toBeHidden();
 
