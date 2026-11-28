@@ -501,7 +501,15 @@ impl ThumbCache {
         let total = index.duration().map_or(0, Duration::flicks);
         let interval = (total / i64::from(spec.count)).max(1);
         let params = self.filmstrip_params(media, spec);
-        self.make_strip(media, &index, spec, (start, interval), &params, cancel, progress)
+        self.make_strip(
+            media,
+            &index,
+            spec,
+            (start, interval),
+            &params,
+            cancel,
+            progress,
+        )
     }
 
     fn range_params(&self, media: &MediaRef, spec: FilmstripSpec, range: &Range<Time>) -> String {
@@ -526,7 +534,10 @@ impl ThumbCache {
     ) -> Result<String, CacheError> {
         check_spec(spec)?;
         check_range(range)?;
-        Ok(ThumbCache::etag(media, &self.range_params(media, spec, range)))
+        Ok(ThumbCache::etag(
+            media,
+            &self.range_params(media, spec, range),
+        ))
     }
 
     /// A filmstrip of a part of the clip (WP-2I.02, `media.filmstrip`): `spec.count` frames at

@@ -47,9 +47,9 @@ pub mod slate;
 pub mod testcard;
 #[cfg(test)]
 mod testkit;
-pub mod wave;
 #[cfg(test)]
 mod tests;
+pub mod wave;
 
 #[cfg(all(
     feature = "gpu",

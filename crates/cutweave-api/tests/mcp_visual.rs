@@ -173,7 +173,9 @@ impl Full {
 
     /// `GET path` on the engine's HTTP server with the agent token: status, headers, body.
     async fn get(&self, url: &str) -> (u16, String, Vec<u8>) {
-        let path = url.strip_prefix(&self.origin()).expect("a link to this server");
+        let path = url
+            .strip_prefix(&self.origin())
+            .expect("a link to this server");
         let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", self.port))
             .await
             .unwrap();
@@ -267,7 +269,8 @@ fn jpeg_size(bytes: &[u8]) -> (u32, u32) {
 /// The size of a PNG, from its header.
 fn png_size(bytes: &[u8]) -> (u32, u32) {
     assert_eq!(bytes[..8], [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
-    let be = |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    let be =
+        |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
     (be(16), be(20))
 }
 
@@ -306,7 +309,10 @@ async fn the_three_pictures_are_image_blocks_on_both_transports_and_revisions() 
         let frames = meta["frames"].as_array().unwrap();
         assert_eq!(frames.len(), 12, "{what}");
         assert_eq!(frames[3]["t"], json!(3 * SEC));
-        assert_eq!((meta["columns"].clone(), meta["rows"].clone()), (json!(4), json!(3)));
+        assert_eq!(
+            (meta["columns"].clone(), meta["rows"].clone()),
+            (json!(4), json!(3))
+        );
         // The item of a cell is named, and the name is labelled as text from outside.
         let item = &frames[0]["items_visible"][0];
         assert!(item["item"].as_str().unwrap().starts_with("itm_"), "{what}");
@@ -332,7 +338,10 @@ async fn the_three_pictures_are_image_blocks_on_both_transports_and_revisions() 
         assert_eq!(size_of(&meta), (768, 54));
         assert_eq!(meta["tiles"].as_array().unwrap().len(), 8);
         assert!(meta["link"].as_str().unwrap().starts_with("/media/"));
-        assert!(links(&result).is_empty(), "{what}: a default-size strip is inline");
+        assert!(
+            links(&result).is_empty(),
+            "{what}: a default-size strip is inline"
+        );
 
         // The waveform of its sound.
         let target = json!({ "kind": "media", "media": h.media[0] });
@@ -344,7 +353,10 @@ async fn the_three_pictures_are_image_blocks_on_both_transports_and_revisions() 
         assert_eq!(png_size(&png), (768, 192), "{what}");
         assert_eq!(size_of(&meta), (768, 192));
         let levels = &meta["audio_levels"];
-        assert!(levels["peak_db"].as_f64().unwrap() < 0.0, "{what}: {levels}");
+        assert!(
+            levels["peak_db"].as_f64().unwrap() < 0.0,
+            "{what}: {levels}"
+        );
         assert_eq!(levels["silences"], json!([]));
         assert_eq!(meta["lanes"][0]["channel"], "mix");
 
@@ -390,7 +402,10 @@ async fn a_large_filmstrip_is_a_media_link_over_http_and_inline_over_stdio() {
         let client = h.http(revision).await;
         let result = query(&client, "media.filmstrip", args.clone()).await;
         assert!(
-            !result.content.iter().any(|c| matches!(c, ContentBlock::Image(_))),
+            !result
+                .content
+                .iter()
+                .any(|c| matches!(c, ContentBlock::Image(_))),
             "{revision:?}: no image next to the link"
         );
         let links = links(&result);
@@ -399,7 +414,10 @@ async fn a_large_filmstrip_is_a_media_link_over_http_and_inline_over_stdio() {
         assert_eq!(mime.as_deref(), Some("image/jpeg"));
         let meta = result.structured_content.clone().unwrap();
         assert!(meta.get("data").is_none());
-        assert_eq!(*uri, format!("{}{}", h.origin(), meta["link"].as_str().unwrap()));
+        assert_eq!(
+            *uri,
+            format!("{}{}", h.origin(), meta["link"].as_str().unwrap())
+        );
         assert_eq!(size_of(&meta), (2048, 72));
         // The route serves that strip to the same token, under the ETag the result names.
         let (status, head, body) = h.get(uri).await;
@@ -430,7 +448,11 @@ async fn a_large_filmstrip_is_a_media_link_over_http_and_inline_over_stdio() {
 
         let client = h.stdio(revision).await;
         let result = query(&client, "media.filmstrip", args.clone()).await;
-        assert_eq!(jpeg_size(&image(&result).1), (2048, 72), "stdio {revision:?}");
+        assert_eq!(
+            jpeg_size(&image(&result).1),
+            (2048, 72),
+            "stdio {revision:?}"
+        );
         client.close().await;
     }
 }
@@ -474,7 +496,10 @@ async fn the_visual_commands_are_found_described_and_kept_out_of_the_list() {
             .iter()
             .find(|m| m["name"] == command)
             .unwrap();
-        assert!(hit["call"].as_str().unwrap().contains("cutweave_query"), "{hit}");
+        assert!(
+            hit["call"].as_str().unwrap().contains("cutweave_query"),
+            "{hit}"
+        );
     }
     let described = client
         .ok(
@@ -486,7 +511,11 @@ async fn the_visual_commands_are_found_described_and_kept_out_of_the_list() {
     assert_eq!(commands.len(), 3);
     for command in commands {
         let output = &command["output_schema"];
-        assert!(output["properties"].get("data").is_none(), "{}", command["name"]);
+        assert!(
+            output["properties"].get("data").is_none(),
+            "{}",
+            command["name"]
+        );
         assert!(output["properties"].get("mime").is_some());
         assert_eq!(command["annotations"]["readOnlyHint"], true);
     }

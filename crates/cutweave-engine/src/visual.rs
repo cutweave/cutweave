@@ -24,7 +24,9 @@ use cutweave_cache::{
 };
 use cutweave_commands::CmdError;
 use cutweave_media::CancelToken;
-use cutweave_model::{ItemId, MediaId, Project, Rounding, SampleRate, SequenceId, StreamKind, Time};
+use cutweave_model::{
+    ItemId, MediaId, Project, Rounding, SampleRate, SequenceId, StreamKind, Time,
+};
 use cutweave_ops::visual::{
     LoudnessMade, StripMade, StripRequest, VisualService, WaveLane, WaveMade, WaveRequest,
     WaveSource,
@@ -89,10 +91,7 @@ fn media_file(doc: &Project, id: MediaId, path: &str) -> Result<MediaFile, CmdEr
     Ok(MediaFile {
         id,
         path: file.into(),
-        hash: asset
-            .content_hash
-            .as_deref()
-            .and_then(|h| h.parse().ok()),
+        hash: asset.content_hash.as_deref().and_then(|h| h.parse().ok()),
         probe: asset.probe.clone(),
     })
 }
@@ -437,7 +436,9 @@ impl Measure {
                 if at + take == next
                     && let Ok(t) = self.rate.samples_to_time(self.first + next)
                 {
-                    loudness.points.push((t, loudness.meter.reading().short_term));
+                    loudness
+                        .points
+                        .push((t, loudness.meter.reading().short_term));
                 }
             }
         }
@@ -461,9 +462,7 @@ impl VisualService for EngineVisual {
     fn filmstrip(&self, doc: &Project, request: &StripRequest) -> Result<StripMade, CmdError> {
         let path = "/media";
         let thumbs = self.state.thumbs.clone().ok_or_else(|| {
-            CmdError::unsupported(
-                "the thumbnail cache is unavailable (no usable cache directory)",
-            )
+            CmdError::unsupported("the thumbnail cache is unavailable (no usable cache directory)")
         })?;
         let file = media_file(doc, request.media, path)?;
         let reference = MediaState::media_ref(&file).map_err(|e| cache_failure(path, e))?;
@@ -618,7 +617,10 @@ mod tests {
         let stereo: Vec<f32> = (0..4 * 48_000)
             .flat_map(|n| {
                 let t = f64::from(n) / 48_000.0;
-                [(0.5 * (std::f64::consts::TAU * 440.0 * t).sin()) as f32, 0.0]
+                [
+                    (0.5 * (std::f64::consts::TAU * 440.0 * t).sin()) as f32,
+                    0.0,
+                ]
             })
             .collect();
         let measure = |chunk: usize| {

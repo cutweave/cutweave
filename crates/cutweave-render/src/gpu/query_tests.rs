@@ -459,6 +459,7 @@ fn sheet_golden(name: &str, f: &ThreeClips, params: &Value, grid: (u32, u32)) ->
         // The same sheet as the query returns it: a JPEG within the size an agent can take.
         let out = crate::query::render_contact_sheet(&mut backend, &ctx, &params).unwrap();
         assert_eq!(out.mime, "image/jpeg", "{}", info.key);
+        eprintln!("{} {name}: a JPEG of {} bytes", info.key, out.bytes);
         assert!(
             out.bytes <= MAX_SHEET_JPEG_BYTES,
             "{}: {} bytes",

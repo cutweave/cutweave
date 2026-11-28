@@ -285,7 +285,10 @@ fn range_within(
     if start < whole.0 {
         return Err(CmdError::invalid(
             "/from",
-            format!("is before the start of {what} ({} flicks)", whole.0.flicks()),
+            format!(
+                "is before the start of {what} ({} flicks)",
+                whole.0.flicks()
+            ),
         ));
     }
     if end > whole.1 {
@@ -849,9 +852,7 @@ impl AudioWaveform {
                 else {
                     return Err(CmdError::not_found(EntityKind::Item, item));
                 };
-                let end = found
-                    .end()
-                    .map_err(|e| CmdError::internal(e.to_string()))?;
+                let end = found.end().map_err(|e| CmdError::internal(e.to_string()))?;
                 let range = self.timeline_range(seq, (found.start(), end), "the clip")?;
                 (
                     WaveSource::Item {
@@ -907,9 +908,7 @@ pub fn silences(
         let t = start
             .flicks()
             .saturating_add(flicks_of_samples(samples, rate));
-        Time::from_flicks(t)
-            .unwrap_or(to)
-            .clamp(from, to.max(from))
+        Time::from_flicks(t).unwrap_or(to).clamp(from, to.max(from))
     };
     let mut out = Vec::new();
     let mut run: Option<usize> = None;
@@ -947,8 +946,8 @@ pub fn audio_levels(made: &WaveMade, request: &WaveRequest) -> AudioLevels {
         })
         .collect();
     let span = request.to.flicks().saturating_sub(request.from.flicks());
-    let slice = Duration::from_flicks(span / i64::try_from(slices).unwrap_or(1))
-        .unwrap_or(Duration::ZERO);
+    let slice =
+        Duration::from_flicks(span / i64::try_from(slices).unwrap_or(1)).unwrap_or(Duration::ZERO);
     let finite = |v: f64| v.is_finite().then_some(v);
     AudioLevels {
         peak_db: level_db(f64::from(peak)),
@@ -1160,7 +1159,10 @@ mod tests {
             (json!({ "media": video, "count": 65 }), "/count"),
             (json!({ "media": video, "max_size": 63 }), "/max_size"),
             (json!({ "media": video, "max_size": 2049 }), "/max_size"),
-            (json!({ "media": video, "count": 64, "max_size": 64 }), "/max_size"),
+            (
+                json!({ "media": video, "count": 64, "max_size": 64 }),
+                "/max_size",
+            ),
             (json!({ "media": video, "from": "4s", "to": "4s" }), "/to"),
             (json!({ "media": video, "to": "11s" }), "/to"),
             (json!({ "media": video, "from": "-1s" }), "/from"),
@@ -1189,13 +1191,22 @@ mod tests {
             }
         );
         assert_eq!((r.from, r.to), (secs(0.0), secs(10.0)));
-        assert_eq!((r.width, r.height, r.split, r.scale_db), (768, 192, false, None));
+        assert_eq!(
+            (r.width, r.height, r.split, r.scale_db),
+            (768, 192, false, None)
+        );
         // A clip: its own extent by default, sequence times inside it otherwise.
         let item = ItemId::from_u128(ITEM);
         let r = wave(json!({ "target": { "kind": "item", "item": item } }))
             .request(&doc)
             .unwrap();
-        assert_eq!(r.source, WaveSource::Item { sequence: seq, item });
+        assert_eq!(
+            r.source,
+            WaveSource::Item {
+                sequence: seq,
+                item
+            }
+        );
         assert_eq!((r.from, r.to), (secs(2.0), secs(6.0)));
         let r = wave(json!({
             "target": { "kind": "item", "item": item }, "from": "3s", "to": "f:120",
@@ -1282,7 +1293,10 @@ mod tests {
         let quiet = vec![0.001_f32; 400];
         let at = (secs(5.0), secs(9.0));
         assert_eq!(silences(&quiet, secs(5.0), 256, 48_000, at).len(), 1);
-        assert_eq!(silences(&quiet, secs(5.0), 256, 48_000, at)[0].from, secs(5.0));
+        assert_eq!(
+            silences(&quiet, secs(5.0), 256, 48_000, at)[0].from,
+            secs(5.0)
+        );
         let audible = vec![0.001_122_f32; 400];
         assert!(silences(&audible, secs(5.0), 256, 48_000, at).is_empty());
         assert!(silences(&[], Time::ZERO, 256, 48_000, at).is_empty());

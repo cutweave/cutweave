@@ -509,16 +509,12 @@ fn contact_sheets_sample_lay_out_and_label() {
         (json!({ "count": 0 }), "/count"),
         (json!({ "count": 65 }), "/count"),
         (json!({ "every": "0s" }), "/every"),
-        (
-            json!({ "every": "1s", "from": 0, "to": "100s" }),
-            "/every",
-        ),
+        (json!({ "every": "1s", "from": 0, "to": "100s" }), "/every"),
         (json!({ "from": "5s", "to": "5s" }), "/to"),
         (json!({ "at": "markers" }), "/at"),
         (json!({ "at": [] }), "/at"),
         (json!({ "at": ["1s", "9s"] }), "/at/1"),
         (json!({ "at": "cuts", "from": "5s", "to": "6s" }), "/at"),
-
         (json!({ "count": 64, "max_size": 64 }), "/max_size"),
         (json!({ "max_size": 4096 }), "/max_size"),
     ] {

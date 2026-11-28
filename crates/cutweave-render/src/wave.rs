@@ -292,7 +292,12 @@ pub fn draw(
         }
     }
     for tick in ticks(start, end, width) {
-        vertical(&mut image, tick.x, layout.ruler.y..=layout.ruler.y + 2, RULER);
+        vertical(
+            &mut image,
+            tick.x,
+            layout.ruler.y..=layout.ruler.y + 2,
+            RULER,
+        );
         let label_x = tick.x + 2;
         if label_x + font::text_width(&tick.label, 1) <= width {
             font::draw_text(
@@ -370,7 +375,9 @@ mod tests {
         let labels: Vec<&str> = t.iter().map(|t| t.label.as_str()).collect();
         assert_eq!(
             labels,
-            ["0:00", "0:01", "0:02", "0:03", "0:04", "0:05", "0:06", "0:07", "0:08", "0:09"]
+            [
+                "0:00", "0:01", "0:02", "0:03", "0:04", "0:05", "0:06", "0:07", "0:08", "0:09"
+            ]
         );
         assert_eq!(t[3].x, 180);
         assert_eq!(t[3].t, secs(3.0));
@@ -379,7 +386,9 @@ mod tests {
         let labels: Vec<&str> = t.iter().map(|t| t.label.as_str()).collect();
         assert_eq!(
             labels,
-            ["1:45", "2:00", "2:15", "2:30", "2:45", "3:00", "3:15", "3:30"]
+            [
+                "1:45", "2:00", "2:15", "2:30", "2:45", "3:00", "3:15", "3:30"
+            ]
         );
         // Under a second: tenths.
         let t = ticks(secs(1.0), secs(1.5), 500);
@@ -439,7 +448,12 @@ mod tests {
             .count();
         assert!(labelled > 40, "{labelled} ruler pixels");
         assert_eq!(
-            draw(&[vec![Column::default(); 3]], (secs(0.0), secs(1.0)), (4, 100), None),
+            draw(
+                &[vec![Column::default(); 3]],
+                (secs(0.0), secs(1.0)),
+                (4, 100),
+                None
+            ),
             Err(WaveError::Lanes)
         );
         // A column that saw no sample is silent.
@@ -447,6 +461,12 @@ mod tests {
         let mut c = Column::EMPTY;
         c.add(0.25);
         c.add(-0.5);
-        assert_eq!(c.or_silent(), Column { min: -0.5, max: 0.25 });
+        assert_eq!(
+            c.or_silent(),
+            Column {
+                min: -0.5,
+                max: 0.25
+            }
+        );
     }
 }

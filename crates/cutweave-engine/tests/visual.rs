@@ -145,7 +145,10 @@ fn a_filmstrip_is_one_jpeg_within_max_size_and_links_the_media_route() {
     let out = call(&f.conn, "media.filmstrip", json!({ "media": f.media })).unwrap();
     assert_eq!(out["mime"], "image/jpeg");
     // 8 tiles of a 16:9 picture in 768 px: 96 x 54 each.
-    assert_eq!((out["width"].clone(), out["height"].clone()), (json!(768), json!(54)));
+    assert_eq!(
+        (out["width"].clone(), out["height"].clone()),
+        (json!(768), json!(54))
+    );
     assert_eq!(out["tile_width"], 96);
     let jpeg = picture_bytes(&out);
     assert_eq!(jpeg_size(&jpeg), (768, 54));
@@ -155,17 +158,28 @@ fn a_filmstrip_is_one_jpeg_within_max_size_and_links_the_media_route() {
         assert_eq!(tile["t"], json!(i * secs(0.5)), "tile {i}");
         assert_eq!(tile["x"], json!(i * 96));
     }
-    assert_eq!((out["from"].clone(), out["to"].clone()), (json!(0), json!(secs(4.0))));
+    assert_eq!(
+        (out["from"].clone(), out["to"].clone()),
+        (json!(0), json!(secs(4.0)))
+    );
 
     // The whole clip's strip is what `/media/{id}/filmstrip` serves, under the same ETag.
     let link = out["link"].as_str().unwrap();
-    assert!(link.starts_with(&format!("/media/{}/filmstrip?", f.media)), "{link}");
+    assert!(
+        link.starts_with(&format!("/media/{}/filmstrip?", f.media)),
+        "{link}"
+    );
     let served = f.server.get(link, &[]);
     assert_eq!(served.status, 200, "{link}");
     assert_eq!(served.body, jpeg);
     let etag = format!("\"{}\"", out["etag"].as_str().unwrap());
     assert_eq!(served.header("etag").as_deref(), Some(etag.as_str()));
-    assert!(served.header("cache-control").unwrap().contains("immutable"));
+    assert!(
+        served
+            .header("cache-control")
+            .unwrap()
+            .contains("immutable")
+    );
     let unchanged = f.server.get(link, &[("if-none-match", etag.as_str())]);
     assert_eq!(unchanged.status, 304);
 
@@ -180,7 +194,10 @@ fn a_filmstrip_is_one_jpeg_within_max_size_and_links_the_media_route() {
         json!({ "media": f.media, "from": "1s", "to": "3s", "count": 4, "max_size": 128 }),
     )
     .unwrap();
-    assert_eq!((part["width"].clone(), part["height"].clone()), (json!(128), json!(18)));
+    assert_eq!(
+        (part["width"].clone(), part["height"].clone()),
+        (json!(128), json!(18))
+    );
     assert_eq!(jpeg_size(&picture_bytes(&part)), (128, 18));
     let times: Vec<i64> = part["tiles"]
         .as_array()
@@ -208,10 +225,20 @@ fn a_filmstrip_is_one_jpeg_within_max_size_and_links_the_media_route() {
         )
         .unwrap();
         let (w, h) = jpeg_size(&picture_bytes(&strip));
-        assert!(w <= max_size && h <= max_size, "{max_size}/{count}: {w}x{h}");
-        assert_eq!((json!(w), json!(h)), (strip["width"].clone(), strip["height"].clone()));
+        assert!(
+            w <= max_size && h <= max_size,
+            "{max_size}/{count}: {w}x{h}"
+        );
+        assert_eq!(
+            (json!(w), json!(h)),
+            (strip["width"].clone(), strip["height"].clone())
+        );
         assert!(strip["tile_width"].as_u64().unwrap() <= 320);
-        assert_eq!(strip["tiles"].as_array().unwrap().len(), count as usize, "{count}");
+        assert_eq!(
+            strip["tiles"].as_array().unwrap().len(),
+            count as usize,
+            "{count}"
+        );
     }
 
     let e = call(
@@ -259,9 +286,15 @@ fn the_waveform_of_a_sine_peaks_at_the_expected_rows() {
         }
         let out = call(&f.conn, "audio.waveform", params).unwrap();
         assert_eq!(out["mime"], "image/png");
-        assert_eq!((out["width"].clone(), out["height"].clone()), (json!(600), json!(214)));
+        assert_eq!(
+            (out["width"].clone(), out["height"].clone()),
+            (json!(600), json!(214))
+        );
         assert_eq!(out["sample_rate"], 48_000);
-        assert_eq!((out["from"].clone(), out["to"].clone()), (json!(0), json!(secs(4.0))));
+        assert_eq!(
+            (out["from"].clone(), out["to"].clone()),
+            (json!(0), json!(secs(4.0)))
+        );
         let png = picture_bytes(&out);
         assert!(is_png(&png));
         let pixels = decode_png(&png);
@@ -270,7 +303,10 @@ fn the_waveform_of_a_sine_peaks_at_the_expected_rows() {
         assert_eq!(lanes.len(), 1);
         let lane = &lanes[0];
         assert_eq!(lane["channel"], "mix");
-        assert_eq!((lane["x"].clone(), lane["width"].clone()), (json!(0), json!(600)));
+        assert_eq!(
+            (lane["x"].clone(), lane["width"].clone()),
+            (json!(0), json!(600))
+        );
         let height = u32::try_from(lane["height"].as_u64().unwrap()).unwrap();
         assert_eq!(height, 200, "214 px less the ruler");
         let (top, bottom) = (
@@ -278,11 +314,18 @@ fn the_waveform_of_a_sine_peaks_at_the_expected_rows() {
             row_of(-0.5, height, scale_db),
         );
         if scale_db.is_none() {
-            assert_eq!((top, bottom), (50, 149), "a quarter and three quarters of the lane");
+            assert_eq!(
+                (top, bottom),
+                (50, 149),
+                "a quarter and three quarters of the lane"
+            );
         }
         for x in 0..600 {
             let (first, last) = lit_rows(&pixels, lane, x).expect("every column has sound");
-            assert!(first.abs_diff(top) <= 1, "column {x}: top row {first}, expected {top}");
+            assert!(
+                first.abs_diff(top) <= 1,
+                "column {x}: top row {first}, expected {top}"
+            );
             assert!(
                 last.abs_diff(bottom) <= 1,
                 "column {x}: bottom row {last}, expected {bottom}"
@@ -290,7 +333,10 @@ fn the_waveform_of_a_sine_peaks_at_the_expected_rows() {
         }
 
         let levels = &out["audio_levels"];
-        assert!((levels["peak_db"].as_f64().unwrap() + 6.02).abs() < 0.05, "{levels}");
+        assert!(
+            (levels["peak_db"].as_f64().unwrap() + 6.02).abs() < 0.05,
+            "{levels}"
+        );
         assert_eq!(levels["peaks_db"].as_array().unwrap().len(), 64);
         assert_eq!(levels["slice"], json!(secs(4.0) / 64));
         assert_eq!(levels["silences"], json!([]));
@@ -300,12 +346,20 @@ fn the_waveform_of_a_sine_peaks_at_the_expected_rows() {
 
         // The same peaks over HTTP: a PNG of the same size, cacheable by content.
         let link = out["link"].as_str().unwrap();
-        assert!(link.starts_with(&format!("/media/{}/waveform?fmt=png", f.media)), "{link}");
+        assert!(
+            link.starts_with(&format!("/media/{}/waveform?fmt=png", f.media)),
+            "{link}"
+        );
         let served = f.server.get(link, &[]);
         assert_eq!(served.status, 200, "{link}");
         assert!(is_png(&served.body));
         assert!(served.header("etag").is_some());
-        assert!(served.header("cache-control").unwrap().contains("immutable"));
+        assert!(
+            served
+                .header("cache-control")
+                .unwrap()
+                .contains("immutable")
+        );
     }
 
     // A part of the file, and the errors of a picture that cannot hold its lanes.
@@ -315,7 +369,10 @@ fn the_waveform_of_a_sine_peaks_at_the_expected_rows() {
         json!({ "target": target, "from": "1s", "to": "1.5s", "width": 64, "height": 32 }),
     )
     .unwrap();
-    assert_eq!((part["from"].clone(), part["to"].clone()), (json!(secs(1.0)), json!(secs(1.5))));
+    assert_eq!(
+        (part["from"].clone(), part["to"].clone()),
+        (json!(secs(1.0)), json!(secs(1.5)))
+    );
     let e = call(
         &f.conn,
         "audio.waveform",
@@ -338,12 +395,18 @@ fn the_mix_of_a_sequence_reports_its_two_second_gap_and_the_loudness() {
         }),
     )
     .unwrap();
-    assert_eq!((out["from"].clone(), out["to"].clone()), (json!(0), json!(secs(8.0))));
+    assert_eq!(
+        (out["from"].clone(), out["to"].clone()),
+        (json!(0), json!(secs(8.0)))
+    );
     assert_eq!(out["sequence"], f.sequence);
     assert!(out.get("link").is_none());
     assert_eq!(out["source_errors"], 0);
     let lanes = out["lanes"].as_array().unwrap();
-    let names: Vec<&str> = lanes.iter().map(|l| l["channel"].as_str().unwrap()).collect();
+    let names: Vec<&str> = lanes
+        .iter()
+        .map(|l| l["channel"].as_str().unwrap())
+        .collect();
     assert_eq!(names, ["left", "right"]);
     let pixels = decode_png(&picture_bytes(&out));
     // Sound at 1 s and at 6 s, nothing at 4 s (800 px for 8 s).
@@ -380,7 +443,10 @@ fn the_mix_of_a_sequence_reports_its_two_second_gap_and_the_loudness() {
         json!({ "target": { "kind": "item", "item": f.sound } }),
     )
     .unwrap();
-    assert_eq!((clip["from"].clone(), clip["to"].clone()), (json!(0), json!(secs(3.0))));
+    assert_eq!(
+        (clip["from"].clone(), clip["to"].clone()),
+        (json!(0), json!(secs(3.0)))
+    );
     assert_eq!(clip["audio_levels"]["silences"], json!([]));
     assert_eq!(clip["lanes"].as_array().unwrap().len(), 1);
     let pixels = decode_png(&picture_bytes(&clip));
@@ -407,7 +473,10 @@ fn a_contact_sheet_of_the_sequence_names_the_items_of_each_cell() {
     assert_eq!(out["mime"], "image/jpeg");
     let jpeg = picture_bytes(&out);
     let (w, h) = jpeg_size(&jpeg);
-    assert_eq!((json!(w), json!(h)), (out["width"].clone(), out["height"].clone()));
+    assert_eq!(
+        (json!(w), json!(h)),
+        (out["width"].clone(), out["height"].clone())
+    );
     assert!(w <= 768 && h <= 768);
     assert!(jpeg.len() <= 400_000);
     let frames = out["frames"].as_array().unwrap();

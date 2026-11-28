@@ -381,7 +381,9 @@ impl Core {
             let mut call = VisualCall {
                 snapshot: self.doc()?.snapshot(),
                 service: subsystems.media_state().map(|state| {
-                    let sources = subsystems.export_services().map(|services| services.sources);
+                    let sources = subsystems
+                        .export_services()
+                        .map(|services| services.sources);
                     Arc::new(crate::visual::EngineVisual::new(state, sources))
                         as Arc<dyn VisualService>
                 }),

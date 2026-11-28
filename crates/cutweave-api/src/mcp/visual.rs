@@ -189,7 +189,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(images(&result), 1);
-        assert!(links(&result).is_empty(), "a default-size request is inline");
+        assert!(
+            links(&result).is_empty(),
+            "a default-size request is inline"
+        );
         let s = result.structured_content.unwrap();
         assert!(s.get("data").is_none());
         assert_eq!(s["tiles"][1]["x"], 256);
@@ -227,14 +230,27 @@ mod tests {
             (strip("QUJD", false), Some("http://127.0.0.1:4000")),
             (strip("QUJD", true), None),
         ] {
-            let inline =
-                result("cutweave_query", "media.filmstrip", output, &big, revs, origin).unwrap();
+            let inline = result(
+                "cutweave_query",
+                "media.filmstrip",
+                output,
+                &big,
+                revs,
+                origin,
+            )
+            .unwrap();
             assert_eq!(images(&inline), 1);
             assert!(links(&inline).is_empty());
         }
         assert!(wants_link("audio.waveform", &json!({ "width": 1569 })));
-        assert!(!wants_link("audio.waveform", &json!({ "width": 1568, "max_size": 2048 })));
-        assert!(wants_link("render.contact_sheet", &json!({ "max_size": 2048 })));
+        assert!(!wants_link(
+            "audio.waveform",
+            &json!({ "width": 1568, "max_size": 2048 })
+        ));
+        assert!(wants_link(
+            "render.contact_sheet",
+            &json!({ "max_size": 2048 })
+        ));
         assert!(!wants_link("render.frame", &json!({ "max_size": 2048 })));
         assert_eq!(size_param("timeline.get"), None);
     }

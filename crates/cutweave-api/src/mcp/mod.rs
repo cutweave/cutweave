@@ -73,8 +73,8 @@ pub mod resources;
 pub mod results;
 pub mod search;
 pub mod stdio;
-pub mod visual;
 pub mod switch;
+pub mod visual;
 
 use std::sync::Arc;
 

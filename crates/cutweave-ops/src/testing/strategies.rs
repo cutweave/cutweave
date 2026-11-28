@@ -2340,7 +2340,11 @@ fn audio_get_levels(p: &Pools) -> BoxedStrategy<Value> {
 fn media_filmstrip(p: &Pools) -> BoxedStrategy<Value> {
     let valid = (
         one_of(p.proxy_ids()),
-        option::of(select(vec![("0s", "1s"), ("f:3", "0.5s"), ("0.25s", "f:30")])),
+        option::of(select(vec![
+            ("0s", "1s"),
+            ("f:3", "0.5s"),
+            ("0.25s", "f:30"),
+        ])),
         option::of(1..=12_u32),
         option::of(select(vec![64_u32, 128, 500, 768, 2048])),
     )
@@ -2398,8 +2402,12 @@ fn audio_waveform(p: &Pools) -> BoxedStrategy<Value> {
         })
         .boxed();
     let invalid = prop_oneof![
-        target.clone().prop_map(|target| json!({"target": target, "width": 9000})),
-        target.clone().prop_map(|target| json!({"target": target, "scale_db": 1})),
+        target
+            .clone()
+            .prop_map(|target| json!({"target": target, "width": 9000})),
+        target
+            .clone()
+            .prop_map(|target| json!({"target": target, "scale_db": 1})),
         target.prop_map(|target| json!({"target": target, "from": "2s", "to": "1s"})),
         Just(json!({"target": {"kind": "song"}})),
         Just(json!({})),
