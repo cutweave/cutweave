@@ -21,7 +21,10 @@ use cutweave_api::mcp::switch::Directory;
 use cutweave_api::mcp::{Catalog, CutweaveMcp, Dispatch, Profile as McpProfile, stdio};
 use cutweave_api::{Credential, RunFileContents};
 use cutweave_engine::logging::{self, LogGuard};
-use cutweave_engine::{AudioConfig, Engine, EngineConfig, EngineMode, LogConfig};
+use cutweave_engine::{
+    AudioConfig, Engine, EngineConfig, EngineMode, FullConfig, FullSubsystems, LogConfig,
+    Subsystems as _, build_registry,
+};
 use serde_json::json;
 
 use crate::cli::{McpCmd, Profile};
@@ -63,7 +66,34 @@ fn profile(profile: Profile) -> McpProfile {
         Profile::Minimal => McpProfile::Minimal,
         Profile::Standard => McpProfile::Standard,
         Profile::Full => McpProfile::Full,
+        Profile::Described => McpProfile::Described,
     }
+}
+
+/// `--print-tools`: the `tools/list` result of `--profile` with its size and budget, as one
+/// JSON document on stdout. No engine starts: the registry is the full engine's (the core
+/// commands plus what its renderer and playback register, `render_frame` among them), so the
+/// list is the one the desktop app's engine serves.
+///
+/// # Errors
+/// `internal` when the registry cannot be built.
+pub fn print_tools(cmd: &McpCmd) -> Result<serde_json::Value, Failure> {
+    let internal = |e: cutweave_commands::RegistryError| Failure::error("internal", e.to_string());
+    let mut registry = build_registry().map_err(internal)?;
+    FullSubsystems::new(FullConfig::default())
+        .register(&mut registry)
+        .map_err(internal)?;
+    let profile = profile(cmd.profile);
+    let catalog = Catalog::new(Arc::new(registry), profile);
+    let (size, budget) = (catalog.size(), profile.budget());
+    Ok(json!({
+        "profile": profile.name(),
+        "count": size.tools,
+        "bytes": size.bytes,
+        "tokens": size.tokens(),
+        "budget": { "max_tools": budget.max_tools, "max_tokens": budget.max_tokens },
+        "tools": catalog.tools(),
+    }))
 }
 
 /// The runtime of the stdio session (the engine has its own).

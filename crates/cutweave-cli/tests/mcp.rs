@@ -15,7 +15,7 @@ use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use cutweave_api::mcp::switch::PROXY_TOOLS;
-use cutweave_api::mcp::{ListSize, STANDARD_BUDGET};
+use cutweave_api::mcp::{DESCRIBED_BUDGET, ListSize, STANDARD_BUDGET};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
     model::{CallToolRequestParams, CallToolResult, ClientConfig, ContentBlock, ProtocolVersion},
@@ -552,6 +552,127 @@ impl Drop for EngineProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// Whether every property of `tool`'s input schema that has one carries a description.
+fn documents_parameters(tool: &rmcp::model::Tool) -> bool {
+    let schema = Value::Object(tool.input_schema.as_ref().clone());
+    schema["properties"].as_object().is_some_and(|properties| {
+        !properties.is_empty()
+            && properties.values().all(|p| {
+                p.get("description")
+                    .and_then(Value::as_str)
+                    .is_some_and(|d| !d.is_empty())
+            })
+    })
+}
+
+/// WP-2I.05: `--profile described` reaches the described list over stdio, in-process and
+/// through the attach proxy: the standard tools in the same order, with parameter docs.
+#[tokio::test]
+async fn the_described_profile_is_reachable_over_stdio() {
+    let standard = Agent::start(&["--headless", "--no-log"], Revision::Stateful).await;
+    let standard_tools = standard.tools().await;
+    let _ = standard.close().await;
+    let names = |tools: &[rmcp::model::Tool]| -> Vec<String> {
+        tools.iter().map(|t| t.name.to_string()).collect()
+    };
+    for revision in Revision::ALL {
+        let agent = Agent::start(
+            &["--headless", "--profile", "described", "--no-log"],
+            revision,
+        )
+        .await;
+        let tools = agent.tools().await;
+        assert_eq!(names(&tools), names(&standard_tools), "{revision:?}");
+        let size = ListSize::of(&tools);
+        assert!(DESCRIBED_BUDGET.fits(size), "{size:?}");
+        assert!(size.bytes > ListSize::of(&standard_tools).bytes);
+        let split = tools.iter().find(|t| t.name == "clip_split").unwrap();
+        assert!(documents_parameters(split), "{revision:?}");
+        let lean = standard_tools
+            .iter()
+            .find(|t| t.name == "clip_split")
+            .unwrap();
+        assert!(!documents_parameters(lean));
+        let (code, stderr) = agent.close().await;
+        assert_eq!(code, Some(0), "{stderr}");
+    }
+
+    // Attached: the proxy forwards to the engine's `/mcp/described`.
+    let dir = tempfile::tempdir().unwrap();
+    let run_dir = dir.path().join("run");
+    let run = run_dir.to_str().unwrap().to_owned();
+    let engine = EngineProcess::start(&run_dir, dir.path());
+    for revision in Revision::ALL {
+        let agent = Agent::start(
+            &["--attach", "--run-dir", &run, "--profile", "described"],
+            revision,
+        )
+        .await;
+        let tools = agent.tools().await;
+        let own: Vec<rmcp::model::Tool> = tools
+            .iter()
+            .filter(|t| !PROXY_TOOLS.contains(&t.name.as_ref()))
+            .cloned()
+            .collect();
+        assert_eq!(tools.len(), own.len() + PROXY_TOOLS.len());
+        assert!(DESCRIBED_BUDGET.fits(ListSize::of(&own)));
+        let split = own.iter().find(|t| t.name == "clip_split").unwrap();
+        assert!(documents_parameters(split), "{revision:?}");
+        let info = agent.ok("project_info", json!({})).await;
+        assert!(info["sequences"].is_array());
+        let (code, stderr) = agent.close().await;
+        assert_eq!(code, Some(0), "{stderr}");
+    }
+    engine.kill();
+}
+
+/// WP-2I.05: `cutweave mcp --print-tools --profile X` prints the profile's `tools/list` result
+/// with its size and budget, without an engine: what the full engine lists (`render_frame`
+/// included), each list within its budget, full the same as standard.
+#[test]
+fn print_tools_prints_each_profiles_list() {
+    let print = |profile: &str| {
+        let out = cutweave(&["mcp", "--print-tools", "--profile", profile]);
+        assert_eq!(out.status.code(), Some(0), "{profile}: {out:?}");
+        assert_eq!(out.stderr.len(), 0, "{profile}: {out:?}");
+        let printed = stdout_json(&out);
+        assert_eq!(printed["profile"], profile);
+        let tools: Vec<rmcp::model::Tool> =
+            serde_json::from_value(printed["tools"].clone()).unwrap();
+        let size = ListSize::of(&tools);
+        assert_eq!(printed["count"], size.tools);
+        assert_eq!(printed["bytes"], size.bytes);
+        assert_eq!(printed["tokens"], size.tokens());
+        let budget = cutweave_api::mcp::Profile::parse(profile).unwrap().budget();
+        assert_eq!(printed["budget"]["max_tools"], budget.max_tools);
+        assert_eq!(printed["budget"]["max_tokens"], budget.max_tokens);
+        assert!(budget.fits(size), "{profile}: {size:?}");
+        tools
+    };
+    let standard = print("standard");
+    assert_eq!(standard.len(), 32);
+    assert!(standard.iter().any(|t| t.name == "render_frame"));
+    assert_eq!(print("full"), standard);
+    let names = |tools: &[rmcp::model::Tool]| -> Vec<String> {
+        tools.iter().map(|t| t.name.to_string()).collect()
+    };
+    let described = print("described");
+    assert_eq!(names(&described), names(&standard));
+    assert_ne!(described, standard);
+    let minimal = print("minimal");
+    assert!(minimal.len() <= 12 && minimal.iter().all(|t| standard.contains(t)));
+    // Without --profile it is the standard list.
+    let out = cutweave(&["mcp", "--print-tools"]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    assert_eq!(stdout_json(&out)["profile"], "standard");
+    // It starts no session, so it does not combine with the flags that pick or start an engine.
+    for extra in ["--attach", "--headless"] {
+        let out = cutweave(&["mcp", "--print-tools", extra]);
+        assert_eq!(out.status.code(), Some(2), "{extra}: {out:?}");
+        assert_eq!(out.stdout.len(), 0);
     }
 }
 

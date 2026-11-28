@@ -387,6 +387,18 @@ fn render(cmd: &RenderCmd) -> Result<Value, Failure> {
 /// `cutweave mcp`: MCP over stdio (WP-1J.03). Returns the exit code; failures before the
 /// session starts are JSON on stderr.
 fn mcp(cmd: &McpCmd) -> i32 {
+    if cmd.print_tools {
+        return match crate::mcp::print_tools(cmd) {
+            Ok(list) => {
+                println!("{list:#}");
+                EXIT_OK
+            }
+            Err(failure) => {
+                failure.print();
+                failure.exit
+            }
+        };
+    }
     let checked = plan(&cmd.target).and_then(|mut plan| {
         let spawn = matches!(plan, Plan::Spawn(_));
         // `--attach` never falls back to an engine of its own.
