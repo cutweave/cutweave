@@ -571,6 +571,7 @@ describe("diffView and panel layout", () => {
       workspaceId: "long-form",
       aspect: "1:1",
       layouts: {},
+      sequenceTabs: { order: [], closed: [] },
     });
   });
 
