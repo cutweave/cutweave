@@ -314,6 +314,8 @@ describe("every key handler in the editor is accounted for", () => {
       "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
     "preview/overlays/TransformOverlay.tsx":
       "the picture's handles: the keymap's `preview` context (nudges, crop); Escape ends a drag or crop mode",
+    "sequences/SequenceTabs.tsx":
+      "the sequence tabs' own keys while a tab has the focus: Left, Right, Home and End move between tabs, F2 renames",
     "settings/shortcuts.tsx": "record-a-shortcut: the next key press is the shortcut",
     "shell/appCommands.ts": "the menu shortcuts: appMenu.ts, from the keymap",
     "timeline/TrackRenameInput.tsx":

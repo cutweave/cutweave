@@ -15,7 +15,8 @@ const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** The two places allowed to write: the store itself, and the engine runtime's `DocSync`. */
 const ALLOWED: Readonly<Record<string, string>> = {
-  "state/docStore.ts": "the store: applyEvent and resync are its only writers",
+  "state/docStore.ts":
+    "the store: applyEvent and resync are its only writers (republish publishes the same document again)",
   "engine/runtime.ts": "DocSync applies doc.patched and project.snapshot through docSink",
 };
 

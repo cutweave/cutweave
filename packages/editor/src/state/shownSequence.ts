@@ -20,7 +20,7 @@ export function bindShownSequence(view: StoreApi<ViewStore>, doc: StoreApi<DocSt
     setChosenSequence(sequence);
     // A sequence the mirror does not hold yet (its patch is on the way) shows when it arrives.
     if (project !== null && selectActiveSequenceId(project) !== before) {
-      doc.setState({ project: { ...project } });
+      doc.getState().republish();
     }
   };
   show(view.getState().activeSequence);

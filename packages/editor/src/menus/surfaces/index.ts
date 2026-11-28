@@ -256,11 +256,6 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
   "timeline.copy_clips": "edit.text.copy",
   "timeline.paste_here": "edit.text.paste",
   "timeline.split_at_playhead": "clip.split",
-  // The sequence tab's rows have the keys of the menu bar's commands (WP-2B.03).
-  "sequences.new": "sequences.new",
-  "sequences.settings": "sequences.settings",
-  "sequences.next": "sequences.next",
-  "sequences.previous": "sequences.previous",
 };
 
 /**

@@ -18,9 +18,16 @@ import { createStore } from "zustand/vanilla";
  * The UI never writes it. The only ways in are `applyEvent` (a `doc.patched` event, applied
  * under the revision-gap rules of `@cutweave/protocol`) and `resync` (a `project.snapshot`);
  * both are called by `DocSync`. Every edit goes through a command (`useCommand`), and the
- * result comes back as an event.
+ * result comes back as an event. `republish` changes nothing of the document: it only tells
+ * the subscribers to read it again.
  */
 export interface DocStore extends DocState {
+  /**
+   * Publishes the same document again under a new object (same revision, same contents, every
+   * part shared), so what is derived from "the project" is derived again. For a change of what
+   * the editor shows of it (another sequence, WP-2B.03), never for a change of the document.
+   */
+  republish(): void;
   /** Applies one `doc.patched` event; `gap` tells the caller to resync. */
   applyEvent(event: DocPatched): ApplyResult;
   /** Replaces the projection with a snapshot. */
@@ -40,6 +47,10 @@ export function createDocStore() {
     },
     resync(snapshot) {
       set(docFromSnapshot(snapshot));
+    },
+    republish() {
+      const { project } = get();
+      if (project !== null) set({ project: { ...project } });
     },
   }));
 }
