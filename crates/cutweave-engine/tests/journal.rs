@@ -647,7 +647,7 @@ fn a_recovered_gesture_answers_its_requests_again_and_a_lost_one_is_refused() {
     let tx_of =
         |opened: &Applied| -> TxId { serde_json::from_value(opened.output["tx"].clone()).unwrap() };
 
-    let (item, opened, renamed, committed, lost) = {
+    let (item, opened, renamed, committed, orphan) = {
         let s = open_session(&folder, &SessionOptions::default());
         let h = &s.handle;
         let item = append(h, tracks(&h.snapshot().doc)[0], 4);
@@ -655,10 +655,10 @@ fn a_recovered_gesture_answers_its_requests_again_and_a_lost_one_is_refused() {
         let rename = json!({"item": item, "name": "kept"});
         let renamed = send(h, 2, "item.rename", rename, Some(tx_of(&opened))).unwrap();
         let committed = send(h, 3, "edit.commit_tx", json!({}), None).unwrap();
-        let lost = send(h, 4, "edit.begin_tx", begin.clone(), None).unwrap();
+        let orphan = send(h, 4, "edit.begin_tx", begin.clone(), None).unwrap();
         let rename = json!({"item": item, "name": "lost"});
-        send(h, 5, "item.rename", rename, Some(tx_of(&lost))).unwrap();
-        (item, opened, renamed, committed, tx_of(&lost))
+        send(h, 5, "item.rename", rename, Some(tx_of(&orphan))).unwrap();
+        (item, opened, renamed, committed, tx_of(&orphan))
     };
 
     let s = open_session(&folder, &SessionOptions::default());
@@ -686,11 +686,11 @@ fn a_recovered_gesture_answers_its_requests_again_and_a_lost_one_is_refused() {
     assert!(again.replayed);
     assert_eq!(again.output, renamed.output);
     assert_eq!(h.snapshot().rev, recovered.rev, "nothing was applied again");
-    assert!(h.locks(&ui()).wait().unwrap().transactions.is_empty());
+    assert_eq!(h.locks(&ui()).wait().unwrap().transactions.len(), 0);
 
     // The drag the engine died with: nothing of it is answered as done.
     let rename = json!({"item": item, "name": "lost"});
-    let err = send(h, 5, "item.rename", rename, Some(lost)).unwrap_err();
+    let err = send(h, 5, "item.rename", rename, Some(orphan)).unwrap_err();
     assert!(
         matches!(err, cutweave_commands::CmdError::NotFound { .. }),
         "{err:?}"

@@ -125,7 +125,9 @@ pub struct CommitRecord<'a> {
     pub at: WallTime,
     /// The requests it contains, in order, each with its redacted params and its dedup
     /// record (so a restarted engine keeps deduplicating them). For an undo, redo or restore:
-    /// the `edit.*` request, when it came through [`DocState::submit`].
+    /// the `edit.*` request, when it came through [`DocState::submit`]. For a batch, gesture
+    /// or proposal: its commands in order, then the `edit.begin_tx` and `edit.commit_tx`
+    /// requests that opened and committed it (when they came through `submit`).
     pub steps: &'a [JournalStep],
     /// The net change to the committed document (coalesced, field-level).
     pub patch: &'a Patch,

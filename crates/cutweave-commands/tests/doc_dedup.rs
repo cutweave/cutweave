@@ -414,7 +414,7 @@ fn a_committed_transaction_answers_its_begin_and_commit_again_after_a_restart() 
         // Nothing was applied again and the repeated begin opened nothing.
         assert_eq!(h.snapshot().doc, saved.doc);
         assert_eq!(h.snapshot().rev, saved.rev);
-        assert!(h.locks(&ctx).wait().unwrap().transactions.is_empty());
+        assert_eq!(h.locks(&ctx).wait().unwrap().transactions.len(), 0);
     }
 }
 
@@ -531,7 +531,7 @@ fn a_cancel_or_commit_the_journal_never_had_is_refused_after_a_restart() {
             .unwrap();
         (h.committed_snapshot(), tx)
     };
-    assert!(journal.records.lock().unwrap().is_empty());
+    assert_eq!(journal.records.lock().unwrap().len(), 0);
     // The restarted engine issues transaction ids past the last journaled one, as recovery
     // does; here none was journaled, so `tx` would be the next one.
     let restarted = DocActor::spawn(config(saved.doc.clone()).with_rev(saved.rev)).unwrap();
