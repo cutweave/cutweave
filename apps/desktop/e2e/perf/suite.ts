@@ -190,6 +190,11 @@ export const REQUIRED_IDS = [
   "ui_drag_frame_p95_ms",
   "ui_drag_script_ms_per_update",
   "ui_drag_layout_ms_per_update",
+  "ui_main_drag_rtt_p95_ms",
+  "ui_main_drag_answer_p95_ms",
+  "ui_main_drag_received_kb_per_update",
+  "ui_main_drag_frame_p95_ms",
+  "ui_main_drag_script_ms_per_update",
   "timeline_panzoom_5000_fps",
   "timeline_panzoom_5000_frame_p95_ms",
   "timeline_pan_fps",
@@ -377,7 +382,7 @@ async function pageCounters(cdp: CDPSession): Promise<Record<string, number>> {
  */
 async function watchUpdateAnswers(
   cdp: CDPSession,
-): Promise<{ answers: number[]; received: { chars: number } }> {
+): Promise<{ answers: number[]; received: { chars: number }; stop(): Promise<void> }> {
   const sent = new Map<string, number>();
   const answers: number[] = [];
   const received = { chars: 0 };
@@ -393,13 +398,14 @@ async function watchUpdateAnswers(
       return null;
     }
   };
-  cdp.on("Network.webSocketFrameSent", (event) => {
+  type Frame = { response: { payloadData: string }; timestamp: number };
+  const onSent = (event: Frame) => {
     const message = read(event.response.payloadData);
     if (message?.replace === true && message.id !== undefined) {
       sent.set(String(message.id), event.timestamp);
     }
-  });
-  cdp.on("Network.webSocketFrameReceived", (event) => {
+  };
+  const onReceived = (event: Frame) => {
     const payload = event.response.payloadData;
     // An event (`doc.patched`, `tx.*`, ...) names its method first; a response has none. Read
     // from the head: the answer to a `timeline.get` of 5,000 items is over a megabyte.
@@ -414,9 +420,16 @@ async function watchUpdateAnswers(
     sent.delete(id);
     received.chars += payload.length;
     answers.push((event.timestamp - at) * 1000);
-  });
+  };
+  cdp.on("Network.webSocketFrameSent", onSent);
+  cdp.on("Network.webSocketFrameReceived", onReceived);
   await cdp.send("Network.enable");
-  return { answers, received };
+  const stop = async () => {
+    await cdp.send("Network.disable");
+    cdp.off("Network.webSocketFrameSent", onSent);
+    cdp.off("Network.webSocketFrameReceived", onReceived);
+  };
+  return { answers, received, stop };
 }
 
 /** The frame rate of the page when nothing happens: the display's rate, the ceiling of the rest. */
@@ -468,22 +481,30 @@ const swing = (peak: number, t: number, dt: number): number => {
 const viewZoom = async (page: Page): Promise<number> =>
   (await editorCall<{ zoom: number | null }>(page, "view.get")).zoom ?? 100;
 
-/** Clicks the toolbar's Zoom out until `enough(px per second)`; at most `clicks` times. */
-async function zoomOutUntil(
+/**
+ * Clicks the toolbar's Zoom out (or Zoom in) until `enough(px per second)`; at most `clicks`
+ * times.
+ */
+async function zoomUntil(
   page: Page,
   enough: (pxPerSec: number) => boolean | Promise<boolean>,
+  button: "Zoom out" | "Zoom in" = "Zoom out",
   clicks = 24,
 ): Promise<boolean> {
-  const zoomOut = timelineTools(page).getByRole("button", { name: "Zoom out", exact: true });
+  const zoom = timelineTools(page).getByRole("button", { name: button, exact: true });
   for (let n = 0; n < clicks; n += 1) {
     const before = await viewZoom(page);
     if (await enough(before)) return true;
-    if (!(await zoomOut.isEnabled())) return false;
-    await zoomOut.click();
-    await expect.poll(() => viewZoom(page)).toBeLessThan(before);
+    if (!(await zoom.isEnabled())) return false;
+    await zoom.click();
+    if (button === "Zoom out") await expect.poll(() => viewZoom(page)).toBeLessThan(before);
+    else await expect.poll(() => viewZoom(page)).toBeGreaterThan(before);
   }
   return enough(await viewZoom(page));
 }
+
+const zoomOutUntil = (page: Page, enough: (pxPerSec: number) => boolean | Promise<boolean>) =>
+  zoomUntil(page, enough);
 
 interface DragTarget {
   from: { x: number; y: number };
@@ -530,6 +551,200 @@ function dragTarget(g: TimelineGeometry, manifest: FixtureManifest): DragTarget 
   return null;
 }
 
+/** The narrowest clip a hand can grab, px. */
+const GRAB_MIN_PX = 24;
+/** A main-track clip this narrow or narrower lets the drag carry it past several others, px. */
+const MAIN_CLIP_MAX_PX = 60;
+
+/**
+ * A clip of the magnetic main track to drag along it (issue #231): in a lane that shows, wide
+ * enough to grab, with room to its right for the drag, all of it clear of the lanes' edges.
+ * `clipPx` is how wide the clip is: the narrower, the more clips the drag carries it past, and
+ * every one of them changes places with it (a ripple on each update).
+ */
+function mainDragTarget(
+  g: TimelineGeometry,
+  manifest: FixtureManifest,
+): (DragTarget & { clipPx: number }) | null {
+  const track = manifest.tracks.find((t) => t.main);
+  const name = track === undefined ? undefined : g.tracks.find((t) => t.id === track.id)?.name;
+  if (track === undefined || name === undefined) return null;
+  const left = g.box.x + g.headerWidth + EDGE_CLEARANCE_PX;
+  const right = g.box.x + g.box.width - EDGE_CLEARANCE_PX;
+  const top = g.box.y + g.rulerHeight + (g.scrollY > 0 ? EDGE_CLEARANCE_PX : 4);
+  const bottom = g.box.y + g.box.height - EDGE_CLEARANCE_PX;
+  const y = laneY(g, name);
+  if (y < top || y > bottom) return null;
+  const px = (frames: number) => (frames * manifest.frame * g.pxPerSec) / FLICKS;
+  // Not the last clips: the drag needs clips to its right to pass.
+  for (const item of track.items.slice(0, -8)) {
+    const x = xAt(g, item.start * manifest.frame);
+    if (x > right) break;
+    const clipPx = px(item.duration);
+    const grab = x + Math.min(clipPx / 2, 20);
+    const reach = Math.min(240, right - grab);
+    if (clipPx >= GRAB_MIN_PX && grab >= left && reach >= 60) {
+      return { from: { x: grab, y }, reach, item: item.id, track: track.id, clipPx };
+    }
+  }
+  return null;
+}
+
+/** What a run of hand-paced drags of one clip measured. */
+interface DragRun {
+  drags: number;
+  /** The app's own round trips (`cutweave.timeline.rtt`), ms. */
+  rtt: number[];
+  /** The page's frame intervals during the drags, ms. */
+  frames: number[];
+  /** The engine's answers to the updates, ms. */
+  answers: number[];
+  /** What the socket received per update (responses and events), KB. */
+  receivedKb: number;
+  /** Main-thread script, and style plus layout, per update, ms. */
+  script: number;
+  layout: number;
+}
+
+/** What `editorCaughtUp` (the check after each drag, which reads the whole timeline back) costs. */
+async function checkCostOf(
+  page: Page,
+  cdp: CDPSession,
+): Promise<{ script: number; layout: number }> {
+  const c0 = await pageCounters(cdp);
+  await editorCaughtUp(page);
+  const c1 = await pageCounters(cdp);
+  return {
+    script: (c1.ScriptDuration ?? 0) - (c0.ScriptDuration ?? 0),
+    layout:
+      (c1.LayoutDuration ?? 0) +
+      (c1.RecalcStyleDuration ?? 0) -
+      (c0.LayoutDuration ?? 0) -
+      (c0.RecalcStyleDuration ?? 0),
+  };
+}
+
+/**
+ * Drags the clip at `from` out by `reach` px and back at a hand's pace, in drags of
+ * `scale.dragMoves` moves, until `scale.dragUpdates` updates came back (`scale.maxDrags` drags at
+ * most). Each drag lets go where it pressed. With snapping on (the default, and part of what a
+ * drag costs) the clip may then sit on a neighbour's edge a few pixels away, never further than
+ * the snap distance, so the next drag presses the same clip at the same point.
+ */
+async function dragRun(
+  page: Page,
+  cdp: CDPSession,
+  scale: Scale,
+  from: { x: number; y: number },
+  reach: number,
+): Promise<DragRun> {
+  const checkCost = await checkCostOf(page, cdp);
+  const rtt: number[] = [];
+  const frames: number[] = [];
+  const watch = await watchUpdateAnswers(cdp);
+  let drags = 0;
+  const c0 = await pageCounters(cdp);
+  while (drags < scale.maxDrags && rtt.length < scale.dragUpdates) {
+    const paced = await handPacedDrag(page, from, reach, scale.dragMoves);
+    rtt.push(...paced.rtt);
+    frames.push(...paced.frames);
+    drags += 1;
+  }
+  const c1 = await pageCounters(cdp);
+  await watch.stop();
+  if (rtt.length === 0) throw new Error("the drag made no update: nothing to measure");
+  const perUpdate = (total: number, check: number): number =>
+    (Math.max(0, total - drags * check) * 1000) / rtt.length;
+  return {
+    drags,
+    rtt,
+    frames,
+    answers: watch.answers,
+    receivedKb: watch.received.chars / 1024 / rtt.length,
+    script: perUpdate((c1.ScriptDuration ?? 0) - (c0.ScriptDuration ?? 0), checkCost.script),
+    layout: perUpdate(
+      (c1.LayoutDuration ?? 0) +
+        (c1.RecalcStyleDuration ?? 0) -
+        (c0.LayoutDuration ?? 0) -
+        (c0.RecalcStyleDuration ?? 0),
+      checkCost.layout,
+    ),
+  };
+}
+
+/** One line for the run's output. */
+function describeDragRun(what: string, run: DragRun): string {
+  const frames = frameStats(run.frames);
+  return (
+    `${what}: ${run.drags} drag(s), ${run.rtt.length} updates, round trip p50 ` +
+    `${round(quantile(run.rtt, 0.5))} p95 ${round(quantile(run.rtt, 0.95))} max ` +
+    `${round(Math.max(...run.rtt))} ms; frames ${round(frames.fps)} fps, p95 ${round(frames.p95)} ms, ` +
+    `max ${round(frames.max)} ms; script ${round(run.script, 2)} ms and layout ` +
+    `${round(run.layout, 2)} ms per update; engine answers p50 ${round(quantile(run.answers, 0.5))} ` +
+    `p95 ${round(quantile(run.answers, 0.95))} ms (${run.answers.length}), ` +
+    `${round(run.receivedKb)} KB received per update`
+  );
+}
+
+/**
+ * The drag of a clip along the magnetic main track of the open stress project (issue #231): the
+ * clips it passes change places with it, so every update is a ripple. Zooms the timeline until a
+ * main-track clip is narrow enough for the drag to pass several, and reports under
+ * `ui_main_drag_*` (the log line says how many clips the drag reached past).
+ */
+async function mainTrackDrag(
+  page: Page,
+  cdp: CDPSession,
+  options: SuiteOptions,
+): Promise<Metric[]> {
+  const { scale, projects, log } = options;
+  const manifest = projects.stress.manifest;
+  await viewSettled(page);
+  const found: { target: ReturnType<typeof mainDragTarget> } = { target: null };
+  const look = async (): Promise<boolean> => {
+    found.target = mainDragTarget(await timelineGeometry(page), manifest);
+    return found.target !== null;
+  };
+  // Wide enough to grab first (the pan and zoom before it leave the clips a few pixels wide),
+  // then no wider than a drag can carry past several.
+  await zoomUntil(page, look, "Zoom in");
+  await zoomUntil(
+    page,
+    async () => (await look()) && (found.target?.clipPx ?? 0) <= MAIN_CLIP_MAX_PX,
+  );
+  if (!(await look()) || found.target === null) {
+    throw new Error(
+      "no clip of the main track can be dragged on screen, clear of the lanes' edges",
+    );
+  }
+  const { from, reach, item, track, clipPx } = found.target;
+  const run = await dragRun(page, cdp, scale, from, reach);
+  // What was measured is a move along the main track: the clip is still on it.
+  const home = (await sequence(page)).tracks.find((t) => t.items.some((i) => i.id === item));
+  expect(home?.id, "the track of the dragged main-track clip after the drags").toBe(track);
+  const frames = frameStats(run.frames);
+  log(
+    describeDragRun(
+      `main-track drag (a ${round(clipPx)} px clip carried ${round(reach)} px, past ` +
+        `${round(reach / clipPx)} clips)`,
+      run,
+    ),
+  );
+  return [
+    metric("ui_main_drag_rtt_p95_ms", quantile(run.rtt, 0.95), "ms", run.rtt.length),
+    metric("ui_main_drag_rtt_p50_ms", quantile(run.rtt, 0.5), "ms", run.rtt.length),
+    metric("ui_main_drag_rtt_max_ms", Math.max(...run.rtt), "ms", run.rtt.length),
+    metric("ui_main_drag_answer_p50_ms", quantile(run.answers, 0.5), "ms", run.answers.length),
+    metric("ui_main_drag_answer_p95_ms", quantile(run.answers, 0.95), "ms", run.answers.length),
+    metric("ui_main_drag_received_kb_per_update", run.receivedKb, "KB", run.rtt.length),
+    metric("ui_main_drag_fps", frames.fps, "fps", frames.frames),
+    metric("ui_main_drag_frame_p95_ms", frames.p95, "ms", frames.frames),
+    metric("ui_main_drag_frame_max_ms", frames.max, "ms", frames.frames),
+    metric("ui_main_drag_script_ms_per_update", run.script, "ms", run.rtt.length),
+    metric("ui_main_drag_layout_ms_per_update", run.layout, "ms", run.rtt.length),
+  ];
+}
+
 /** The drag, pan and zoom probes on the open stress project. */
 async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric[]> {
   const { scale, projects, log } = options;
@@ -548,59 +763,16 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
   if (found.target === null) {
     throw new Error("no clip of the project can be dragged on screen, clear of the lanes' edges");
   }
-  // Each drag lets go where it pressed. With snapping on (the default, and part of what a drag
-  // costs) the clip may then sit on a neighbour's edge a few pixels away, never further than the
-  // snap distance, so the next drag presses the same clip at the same point.
   const { from, reach, item, track } = found.target;
-  // What the check after each drag costs by itself (it reads the whole timeline back).
-  let c0 = await pageCounters(cdp);
-  await editorCaughtUp(page);
-  let c1 = await pageCounters(cdp);
-  const checkCost = {
-    script: (c1.ScriptDuration ?? 0) - (c0.ScriptDuration ?? 0),
-    layout:
-      (c1.LayoutDuration ?? 0) +
-      (c1.RecalcStyleDuration ?? 0) -
-      (c0.LayoutDuration ?? 0) -
-      (c0.RecalcStyleDuration ?? 0),
-  };
-  const rtt: number[] = [];
-  const dragFrames: number[] = [];
-  const { answers, received } = await watchUpdateAnswers(cdp);
-  let drags = 0;
-  c0 = await pageCounters(cdp);
-  while (drags < scale.maxDrags && rtt.length < scale.dragUpdates) {
-    const paced = await handPacedDrag(page, from, reach, scale.dragMoves);
-    rtt.push(...paced.rtt);
-    dragFrames.push(...paced.frames);
-    drags += 1;
-  }
-  c1 = await pageCounters(cdp);
-  await cdp.send("Network.disable");
-  if (rtt.length === 0) throw new Error("the drag made no update: nothing to measure");
+  const run = await dragRun(page, cdp, scale, from, reach);
+  const { rtt, answers } = run;
   // What was measured is a move along the clip's own track: had the timeline scrolled under the
   // pointer, the clip would be on another track now (on the main track that is a ripple of every
-  // clip after it, a different and far slower edit).
+  // clip after it, a different and far slower edit: `mainTrackDrag` measures that one).
   const home = (await sequence(page)).tracks.find((t) => t.items.some((i) => i.id === item));
   expect(home?.id, "the track of the dragged clip after the drags").toBe(track);
-  const perUpdate = (total: number, check: number): number =>
-    (Math.max(0, total - drags * check) * 1000) / rtt.length;
-  const script = perUpdate((c1.ScriptDuration ?? 0) - (c0.ScriptDuration ?? 0), checkCost.script);
-  const layout = perUpdate(
-    (c1.LayoutDuration ?? 0) +
-      (c1.RecalcStyleDuration ?? 0) -
-      (c0.LayoutDuration ?? 0) -
-      (c0.RecalcStyleDuration ?? 0),
-    checkCost.layout,
-  );
-  const drag = frameStats(dragFrames);
-  log(
-    `drag: ${drags} drag(s), ${rtt.length} updates, round trip p50 ${round(quantile(rtt, 0.5))} ` +
-      `p95 ${round(quantile(rtt, 0.95))} max ${round(Math.max(...rtt))} ms; frames ` +
-      `${round(drag.fps)} fps, p95 ${round(drag.p95)} ms, max ${round(drag.max)} ms; script ` +
-      `${round(script, 2)} ms and layout ${round(layout, 2)} ms per update; engine answers ` +
-      `p50 ${round(quantile(answers, 0.5))} p95 ${round(quantile(answers, 0.95))} ms (${answers.length}), ${round(received.chars / 1024 / rtt.length)} KB received per update`,
-  );
+  const drag = frameStats(run.frames);
+  log(describeDragRun("drag", run));
 
   // ---- pan: the wheel, sideways, out and back ----
   const g = await timelineGeometry(page);
@@ -637,6 +809,8 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
   } finally {
     await page.keyboard.up("Control");
   }
+  // ---- a clip dragged along the magnetic main track (last: it changes the zoom) ----
+  const mainDrag = await mainTrackDrag(page, cdp, options);
   await cdp.detach();
 
   const panStats = frameStats(panFrames);
@@ -654,12 +828,13 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
     metric("ui_command_rtt_max_ms", Math.max(...rtt), "ms", rtt.length),
     metric("ui_command_answer_p50_ms", quantile(answers, 0.5), "ms", answers.length),
     metric("ui_command_answer_p95_ms", quantile(answers, 0.95), "ms", answers.length),
-    metric("ui_drag_received_kb_per_update", received.chars / 1024 / rtt.length, "KB", rtt.length),
+    metric("ui_drag_received_kb_per_update", run.receivedKb, "KB", rtt.length),
     metric("ui_drag_fps", drag.fps, "fps", drag.frames),
     metric("ui_drag_frame_p95_ms", drag.p95, "ms", drag.frames),
     metric("ui_drag_frame_max_ms", drag.max, "ms", drag.frames),
-    metric("ui_drag_script_ms_per_update", script, "ms", rtt.length),
-    metric("ui_drag_layout_ms_per_update", layout, "ms", rtt.length),
+    metric("ui_drag_script_ms_per_update", run.script, "ms", rtt.length),
+    metric("ui_drag_layout_ms_per_update", run.layout, "ms", rtt.length),
+    ...mainDrag,
     metric("timeline_panzoom_5000_fps", both.fps, "fps", both.frames),
     metric("timeline_panzoom_5000_frame_p95_ms", both.p95, "ms", both.frames),
     metric("timeline_panzoom_5000_frame_max_ms", both.max, "ms", both.frames),
