@@ -36,6 +36,7 @@ use super::{
 };
 use crate::{
     diff::diff,
+    edit::{TxCommitted, TxOpened},
     error::{CmdError, ConflictReason, ResourceKind, Rev, encode_output},
     meta::EntryKind,
     patch::{Patch, PatchError},
@@ -443,6 +444,10 @@ struct OpenTx {
     /// The committed document with `ops` replayed (stale once `conflicted`).
     view: Project,
     steps: Vec<JournalStep>,
+    /// The `edit.begin_tx` request that opened it (none when opened directly, not through
+    /// [`DocState::submit`]). Journaled with its commit, so a restarted engine answers a
+    /// repeat with this transaction instead of opening another.
+    begun: Option<JournalStep>,
     conflicted: bool,
     /// Every command that changed the document in it so far is undoable.
     undoable: bool,
@@ -474,6 +479,21 @@ impl OpenTx {
             items: self.locks.items(),
             conflicted: self.conflicted,
         }
+    }
+
+    /// Adds the requests that opened it and now commit it to its steps, for the journal:
+    /// recovery restores a commit's steps as the requests to deduplicate (issue #235).
+    /// Returns how many it added, for [`unseal`](Self::unseal).
+    fn seal(&mut self, commit: Option<JournalStep>) -> usize {
+        let before = self.steps.len();
+        self.steps.extend(self.begun.clone());
+        self.steps.extend(commit);
+        self.steps.len() - before
+    }
+
+    /// Takes back what [`seal`](Self::seal) added: the journal refused the commit.
+    fn unseal(&mut self, added: usize) {
+        self.steps.truncate(self.steps.len().saturating_sub(added));
     }
 
     /// Whether its changes are part of the live document.
@@ -1778,6 +1798,7 @@ impl DocState {
             ops: Patch::new(),
             view: self.committed.clone(),
             steps: Vec::new(),
+            begun: None,
             conflicted: false,
             undoable: true,
             rebased: false,
@@ -1785,8 +1806,14 @@ impl DocState {
             replaced: false,
         };
         let info = t.info(self.gesture_timeout);
+        let (mut begun, claim) = self.marker_step(&TxOpened::of(&info))?;
+        let t = OpenTx {
+            begun: begun.pop(),
+            ..t
+        };
         self.outbox.push(DocEvent::TxOpened(t.activity(self.rev)));
         self.open.insert(id, t);
+        self.claimed = claim;
         Ok(info)
     }
 
@@ -1888,7 +1915,22 @@ impl DocState {
         } else {
             committed_rev
         };
-        self.journal.commit(&CommitRecord {
+        let closed = TxClosed {
+            tx_id: id,
+            kind: t.kind,
+            outcome: TxOutcome::Committed,
+            rev,
+            committed_rev,
+            patch: net,
+        };
+        // The journal remembers the requests that opened and commit it with its steps, so a
+        // repeat of either after a crash gets its result back, as on a live engine (#235).
+        let (commit_step, claim) = self.commit_step(&closed, &delta)?;
+        let sealed = self.open.get_mut(&id).map_or(0, |t| t.seal(commit_step));
+        let Some(t) = self.open.get(&id) else {
+            return Err(tx_not_found(id));
+        };
+        let journaled = self.journal.commit(&CommitRecord {
             rev: committed_rev,
             prev_committed_rev: self.committed_rev,
             tx_id: id,
@@ -1897,15 +1939,23 @@ impl DocState {
             label: Some(&t.label),
             at: now,
             steps: &t.steps,
-            patch: &net,
+            patch: &closed.patch,
             cause: EntryCause::Edit,
             undoable: t.undoable,
-        })?;
+        });
+        if let Err(e) = journaled {
+            // Still open, as it was: its owner can retry or cancel.
+            if let Some(t) = self.open.get_mut(&id) {
+                t.unseal(sealed);
+            }
+            return Err(e);
+        }
 
         // Commit point: nothing below fails.
         let Some(t) = self.open.remove(&id) else {
             return Err(CmdError::internal("lost an open transaction"));
         };
+        self.claimed = claim;
         for (vid, view) in views {
             if let Some(o) = self.open.get_mut(&vid) {
                 o.view = view;
@@ -1943,18 +1993,42 @@ impl DocState {
             prev_rev: prev_committed_rev,
             rev: committed_rev,
             at: now,
-            patch: Arc::new(net.clone()),
+            patch: Arc::new(closed.patch.clone()),
             undoable: t.undoable,
         };
         self.log_commit(HistoryMove::Change, record);
-        Ok(TxClosed {
-            tx_id: id,
-            kind: t.kind,
-            outcome: TxOutcome::Committed,
-            rev,
-            committed_rev,
-            patch: net,
-        })
+        Ok(closed)
+    }
+
+    /// The journal step and result of the current request for an `edit.commit_tx` that commits
+    /// `closed` and shows subscribers `delta` (none when called directly, not through
+    /// [`submit`](Self::submit)).
+    fn commit_step(
+        &self,
+        closed: &TxClosed,
+        delta: &LiveDelta,
+    ) -> Result<(Option<JournalStep>, Option<Applied>), CmdError> {
+        let Some(call) = &self.current else {
+            return Ok((None, None));
+        };
+        let applied = Applied {
+            request_id: call.request_id,
+            rev: closed.rev,
+            committed_rev: closed.committed_rev,
+            tx_id: None,
+            output: encode_output(&TxCommitted::of(closed))?,
+            ops: match delta {
+                LiveDelta::Ops(ops) => ops.clone(),
+                LiveDelta::Reset => Patch::new(),
+            },
+            replayed: false,
+        };
+        let step = JournalStep {
+            command: call.name.clone(),
+            params: call.journal_params.clone(),
+            record: Self::record(call, &applied),
+        };
+        Ok((Some(step), Some(applied)))
     }
 
     /// `Conflict{stale_rev}` if committing `t`, whose view was rebased onto later commits,
