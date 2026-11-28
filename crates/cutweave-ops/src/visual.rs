@@ -695,7 +695,7 @@ pub struct WaveformOutput {
 impl Described for AudioWaveform {
     const SPEC: CommandSpec = CommandSpec {
         name: "audio.waveform",
-        summary: "Draw the sound of a media file, a clip or a sequence's mix as a waveform image, with levels and silences",
+        summary: "Draw the sound of a media file, a clip or a mix as a waveform image, with levels and silences",
         kind: EntryKind::Engine,
         undoable: false,
         view: false,

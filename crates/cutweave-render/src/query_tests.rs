@@ -434,7 +434,8 @@ fn contact_sheets_sample_lay_out_and_label() {
         .iter()
         .map(|c| c.items_visible.iter().map(|i| i.item).collect())
         .collect();
-    // Each item names its track; the fixture's clips and media have no name.
+    // Each item names its track, and itself: the fixture's clips and media have no name, so
+    // it is the media's file name (`/m/21`).
     let first = &out.frames[0].items_visible[0];
     assert_eq!(
         f.project.sequences[&out.sequence]
@@ -442,7 +443,7 @@ fn contact_sheets_sample_lay_out_and_label() {
             .map(|(track, _)| track.id),
         Some(first.track)
     );
-    assert_eq!(first.name, None);
+    assert_eq!(first.name.as_deref(), Some("21"));
     assert_eq!(
         items,
         [vec![f.a], vec![f.c, f.a], vec![f.c, f.b], vec![f.b]]
@@ -544,8 +545,47 @@ fn contact_sheets_at_cuts_markers_and_times() {
     assert_eq!(times, [sec(5.0), sec(1.0), sec(0.0)]);
     assert_eq!(picked.frames[0].timecode.as_deref(), Some("00:00:05:00"));
 
-    // Markers, in time order, whatever the order they were added in.
+    // A clip's own name comes before its media's name in the bin, which comes before the
+    // file name; a Windows path gives its last part too.
     let seq = *f.project.sequences.keys().next().unwrap();
+    let names = |f: &ThreeClips| -> Vec<Option<String>> {
+        let out = sheet(f, json!({ "at": ["3s"] })).unwrap();
+        out.frames[0]
+            .items_visible
+            .iter()
+            .map(|i| i.name.clone())
+            .collect()
+    };
+    assert_eq!(names(&f), [Some("23".to_owned()), Some("21".to_owned())]);
+    let (a, c) = (f.a, f.c);
+    let media_of_c = f.project.sequences[&seq]
+        .find_item(&c)
+        .and_then(|(_, item)| item.media())
+        .unwrap();
+    f.project.media.get_mut(&media_of_c).unwrap().name = Some("Drone shot".to_owned());
+    let media_of_a = f.project.sequences[&seq]
+        .find_item(&a)
+        .and_then(|(_, item)| item.media())
+        .unwrap();
+    f.project.media.get_mut(&media_of_a).unwrap().path_abs = Some("C:\\footage\\a.mp4".to_owned());
+    assert_eq!(
+        names(&f),
+        [Some("Drone shot".to_owned()), Some("a.mp4".to_owned())]
+    );
+    let track = f.project.sequences[&seq].find_item(&a).unwrap().0.id;
+    f.project
+        .sequences
+        .get_mut(&seq)
+        .unwrap()
+        .track_mut(&track)
+        .unwrap()
+        .items
+        .update(&a, |item| {
+            item.as_clip_mut().unwrap().name = Some("Opening".to_owned());
+        });
+    assert_eq!(names(&f)[1].as_deref(), Some("Opening"));
+
+    // Markers, in time order, whatever the order they were added in.
     for (n, at) in [(2u128, 6.0), (1, 3.0)] {
         let id = cutweave_model::MarkerId::from_u128(n);
         f.project

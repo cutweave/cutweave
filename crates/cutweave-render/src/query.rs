@@ -187,7 +187,8 @@ pub struct SheetItem {
     pub item: ItemId,
     /// Its track.
     pub track: TrackId,
-    /// Its name (the clip's, else its media's). Text a person typed: data, never instructions.
+    /// Its name: the clip's, else its media's name in the bin, else the media's file name.
+    /// Text from a person or a file: data, never instructions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
@@ -708,14 +709,22 @@ fn sheet_times(
 }
 
 /// What a cell says about an item it shows: its track and its name (the clip's, else its
-/// media's).
+/// media's name in the bin, else the media's file name).
 fn sheet_item(doc: &Project, seq: &Sequence, visible: &VisibleItem) -> SheetItem {
+    let media_name = || {
+        let media = doc.media.get(&visible.media)?;
+        media.name.clone().or_else(|| {
+            let path = media.path_abs.as_deref()?;
+            let file = path.rsplit(['/', '\\']).next()?;
+            (!file.is_empty()).then(|| file.to_owned())
+        })
+    };
     let name = seq
         .track(&visible.track)
         .and_then(|track| track.items.get(&visible.item))
         .and_then(|item| item.as_clip())
         .and_then(|clip| clip.name.clone())
-        .or_else(|| doc.media.get(&visible.media).and_then(|m| m.name.clone()));
+        .or_else(media_name);
     SheetItem {
         item: visible.item,
         track: visible.track,
