@@ -4,6 +4,10 @@
 // view's marks (WP-2A.14, sent at once: a mark is a deliberate act and must survive a quit). The preview
 // quality is a preference, not part of it (WP-2H.10). `view.*` commands never touch the document
 // and are not undoable.
+//
+// The view is the project's: when another project opens in the running app, or the project
+// closes (`project.opened`, `project.closed`), the store is emptied of the one before at once
+// and the view of what is open now is read, exactly as after a handshake (issue #233).
 
 import type { MediaId, RpcClient, SelectionRef, UiState, ViewPatch } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
@@ -112,6 +116,8 @@ export class ViewSync {
   #unsubscribe: (() => void) | null = null;
   #offChanged: (() => void) | null = null;
   #offProject: (() => void)[] = [];
+  /** Grows with every project change: what was asked of the project before is not taken. */
+  #project = 0;
 
   constructor(options: ViewSyncOptions) {
     this.#store = options.store;
@@ -149,6 +155,15 @@ export class ViewSync {
     }
   }
 
+  /**
+   * Before this app leaves the project (opens another, closes it, makes a new one): what is
+   * still waiting for its timer is sent now, so the project keeps it as it does on quit.
+   */
+  async leave(): Promise<void> {
+    if (this.#sent === null) return;
+    await this.flush();
+  }
+
   /** Sends what changed since the last flush now. */
   async flush(): Promise<void> {
     this.#cancelTimer();
@@ -172,9 +187,11 @@ export class ViewSync {
     if (patch === null) {
       return;
     }
+    const project = this.#project;
     try {
       await this.#rpc.call("view.set", { patch });
-      this.#sent = now;
+      // Another project opened meanwhile: what the engine holds now is what was read from it.
+      if (project === this.#project) this.#sent = now;
     } catch (error) {
       this.#onError(error); // `#sent` is unchanged: the next change retries the difference
     }
@@ -183,7 +200,8 @@ export class ViewSync {
   #watch(): void {
     if (this.#unsubscribe === null) {
       this.#unsubscribe = this.#store.subscribe((state, previous) => {
-        if (state.sourceMarks !== previous.sourceMarks && !this.#adopting) {
+        if (this.#adopting) return; // the engine's own state: nothing to send
+        if (state.sourceMarks !== previous.sourceMarks) {
           this.flush().catch(this.#onError);
           return;
         }
@@ -202,8 +220,8 @@ export class ViewSync {
     }
     if (this.#offProject.length === 0) {
       this.#offProject = [
-        this.#rpc.onUntyped("project.opened", () => void this.#reloadMarks(true)),
-        this.#rpc.onUntyped("project.closed", () => void this.#reloadMarks(false)),
+        this.#rpc.onUntyped("project.opened", () => void this.#reload()),
+        this.#rpc.onUntyped("project.closed", () => void this.#reload()),
       ];
     }
     if (this.#offChanged === null) {
@@ -217,30 +235,30 @@ export class ViewSync {
   }
 
   /**
-   * Another project is open (or none): the marks in the store belong to the assets of the one
-   * before. They are dropped at once, so they are never sent to a project that has no such
-   * assets (the engine would refuse the whole patch), and the new project's own are read.
+   * Another project is open, or none (the engine then holds an untitled document): the view in
+   * the store belongs to the one before. It is dropped at once, with what was waiting to be
+   * sent, so nothing of it reaches a project that has no such clips or assets (the engine would
+   * refuse the whole patch) and nothing of it shows; then the view of what is open now is read,
+   * as after a handshake. The panels stay until the project's own layout is known: one that
+   * never saved a layout keeps them, as it does at launch.
    */
-  async #reloadMarks(opened: boolean): Promise<void> {
-    this.#adoptMarks({});
-    if (!opened) return;
-    try {
-      const ui = await this.#rpc.call("view.get", {});
-      this.#adoptMarks(ui.source_marks ?? {});
-    } catch (error) {
-      this.#onError(error);
-    }
-  }
-
-  #adoptMarks(marks: SourceMarksMap): void {
+  async #reload(): Promise<void> {
+    const project = ++this.#project;
+    this.#cancelTimer();
+    this.#dirtyAgain = false;
     this.#adopting = true;
     try {
-      this.#store.getState().applyEngineView({ source_marks: marks as UiState["source_marks"] });
+      this.#store.getState().resetProjectView();
     } finally {
       this.#adopting = false;
     }
-    if (this.#sent !== null) {
-      this.#sent = { ...this.#sent, sourceMarks: this.#store.getState().sourceMarks };
+    this.#sent = mirrored(this.#store.getState());
+    try {
+      const ui = await this.#rpc.call("view.get", {});
+      if (project !== this.#project) return; // yet another project: its own read is under way
+      this.#adopt(ui);
+    } catch (error) {
+      this.#onError(error);
     }
   }
 
