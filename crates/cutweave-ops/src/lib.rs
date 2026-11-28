@@ -13,6 +13,7 @@ use cutweave_commands::{Registry, RegistryError};
 
 pub mod audio;
 pub mod clip;
+pub mod detail;
 pub mod export;
 pub mod item;
 pub mod job;
@@ -28,6 +29,7 @@ pub mod track;
 mod util;
 pub mod view;
 
+pub use detail::Detail;
 pub use util::MAX_NAME_CHARS;
 
 /// Registers every built-in command and query of this crate.

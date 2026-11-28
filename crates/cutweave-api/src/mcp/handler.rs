@@ -356,6 +356,17 @@ impl CutweaveMcp {
     }
 
     fn search(&self, args: &Value) -> CallToolResult {
+        let detail = match args.get("detail") {
+            None | Some(Value::Null) => Some(search::Detail::default()),
+            Some(value) => value.as_str().and_then(search::Detail::parse),
+        };
+        let Some(detail) = detail else {
+            let e = CmdError::invalid(
+                "/detail",
+                format!("expected one of {}", search::Detail::NAMES.join(", ")),
+            );
+            return error_result(catalog::SEARCH, &e, None);
+        };
         let limit = args["limit"]
             .as_u64()
             .and_then(|l| usize::try_from(l).ok())
@@ -363,13 +374,21 @@ impl CutweaveMcp {
         let found = search::find(
             &self.catalog,
             args["query"].as_str().unwrap_or_default(),
-            limit,
+            detail.limit(limit),
         );
         let (total, query) = (found.total, found.query);
         let matches: Vec<Value> = found
             .entries
             .iter()
-            .map(|e| catalog::entry_summary(&self.catalog, &e.meta))
+            .map(|e| match detail {
+                search::Detail::Names => json!(e.meta.name),
+                search::Detail::Summary => catalog::entry_summary(&self.catalog, &e.meta),
+                search::Detail::Schema => {
+                    let mut hit = catalog::entry_summary(&self.catalog, &e.meta);
+                    hit["input_schema"] = e.meta.input_schema.clone();
+                    hit
+                }
+            })
             .collect();
         let mut out = json!({ "matches": matches, "total": total });
         if total == 0 {
@@ -388,14 +407,8 @@ impl CutweaveMcp {
         results::success(summary, out, None)
     }
 
-    fn describe(&self, args: &Value) -> CallToolResult {
-        let tool = catalog::DESCRIBE;
-        let name = args["name"].as_str().unwrap_or_default();
-        let Some(entry) = self.catalog.reachable(name) else {
-            let e = CmdError::not_found(cutweave_commands::ResourceKind::Command, name);
-            return error_result(tool, &e, None);
-        };
-        let meta = &entry.meta;
+    /// What `cutweave_describe_command` says about one command.
+    fn description(&self, meta: &cutweave_commands::CommandMeta) -> Value {
         let mut out = catalog::entry_summary(&self.catalog, meta);
         if let Some(doc) = meta.input_schema.get("description") {
             out["description"] = doc.clone();
@@ -404,7 +417,62 @@ impl CutweaveMcp {
         out["annotations"] = json!(meta.annotations);
         out["input_schema"] = meta.input_schema.clone();
         out["output_schema"] = results::mcp_output_schema(meta.name, &meta.output_schema);
-        results::success(format!("{}: {}", meta.name, meta.summary), out, None)
+        out
+    }
+
+    fn describe(&self, args: &Value) -> CallToolResult {
+        let tool = catalog::DESCRIBE;
+        let given = |key: &str| args.get(key).filter(|v| !v.is_null());
+        let names = match (given("name"), given("names")) {
+            (Some(_), Some(_)) => {
+                let e = CmdError::invalid("/names", "give `name` or `names`, not both");
+                return error_result(tool, &e, None);
+            }
+            (_, Some(names)) => names,
+            // One command: the result is the description itself, as before `names` existed.
+            (_, None) => {
+                let name = args["name"].as_str().unwrap_or_default();
+                let Some(entry) = self.catalog.reachable(name) else {
+                    let e = CmdError::not_found(cutweave_commands::ResourceKind::Command, name);
+                    return error_result(tool, &e, None);
+                };
+                let meta = &entry.meta;
+                return results::success(
+                    format!("{}: {}", meta.name, meta.summary),
+                    self.description(meta),
+                    None,
+                );
+            }
+        };
+        let names = match names.as_array() {
+            Some(list) if (1..=search::MAX_DESCRIBED).contains(&list.len()) => list,
+            _ => {
+                let e = CmdError::invalid(
+                    "/names",
+                    format!("expected 1 to {} command names", search::MAX_DESCRIBED),
+                );
+                return error_result(tool, &e, None);
+            }
+        };
+        let mut commands = Vec::new();
+        let mut listed = Vec::new();
+        for (i, name) in names.iter().enumerate() {
+            let Some(name) = name.as_str() else {
+                let e = CmdError::invalid(format!("/names/{i}"), "expected a command name");
+                return error_result(tool, &e, None);
+            };
+            let Some(entry) = self.catalog.reachable(name) else {
+                let e = CmdError::not_found(cutweave_commands::ResourceKind::Command, name);
+                return error_result(tool, &e, None);
+            };
+            listed.push(entry.meta.name);
+            commands.push(self.description(&entry.meta));
+        }
+        results::success(
+            format!("{} command(s): {}", listed.len(), listed.join(", ")),
+            json!({ "commands": commands }),
+            None,
+        )
     }
 }
 

@@ -1,0 +1,85 @@
+{
+  "format": 1,
+  "task": "set-speed",
+  "variant": "described",
+  "client": "upfront",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp/described",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 50731,
+    "upfront_bytes": 50731,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1133
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_get",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "depth": 2
+          },
+          "is_error": false,
+          "result_bytes": 5603
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "clip_set_speed",
+          "input": {
+            "item": "itm_00000000001273cfbb25fc71bda8f9c3",
+            "speed": "2x"
+          },
+          "is_error": false,
+          "result_bytes": 488
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

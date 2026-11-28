@@ -1507,6 +1507,231 @@ async fn search_and_describe_reach_the_long_tail() {
     client.close().await;
 }
 
+/// WP-2I.08: the snapshots are from before the discovery tools took `detail` and `names`: a
+/// call without them still returns those bytes.
+#[tokio::test]
+async fn search_and_describe_without_the_new_parameters_are_unchanged() {
+    let h = Harness::start(None);
+    let client = h.client(Profile::Standard, Revision::Stateless).await;
+    for (snapshot, tool, args) in [
+        (
+            "search_default",
+            "cutweave_search_commands",
+            json!({ "query": "split clip", "limit": 3 }),
+        ),
+        (
+            "search_no_match_default",
+            "cutweave_search_commands",
+            json!({ "query": "zzzz" }),
+        ),
+        (
+            "describe_default",
+            "cutweave_describe_command",
+            json!({ "name": "edit.redo" }),
+        ),
+    ] {
+        let out = client.ok(tool, args).await;
+        insta::assert_snapshot!(snapshot, serde_json::to_string(&out).unwrap());
+    }
+    client.close().await;
+}
+
+/// WP-2I.08 (ADR-0040, question 5): `detail` of `cutweave_search_commands`. `summary` is the
+/// default; `names` returns the names only; `schema` adds each hit's input schema, for at most
+/// 5 hits.
+#[tokio::test]
+async fn search_returns_names_summaries_or_schemas() {
+    let h = Harness::start(None);
+    let client = h.client(Profile::Standard, Revision::Stateless).await;
+    let search = |args: Value| client.ok("cutweave_search_commands", args);
+    let default = search(json!({ "query": "split clip", "limit": 3 })).await;
+    let summary = search(json!({ "query": "split clip", "limit": 3, "detail": "summary" })).await;
+    assert_eq!(
+        serde_json::to_string(&summary).unwrap(),
+        serde_json::to_string(&default).unwrap(),
+        "summary is the default"
+    );
+
+    let names = search(json!({ "query": "split clip", "limit": 3, "detail": "names" })).await;
+    insta::assert_snapshot!("search_names", serde_json::to_string(&names).unwrap());
+    assert_eq!(names["total"], default["total"]);
+    let expected: Vec<&Value> = default["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| &m["name"])
+        .collect();
+    assert_eq!(
+        names["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        expected
+    );
+
+    // Schemas are big: 5 hits at most, whatever the limit; `total` still counts every match.
+    let registry = registry();
+    let all = search(json!({ "query": "clip" })).await;
+    for limit in [json!(null), json!(50)] {
+        let mut args = json!({ "query": "clip", "detail": "schema" });
+        if !limit.is_null() {
+            args["limit"] = limit;
+        }
+        let with = search(args).await;
+        let hits = with["matches"].as_array().unwrap();
+        assert_eq!(hits.len(), 5);
+        assert_eq!(with["total"], all["total"]);
+        for (hit, plain) in hits.iter().zip(all["matches"].as_array().unwrap()) {
+            let entry = registry.get(hit["name"].as_str().unwrap()).unwrap();
+            assert_eq!(hit["input_schema"], entry.meta.input_schema, "verbatim");
+            let mut rest = hit.clone();
+            rest.as_object_mut().unwrap().remove("input_schema");
+            assert_eq!(&rest, plain, "the summary, plus the schema");
+        }
+    }
+    let two = search(json!({ "query": "clip", "detail": "schema", "limit": 2 })).await;
+    assert_eq!(two["matches"].as_array().unwrap().len(), 2);
+    let one = search(json!({ "query": "redo", "detail": "schema", "limit": 1 })).await;
+    insta::assert_snapshot!("search_schema", serde_json::to_string(&one).unwrap());
+
+    // No match: the same hint at every level.
+    let none = search(json!({ "query": "zzzz", "detail": "names" })).await;
+    assert_eq!(none["matches"], json!([]));
+    assert!(none["hint"].as_str().unwrap().contains("timeline"));
+
+    let e = client
+        .err(
+            "cutweave_search_commands",
+            json!({ "query": "clip", "detail": "full" }),
+        )
+        .await;
+    assert_eq!(e["error"]["code"], "invalid");
+    assert_eq!(e["error"]["path"], "/detail");
+    client.close().await;
+}
+
+/// WP-2I.08: `cutweave_describe_command{names}` describes up to 8 commands in one call; each
+/// entry is exactly what `{name}` returns for it.
+#[tokio::test]
+async fn describe_takes_several_names() {
+    let h = Harness::start(None);
+    let client = h.client(Profile::Standard, Revision::Stateless).await;
+    let describe = |args: Value| client.ok("cutweave_describe_command", args);
+    let several = describe(json!({ "names": ["edit.redo", "edit.undo"] })).await;
+    insta::assert_snapshot!("describe_names", serde_json::to_string(&several).unwrap());
+    let commands = several["commands"].as_array().unwrap();
+    assert_eq!(commands.len(), 2);
+    for (command, name) in commands.iter().zip(["edit.redo", "edit.undo"]) {
+        let single = describe(json!({ "name": name })).await;
+        assert_eq!(
+            serde_json::to_string(command).unwrap(),
+            serde_json::to_string(&single).unwrap(),
+            "{name}"
+        );
+    }
+    // A tool name works like a command name, and one name is still a list.
+    let one = describe(json!({ "names": ["clip_trim"] })).await;
+    assert_eq!(one["commands"][0]["name"], "clip.trim");
+    // `null` is an absent parameter.
+    let single = describe(json!({ "name": "edit.redo", "names": null })).await;
+    assert_eq!(single["name"], "edit.redo");
+
+    let eight = [
+        "clip.split",
+        "clip.trim",
+        "edit.undo",
+        "edit.redo",
+        "item.move",
+        "item.delete",
+        "timeline.get",
+        "media.list",
+    ];
+    let most = describe(json!({ "names": eight })).await;
+    assert_eq!(most["commands"].as_array().unwrap().len(), 8);
+
+    let invalid = |args: Value| client.err("cutweave_describe_command", args);
+    let mut nine = eight.to_vec();
+    nine.push("track.add");
+    for (args, path) in [
+        (json!({ "names": nine }), "/names"),
+        (json!({ "names": [] }), "/names"),
+        (json!({ "names": "clip.split" }), "/names"),
+        (json!({ "names": ["clip.split", 7] }), "/names/1"),
+        (
+            json!({ "name": "clip.split", "names": ["clip.trim"] }),
+            "/names",
+        ),
+    ] {
+        let e = invalid(args).await;
+        assert_eq!(e["error"]["code"], "invalid", "{path}");
+        assert_eq!(e["error"]["path"], path);
+    }
+    // One unknown (or hidden) name fails the call, like the single form.
+    let e = invalid(json!({ "names": ["clip.split", "media.register"] })).await;
+    assert_eq!(e["error"]["code"], "not_found");
+    client.close().await;
+}
+
+/// WP-2I.08: `detail` reaches `timeline_get` and `media_list` over MCP like any other parameter
+/// (the tools are the registered queries), also through `cutweave_query`, and the result keeps
+/// its revision.
+#[tokio::test]
+async fn concise_reads_over_mcp() {
+    let h = Harness::start(None);
+    let client = h.client(Profile::Standard, Revision::Stateless).await;
+    let (sequence, _, _, item) = project_with_a_clip(&h, &client).await;
+    let full = client
+        .ok("timeline_get", json!({ "sequence": sequence, "depth": 2 }))
+        .await;
+    let concise = client
+        .ok(
+            "timeline_get",
+            json!({ "sequence": sequence, "depth": 2, "detail": "concise" }),
+        )
+        .await;
+    let (whole, short) = (
+        &full["tracks"][0]["items"][0],
+        &concise["tracks"][0]["items"][0],
+    );
+    assert_eq!(short["id"], json!(item));
+    assert_eq!(short["start"], whole["start"]);
+    assert_eq!(short["duration"], whole["duration"]);
+    assert!(whole["media"].is_string() && short.get("media").is_none());
+    assert!(
+        serde_json::to_string(&concise).unwrap().len()
+            < serde_json::to_string(&full).unwrap().len()
+    );
+    let queried = client
+        .ok(
+            "cutweave_query",
+            json!({ "name": "timeline.get",
+                    "args": { "sequence": sequence, "depth": 2, "detail": "concise" } }),
+        )
+        .await;
+    assert_eq!(queried, concise);
+
+    let media = client.ok("media_list", json!({})).await;
+    let brief = client
+        .ok("media_list", json!({ "detail": "concise" }))
+        .await;
+    assert!(media["media"][0]["path"].is_string());
+    assert!(brief["media"][0].get("path").is_none());
+    assert_eq!(brief["media"][0]["id"], media["media"][0]["id"]);
+    assert_eq!(brief["media"][0]["name"], media["media"][0]["name"]);
+
+    // The revision is on a concise result as on a full one.
+    let result = client
+        .call(
+            "timeline_get",
+            json!({ "sequence": sequence, "detail": "concise" }),
+        )
+        .await;
+    let meta = serde_json::to_value(&result.meta).unwrap();
+    assert!(meta["io.cutweave/rev"].is_u64(), "{meta}");
+    client.close().await;
+}
+
 /// The actor of every MCP change is `agent:<token label>`, derived from the credential.
 #[tokio::test]
 async fn the_actor_comes_from_the_token() {

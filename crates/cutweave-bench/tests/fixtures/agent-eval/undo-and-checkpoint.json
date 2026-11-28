@@ -1,0 +1,171 @@
+{
+  "format": 1,
+  "task": "undo-and-checkpoint",
+  "variant": "via-execute",
+  "client": "upfront",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 28,
+    "sent_bytes": 25621,
+    "upfront_bytes": 25621,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1169
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_get",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "depth": 2
+          },
+          "is_error": false,
+          "result_bytes": 5603
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_execute",
+          "input": {
+            "steps": [
+              {
+                "cmd": "edit.checkpoint",
+                "args": {
+                  "name": "before-cleanup"
+                }
+              }
+            ]
+          },
+          "is_error": false,
+          "result_bytes": 206
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_execute",
+          "input": {
+            "steps": [
+              {
+                "cmd": "item.delete",
+                "args": {
+                  "items": [
+                    "itm_00000000002274049df8cd5c9ea1024c"
+                  ]
+                }
+              }
+            ]
+          },
+          "is_error": false,
+          "result_bytes": 361
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_execute",
+          "input": {
+            "steps": [
+              {
+                "cmd": "item.delete",
+                "args": {
+                  "items": [
+                    "itm_0000000000237dc4823b0d92f5ed67fe"
+                  ]
+                }
+              }
+            ]
+          },
+          "is_error": false,
+          "result_bytes": 361
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_execute",
+          "input": {
+            "steps": [
+              {
+                "cmd": "edit.undo",
+                "args": {}
+              }
+            ]
+          },
+          "is_error": false,
+          "result_bytes": 225
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

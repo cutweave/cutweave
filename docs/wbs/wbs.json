@@ -7024,7 +7024,7 @@
       },
       "phase": "P2",
       "epic": "2I",
-      "area": "crates/cutweave-cli/tests/agent_eval/ or tools/agent-eval/ (a runner outside the gate), docs/reference/agent-eval.md, docs/examples",
+      "area": "crates/cutweave-bench (`src/agent_eval/`, `tests/agent_eval.rs`; as built, see below), scripts/agent-eval-post.py, docs/reference/agent-eval.md, docs/reference/agent-eval/",
       "size": "M",
       "executor": "opus",
       "executor_note": "",
@@ -7038,7 +7038,7 @@
         "WP-2I.01",
         "WP-2J.01"
       ],
-      "scope": "- A runner that gives a model a task and an MCP connection to a headless engine on a generated fixture, and records every tool call. Ten tasks to start: split and trim, insert and reorder, set speed, add a marker, fade audio, keyframe a move, set a 9:16 format, undo and checkpoint, import and place, and one long-tail task that needs a catalog command.\n- Each task has a checker that reads the final document through `timeline_get` or `cutweave_query`; no judgement by a model.\n- Variants it can compare in one run: the standard list against the described one; a core tool against the same command through `cutweave_execute`; one batch against several calls; MCP against the command line with the skill (when WP-2I.10 exists).\n- Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.\n- It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.\n- A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.",
+      "scope": "- A runner that gives a model a task and an MCP connection to a headless engine on a generated fixture, and records every tool call. Ten tasks to start: split and trim, insert and reorder, set speed, add a marker, fade audio, keyframe a move, set a 9:16 format, undo and checkpoint, import and place, and one long-tail task that needs a catalog command.\n- Each task has a checker that reads the final document through `timeline_get` or `cutweave_query`; no judgement by a model.\n- Variants it can compare in one run: the standard list against the described one; a core tool against the same command through `cutweave_execute`; one batch against several calls; MCP against the command line with the skill (when WP-2I.10 exists).\n- Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.\n- It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.\n- A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.\n- **As built (2026-11-28):**\n  - The runner is a subcommand of the benchmark tool, `cargo run -p cutweave-bench -- agent-eval`, not a folder under `cutweave-cli` or `tools/`: it reuses that crate's engine child process, MCP client and seeded fixtures. It is not a `just` recipe, so starting it does not start a gate. How to run it, what it costs and how to read the report: `docs/reference/agent-eval.md`.\n  - It talks to Anthropic's Messages API with tool use. The workspace has no HTTP client with TLS and none was added: `scripts/agent-eval-post.py` (Python's standard library) carries each request; the key is read from `ANTHROPIC_API_KEY` there and nowhere else.\n  - Two client modes besides the variants: `upfront` (every definition in the model's context) and `deferred` (the API's tool search with `defer_loading`, the server's always-load marks kept). A default run is 57 sessions.\n  - The \"through `cutweave_execute`\" variant leaves the task's core tools out of the list the runner shows the model; the server is not changed.\n  - The gate replays ten sessions written by hand, one per task, covering every variant and both client modes.\n  - Measured besides the list above: tokens of the tool definitions (sent, and in the model's context). Tokens of tool results and definitions are estimates, bytes / 4.\n  - **Open:** the first acceptance criterion. No full run has been made (it needs a key and costs a few dollars), so no report is committed under `docs/reference/agent-eval/` yet and the three questions have no numbers. The command line path is the `cli-skill` variant, named but not built (WP-2I.10).",
       "interfaces": "none in the product.",
       "acceptance": [
         "One full run on the standard and the described list, with the report committed under `docs/reference/agent-eval/`.",
@@ -7053,7 +7053,7 @@
       "title": "The command line with a skill, as a second way in for agents with a shell",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1766
+        "line": 1774
       },
       "phase": "P2",
       "epic": "2I",
@@ -7082,7 +7082,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1784
+        "line": 1792
       },
       "phase": "P2",
       "epic": "2J",
@@ -7139,7 +7139,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1801
+        "line": 1809
       },
       "phase": "P2",
       "epic": "2J",
@@ -7173,7 +7173,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1816
+        "line": 1824
       },
       "phase": "P2",
       "epic": "2J",
@@ -7215,7 +7215,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1831
+        "line": 1839
       },
       "phase": "P2",
       "epic": "2J",
@@ -7256,7 +7256,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1847
+        "line": 1855
       },
       "phase": "P2",
       "epic": "2J",
@@ -7300,7 +7300,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1865
+        "line": 1873
       },
       "phase": "P2",
       "epic": "2J",
@@ -7340,7 +7340,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1880
+        "line": 1888
       },
       "phase": "P2",
       "epic": "2J",
@@ -7378,7 +7378,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1894
+        "line": 1902
       },
       "phase": "P2",
       "epic": "2J",
@@ -7416,7 +7416,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1907
+        "line": 1915
       },
       "phase": "P2",
       "epic": "2J",

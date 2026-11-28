@@ -1,0 +1,108 @@
+{
+  "format": 1,
+  "task": "import-and-place",
+  "variant": "standard",
+  "client": "upfront",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 26621,
+    "upfront_bytes": 26621,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1151
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_get",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "depth": 2
+          },
+          "is_error": false,
+          "result_bytes": 5603
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "media_import",
+          "input": {
+            "paths": [
+              "{{imports}}/beach.mp4"
+            ]
+          },
+          "is_error": false,
+          "result_bytes": 463
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_insert",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "track": "trk_000000000002776fb5aceb67356d8dd6",
+            "media": "med_0000000000017e999cdbc20a2319b9cb",
+            "at": "f:7608"
+          },
+          "is_error": false,
+          "result_bytes": 491
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

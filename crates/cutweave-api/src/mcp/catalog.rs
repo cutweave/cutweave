@@ -36,9 +36,9 @@ use serde_json::{Value, json};
 
 use crate::mcp::core::{CoreTable, CoreTool, META_ALWAYS_LOAD};
 
-/// `cutweave_search_commands{query, limit?}`.
+/// `cutweave_search_commands{query, limit?, detail?}`.
 pub const SEARCH: &str = "cutweave_search_commands";
-/// `cutweave_describe_command{name}`.
+/// `cutweave_describe_command{name | names[]}`.
 pub const DESCRIBE: &str = "cutweave_describe_command";
 /// `cutweave_execute{steps[{cmd, args}], dry_run?, expected_rev?, checkpoint?}`.
 pub const EXECUTE: &str = "cutweave_execute";
@@ -883,6 +883,13 @@ fn generic_tools(described: bool) -> Vec<(Tool, Target)> {
 }
 
 fn standard_generic_tools() -> Vec<(Tool, Target)> {
+    let mut tools = discovery_tools();
+    tools.extend(run_tools());
+    tools
+}
+
+/// [`SEARCH`] and [`DESCRIBE`]: how an agent finds a command and reads its parameters.
+fn discovery_tools() -> Vec<(Tool, Target)> {
     vec![
         (
             Tool::new(
@@ -895,7 +902,12 @@ fn standard_generic_tools() -> Vec<(Tool, Target)> {
                             "type": "string",
                             "description": "Words matched against names and summaries; \"\" lists all"
                         },
-                        "limit": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Default 20" }
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Default 20" },
+                        "detail": {
+                            "type": "string",
+                            "enum": crate::mcp::search::Detail::NAMES,
+                            "description": "Default summary; schema adds input schemas, 5 hits at most"
+                        }
                     },
                     "required": ["query"],
                     "additionalProperties": false
@@ -907,19 +919,31 @@ fn standard_generic_tools() -> Vec<(Tool, Target)> {
         (
             Tool::new(
                 DESCRIBE,
-                "Get one command's docs, annotations and full input/output JSON Schemas",
+                "Get a command's docs, annotations and full input/output JSON Schemas",
                 object(json!({
                     "type": "object",
                     "properties": {
-                        "name": { "type": "string", "description": "e.g. clip.split" }
+                        "name": { "type": "string", "description": "e.g. clip.split" },
+                        "names": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "minItems": 1,
+                            "maxItems": crate::mcp::search::MAX_DESCRIBED,
+                            "description": "Several commands at once, instead of name"
+                        }
                     },
-                    "required": ["name"],
                     "additionalProperties": false
                 })),
             )
             .with_annotations(generic_annotations(true)),
             Target::Describe,
         ),
+    ]
+}
+
+/// [`EXECUTE`] and [`QUERY`]: how an agent runs a command that is not a listed tool.
+fn run_tools() -> Vec<(Tool, Target)> {
+    vec![
         (
             Tool::new(
                 EXECUTE,

@@ -1,0 +1,5 @@
+---
+source: crates/cutweave-api/tests/mcp.rs
+expression: "serde_json::to_string(&out).unwrap()"
+---
+{"matches":[],"total":0,"hint":"no match; try one word or a namespace: audio, clip, edit, export, item, job, keyframe, media, project, sequence, timeline, track, view"}

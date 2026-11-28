@@ -1744,7 +1744,7 @@ The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mc
 - **Out of scope:** changing what `full` returns; pagination beyond what WP-2I.01 added.
 
 ### WP-2I.09 — Agent evaluation: measure how a model uses the tools, on demand
-- **Area:** crates/cutweave-cli/tests/agent_eval/ or tools/agent-eval/ (a runner outside the gate), docs/reference/agent-eval.md, docs/examples
+- **Area:** crates/cutweave-bench (`src/agent_eval/`, `tests/agent_eval.rs`; as built, see below), scripts/agent-eval-post.py, docs/reference/agent-eval.md, docs/reference/agent-eval/
 - **Depends on:** WP-2I.01; WP-2J.01 (fixtures)
 - **Size:** M
 - **Executor:** opus
@@ -1755,6 +1755,14 @@ The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mc
   - Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.
   - It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.
   - A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.
+  - **As built (2026-11-28):**
+    - The runner is a subcommand of the benchmark tool, `cargo run -p cutweave-bench -- agent-eval`, not a folder under `cutweave-cli` or `tools/`: it reuses that crate's engine child process, MCP client and seeded fixtures. It is not a `just` recipe, so starting it does not start a gate. How to run it, what it costs and how to read the report: `docs/reference/agent-eval.md`.
+    - It talks to Anthropic's Messages API with tool use. The workspace has no HTTP client with TLS and none was added: `scripts/agent-eval-post.py` (Python's standard library) carries each request; the key is read from `ANTHROPIC_API_KEY` there and nowhere else.
+    - Two client modes besides the variants: `upfront` (every definition in the model's context) and `deferred` (the API's tool search with `defer_loading`, the server's always-load marks kept). A default run is 57 sessions.
+    - The "through `cutweave_execute`" variant leaves the task's core tools out of the list the runner shows the model; the server is not changed.
+    - The gate replays ten sessions written by hand, one per task, covering every variant and both client modes.
+    - Measured besides the list above: tokens of the tool definitions (sent, and in the model's context). Tokens of tool results and definitions are estimates, bytes / 4.
+    - **Open:** the first acceptance criterion. No full run has been made (it needs a key and costs a few dollars), so no report is committed under `docs/reference/agent-eval/` yet and the three questions have no numbers. The command line path is the `cli-skill` variant, named but not built (WP-2I.10).
 - **Interfaces:** none in the product.
 - **Acceptance criteria:**
   - One full run on the standard and the described list, with the report committed under `docs/reference/agent-eval/`.

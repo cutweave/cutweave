@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "task": "add-markers",
+  "variant": "no-batch",
+  "client": "upfront",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 26621,
+    "upfront_bytes": 26621,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1136
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_add_marker",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "t": "12s",
+            "label": "Review"
+          },
+          "is_error": false,
+          "result_bytes": 196
+        },
+        {
+          "tool": "timeline_add_marker",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "t": "210s",
+            "label": "Outro"
+          },
+          "is_error": false,
+          "result_bytes": 198
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

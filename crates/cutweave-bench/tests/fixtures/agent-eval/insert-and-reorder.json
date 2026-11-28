@@ -1,0 +1,107 @@
+{
+  "format": 1,
+  "task": "insert-and-reorder",
+  "variant": "batch",
+  "client": "upfront",
+  "model": "none (written by hand)",
+  "endpoint": "/mcp",
+  "tools": {
+    "count": 31,
+    "sent_bytes": 26621,
+    "upfront_bytes": 26621,
+    "loaded_bytes": 0
+  },
+  "system_bytes": 3557,
+  "turns": [
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "project_info",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 1148
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "timeline_get",
+          "input": {
+            "sequence": "seq_000000000001773a979cb7febb72f4a0",
+            "depth": 2
+          },
+          "is_error": false,
+          "result_bytes": 5603
+        },
+        {
+          "tool": "media_list",
+          "input": {},
+          "is_error": false,
+          "result_bytes": 2057
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": [
+        {
+          "tool": "cutweave_execute",
+          "input": {
+            "steps": [
+              {
+                "cmd": "timeline.insert",
+                "args": {
+                  "sequence": "seq_000000000001773a979cb7febb72f4a0",
+                  "track": "trk_000000000002776fb5aceb67356d8dd6",
+                  "media": "med_00000000000778ae8f8f33c837574ab3",
+                  "at": "0s"
+                }
+              },
+              {
+                "cmd": "item.move",
+                "args": {
+                  "item": "itm_00000000001174b38699896267ecf6c0",
+                  "start": "120s"
+                }
+              }
+            ]
+          },
+          "is_error": false,
+          "result_bytes": 2130
+        }
+      ]
+    },
+    {
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "stop_reason": "",
+      "calls": []
+    }
+  ],
+  "ended": "end_turn"
+}

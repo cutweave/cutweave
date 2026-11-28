@@ -1655,6 +1655,17 @@ expression: catalog.tools_json()
                 }
               ]
             }
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "concise",
+              "full",
+              null
+            ]
           }
         },
         "$defs": {
@@ -1994,7 +2005,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "timeline_get",
-      "description": "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`. E.g. {\"sequence\":\"seq_…\",\"depth\":2,\"limit\":50}",
+      "description": "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`; `detail` \"concise\" is half the size. E.g. {\"sequence\":\"seq_…\",\"depth\":2,\"limit\":50}",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -2062,6 +2073,17 @@ expression: catalog.tools_json()
               "null"
             ],
             "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "concise",
+              "full",
+              null
+            ]
           }
         },
         "required": [
@@ -2498,6 +2520,15 @@ expression: catalog.tools_json()
             "minimum": 1,
             "maximum": 50,
             "description": "Default 20"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "names",
+              "summary",
+              "schema"
+            ],
+            "description": "Default summary; schema adds input schemas, 5 hits at most"
           }
         },
         "required": [
@@ -2517,18 +2548,24 @@ expression: catalog.tools_json()
     },
     {
       "name": "cutweave_describe_command",
-      "description": "Get one command's docs, annotations and full input/output JSON Schemas",
+      "description": "Get a command's docs, annotations and full input/output JSON Schemas",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
             "description": "e.g. clip.split"
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 8,
+            "description": "Several commands at once, instead of name"
           }
         },
-        "required": [
-          "name"
-        ],
         "additionalProperties": false
       },
       "annotations": {

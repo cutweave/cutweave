@@ -1,6 +1,6 @@
 [package]
 name = "cutweave-bench"
-description = "Cutweave: seeded benchmark projects, the engine benchmark suite (WP-2J.01) and the crash harness (WP-2J.05)"
+description = "Cutweave: seeded benchmark projects, the engine benchmark suite (WP-2J.01), the crash harness (WP-2J.05) and the agent evaluation (WP-2I.09)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,8 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-# `cutweave-bench gen|run|engine|crash`: the generator, the suite without criterion, the engine
-# child process the start and memory probes measure, and the crash harness (WP-2J.05).
+# `cutweave-bench gen|run|engine|crash|agent-eval`: the generator, the suite without criterion,
+# the engine child process the start and memory probes measure, the crash harness (WP-2J.05)
+# and the agent evaluation (WP-2I.09; on demand, with a model).
 # WP-2J.03 adds `playback|scrub|sync|export`.
 [[bin]]
 name = "cutweave-bench"
@@ -42,8 +43,11 @@ toml.workspace = true
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
 tokio-tungstenite = "=0.29.0"
 futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
-# The crash harness's agent (WP-2J.05): rmcp's own Streamable HTTP client, at the version and
-# with the client features cutweave-api already builds (no new crate in the lock file).
+# The crash harness's agent (WP-2J.05) and the agent evaluation's MCP session (WP-2I.09):
+# rmcp's own Streamable HTTP client, at the version and with the client features cutweave-api
+# already builds (no new crate in the lock file). The evaluation's one HTTPS request to the
+# model's API is made by `scripts/agent-eval-post.py`, not by a crate: reqwest is built
+# without TLS here, and the evaluation adds no dependency.
 rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
 
 [dev-dependencies]

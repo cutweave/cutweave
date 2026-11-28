@@ -96,6 +96,7 @@ pub use tags::{
 pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
 pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
 
+use crate::detail::{Detail, present};
 use crate::project::collect::on_import::{
     CopyOutcome, ImportedFile, ProjectFolder, copy_into_project,
 };
@@ -986,7 +987,9 @@ impl EngineCommand for MediaImport {
 
 // ----- media.list ----------------------------------------------------------------------------
 
-/// Summary of one media asset.
+/// Summary of one media asset. With `detail: "concise"` it is `id`, `kind` and `name`, plus
+/// `folder`, `duration`, `tags` and `rating` when they have a value (and `note` with
+/// `include`); a full read returns `path`, `has_video` and `has_audio`.
 #[wire]
 pub struct MediaSummary {
     /// The asset.
@@ -995,20 +998,54 @@ pub struct MediaSummary {
     pub kind: MediaKind,
     /// The name the bin shows: the display name, else the file name.
     pub name: String,
-    /// The folder of the bin it is in; absent: the top level.
-    pub folder: Option<FolderId>,
-    /// Absolute path when it was last found (file kinds).
-    pub path: Option<String>,
-    /// Playable length, if known.
-    pub duration: Option<Duration>,
-    /// Whether it has pictures.
-    pub has_video: bool,
-    /// Whether it has sound.
-    pub has_audio: bool,
-    /// Its tags, sorted ignoring case and accents.
-    pub tags: Vec<String>,
-    /// Stars, 1 to 5; absent: unrated.
-    pub rating: Option<u8>,
+    /// The folder of the bin it is in; absent: the top level. Concise leaves out `null`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "Option<FolderId>")]
+    #[specta(type = Option<FolderId>)]
+    pub folder: Option<Option<FolderId>>,
+    /// Absolute path when it was last found (file kinds). Concise leaves it out.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[specta(type = Option<String>)]
+    pub path: Option<Option<String>>,
+    /// Playable length, if known. Concise leaves out `null`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "Option<Duration>")]
+    #[specta(type = Option<Duration>)]
+    pub duration: Option<Option<Duration>>,
+    /// Whether it has pictures. Concise leaves it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "bool")]
+    pub has_video: Option<bool>,
+    /// Whether it has sound. Concise leaves it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "bool")]
+    pub has_audio: Option<bool>,
+    /// Its tags, sorted ignoring case and accents. Concise leaves out an empty list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Vec<String>")]
+    pub tags: Option<Vec<String>>,
+    /// Stars, 1 to 5; absent: unrated. Concise leaves out `null`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "Option<u8>")]
+    #[specta(type = Option<u8>)]
+    pub rating: Option<Option<u8>>,
     /// Its note; only with `include: ["note"]`, and left out otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
@@ -1038,7 +1075,10 @@ pub struct MediaListOutput {
 
 /// Lists the media of the project, filtered (also by bin folder, tags, rating and collection)
 /// and ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags
-/// and rating.
+/// and rating. `detail: "concise"` makes each asset smaller: it keeps `id`, `kind` and `name`,
+/// leaves out `path`, `has_video` and `has_audio`, and leaves out `folder`, `duration`, `tags`
+/// and `rating` when they are `null` or empty (a full read returns them). `next_cursor`,
+/// `total` and `matched` are the same in both.
 #[query(
     name = "media.list",
     summary = "List the project's media (filter, sort, paged; default by id)",
@@ -1058,20 +1098,24 @@ pub struct MediaList {
     /// Extra fields per asset: `note`.
     #[serde(default)]
     pub include: Option<Vec<MediaInclude>>,
+    /// `full` (default) or `concise`: id, kind and name, plus folder, duration, tags and
+    /// rating when set; no path or stream flags.
+    #[serde(default)]
+    pub detail: Option<Detail>,
 }
 
-fn summary(m: &MediaAsset, note: bool) -> MediaSummary {
+fn summary(m: &MediaAsset, note: bool, detail: Detail) -> MediaSummary {
     MediaSummary {
         id: m.id,
         kind: m.kind,
         name: asset_name(m).into_owned(),
-        folder: m.folder,
-        path: m.path_abs.clone(),
-        duration: m.probe.duration,
-        has_video: m.has_video(),
-        has_audio: m.has_audio(),
-        tags: m.tags.clone(),
-        rating: m.rating,
+        folder: detail.unless_default(m.folder, &None),
+        path: detail.full_only(m.path_abs.clone()),
+        duration: detail.unless_default(m.probe.duration, &None),
+        has_video: detail.full_only(m.has_video()),
+        has_audio: detail.full_only(m.has_audio()),
+        tags: detail.unless_default(m.tags.clone(), &Vec::new()),
+        rating: detail.unless_default(m.rating, &None),
         note: if note { m.note.clone() } else { None },
     }
 }
@@ -1094,6 +1138,7 @@ impl Query for MediaList {
         let desc = sort.order == MediaSortOrder::Desc;
         let used = needs_used(doc, &filter).then(|| used_media(doc));
         let matcher = Matcher::for_doc(doc, &filter, used.as_ref())?;
+        let detail = self.detail.unwrap_or_default();
         let note = self
             .include
             .as_deref()
@@ -1147,7 +1192,10 @@ impl Query for MediaList {
             None
         };
         Ok(MediaListOutput {
-            media: page.iter().map(|k| summary(k.media, note)).collect(),
+            media: page
+                .iter()
+                .map(|k| summary(k.media, note, detail))
+                .collect(),
             next_cursor,
             total: u32::try_from(doc.media.len()).unwrap_or(u32::MAX),
             matched: u32::try_from(found.len()).unwrap_or(u32::MAX),

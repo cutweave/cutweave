@@ -1162,6 +1162,11 @@ fn media_import_sequence(p: &Pools) -> BoxedStrategy<Value> {
     mix(valid, invalid)
 }
 
+/// The `detail` of `timeline.get` and `media.list` (WP-2I.08): absent, `full` or `concise`.
+fn read_detail() -> impl Strategy<Value = Option<&'static str>> {
+    option::of(select(vec!["full", "concise"]))
+}
+
 fn media_list(p: &Pools) -> BoxedStrategy<Value> {
     let filter = (
         option::weighted(0.5, one_of(p.folders.clone())),
@@ -1180,15 +1185,18 @@ fn media_list(p: &Pools) -> BoxedStrategy<Value> {
         option::of(one_of(p.media_ids())),
         option::weighted(0.4, filter),
         any::<bool>(),
+        read_detail(),
     )
-        .prop_map(|(limit, cursor, filter, note)| {
+        .prop_map(|(limit, cursor, filter, note, detail)| {
             let include = if note { json!(["note"]) } else { Value::Null };
-            json!({"limit": limit, "cursor": cursor, "filter": filter, "include": include})
+            json!({"limit": limit, "cursor": cursor, "filter": filter, "include": include,
+                   "detail": detail})
         })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"limit": 0})),
         Just(json!({"limit": 501})),
+        Just(json!({"detail": "names"})),
         fresh::<FolderId>().prop_map(|folder| json!({"filter": {"folder": folder}})),
     ]
     .boxed();
@@ -2596,15 +2604,17 @@ fn timeline_get(p: &Pools) -> BoxedStrategy<Value> {
         one_of(p.seqs.clone()),
         option::of(0..=2_u8),
         option::weighted(0.3, subsequence(GET_FIELDS.to_vec(), 0..=GET_FIELDS.len())),
+        read_detail(),
     )
-        .prop_map(|(sequence, depth, fields)| {
-            json!({"sequence": sequence, "depth": depth, "fields": fields})
+        .prop_map(|(sequence, depth, fields, detail)| {
+            json!({"sequence": sequence, "depth": depth, "fields": fields, "detail": detail})
         })
         .boxed();
     let invalid = (
         one_of(p.seqs.clone()),
         prop_oneof![
             Just(json!({"depth": 3})),
+            Just(json!({"detail": "tiny"})),
             Just(json!({"fields": ["name", "bogus"]}))
         ],
     )
