@@ -3,7 +3,7 @@
 Performance budgets (docs/01-architecture.md §19) and the benchmark harness (WP-0I.03).
 
 - `budgets.toml`: one `[[budget]]` row per §19 line (`id`, `metric`, `op`, `value`, `unit`, `machine_scope`); exactly 10, asserted by a test. `[[wp]]` rows are limits a work package sets for a metric of its own, and `[[synthetic]]` holds the budget of the smoke metric; neither is a §19 row. `machine_scope` is `["any"]` or reference-machine ids (WP-0I.02); results from other machines skip that row.
-- `result.schema.json`: the result format `{machine, commit, date, toolchain{rustc,ffmpeg,wgpu,electron}, metrics:[{id,value,unit,samples}]}`. Metric ids are budget ids. Rust suites and `scripts/bench/ui-bench.ts` (P2) emit the same shape. The types and the comparison are `cutweave_bench::result`.
+- `result.schema.json`: the result format `{machine, commit, date, toolchain{rustc,ffmpeg,wgpu,electron}, metrics:[{id,value,unit,samples}]}`. Metric ids are budget ids. The Rust suites and the UI suite (below) emit the same shape; `details` is optional and says where the numbers come from (CPU, GPU, memory, how the run was set up). The types and the comparison are `cutweave_bench::result`.
 
 ```
 cargo xtask bench --suite smoke --out results.json [--synthetic-value N]
@@ -54,6 +54,31 @@ The rest (`command_rtt_in_process_*`, `doc_patched_fanout_*`, `placement_ripple_
 `CUTWEAVE_BENCH_PROBES=0` runs criterion only; `CUTWEAVE_BENCH_SMOKE=1` runs everything on a tiny project. `cargo run --release -p cutweave-bench -- run [--smoke] [--with-media]` is the suite without criterion; it exits 1 when a metric is over budget or a probe could not run. The engine process opens the GPU, so on a shared machine run it through `python scripts/gpu-lock.py -- …`.
 
 The same probes run at smoke scale as an ordinary test (`crates/cutweave-bench/tests/smoke.rs`, a few seconds, no GPU), so a change that breaks the suite fails `just check-affected`.
+
+## UI suite (WP-2J.02)
+
+```
+. scripts/ffmpeg/env.sh                       # optional: real thumbnails and waveforms on the timeline
+pnpm --filter @cutweave/desktop perf:ui       # build, generate, measure, print the table, exit 1 over budget
+pnpm --filter @cutweave/desktop perf:ui --no-build --slow 6   # must FAIL: the budgets catch a slow editor
+```
+
+It drives the built app with the release engine on copies of P-400 and P-5K, the way the user flows do (real clicks, the wheel, a drag; only the OS file picker is stubbed), and measures from outside: `performance` in the page, the DevTools protocol and the diagnostics the app already has. No product code knows about it. The app runs on the hidden desktop (`scripts/hidden-desktop.py`) and under the machine's GPU lock (`scripts/gpu-lock.py`, which also lowers the run's priority; `--no-lock` on a machine that runs nothing else). The code is `apps/desktop/e2e/perf/` (`suite.ts` the probes, `result.ts` the numbers), started by `apps/desktop/scripts/perf-ui.ts`.
+
+| Metric | How it is measured |
+|---|---|
+| `app_start_ms` | the app process's creation to the frame in which the editor shows "Engine connected" on an untitled project, on a fresh profile. `app_start_warm_ms` is the median of 3 more starts on that profile; `app_first_paint_ms` the window's first contentful paint |
+| `project_open_1h_ui_ms` | P-400: the click on File > Open project… to the second animation frame after the editor's document holds every item (the frame after the timeline drew them), median of 3 opens with P-short opened in between (`…_first_ms`, `…_max_ms`). `project_open_p5k_ui_ms` is one open of P-5K |
+| `ui_command_rtt_p95_ms` | P-5K: a clip is dragged at a hand's pace (the flows' `handPacedDrag`: a move every 16 ms whether or not the app keeps up) until 500 updates came back; each is the app's own round trip (User Timing `cutweave.timeline.rtt`: UI, engine, patch, UI). With it: `ui_drag_fps` and `ui_drag_frame_p95_ms` (the page's frame intervals during the drags) and `ui_drag_script_ms_per_update`, `ui_drag_layout_ms_per_update` (main-thread script, and style plus layout, per update, from Chromium's counters: the whole window's cost of following a drag, Inspector and bin included) |
+| `timeline_panzoom_5000_fps` | P-5K: 20 s of wheel pan (out and back at up to 3,000 px a second, half of it zoomed out to a few hundred clips on screen) and 10 s of Ctrl+wheel zoom in and out, the events sent at a steady pace; frames divided by time, from an animation-frame loop in the page. `timeline_panzoom_5000_frame_p95_ms` is the p95 frame time; `timeline_pan_*` and `timeline_zoom_*` are the two parts; `ui_idle_fps` is the page's rate with nothing happening, the ceiling of the others |
+| `app_memory_1h_mb`, `app_memory_p5k_mb` | working sets of every app process plus the engine, right after the project opened (`engine_memory_*_mb` is the engine's share, `editor_js_heap_p5k_mb` the editor's JavaScript heap) |
+| `timeline.*` | the timeline renderer alone on P-5K's model with every keyframe lane open: `packages/timeline/bench` in headless Chromium, no app and no engine. A slow frame in the app with a fast one here is the app's, not the renderer's |
+
+`app_start_ms` and `timeline_panzoom_5000_fps` are §19 rows; `project_open_1h_ui_ms`, `ui_command_rtt_p95_ms` and `timeline_panzoom_5000_frame_p95_ms` have `[[wp]]` rows; the rest is informational. The result goes to `bench-results/{machine}/{date}.ui.json` (next to the engine suite's `{date}.json`; `cargo xtask bench-check <file> [--baseline <file>]` judges it again), with the CPU, GPU, memory, window size, engine binary and media mode in `details`. `--slow N` slows the editor's main thread N times while the timeline is measured and writes `{date}.ui-slowed.json`: the stand-in for a slowed build.
+
+Not measured, because nothing outside the app can see it: what one panel (the Inspector, the bin) costs during a drag by itself, and the moment the canvas has drawn (the open time ends on the frame after the document arrived).
+
+Every probe runs once on the tiny P-smoke project, with no thresholds, as `apps/desktop/e2e/flows/perf-smoke.spec.ts` in the user-flow suite (`just e2e-flows`), and the arithmetic is unit-tested (`apps/desktop/e2e/perf/result.test.ts`), so a change that breaks the suite fails the gate.
 
 ## Crash harness (WP-2J.05)
 
