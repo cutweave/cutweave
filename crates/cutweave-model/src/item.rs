@@ -495,6 +495,12 @@ impl Item {
         each!(self, c => c.id)
     }
 
+    /// Gives the item a new ID (a copy or the right part of a split). On a track, insert the
+    /// item after changing it.
+    pub fn set_id(&mut self, id: ItemId) {
+        each!(self, c => c.id = id);
+    }
+
     /// Timeline position of the first frame.
     #[must_use]
     pub fn start(&self) -> Time {
@@ -659,6 +665,11 @@ impl Item {
     /// The visual properties, mutably.
     pub fn visual_mut(&mut self) -> &mut VisualProps {
         each!(self, c => &mut c.visual)
+    }
+
+    /// Sets or clears the display name.
+    pub fn set_name(&mut self, name: Option<String>) {
+        each!(self, c => c.name = name);
     }
 
     /// The display name, if the item has one.

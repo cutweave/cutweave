@@ -384,9 +384,7 @@ impl<'d> Edit<'d> {
     pub(crate) fn rekey(&mut self, id: ItemId, rule: Retime) {
         let mut failed = None;
         self.update(id, |i| {
-            if let Some(c) = i.as_clip_mut()
-                && let Err(e) = rekey(c, rule)
-            {
+            if let Err(e) = rekey(i, rule) {
                 failed = Some(e);
             }
         });
@@ -560,25 +558,23 @@ impl<'d> Edit<'d> {
             split_markers(item.markers(), cut - start, resume - start);
         let mut part = item.clone();
         let tail = dur(end - resume);
-        if let Item::Clip(c) = &mut part {
-            // The right part's keys: the window of the part, shifted to its own start (§8.1).
-            if let Err(e) = rekey(
-                c,
-                Retime::Right {
-                    from: time(resume - start),
-                    to: time(end - start),
-                },
-            ) {
-                self.defer(e);
-            }
-            c.id = right;
-            c.start = time(resume);
-            c.duration = tail;
-            c.linked_group = group;
-            c.markers = right_markers;
-            if let Some(source) = right_source {
-                c.source_in = source;
-            }
+        // The right part's keys: the window of the part, shifted to its own start (§8.1).
+        if let Err(e) = rekey(
+            &mut part,
+            Retime::Right {
+                from: time(resume - start),
+                to: time(end - start),
+            },
+        ) {
+            self.defer(e);
+        }
+        part.set_id(right);
+        part.set_start(time(resume));
+        part.set_duration(tail);
+        part.set_linked_group(group);
+        *part.markers_mut() = right_markers;
+        if let (Some(c), Some(source)) = (part.as_clip_mut(), right_source) {
+            c.source_in = source;
         }
         self.update(id, |i| {
             i.set_duration(dur(cut - start));

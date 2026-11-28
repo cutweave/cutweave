@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
-use cutweave_model::{Clip, Easing, ItemId, Project, PropId, Rounding, Time, TimeInput};
+use cutweave_model::{Easing, Item, ItemId, Project, PropId, Rounding, Time, TimeInput};
 
 use super::{
     InterpInput, KeyRef, KeyReq, KeyValue, MAX_KEYS_PER_CALL, Target, TimeArg, Wire, check_fine,
@@ -13,23 +13,31 @@ use super::{
     sequence_time, set_keys, targets,
 };
 
+/// Runs `f` on the item. A text item with a built-in style gets its own copy first, so its
+/// style properties can be keyed.
 fn update(
     tx: &mut Tx<'_>,
     id: ItemId,
-    f: impl FnOnce(&mut Clip) -> Result<(), CmdError>,
+    f: impl FnOnce(&mut Item) -> Result<(), CmdError>,
 ) -> Result<(), CmdError> {
     tx.update_item(id, |item| {
-        let clip = item
-            .as_clip_mut()
-            .ok_or_else(|| CmdError::unsupported("only clips have animatable properties"))?;
-        f(clip)
+        if let Some(text) = item.as_text_mut() {
+            text.detach_style();
+        }
+        f(item)
     })
 }
 
-fn clip_of(doc: &Project, id: ItemId) -> Result<&Clip, CmdError> {
-    doc.find_item(&id)
-        .and_then(|at| at.item.as_clip())
-        .ok_or_else(|| CmdError::unsupported("only clips have animatable properties"))
+/// A copy of the item to try an edit on (a text item with its own style, see [`update`]).
+fn item_of(doc: &Project, id: ItemId) -> Result<Item, CmdError> {
+    let mut item = doc
+        .find_item(&id)
+        .map(|at| at.item.clone())
+        .ok_or_else(|| CmdError::not_found(cutweave_model::EntityKind::Item, id))?;
+    if let Some(text) = item.as_text_mut() {
+        text.detach_style();
+    }
+    Ok(item)
 }
 
 // ----- keyframe.set ----------------------------------------------------------------------------
@@ -154,7 +162,7 @@ impl Command for KeyframeSet {
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
         let plan = self.plan(ctx.doc())?;
         for (target, reqs) in &plan.per_item {
-            let mut clip = clip_of(ctx.doc(), target.id)?.clone();
+            let mut clip = item_of(ctx.doc(), target.id)?.clone();
             set_keys(
                 &mut clip,
                 self.prop,
@@ -251,7 +259,7 @@ fn missing(item: ItemId, prop: PropId, t: Time) -> CmdError {
 }
 
 /// `NotFound` for the first addressed key that does not exist on the clip.
-fn check_exist(clip: &Clip, item: ItemId, keys: &[KeyRef]) -> Result<(), CmdError> {
+fn check_exist(clip: &Item, item: ItemId, keys: &[KeyRef]) -> Result<(), CmdError> {
     for k in keys {
         let found = on_prop!(clip, k.prop, a => a
             .keyframes()
@@ -264,7 +272,7 @@ fn check_exist(clip: &Clip, item: ItemId, keys: &[KeyRef]) -> Result<(), CmdErro
 }
 
 impl KeyframeDelete {
-    fn run(&self, clip: &mut Clip) -> Result<KeyframeDeleteOutput, CmdError> {
+    fn run(&self, clip: &mut Item) -> Result<KeyframeDeleteOutput, CmdError> {
         check_keys(&self.keys)?;
         check_exist(clip, self.item, &self.keys)?;
         let mut now_static = Vec::new();
@@ -296,7 +304,7 @@ impl Command for KeyframeDelete {
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
         one_target(ctx.doc(), self.item)?;
-        let mut clip = clip_of(ctx.doc(), self.item)?.clone();
+        let mut clip = item_of(ctx.doc(), self.item)?.clone();
         self.run(&mut clip).map(drop)
     }
 
@@ -417,7 +425,7 @@ impl KeyframeMove {
         Ok(out)
     }
 
-    fn run(&self, clip: &mut Clip, target: &Target) -> Result<KeyframeMoveOutput, CmdError> {
+    fn run(&self, clip: &mut Item, target: &Target) -> Result<KeyframeMoveOutput, CmdError> {
         let deltas = self.deltas(target)?;
         check_exist(clip, self.item, &self.keys)?;
         let mut moved = Vec::new();
@@ -470,7 +478,7 @@ impl Command for KeyframeMove {
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
         let target = one_target(ctx.doc(), self.item)?;
-        let mut clip = clip_of(ctx.doc(), self.item)?.clone();
+        let mut clip = item_of(ctx.doc(), self.item)?.clone();
         self.run(&mut clip, &target).map(drop)
     }
 
@@ -517,7 +525,7 @@ pub struct KeyframeSetInterp {
 }
 
 impl KeyframeSetInterp {
-    fn run(&self, clip: &mut Clip) -> Result<KeyframeSetInterpOutput, CmdError> {
+    fn run(&self, clip: &mut Item) -> Result<KeyframeSetInterpOutput, CmdError> {
         check_keys(&self.keys)?;
         let interp = resolve_interp("", self.interp.as_ref(), self.easing, None)?
             .ok_or_else(|| CmdError::invalid("", "give `interp` or `easing`"))?;
@@ -542,7 +550,7 @@ impl Command for KeyframeSetInterp {
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
         one_target(ctx.doc(), self.item)?;
-        let mut clip = clip_of(ctx.doc(), self.item)?.clone();
+        let mut clip = item_of(ctx.doc(), self.item)?.clone();
         self.run(&mut clip).map(drop)
     }
 
@@ -601,14 +609,14 @@ impl KeyframeClear {
         }
     }
 
-    fn run(&self, clip: &mut Clip, t: Option<Time>) -> KeyValue {
+    fn run(&self, clip: &mut Item, t: Option<Time>) -> Result<KeyValue, CmdError> {
         let spec = self.prop.spec();
-        on_prop_mut!(clip, self.prop, a => {
+        Ok(on_prop_mut!(clip, self.prop, a => {
             let next = a.cleared(t, spec.clamp);
             let value = next.value().wrap();
             *a = next;
             value
-        })
+        }))
     }
 }
 
@@ -630,7 +638,7 @@ impl Command for KeyframeClear {
             let t = self.time(&target)?;
             let mut v = None;
             update(tx, target.id, |clip| {
-                v = Some(self.run(clip, t));
+                v = Some(self.run(clip, t)?);
                 Ok(())
             })?;
             value = value.or(v);

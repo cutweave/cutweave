@@ -779,9 +779,10 @@ fn frozen(params: &Value, output: &Value, before: &Project, after: &Project) -> 
     }
     for id in PropId::ALL {
         let keyed = match c.prop(id) {
-            PropRef::Scalar(a) => a.is_animated(),
-            PropRef::Vec2(a) => a.is_animated(),
-            PropRef::Bool(a) => a.is_animated(),
+            Some(PropRef::Scalar(a)) => a.is_animated(),
+            Some(PropRef::Vec2(a)) => a.is_animated(),
+            Some(PropRef::Bool(a)) => a.is_animated(),
+            None => false,
         };
         if keyed {
             return Err(format!("clip.freeze_frame: the still keeps keys of {id:?}"));

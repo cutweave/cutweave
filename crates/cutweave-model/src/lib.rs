@@ -42,6 +42,7 @@ mod speed;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod text;
+mod text_patch;
 mod time;
 mod timecode;
 mod validate;
@@ -76,6 +77,7 @@ pub use item::{
     Vec2, VisualProps,
 };
 pub use text::TextItem;
+pub use text_patch::{RunStylePatch, TextStylePatch};
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, ImageSequence, MAX_IMAGE_SEQUENCE_FRAMES,

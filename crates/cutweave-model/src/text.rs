@@ -57,7 +57,8 @@ pub struct TextError {
 }
 
 impl TextError {
-    fn at(path: impl Into<String>, msg: impl Into<String>) -> TextError {
+    /// An error at `path`.
+    pub fn new(path: impl Into<String>, msg: impl Into<String>) -> TextError {
         TextError {
             path: path.into(),
             msg: msg.into(),
@@ -76,7 +77,7 @@ fn length(path: &str, v: f64, min: f64, max: f64, what: &str) -> Result<(), Text
     if v.is_finite() && v >= min && v <= max {
         Ok(())
     } else {
-        Err(TextError::at(
+        Err(TextError::new(
             path,
             format!("{what} must be a number from {min} to {max}"),
         ))
@@ -127,32 +128,32 @@ impl FontSpec {
     pub fn check(&self) -> Result<(), TextError> {
         let n = self.family.chars().count();
         if n == 0 || n > MAX_FAMILY_CHARS || self.family.chars().any(char::is_control) {
-            return Err(TextError::at(
+            return Err(TextError::new(
                 "/family",
                 format!("the family must be 1 to {MAX_FAMILY_CHARS} characters, no control characters"),
             ));
         }
         if !(1..=1000).contains(&self.weight) {
-            return Err(TextError::at("/weight", "the weight must be from 1 to 1000"));
+            return Err(TextError::new("/weight", "the weight must be from 1 to 1000"));
         }
         if self.axes.len() > MAX_FONT_AXES {
-            return Err(TextError::at(
+            return Err(TextError::new(
                 "/axes",
                 format!("at most {MAX_FONT_AXES} axes"),
             ));
         }
         for (i, axis) in self.axes.iter().enumerate() {
             if axis.tag.len() != 4 || !axis.tag.bytes().all(|b| b.is_ascii_graphic()) {
-                return Err(TextError::at(
+                return Err(TextError::new(
                     format!("/axes/{i}/tag"),
                     "an axis tag is four visible ASCII characters",
                 ));
             }
             if !axis.value.is_finite() {
-                return Err(TextError::at(format!("/axes/{i}/value"), "must be finite"));
+                return Err(TextError::new(format!("/axes/{i}/value"), "must be finite"));
             }
             if i > 0 && self.axes[i - 1].tag >= axis.tag {
-                return Err(TextError::at(
+                return Err(TextError::new(
                     format!("/axes/{i}/tag"),
                     "axes are sorted by tag, each once",
                 ));
@@ -215,7 +216,7 @@ impl Fill {
 
     fn check_stops(stops: &[GradientStop]) -> Result<(), TextError> {
         if !(2..=MAX_GRADIENT_STOPS).contains(&stops.len()) {
-            return Err(TextError::at(
+            return Err(TextError::new(
                 "/stops",
                 format!("a gradient has 2 to {MAX_GRADIENT_STOPS} stops"),
             ));
@@ -224,7 +225,7 @@ impl Fill {
         for (i, s) in stops.iter().enumerate() {
             length(&format!("/stops/{i}/at"), s.at, 0.0, 1.0, "a stop position")?;
             if s.at < last {
-                return Err(TextError::at(
+                return Err(TextError::new(
                     format!("/stops/{i}/at"),
                     "stops go in ascending order",
                 ));
@@ -239,7 +240,7 @@ impl Fill {
         match self {
             Fill::Solid { color } => color
                 .check_range(crate::ValueRange::ANY)
-                .map_err(|e| TextError::at("/color", e.to_string())),
+                .map_err(|e| TextError::new("/color", e.to_string())),
             Fill::Linear { angle, stops } => {
                 length("/angle", *angle, -36_000.0, 36_000.0, "the angle")?;
                 Fill::check_stops(stops)
@@ -250,7 +251,7 @@ impl Fill {
                 stops,
             } => {
                 if !center.is_finite() {
-                    return Err(TextError::at("/center", "must be finite"));
+                    return Err(TextError::new("/center", "must be finite"));
                 }
                 length("/radius", *radius, 0.0, 10.0, "the radius")?;
                 Fill::check_stops(stops)
@@ -327,7 +328,7 @@ impl Shadow {
             || self.offset.x.abs() > MAX_LENGTH
             || self.offset.y.abs() > MAX_LENGTH
         {
-            return Err(TextError::at(
+            return Err(TextError::new(
                 "/offset",
                 format!("each offset is within -{MAX_LENGTH} to {MAX_LENGTH}"),
             ));
@@ -566,7 +567,7 @@ fn check_all<T>(
     check: impl Fn(&T) -> Result<(), TextError>,
 ) -> Result<(), TextError> {
     if items.len() > max {
-        return Err(TextError::at(base, format!("at most {max} entries")));
+        return Err(TextError::new(base, format!("at most {max} entries")));
     }
     for (i, item) in items.iter().enumerate() {
         check(item).map_err(|e| e.under(&format!("{base}/{i}")))?;
@@ -596,7 +597,7 @@ impl TextStyle {
         ] {
             a.check_range(crate::ValueRange::new(min, max))
                 .map_err(|_| {
-                    TextError::at(path, format!("{what} must be a number from {min} to {max}"))
+                    TextError::new(path, format!("{what} must be a number from {min} to {max}"))
                 })?;
         }
         self.fill.check().map_err(|e| e.under("/fill"))?;
@@ -661,7 +662,7 @@ impl RunStyle {
         }
         if let Some(f) = &self.fill {
             if matches!(f, Fill::Solid { color } if color.is_animated()) {
-                return Err(TextError::at("/fill", "a run's fill cannot be keyed"));
+                return Err(TextError::new("/fill", "a run's fill cannot be keyed"));
             }
             f.check().map_err(|e| e.under("/fill"))?;
         }
@@ -745,20 +746,20 @@ impl RichText {
     /// Checks sizes and run styles.
     pub fn check(&self) -> Result<(), TextError> {
         if self.runs.len() > MAX_RUNS {
-            return Err(TextError::at(
+            return Err(TextError::new(
                 "/runs",
                 format!("at most {MAX_RUNS} runs; merge runs with the same style"),
             ));
         }
         if self.char_count() > MAX_TEXT_CHARS {
-            return Err(TextError::at(
+            return Err(TextError::new(
                 "/runs",
                 format!("at most {MAX_TEXT_CHARS} characters"),
             ));
         }
         for (i, run) in self.runs.iter().enumerate() {
             if run.text.is_empty() {
-                return Err(TextError::at(
+                return Err(TextError::new(
                     format!("/runs/{i}/text"),
                     "a run is not empty",
                 ));
@@ -872,7 +873,7 @@ impl TextBox {
             if let Some(v) = v
                 && !(v.is_finite() && v > 0.0 && v <= 4.0)
             {
-                return Err(TextError::at(
+                return Err(TextError::new(
                     path,
                     "a box side must be above 0 and at most 4 canvas units; leave it out for automatic",
                 ));
@@ -1095,7 +1096,7 @@ impl TextItem {
                 .map_err(|e| e.under("/style/style"))?,
             TextStyleRef::Named { name } => {
                 if builtin_style(name).is_none() {
-                    return Err(TextError::at(
+                    return Err(TextError::new(
                         "/style/name",
                         format!("unknown style `{name}`; use title, subtitle or body"),
                     ));

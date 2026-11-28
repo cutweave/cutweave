@@ -536,21 +536,21 @@ impl ItemSetProps {
     /// Applies the request to one clip.
     fn update_clip(
         &self,
-        clip: &mut cutweave_model::Clip,
+        clip: &mut Item,
         plan: &SetPlan,
         target: &keyframe::Target,
     ) -> Result<ItemChange, CmdError> {
         let mut out = ItemChange::default();
         if let Some(name) = plan.name.clone().map(|n| (!n.is_empty()).then_some(n))
-            && clip.name != name
+            && clip.name().map(str::to_owned) != name
         {
-            clip.name = name;
+            clip.set_name(name);
             out.changed.push("name".into());
         }
         if let Some(v) = self.props.enabled
-            && clip.enabled != v
+            && clip.enabled() != v
         {
-            clip.enabled = v;
+            clip.set_enabled(v);
             out.changed.push("enabled".into());
         }
         let auto_key = self.auto_key.unwrap_or(true);
@@ -598,14 +598,14 @@ impl ItemSetProps {
                     out.changed.push(id.to_string());
                 }
                 out.keyed.push((*id, t));
-            } else if keyframe::set_static(clip, *id, value) {
+            } else if keyframe::set_static(clip, *id, value)? {
                 out.changed.push(id.to_string());
             }
         }
         if let Some(mode) = self.props.blend_mode
-            && clip.visual.blend_mode != mode
+            && clip.visual().blend_mode != mode
         {
-            clip.visual.blend_mode = mode;
+            clip.visual_mut().blend_mode = mode;
             out.changed.push("blend_mode".into());
         }
         Ok(out)
@@ -619,11 +619,7 @@ impl Command for ItemSetProps {
         let (plan, targets) = self.plan(ctx.doc())?;
         for target in targets {
             let at = ctx.item(target.id)?;
-            let mut clip = at
-                .item
-                .as_clip()
-                .ok_or_else(|| CmdError::unsupported("only clips have these properties"))?
-                .clone();
+            let mut clip = at.item.clone();
             self.update_clip(&mut clip, &plan, &target)?;
         }
         Ok(())
@@ -634,12 +630,7 @@ impl Command for ItemSetProps {
         let mut changed: Vec<String> = Vec::new();
         let mut keyed = Vec::new();
         for target in &targets {
-            let done = tx.update_item(target.id, |item| {
-                let Some(clip) = item.as_clip_mut() else {
-                    return Err(CmdError::unsupported("only clips have these properties"));
-                };
-                self.update_clip(clip, &plan, target)
-            })?;
+            let done = tx.update_item(target.id, |item| self.update_clip(item, &plan, target))?;
             for c in done.changed {
                 if !changed.contains(&c) {
                     changed.push(c);
@@ -752,7 +743,9 @@ impl Query for ItemGet {
             sequence: at.sequence.id,
             track: at.track.id,
             item: item_summary(at.item),
-            name: clip.filter(|_| wants("name")).and_then(|c| c.name.clone()),
+            name: wants("name")
+                .then(|| at.item.name().map(str::to_owned))
+                .flatten(),
             source: clip.filter(|_| wants("source")).map(|c| ItemSource {
                 media: c.media,
                 source_in: c.source_in,
@@ -763,7 +756,7 @@ impl Query for ItemGet {
                 freeze: c.freeze,
             }),
             audio: clip.filter(|_| wants("audio")).map(|c| c.audio.clone()),
-            visual: clip.filter(|_| wants("visual")).map(|c| c.visual.clone()),
+            visual: wants("visual").then(|| at.item.visual().clone()),
             linked: group.iter().skip(1).map(|m| m.item.id()).collect(),
             attached_to: at.item.attached_to(),
             children: at

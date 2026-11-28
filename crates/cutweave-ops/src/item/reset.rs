@@ -3,7 +3,7 @@
 //! clip context menu): properties go back to their defaults, keys removed, in one undo step.
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
-use cutweave_model::{BlendMode, Clip, Fade, ItemId, Project, PropId, PropValue};
+use cutweave_model::{BlendMode, Clip, Fade, Item, ItemId, Project, PropId, PropValue};
 
 use crate::keyframe::{self, KeyValue};
 
@@ -104,32 +104,42 @@ impl ItemResetProps {
                 Err(CmdError::invalid("/props", "give at least one property"))
             }
             (None, Some(list)) => Ok((list.clone(), false, false)),
-            (None, None) => Ok((PropId::ALL.to_vec(), true, true)),
+            (None, None) => Ok((
+                PropId::ALL
+                    .into_iter()
+                    .filter(|p| !p.is_text_style())
+                    .collect(),
+                true,
+                true,
+            )),
         }
     }
 
-    fn reset(clip: &mut Clip, what: &(Vec<PropId>, bool, bool)) -> Vec<String> {
+    fn reset(clip: &mut Item, what: &(Vec<PropId>, bool, bool)) -> Result<Vec<String>, CmdError> {
         let mut changed = Vec::new();
         for id in &what.0 {
-            if keyframe::set_static(clip, *id, &default_value(*id)) {
+            if keyframe::set_static(clip, *id, &default_value(*id))? {
                 changed.push(id.to_string());
             }
         }
-        if what.1 && clip.visual.blend_mode != BlendMode::Normal {
-            clip.visual.blend_mode = BlendMode::Normal;
+        if what.1 && clip.visual().blend_mode != BlendMode::Normal {
+            clip.visual_mut().blend_mode = BlendMode::Normal;
             changed.push("blend_mode".into());
         }
+        let Some(clip_audio) = clip.as_clip_mut().map(|c| &mut c.audio) else {
+            return Ok(changed);
+        };
         if what.2 {
-            if clip.audio.fade_in != Fade::default() {
-                clip.audio.fade_in = Fade::default();
+            if clip_audio.fade_in != Fade::default() {
+                clip_audio.fade_in = Fade::default();
                 changed.push("audio.fade_in".into());
             }
-            if clip.audio.fade_out != Fade::default() {
-                clip.audio.fade_out = Fade::default();
+            if clip_audio.fade_out != Fade::default() {
+                clip_audio.fade_out = Fade::default();
                 changed.push("audio.fade_out".into());
             }
         }
-        changed
+        Ok(changed)
     }
 
     fn clip_of(doc: &Project, id: ItemId) -> Result<&Clip, CmdError> {
@@ -156,10 +166,7 @@ impl Command for ItemResetProps {
         let mut changed: Vec<String> = Vec::new();
         for t in &targets {
             let done = tx.update_item(t.id, |item| {
-                let clip = item
-                    .as_clip_mut()
-                    .ok_or_else(|| CmdError::unsupported("only clips have these properties"))?;
-                Ok(ItemResetProps::reset(clip, &what))
+                ItemResetProps::reset(item, &what)
             })?;
             for c in done {
                 if !changed.contains(&c) {

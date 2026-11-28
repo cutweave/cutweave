@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 
 use cutweave_commands::{CmdError, Registry, RegistryError, ResourceKind, wire};
 use cutweave_model::{
-    AnimValue, Animatable, Clip, Easing, EntityKind, FrameRate, Interp, ItemId, KeyframeError,
+    AnimValue, Animatable, Easing, EntityKind, FrameRate, Interp, Item, ItemId, KeyframeError,
     Project, PropId, PropSpec, Rounding, SampleRate, Time, TimeInput, ValueType, Vec2,
 };
 
@@ -222,12 +222,20 @@ impl Wire for bool {
 
 /// Runs `$body` with `$a` bound to the mutable animatable of property `$id` of `$clip`, once
 /// per value type (so `$body` is generic code over [`Wire`]).
+///
+/// An item without the property (an audio property of a text item, a text property of a clip)
+/// makes the enclosing function return `Unsupported`; with `else $none` the whole expression is
+/// `$none` instead.
 macro_rules! on_prop_mut {
     ($clip:expr, $id:expr, $a:ident => $body:expr) => {
+        $crate::keyframe::on_prop_mut!($clip, $id, $a => $body, else return Err($crate::keyframe::no_prop($id)))
+    };
+    ($clip:expr, $id:expr, $a:ident => $body:expr, else $none:expr) => {
         match $clip.prop_mut($id) {
-            cutweave_model::PropMut::Scalar($a) => $body,
-            cutweave_model::PropMut::Vec2($a) => $body,
-            cutweave_model::PropMut::Bool($a) => $body,
+            Some(cutweave_model::PropMut::Scalar($a)) => $body,
+            Some(cutweave_model::PropMut::Vec2($a)) => $body,
+            Some(cutweave_model::PropMut::Bool($a)) => $body,
+            None => $none,
         }
     };
 }
@@ -235,20 +243,35 @@ macro_rules! on_prop_mut {
 /// The shared-reference twin of [`on_prop_mut`].
 macro_rules! on_prop {
     ($clip:expr, $id:expr, $a:ident => $body:expr) => {
+        $crate::keyframe::on_prop!($clip, $id, $a => $body, else return Err($crate::keyframe::no_prop($id)))
+    };
+    ($clip:expr, $id:expr, $a:ident => $body:expr, else $none:expr) => {
         match $clip.prop($id) {
-            cutweave_model::PropRef::Scalar($a) => $body,
-            cutweave_model::PropRef::Vec2($a) => $body,
-            cutweave_model::PropRef::Bool($a) => $body,
+            Some(cutweave_model::PropRef::Scalar($a)) => $body,
+            Some(cutweave_model::PropRef::Vec2($a)) => $body,
+            Some(cutweave_model::PropRef::Bool($a)) => $body,
+            None => $none,
         }
     };
 }
 pub(crate) use on_prop;
 pub(crate) use on_prop_mut;
 
+/// The error for a property the item does not have.
+pub(crate) fn no_prop(id: PropId) -> CmdError {
+    CmdError::unsupported(format!(
+        "this item has no `{id}` property (text properties belong to text items, audio          properties to clips)"
+    ))
+}
+
 /// Sets a property to a static value (dropping any keys), returning whether its value
 /// changed. A static property that already has the value is untouched; the value must have the
 /// property's type and fit its range (callers validate).
-pub(crate) fn set_static(clip: &mut Clip, id: PropId, value: &KeyValue) -> bool {
+pub(crate) fn set_static(
+    clip: &mut Item,
+    id: PropId,
+    value: &KeyValue,
+) -> Result<bool, CmdError> {
     fn one<T: Wire>(a: &mut Animatable<T>, value: &KeyValue) -> bool {
         match T::pick(value) {
             Some(v) if *a != Animatable::Static(v.clone()) => {
@@ -258,12 +281,12 @@ pub(crate) fn set_static(clip: &mut Clip, id: PropId, value: &KeyValue) -> bool 
             _ => false,
         }
     }
-    on_prop_mut!(clip, id, a => one(a, value))
+    Ok(on_prop_mut!(clip, id, a => one(a, value)))
 }
 
 /// Whether the property is animated.
-pub(crate) fn is_animated(clip: &Clip, id: PropId) -> bool {
-    on_prop!(clip, id, a => a.is_animated())
+pub(crate) fn is_animated(clip: &Item, id: PropId) -> bool {
+    on_prop!(clip, id, a => a.is_animated(), else false)
 }
 
 // ----- errors ----------------------------------------------------------------------------------
@@ -325,13 +348,10 @@ pub(crate) fn targets(
         let (_, group) = members(doc, id, false)?;
         ensure_unlocked(doc, &group)?;
         let Located { item, .. } = &group[0];
-        let clip = item
-            .as_clip()
-            .ok_or_else(|| CmdError::unsupported("only clips have animatable properties"))?;
         out.push(Target {
             id,
-            start: clip.start,
-            duration: clip.duration.flicks(),
+            start: item.start(),
+            duration: item.duration().flicks(),
             rate: seq.format.frame_rate,
             samples: seq.format.sample_rate,
         });
@@ -518,7 +538,7 @@ pub(crate) struct KeySet {
 /// [`Animatable::set_key`]. `pointer(i)` is where key `i` sits in the request params. Returns
 /// what happened to each key, in order, and whether the property changed.
 pub(crate) fn set_keys(
-    clip: &mut Clip,
+    clip: &mut Item,
     id: PropId,
     keys: &[KeyReq],
     replace: bool,
@@ -624,6 +644,6 @@ pub(crate) fn check_value_type(
 }
 
 /// Applies a retiming rule to a clip inside a placement edit's clone of the item.
-pub(crate) fn rekey(clip: &mut Clip, rule: retime::Retime) -> Result<(), CmdError> {
-    retime::retime_clip(clip, rule).map_err(|e| retime_error(&e))
+pub(crate) fn rekey(clip: &mut Item, rule: retime::Retime) -> Result<(), CmdError> {
+    retime::retime_item(clip, rule).map_err(|e| retime_error(&e))
 }

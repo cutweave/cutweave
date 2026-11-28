@@ -458,15 +458,15 @@ impl Pools {
 /// The keys of a clip's animated properties.
 fn item_keys(item: &cutweave_model::Item) -> Vec<(&'static str, i64)> {
     use cutweave_model::{PropId, PropRef};
-    let Some(clip) = item.as_clip() else {
-        return Vec::new();
-    };
     let mut out = Vec::new();
     for id in PropId::ALL {
-        let times: Vec<i64> = match clip.prop(id) {
-            PropRef::Scalar(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
-            PropRef::Vec2(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
-            PropRef::Bool(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+        let times: Vec<i64> = match item.prop(id) {
+            Some(PropRef::Scalar(a)) => {
+                a.sample_times().map(cutweave_model::Time::flicks).collect()
+            }
+            Some(PropRef::Vec2(a)) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+            Some(PropRef::Bool(a)) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+            None => Vec::new(),
         };
         out.extend(times.into_iter().map(|t| (id.as_str(), t)));
     }
