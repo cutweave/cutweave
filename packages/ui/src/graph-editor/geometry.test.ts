@@ -211,7 +211,12 @@ describe("what is under the pointer", () => {
   });
 
   it("collects the keys inside a box, whichever way it was dragged", () => {
-    const box = boxOf(xOf(VP, PLOT, 800), yOf(VP, PLOT, 40), xOf(VP, PLOT, 200), yOf(VP, PLOT, 120));
+    const box = boxOf(
+      xOf(VP, PLOT, 800),
+      yOf(VP, PLOT, 40),
+      xOf(VP, PLOT, 200),
+      yOf(VP, PLOT, 120),
+    );
     expect(keysInBox(times, VP, PLOT, toY, box)).toEqual([1, 2, 3]);
     const low = boxOf(xOf(VP, PLOT, 200), yOf(VP, PLOT, 60), xOf(VP, PLOT, 800), yOf(VP, PLOT, 40));
     expect(keysInBox(times, VP, PLOT, toY, low)).toEqual([2]);

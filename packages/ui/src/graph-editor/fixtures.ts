@@ -150,7 +150,10 @@ export function fixtureTheme(): GraphTheme {
 }
 
 /** A 2D context that draws nothing and counts the calls of each method. */
-export function countingContext(): { ctx: CanvasRenderingContext2D; calls: Record<string, number> } {
+export function countingContext(): {
+  ctx: CanvasRenderingContext2D;
+  calls: Record<string, number>;
+} {
   const calls: Record<string, number> = {};
   const ctx = new Proxy(
     {},

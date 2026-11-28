@@ -88,7 +88,6 @@ export function GraphEditor({
 
   // One view per canvas; it is bound again when the canvas moves to another window (a detached
   // panel), whose observers and frames it must use.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `win` is the reason to bind again
   useLayoutEffect(() => {
     const el = canvas.current;
     if (el === null) return;
@@ -120,7 +119,12 @@ export function GraphEditor({
     [],
   );
 
+  // The view was made with the first options; only later ones are news (a host that drives the
+  // view itself has set its own by now, and must not get these back).
+  const applied = useRef(options);
   useLayoutEffect(() => {
+    if (applied.current === options) return;
+    applied.current = options;
     view.current?.setOptions(options);
   }, [options]);
   useLayoutEffect(() => {
@@ -147,6 +151,7 @@ export function GraphEditor({
 
   return (
     <div className={cx("cw-graph", className)}>
+      {/* biome-ignore lint/a11y/noInteractiveElementToNoninteractiveRole: the canvas is the widget: it takes the focus and every key, which is what `application` says */}
       <canvas
         ref={canvas}
         className="cw-graph__canvas"

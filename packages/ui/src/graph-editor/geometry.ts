@@ -198,8 +198,7 @@ export function handleNumbers(
   const dt = seg.t1 - seg.t0;
   const dv = seg.v1 - seg.v0;
   const x = dt > 0 ? clamp((point.t - seg.t0) / dt, 0, 1) : 0;
-  const y =
-    dv === 0 ? keepY : clamp((point.v - seg.v0) / dv, -BEZIER_Y_LIMIT, BEZIER_Y_LIMIT);
+  const y = dv === 0 ? keepY : clamp((point.v - seg.v0) / dv, -BEZIER_Y_LIMIT, BEZIER_Y_LIMIT);
   return { x: round6(x), y: round6(y) };
 }
 

@@ -79,7 +79,6 @@ function rig(curves: readonly GraphCurve[], options: GraphOptions = FIXTURE_OPTI
     action: vi.fn(),
     scrub: vi.fn(),
     viewport: vi.fn(),
-    menu: vi.fn(),
   };
   // The host sets the selection it is told about, as the editor does.
   events.select.mockImplementation((points: readonly GraphPointRef[], mode: string) => {
@@ -132,8 +131,8 @@ describe("drawing", () => {
     expect(vp?.v0).toBeLessThan(-400);
     expect(vp?.v1).toBeGreaterThan(300);
     for (const s of sampled) {
-      const [t0, t1, n] = s.mock.calls[s.mock.calls.length - 1] as [number, number, number];
-      expect([t0, t1, n]).toEqual([vp?.t0, vp?.t1, 800]);
+      const last = s.mock.calls[s.mock.calls.length - 1];
+      expect(last?.slice(0, 3)).toEqual([vp?.t0, vp?.t1, 800]);
     }
     expect(r.canvas.getAttribute("data-viewport")).toBe(
       `${vp?.t0} ${vp?.t1} ${vp?.v0} ${vp?.v1} 64 24 800 400`,
@@ -475,7 +474,7 @@ describe("the keyboard and the mouse's other buttons", () => {
     expect(seen).toHaveBeenCalledTimes(1);
   });
 
-  it("adds a key on a double-click on a curve, and opens the menu on a right-click", () => {
+  it("adds a key on a double-click on a curve, and says which key is under a point", () => {
     const r = rig(positionCurves());
     const vp = r.view.viewport;
     if (vp === null) throw new Error("no viewport");
@@ -488,12 +487,17 @@ describe("the keyboard and the mouse's other buttons", () => {
     expect(r.events.add.mock.calls[0]?.[0]).toBe("position.y");
     expect(r.events.add.mock.calls[0]?.[1]).toBeCloseTo(2000, 6);
     const key = r.at("position.x", 0);
-    fireEvent.contextMenu(r.canvas, key);
-    expect(r.events.menu).toHaveBeenLastCalledWith(
-      { curve: "position.x", index: 0 },
-      key.clientX,
-      key.clientY,
-    );
+    expect(r.view.keyAtClient(key.clientX, key.clientY)).toEqual({
+      curve: "position.x",
+      index: 0,
+    });
+    expect(r.view.keyAtClient(key.clientX + 40, key.clientY - 40)).toBeNull();
+    expect(r.view.selectedAtClient()).toBeNull();
+    r.view.setSelection([{ curve: "position.x", index: 0 }]);
+    expect(r.view.selectedAtClient()).toEqual({
+      ref: { curve: "position.x", index: 0 },
+      ...key,
+    });
   });
 });
 

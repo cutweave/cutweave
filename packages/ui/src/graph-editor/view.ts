@@ -127,8 +127,6 @@ export interface GraphEvents {
   scrub?(t: number): void;
   /** The viewport changed by the person's hand (a pan, a zoom, a fit). */
   viewport?(viewport: GraphViewport): void;
-  /** A right-click or the menu key, on a key or on the empty graph. */
-  menu?(point: GraphPointRef | null, clientX: number, clientY: number): void;
 }
 
 export interface GraphOptions {
@@ -150,7 +148,14 @@ export interface GraphFrames {
 type Drag =
   | { readonly kind: "pan"; x: number; y: number }
   | { readonly kind: "scrub" }
-  | { readonly kind: "marquee"; readonly x0: number; readonly y0: number; x: number; y: number; readonly add: boolean }
+  | {
+      readonly kind: "marquee";
+      readonly x0: number;
+      readonly y0: number;
+      x: number;
+      y: number;
+      readonly add: boolean;
+    }
   | {
       readonly kind: "move";
       readonly x0: number;
@@ -526,12 +531,6 @@ export class GraphView {
     on("dblclick", (e) => this.#doubleClick(e));
     on("wheel", (e) => this.#wheel(e), { passive: false });
     on("keydown", (e) => this.#keyDown(e));
-    on("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const at = this.#local(e);
-      this.events.menu?.(this.#hitKey(at.x, at.y), e.clientX, e.clientY);
-    });
 
     this.refreshTheme();
     const parent = c.parentElement;
@@ -780,10 +779,7 @@ export class GraphView {
   }
 
   /** The handles of the selected keys that are on screen, in screen positions. */
-  #handles(
-    vp: GraphViewport,
-    plot: PlotRect,
-  ): HandleHit[] {
+  #handles(vp: GraphViewport, plot: PlotRect): HandleHit[] {
     const out: HandleHit[] = [];
     let budget = MAX_HANDLES;
     for (const curve of this.#curves) {
@@ -1077,14 +1073,28 @@ export class GraphView {
             drag.prev !== null && drag.prevB !== null
               ? oppositeOfOut(mode, drag.next, n.x, n.y, drag.prev, drag.prevB.x2, drag.prevB.y2)
               : null;
-          edit = { type: "tangent", curve: drag.curve, index: drag.index, side: "out", ...n, opposite };
+          edit = {
+            type: "tangent",
+            curve: drag.curve,
+            index: drag.index,
+            side: "out",
+            ...n,
+            opposite,
+          };
         } else if (drag.side === "in" && drag.prev !== null && drag.prevB !== null) {
           const n = handleNumbers(drag.prev, { t, v }, drag.prevB.y2);
           const opposite =
             drag.next !== null && drag.nextB !== null
               ? oppositeOfIn(mode, drag.prev, n.x, n.y, drag.next, drag.nextB.x1, drag.nextB.y1)
               : null;
-          edit = { type: "tangent", curve: drag.curve, index: drag.index, side: "in", ...n, opposite };
+          edit = {
+            type: "tangent",
+            curve: drag.curve,
+            index: drag.index,
+            side: "in",
+            ...n,
+            opposite,
+          };
         }
         if (edit === null) return;
         drag.started = true;
@@ -1266,29 +1276,26 @@ export class GraphView {
       case "_":
         this.zoomBy(0.8, "both");
         break;
-      case "ContextMenu": {
-        const at = this.#selectedPosition();
-        const r = this.canvas.getBoundingClientRect();
-        this.events.menu?.(at?.ref ?? null, r.left + (at?.x ?? 0), r.top + (at?.y ?? 0));
-        break;
-      }
       default:
-        if (key === "F10" && e.shiftKey) {
-          const at = this.#selectedPosition();
-          const r = this.canvas.getBoundingClientRect();
-          this.events.menu?.(at?.ref ?? null, r.left + (at?.x ?? 0), r.top + (at?.y ?? 0));
-          break;
-        }
         return;
     }
     done();
   }
 
-  /** The first selected key and where it is drawn. */
-  #selectedPosition(): { ref: GraphPointRef; x: number; y: number } | null {
+  /** The key under a point of the window (a right-click opens its menu), or null. */
+  keyAtClient(clientX: number, clientY: number): GraphPointRef | null {
+    const at = this.#local({ clientX, clientY });
+    const plot = this.plot();
+    if (at.x < plot.left || at.y < plot.top) return null;
+    return this.#hitKey(at.x, at.y);
+  }
+
+  /** The first selected key and where it is in the window (the menu key opens its menu there). */
+  selectedAtClient(): { ref: GraphPointRef; clientX: number; clientY: number } | null {
     const vp = this.#viewport;
     if (vp === null) return null;
     const plot = this.plot();
+    const r = this.canvas.getBoundingClientRect();
     for (const curve of this.#curves) {
       const set = this.#selection.get(curve.id);
       if (set === undefined) continue;
@@ -1296,8 +1303,8 @@ export class GraphView {
         if (index >= curve.times.length) continue;
         return {
           ref: { curve: curve.id, index },
-          x: xOf(vp, plot, curve.times[index] as number),
-          y: yOf(vp, plot, this.#shown(curve, curve.values[index] as number)),
+          clientX: r.left + xOf(vp, plot, curve.times[index] as number),
+          clientY: r.top + yOf(vp, plot, this.#shown(curve, curve.values[index] as number)),
         };
       }
     }
