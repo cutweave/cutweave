@@ -1,6 +1,6 @@
 # ADR-0043: What a commit or cancel sent again after an engine restart gets
 
-- **Status:** Proposed (drafted for issue #251; waits for the product owner)
+- **Status:** Accepted (product owner, 2026-11-28): A2 and B1; built under issue #251
 - **Date:** 2026-11-28
 - **Deciders:** Product owner
 - **Supersedes:** none. It extends the idempotency rule of [ADR-0015](0015-wire-protocol.md) and the transaction kinds of [ADR-0017](0017-transaction-kinds.md)
@@ -18,9 +18,9 @@ Three things a client can send again after a restart are not covered. Nothing is
 
 Issue #251 fixed the neighbouring hazard without a contract change: transaction ids no longer repeat across engine runs (a run numbers its transactions from its start time), so a close that **names** an old transaction can never reach a new one and gets `not_found`. The editor, the CLI and the MCP server always name the transaction. The crash harness and several tests do not.
 
-Tests pin today's answers for all three (`crates/cutweave-commands/tests/doc_dedup.rs`), so they change only with this decision.
+When this was drafted, tests pinned those answers for all three (`crates/cutweave-commands/tests/doc_dedup.rs`), so that they would change only with this decision. The Decision section says what they are now.
 
-Two limits of the per-run ids also belong here, because the same journal change would close them:
+Two limits of the per-run ids also belong here, because the same journal change closes them:
 
 - Under `--deterministic-ids` the clock is frozen, so ids restart as before. Runs stay reproducible; the reuse stays possible there (tests and the crash harness, not the desktop app).
 - If the wall clock steps back across a restart to before the earlier run started, and the journal holds no later transaction, ids can repeat.
@@ -48,15 +48,36 @@ Two limits of the per-run ids also belong here, because the same journal change 
 
 ## Decision
 
-**Proposed: A2 and B1.**
+**Accepted (product owner, 2026-11-28): A2 and B1.** Built under issue #251.
 
-1. Build the close marker (A2) as its own work package: entry type, writer, replay into the dedup table, carry-over on save, the highest issued transaction id, and the crash harness sending a cancel and an empty commit again after a kill.
-2. Keep `tx` optional (B1). The command descriptions of `edit.commit_tx` and `edit.cancel_tx` say that a client which may send the request again must name the transaction.
-3. Until A2 is built the refusals stay, pinned by tests.
+### A2: the journal keeps a marker for what commits no change
 
-**What waits on the answer:** only the answers to a repeated cancel or empty commit after a restart, and whether `tx` stays optional. The id reuse fix of #251 is built and does not depend on it.
+1. **The entry.** Journal format 3 adds one entry type, `tx`, beside `commit` and `checkpoint`. It has no revision and changes no document. It holds `issued` (every transaction id up to this number may have been handed out), `at`, and, when it marks a close, `closed` (`tx_id`, `kind`, `outcome`: `committed` with no change, or `cancelled`) and `steps` (the requests a restarted engine keeps answering, each with its dedup record). The carry-over of a save gains `tx_issued`.
+2. **When it is written.**
+   - *A close that commits nothing* (an `edit.cancel_tx`, or an `edit.commit_tx` of a transaction that changed nothing), before the request is acknowledged. `steps` is what the running engine remembers of that transaction: the `edit.begin_tx` that opened it, the commands of an empty commit, and the closing request. The commands of a cancelled transaction are not kept, as on a running engine.
+   - *A reservation of transaction ids*, before a transaction is opened with an id past the last reservation: `issued` alone, 64 ids at a time. This was not in the draft: a marker written at the close cannot protect the id of a transaction that is still open when the engine dies, which is the case issue #251 is about. The id has to be on disk before a client holds it. One small append per 64 transactions buys that.
+   - *Again after the journal's tail was cut* (the unsaved work was discarded, or the last record was torn), so the ids stay taken if that engine dies before it opens a transaction.
+3. **What a failed write does.** A reservation that cannot be written refuses `edit.begin_tx` (the journal is in the state in which it refuses commits too). A close marker that cannot be written is logged and the close stands: nothing is lost, and its repeat after a restart gets the refusal it got before this ADR.
+4. **Recovery.** Replay takes a marker's requests into the dedup table (inside the 10-minute window, as for every request) and numbers transactions past the highest `issued` and the highest committed id it can read anywhere in the chain, also in the part a discard or a damaged record leaves out. A marker cut short by a crash is a torn tail like any other record.
+5. **Compatibility.** Nothing reads the format number to refuse a segment. An engine of format 2 reads a format 3 segment: it skips `tx` entries (an entry of an unknown type is skipped, as the format has promised since version 1) and the unknown `tx_issued` field, recovers the same document, and answers as it did before this ADR. A format 3 engine reads formats 1 and 2 unchanged: no markers, ids continue past the last committed transaction.
+6. **Per-run ids stay** (`DocConfig::with_tx_ids_per_run`, issue #251 part 1) as the second line. The marker covers a journaled project on any clock, `--deterministic-ids` included. The per-run numbering covers what has no journal record to rely on: an untitled document, and a reservation lost with the last 50 ms of writes in a power cut. The wire shape stays `tx_<n>`.
 
-**Pass criteria for A2:** after a kill, a repeated cancel and a repeated empty commit return the original result with `replayed` set, on the crash harness for at least five seeds; a segment written with markers is recovered by the previous engine build to the same document; the round trip of a cancel stays inside the 16 ms budget (arch §19); with `--deterministic-ids`, a transaction id issued before a kill is not issued again after it.
+### B1: `tx` stays optional
+
+`edit.commit_tx` and `edit.cancel_tx` without `tx` mean the connection's open transaction when the request runs. A client that may send a close again names the transaction. The rule is stated in [the RPC reference](../reference/rpc.md) (`_meta` and the request envelope). A close without `tx` that is sent again after its client opened another transaction still closes that one; a test pins it.
+
+### What a repeat gets after a restart
+
+| Sent again, same `request_id` and params | Answer |
+|---|---|
+| `edit.cancel_tx` that was acknowledged | its original result, `replayed` |
+| `edit.commit_tx` of a transaction that changed nothing, acknowledged | its original result (`changed: false`), `replayed` |
+| the `edit.begin_tx` of either | its original result, `replayed` (the transaction is closed; nothing opens) |
+| a close the journal never had (not acknowledged, or its marker was torn or could not be written) | `not_found` when it names the transaction, `invalid` when it does not, as before |
+| a close naming a transaction the engine died with, after another was opened | `not_found`; the new one is untouched |
+| a close without `tx`, after another transaction was opened | closes the open one (B1) |
+
+**Pass criteria, as met:** after a real kill a repeated cancel and a repeated empty commit return the original results marked `replayed` (`crates/cutweave-engine/tests/engine_crash.rs`), and on the crash harness, which now sends both again after every crash and checks the id of a gesture the engine was killed with; a format 2 reader's view of a format 3 segment and a format 3 reader's view of a segment without markers are tested (`journal/format.rs`, `tests/journal.rs`); on a frozen clock a transaction id issued before a restart is not issued again, across a restore, a discard and a save.
 
 ## Consequences
 
@@ -69,7 +90,8 @@ Two limits of the per-run ids also belong here, because the same journal change 
 **Negative / costs**
 
 - The journal gains an entry type and grows by one small record per cancelled or empty transaction.
-- Cancel, today a pure in-memory operation, waits for a journal append.
+- A cancel that came as a request waits for a journal append; so does opening a transaction, once per 64.
+- After a restart transaction ids skip to the end of the last reserved block, so they are no longer consecutive across runs.
 - With B1 the engine still cannot protect a client that omits `tx` and repeats an old close after opening a new transaction; it is documented, not prevented.
 
 **Follow-ups**

@@ -580,10 +580,12 @@ fn gestures_are_journaled_once_on_commit_and_cancelled_ones_never() {
                 .unwrap();
         }
         s.handle.cancel_tx(&ui(), g.id).wait().unwrap();
+        // Opening the first transaction reserved a block of transaction ids (ADR-0043).
+        let appends = appends + 1;
         assert_eq!(
             s.journal.stats().appends,
             appends,
-            "a cancelled gesture is not journaled"
+            "the commands of a cancelled gesture are not journaled"
         );
         let g = s
             .handle
@@ -710,6 +712,231 @@ fn a_recovered_gesture_answers_its_requests_again_and_a_lost_one_is_refused() {
     // Still one undo step for the whole recovered drag.
     submit(h, &ui(), "edit.undo", json!({})).unwrap();
     assert_eq!(name_of(h, item), None);
+}
+
+/// Sends `name` under request id `n` (optionally inside `tx`), as a client does.
+fn send(
+    h: &cutweave_commands::DocHandle,
+    n: u128,
+    name: &str,
+    params: serde_json::Value,
+    tx: Option<TxId>,
+) -> Result<Applied, cutweave_commands::CmdError> {
+    let request = Submit::new(ui(), name, params).with_request_id(rid(n));
+    h.submit(tx.map_or(request.clone(), |tx| request.in_tx(tx)))
+        .wait()
+}
+
+fn opened_tx(opened: &Applied) -> TxId {
+    serde_json::from_value(opened.output["tx"].clone()).unwrap()
+}
+
+fn is_not_found(result: &Result<Applied, cutweave_commands::CmdError>) -> bool {
+    matches!(result, Err(cutweave_commands::CmdError::NotFound { .. }))
+}
+
+/// ADR-0043: a cancel and a commit of a transaction that changed nothing are journaled as
+/// markers. After a restart, and after a save and another restart, their repeats get the
+/// original results back, the document is what it was, and nothing is open.
+#[test]
+fn a_cancel_and_an_empty_commit_sent_again_after_a_restart_get_their_results_back() {
+    let t = TempDir::new("close-markers");
+    let folder = create_project(&t.0, "Closes", &fixture(1));
+    let gesture = json!({"kind": "gesture", "label": "Drag"});
+    let batch = json!({"label": "Batch"});
+    let (item, cancelled, committed, a, b, live) = {
+        let s = open_session(&folder, &SessionOptions::default());
+        let h = &s.handle;
+        let item = append(h, tracks(&h.snapshot().doc)[0], 4);
+        let a = opened_tx(&send(h, 1, "edit.begin_tx", gesture.clone(), None).unwrap());
+        let rename = json!({"item": item, "name": "dropped"});
+        send(h, 2, "item.rename", rename, Some(a)).unwrap();
+        let cancelled = send(h, 3, "edit.cancel_tx", json!({"tx": a}), None).unwrap();
+        let b = opened_tx(&send(h, 4, "edit.begin_tx", batch.clone(), None).unwrap());
+        let committed = send(h, 5, "edit.commit_tx", json!({"tx": b}), None).unwrap();
+        assert_eq!(committed.output["changed"], false);
+        (item, cancelled, committed, a, b, h.committed_snapshot())
+    };
+    let check = |s: &journal_support::Session, when: &str| {
+        let h = &s.handle;
+        assert_eq!(h.committed_snapshot().doc, live.doc, "{when}");
+        for _ in 0..2 {
+            let again = send(h, 3, "edit.cancel_tx", json!({"tx": a}), None).unwrap();
+            assert!(again.replayed, "{when}");
+            assert_eq!(again.output, cancelled.output, "{when}");
+            assert_eq!(again.rev, cancelled.rev, "{when}");
+            let again = send(h, 5, "edit.commit_tx", json!({"tx": b}), None).unwrap();
+            assert!(again.replayed, "{when}");
+            assert_eq!(again.output, committed.output, "{when}");
+        }
+        let again = send(h, 1, "edit.begin_tx", gesture.clone(), None).unwrap();
+        assert!(again.replayed, "{when}");
+        let again = send(h, 4, "edit.begin_tx", batch.clone(), None).unwrap();
+        assert!(again.replayed, "{when}");
+        assert_eq!(h.locks(&ui()).wait().unwrap().transactions.len(), 0);
+        assert_eq!(h.committed_snapshot().doc, live.doc, "{when}");
+        // Under a request id the journal never saw, the same close is a new request.
+        let fresh = send(h, 9, "edit.cancel_tx", json!({"tx": a}), None);
+        assert!(is_not_found(&fresh), "{when}");
+    };
+    {
+        let mut s = open_session(&folder, &SessionOptions::default());
+        assert_eq!(
+            s.recovered.report.applied, 1,
+            "markers are not transactions"
+        );
+        assert!(s.recovered.report.stopped.is_none());
+        check(&s, "after a restart");
+        // The rename of the cancelled gesture was rolled back and is not remembered.
+        let doc = s.handle.committed_snapshot().doc.clone();
+        let name = doc
+            .find_item(&item)
+            .and_then(|r| r.item.as_clip().and_then(|c| c.name.clone()));
+        assert_eq!(name, None);
+        s.store
+            .save_snapshot(&s.handle.committed_snapshot())
+            .unwrap();
+    }
+    let s = open_session(&folder, &SessionOptions::default());
+    assert!(s.report.recovery.is_none());
+    check(&s, "after a save and a restart");
+}
+
+/// ADR-0043: the journal knows which transaction ids were handed out, so on a frozen clock
+/// (`--deterministic-ids`) too a restarted engine never issues the id of a transaction the
+/// one before it died with, whether the unsaved work is restored or discarded, across a save,
+/// and when the engine restarts twice without opening anything.
+#[test]
+fn transaction_ids_never_repeat_across_restarts() {
+    let t = TempDir::new("tx-ids");
+    let folder = create_project(&t.0, "TxIds", &fixture(1));
+    let open_one = |s: &journal_support::Session| {
+        s.handle
+            .begin_tx(&ui(), TxKind::Gesture, "drag")
+            .wait()
+            .unwrap()
+            .id
+    };
+    let a = {
+        let s = open_session(&folder, &SessionOptions::default());
+        append(&s.handle, tracks(&s.handle.snapshot().doc)[0], 4);
+        open_one(&s)
+        // The engine dies with A open.
+    };
+    let b = {
+        let mut s = open_session(&folder, &SessionOptions::default());
+        assert!(s.recovered.next_tx > a, "{} after {a}", s.recovered.next_tx);
+        let b = open_one(&s);
+        assert!(b > a);
+        // The close of A sent again finds nothing, and B is still there.
+        let commit = send(&s.handle, 1, "edit.commit_tx", json!({"tx": a}), None);
+        assert!(is_not_found(&commit));
+        let cancel = send(&s.handle, 2, "edit.cancel_tx", json!({"tx": a}), None);
+        assert!(is_not_found(&cancel));
+        assert_eq!(s.handle.locks(&ui()).wait().unwrap().transactions.len(), 1);
+        s.handle.cancel_tx(&ui(), b).wait().unwrap();
+        s.store
+            .save_snapshot(&s.handle.committed_snapshot())
+            .unwrap();
+        b
+    };
+    let c = {
+        let s = open_session(&folder, &SessionOptions::default());
+        assert!(s.report.recovery.is_none());
+        let c = open_one(&s);
+        assert!(c > b, "the save carried the reservation: {c} after {b}");
+        s.handle.cancel_tx(&ui(), c).wait().unwrap();
+        append(&s.handle, tracks(&s.handle.snapshot().doc)[0], 2);
+        c
+    };
+    // Discarding the unsaved work cuts the tail of the journal, markers included.
+    drop(open_session(
+        &folder,
+        &SessionOptions {
+            discard: true,
+            ..SessionOptions::default()
+        },
+    ));
+    // That engine opened nothing and died; the next one still knows.
+    let s = open_session(&folder, &SessionOptions::default());
+    assert!(s.recovered.next_tx > c, "{} after {c}", s.recovered.next_tx);
+    assert!(open_one(&s) > c);
+}
+
+/// A marker cut short by a crash is a torn tail like any other: recovery keeps everything
+/// before it, and the close it would have remembered is refused, not reported as done.
+#[test]
+fn a_torn_marker_loses_only_what_it_remembered() {
+    let t = TempDir::new("torn-marker");
+    let folder = create_project(&t.0, "TornMarker", &fixture(1));
+    let (path, full, cut_from, a, live) = {
+        let s = open_session(&folder, &SessionOptions::default());
+        let h = &s.handle;
+        append(h, tracks(&h.snapshot().doc)[0], 4);
+        let begin = json!({"kind": "gesture", "label": "Drag"});
+        let a = opened_tx(&send(h, 1, "edit.begin_tx", begin, None).unwrap());
+        let path = s.journal.segment_path();
+        s.journal.sync().unwrap();
+        let cut_from = fs::metadata(&path).unwrap().len();
+        send(h, 2, "edit.cancel_tx", json!({"tx": a}), None).unwrap();
+        s.journal.sync().unwrap();
+        let full = fs::read(&path).unwrap();
+        (path, full, cut_from, a, h.committed_snapshot())
+    };
+    assert!(
+        full.len() as u64 > cut_from + 8,
+        "the cancel wrote a marker"
+    );
+    for len in cut_from..full.len() as u64 {
+        fs::write(&path, &full[..usize::try_from(len).unwrap()]).unwrap();
+        let opened = ProjectStore::open(&folder).unwrap();
+        let mut store = opened.store;
+        let recovered = store
+            .recover(&opened.project, &RecoverOptions::at(WallTime::UNIX_EPOCH))
+            .unwrap();
+        assert_eq!(recovered.project, live.doc, "offset {len}");
+        assert_eq!(recovered.rev, live.committed_rev, "offset {len}");
+        assert!(recovered.next_tx > a, "offset {len}");
+        let remembered = recovered.requests.iter().any(|r| r.request_id() == rid(2));
+        assert!(!remembered, "offset {len}");
+        let stop = recovered.report.stopped.map(|s| (s.reason, s.offset));
+        let expected = (len != cut_from).then_some((StopReason::Truncated, cut_from));
+        assert_eq!(stop, expected, "offset {len}");
+    }
+    // Resumed after the tear: the cancel sent again is refused, and work goes on.
+    fs::write(&path, &full[..full.len() - 3]).unwrap();
+    {
+        let s = open_session(&folder, &SessionOptions::default());
+        let again = send(&s.handle, 2, "edit.cancel_tx", json!({"tx": a}), None);
+        assert!(is_not_found(&again));
+        append(&s.handle, tracks(&s.handle.snapshot().doc)[0], 2);
+    }
+    let s = open_session(&folder, &SessionOptions::default());
+    assert!(s.recovered.report.stopped.is_none());
+    assert_eq!(s.recovered.report.applied, 2);
+}
+
+/// A journal written before ADR-0043 has no markers: it recovers as it always did, and ids
+/// continue past its last committed transaction.
+#[test]
+fn a_journal_without_markers_recovers_as_before() {
+    let t = TempDir::new("no-markers");
+    let folder = create_project(&t.0, "NoMarkers", &fixture(1));
+    let (live, last_tx) = {
+        let s = open_session(&folder, &SessionOptions::default());
+        let h = &s.handle;
+        let tr = tracks(&h.snapshot().doc);
+        append(h, tr[0], 4);
+        let last = submit(h, &ui(), "project.rename", json!({"name": "old"})).unwrap();
+        (h.committed_snapshot(), last.tx_id.unwrap())
+    };
+    let bytes = all_journal_bytes(&journal_dir(&folder));
+    let marker = br#""type":"tx""#;
+    assert!(!contains(&bytes, marker), "no transaction was opened");
+    let s = open_session(&folder, &SessionOptions::default());
+    assert_eq!(s.recovered.report.applied, 2);
+    assert_eq!(s.handle.committed_snapshot().doc, live.doc);
+    assert_eq!(s.recovered.next_tx, TxId::new(last_tx.get() + 1));
 }
 
 #[test]

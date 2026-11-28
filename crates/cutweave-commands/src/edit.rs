@@ -37,7 +37,9 @@
 //! again (after a reconnect or an engine restart) names the transaction: ids are not reused
 //! across engine runs ([`DocConfig::with_tx_ids_per_run`](crate::DocConfig::with_tx_ids_per_run),
 //! issue #251), so a named close of an old transaction is `not_found` and never reaches a new
-//! one. What a repeated cancel or empty commit gets after a restart is ADR-0043 (Proposed).
+//! one. A cancel, and a commit of a transaction that changed nothing, are journaled as markers
+//! ([`TxMarker`](crate::TxMarker), ADR-0043), so their repeat after a restart gets the original
+//! result; so are the ids handed out, a block at a time, before a transaction opens.
 
 use crate::{
     Actor, Annotations, CheckpointInfo, CmdError, CommandSpec, Described, DocState, EngineCommand,

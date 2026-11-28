@@ -100,6 +100,16 @@ pub trait CommitSink: Send {
         let _ = record;
         Ok(())
     }
+
+    /// Persists a transaction marker (ADR-0043): a reservation of transaction ids, called
+    /// before a transaction is opened (an `Err` refuses to open it), or a close that committed
+    /// no change, called before its request is acknowledged (an `Err` is logged: the close
+    /// stands, and its repeat after a restart is refused as before). The default keeps
+    /// nothing.
+    fn tx_marker(&mut self, record: &TxMarker<'_>) -> Result<(), CmdError> {
+        let _ = record;
+        Ok(())
+    }
 }
 
 /// Closures are sinks (tests, adapters).
@@ -228,6 +238,84 @@ impl JournaledCommit {
             undoable: self.undoable && self.cause.is_change(),
         }
     }
+}
+
+/// How many transaction ids one [`TxMarker`] reserves (ADR-0043): the journal is told before
+/// an id is handed to a client, once per this many transactions, and a restarted engine
+/// numbers past the last reservation.
+pub const TX_IDS_RESERVED: u64 = 64;
+
+/// What the journal keeps of transactions that commit no change (ADR-0043), handed to the
+/// [`CommitSink`] as a marker: it carries no revision and changes no document.
+///
+/// Two occasions write one. Before a transaction is opened with an id past the last
+/// reservation: [`issued`](Self::issued) alone, so a restarted engine never hands out an id
+/// the engine that died had given to a transaction the journal never saw. And when a request
+/// closes a transaction without a committed change (a cancel, or a commit of a transaction
+/// that changed nothing): [`closed`](Self::closed) and the requests to remember, so a repeat
+/// of the close after a restart gets its original result.
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct TxMarker<'a> {
+    /// Every transaction id up to this number may have been handed out.
+    pub issued: u64,
+    /// When it was written (the request's time).
+    pub at: WallTime,
+    /// The transaction a request closed, if this marks a close.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closed: Option<ClosedTx>,
+    /// The requests a restarted engine keeps answering: the `edit.begin_tx` that opened the
+    /// closed transaction, the commands of an empty commit, and the closing request.
+    #[serde(skip_serializing_if = "<[JournalStep]>::is_empty")]
+    pub steps: &'a [JournalStep],
+}
+
+impl TxMarker<'_> {
+    /// The owned form (what the journal reads back).
+    #[must_use]
+    pub fn to_owned(&self) -> JournaledTxMarker {
+        JournaledTxMarker {
+            issued: self.issued,
+            at: self.at,
+            closed: self.closed,
+            steps: self.steps.to_vec(),
+        }
+    }
+}
+
+/// A transaction closed without a committed change, in a [`TxMarker`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct ClosedTx {
+    /// Its id.
+    pub tx_id: TxId,
+    /// Its kind.
+    pub kind: TxKind,
+    /// `committed` (it had changed nothing) or `cancelled`.
+    pub outcome: TxOutcome,
+}
+
+/// A [`TxMarker`] read back from the journal (same JSON form).
+#[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
+pub struct JournaledTxMarker {
+    /// Every transaction id up to this number may have been handed out.
+    #[serde(default)]
+    pub issued: u64,
+    /// When it was written.
+    #[serde(default)]
+    pub at: WallTime,
+    /// The transaction a request closed, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed: Option<ClosedTx>,
+    /// The requests to keep answering.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<JournalStep>,
+}
+
+/// A close waiting for its request's result ([`DocState::closing`]).
+#[derive(Debug)]
+struct Closing {
+    closed: ClosedTx,
+    /// The requests remembered with it, before the closing one.
+    steps: Vec<JournalStep>,
 }
 
 /// One request inside a committed transaction.
@@ -401,8 +489,12 @@ impl DocConfig {
     /// Unix epoch times 1,000,000, plus one), and is never below
     /// [`with_first_tx_id`](Self::with_first_tx_id). Ids stay `tx_<n>` and increasing. A clock
     /// frozen at the Unix epoch (`--deterministic-ids`) gives the plain numbering, so such
-    /// runs stay reproducible and keep the reuse; so does a wall clock that stepped back
-    /// across the restart to before the earlier run's start.
+    /// runs stay reproducible.
+    ///
+    /// For a journaled document this is the second line: the journal is told which ids may
+    /// be handed out before they are ([`TxMarker`], ADR-0043), on any clock. This covers what
+    /// has no such record: a document without a journal, and a reservation lost with the
+    /// last unsynced writes in a power cut.
     #[must_use]
     pub fn with_tx_ids_per_run(mut self) -> DocConfig {
         self.tx_ids_per_run = true;
@@ -815,6 +907,12 @@ pub struct DocState {
     open: BTreeMap<TxId, OpenTx>,
     closed_conns: ClosedConns,
     next_tx: u64,
+    /// The highest transaction id the journal knows may be handed out ([`TxMarker::issued`]):
+    /// opening a transaction past it reserves the next [`TX_IDS_RESERVED`] first.
+    tx_reserved: u64,
+    /// The transaction the running engine command closed without committing a change, for
+    /// its [`TxMarker`] (written once the request's result is known).
+    closing: Option<Closing>,
     dedup: DedupTable,
     history: History,
     checkpoints: Checkpoints,
@@ -869,6 +967,8 @@ impl DocState {
         } else {
             config.first_tx
         };
+        // Everything below the first id is accounted for (journaled, or an earlier run's).
+        let tx_reserved = next_tx.saturating_sub(1);
         let mut history = History::new(config.history_limits);
         for commit in config.recovered {
             history.replay(commit.into_record());
@@ -886,6 +986,8 @@ impl DocState {
             open: BTreeMap::new(),
             closed_conns: ClosedConns::default(),
             next_tx,
+            tx_reserved,
+            closing: None,
             dedup,
             history,
             checkpoints,
@@ -1761,12 +1863,14 @@ impl DocState {
         // commands) and still act for its own caller.
         let outer = self.current.replace(call.clone());
         let outer_claim = self.claimed.take();
+        let outer_closing = self.closing.take();
         let start = self.outbox.len();
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
             registry.invoke_engine_json(&call.name, params, &mut *self, access)
         }));
         self.current = outer;
         let claimed = std::mem::replace(&mut self.claimed, outer_claim);
+        let closing = std::mem::replace(&mut self.closing, outer_closing);
         let output = match result {
             Ok(result) => result?,
             Err(payload) => return Err(self.panicked(call, payload.as_ref())),
@@ -1787,7 +1891,11 @@ impl DocState {
             self.applied(call, None, output, ops)
         };
         if !call.read_only {
-            self.dedup.insert(Self::record(call, &applied));
+            let record = Self::record(call, &applied);
+            if let Some(closing) = closing {
+                self.journal_close(closing, call, &record);
+            }
+            self.dedup.insert(record);
         }
         Ok(applied)
     }
@@ -1859,6 +1967,7 @@ impl DocState {
                 ),
             ));
         }
+        self.reserve_tx_ids()?;
         let id = self.alloc_tx();
         let now = self.clock.now();
         let t = OpenTx {
@@ -1941,11 +2050,15 @@ impl DocState {
         }
         if t.ops.is_empty() {
             let kind = t.kind;
-            if let Some(t) = self.open.remove(&id) {
+            if let Some(mut t) = self.open.remove(&id) {
                 self.push_closed(&t, TxOutcome::Committed);
-                for step in t.steps {
-                    self.dedup.insert(step.record);
+                for step in &t.steps {
+                    self.dedup.insert(step.record.clone());
                 }
+                // Its commands and the request that opened it, then (once its result is
+                // known) this one: what the dedup table holds, for the journal's marker.
+                t.seal(None);
+                self.closes(id, kind, TxOutcome::Committed, t.steps);
             }
             return Ok(TxClosed {
                 tx_id: id,
@@ -2202,9 +2315,80 @@ impl DocState {
     /// soft locks. Only its owner may (others get `Locked`).
     pub fn cancel_tx(&mut self, ctx: &ActorCtx, id: TxId) -> Result<TxClosed, CmdError> {
         self.expire_idle();
-        self.owned(ctx, id).map_err(|e| e.with_rev(self.rev))?;
-        self.close(id, TxOutcome::Cancelled)
-            .ok_or_else(|| tx_not_found(id))
+        let begun = self
+            .owned(ctx, id)
+            .map_err(|e| e.with_rev(self.rev))?
+            .begun
+            .clone();
+        let closed = self
+            .close(id, TxOutcome::Cancelled)
+            .ok_or_else(|| tx_not_found(id))?;
+        // Its commands are rolled back and forgotten; the request that opened it is not.
+        self.closes(
+            id,
+            closed.kind,
+            TxOutcome::Cancelled,
+            begun.into_iter().collect(),
+        );
+        Ok(closed)
+    }
+
+    /// Tells the journal that ids up to the next block may be handed out, when the next one is
+    /// past the last reservation (ADR-0043). A journal that cannot take it refuses the
+    /// transaction: its id could otherwise be issued again after a restart.
+    fn reserve_tx_ids(&mut self) -> Result<(), CmdError> {
+        if self.next_tx <= self.tx_reserved {
+            return Ok(());
+        }
+        let issued = self.next_tx.saturating_add(TX_IDS_RESERVED - 1);
+        self.journal.tx_marker(&TxMarker {
+            issued,
+            at: self.request_time(),
+            closed: None,
+            steps: &[],
+        })?;
+        self.tx_reserved = issued;
+        Ok(())
+    }
+
+    /// Notes that the running request closed transaction `id` without a committed change;
+    /// [`run_engine`](Self::run_engine) writes the marker with the request's result. A direct
+    /// call (no request) has nothing to remember.
+    fn closes(&mut self, id: TxId, kind: TxKind, outcome: TxOutcome, steps: Vec<JournalStep>) {
+        if self.current.is_some() {
+            self.closing = Some(Closing {
+                closed: ClosedTx {
+                    tx_id: id,
+                    kind,
+                    outcome,
+                },
+                steps,
+            });
+        }
+    }
+
+    /// Journals the marker of the close `closing` made by the request `call`, whose result is
+    /// `record`. Best effort: the close already stands and lost nothing.
+    fn journal_close(&mut self, closing: Closing, call: &Call, record: &DedupRecord) {
+        let Closing { closed, mut steps } = closing;
+        steps.push(JournalStep {
+            command: call.name.clone(),
+            params: call.journal_params.clone(),
+            record: record.clone(),
+        });
+        let marker = TxMarker {
+            issued: self.tx_reserved.max(self.next_tx.saturating_sub(1)),
+            at: call.at,
+            closed: Some(closed),
+            steps: &steps,
+        };
+        if let Err(e) = self.journal.tx_marker(&marker) {
+            tracing::warn!(
+                tx = %closed.tx_id,
+                error = %e,
+                "a closed transaction was not journaled; its close sent again after a restart is refused"
+            );
+        }
     }
 
     /// The connection `conn` closed (WebSocket close, MCP session end, stdio proxy exit;
