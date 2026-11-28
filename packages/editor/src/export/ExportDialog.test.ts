@@ -55,6 +55,7 @@ const running = (fraction: number, message: string): JobInfo => ({
   progress: { fraction, message },
   cancel_requested: false,
   error: null,
+  error_code: null,
 });
 
 let call: ReturnType<typeof vi.fn>;

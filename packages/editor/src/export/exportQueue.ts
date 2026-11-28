@@ -51,6 +51,15 @@ export const isFinished = (job: Pick<ExportQueueJob, "state">): boolean =>
   job.state === "succeeded" || job.state === "failed" || job.state === "cancelled";
 
 /**
+ * What "Copy error" puts on the clipboard: the engine's error code, when it gave one, and the
+ * message ("disk_full: writing the output failed…"), so a pasted report carries both (ADR-0038).
+ */
+export function errorText(error: string | null, code: string | null): string {
+  const message = error ?? "";
+  return code === null ? message : `${code}: ${message}`;
+}
+
+/**
  * Where `export.reorder` puts a waiting job to move it one place up or down among the waiting
  * ones: the id to put it before, `null` for the end, `undefined` when it cannot move that way.
  */

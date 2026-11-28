@@ -2026,6 +2026,10 @@ body {
   color: var(--danger);
   overflow-wrap: anywhere;
 }
+/* The failure's machine code (ADR-0038), in mono before the message. */
+.cw-queue__code {
+  color: inherit;
+}
 
 /* Guides over the picture (WP-2H.06): drawn in overlay-guide with the shadow outline. */
 .cw-preview__safe--platform {

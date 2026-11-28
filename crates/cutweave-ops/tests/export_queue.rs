@@ -126,7 +126,10 @@ impl Rig {
                 {
                     let ends = watch.0.lock().unwrap();
                     if ends.1.contains(&name) {
-                        return Err(JobError::failed("the disk is full"));
+                        return Err(JobError::coded(
+                            cutweave_jobs::error_code::DISK_FULL,
+                            "the disk is full",
+                        ));
                     }
                     if ends.0.contains(&name) {
                         return Ok(());
@@ -271,6 +274,7 @@ fn reorder_cancel_retry_and_remove_work_by_id_and_say_why_not() {
     assert_eq!(r.wait(&c), JobState::Failed);
     let job = r.queue()["jobs"][1].clone();
     assert_eq!(job["error"], json!("the disk is full"));
+    assert_eq!(job["error_code"], json!("disk_full"));
     r.ends.finish("b.mp4");
     assert_eq!(r.wait(&b), JobState::Succeeded);
     r.ends.0.lock().unwrap().1.clear();

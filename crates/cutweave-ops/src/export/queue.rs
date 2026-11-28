@@ -81,6 +81,10 @@ pub struct ExportQueueJob {
     pub cancel_requested: bool,
     /// Why it failed or was cancelled.
     pub error: Option<String>,
+    /// The kind of failure as a short stable code: `disk_full`, `output_exists`,
+    /// `output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,
+    /// `engine_unavailable`, or `failed` for the rest. null unless it failed.
+    pub error_code: Option<String>,
     /// The output file.
     pub path: String,
     /// The exported sequence.
@@ -126,6 +130,7 @@ pub fn queue_job(entry: &QueueEntry<ExportPlan>) -> ExportQueueJob {
         progress: entry.info.progress.clone(),
         cancel_requested: entry.info.cancel_requested,
         error: entry.info.error.clone(),
+        error_code: entry.info.error_code.clone(),
         path: plan.path.to_string_lossy().into_owned(),
         sequence: plan.sequence,
         start: plan.start,

@@ -42,6 +42,7 @@ function queued(n: number, patch: Partial<ExportQueueJob> = {}): ExportQueueJob 
     progress: { fraction: null, message: null },
     cancel_requested: false,
     error: null,
+    error_code: null,
     path: `C:\\out\\clip${n}.mp4`,
     sequence: "seq_1" as ExportQueueJob["sequence"],
     in: 0,
@@ -65,6 +66,7 @@ const info = (n: number, patch: Partial<JobInfo>): JobInfo => ({
   progress: { fraction: 0, message: null },
   cancel_requested: false,
   error: null,
+  error_code: null,
   ...patch,
 });
 
@@ -81,7 +83,11 @@ beforeEach(() => {
     }),
     queued(2),
     queued(3),
-    queued(4, { state: "failed", error: "Encoder: no space left on device" }),
+    queued(4, {
+      state: "failed",
+      error: "Encoder: no space left on device",
+      error_code: "disk_full",
+    }),
     queued(5, { state: "succeeded", progress: { fraction: 1, message: null } }),
   ];
   paused = false;
@@ -141,9 +147,12 @@ describe("ExportQueuePanel", () => {
     expect(within(running).getByText("25%")).toBeTruthy();
     expect(within(running).getByText("1080 × 1920 · 0:04 · 48 fps · about 0:15 left")).toBeTruthy();
     const failed = within(list).getByRole("listitem", { name: "clip4.mp4, Failed" });
-    expect(within(failed).getByRole("alert").textContent).toBe(
-      "Failed: Encoder: no space left on device",
-    );
+    // The engine's code, as code text, before the message people read (ADR-0038).
+    const alert = within(failed).getByRole("alert");
+    expect(alert.textContent).toBe("disk_full Failed: Encoder: no space left on device");
+    const code = alert.querySelector("code");
+    expect(code?.textContent).toBe("disk_full");
+    expect(code?.classList.contains("cw-mono")).toBe(true);
     expect(screen.getByText("2 waiting")).toBeTruthy();
     expect((await axe.run(screen.getByTestId("export-queue"))).violations).toEqual([]);
   });
@@ -281,7 +290,13 @@ describe("ExportQueuePanel", () => {
       keys: {},
       playhead: null,
     });
-    const failed = target({ id: id(4), path: "C:\\out\\clip4.mp4", state: "failed", error: "x" });
+    const failed = target({
+      id: id(4),
+      path: "C:\\out\\clip4.mp4",
+      state: "failed",
+      error: "x",
+      errorCode: "disk_full",
+    });
     const enabled = (
       row: (typeof EXPORT_ROW_SURFACE.rows)[number],
       ctx: ReturnType<typeof target>,
@@ -290,11 +305,20 @@ describe("ExportQueuePanel", () => {
     expect(enabled(rows["export.queue_retry"] as never, failed)).toBe(true);
     expect(enabled(rows["export.queue_cancel"] as never, failed)).toBe(false);
     expect(enabled(rows["copy-error"] as never, failed)).toBe(true);
-    expect(rows["copy-error"]?.args?.(failed)).toEqual({ text: "x" });
+    // Copy error copies the code and the message; the message alone when there is no code.
+    expect(rows["copy-error"]?.args?.(failed)).toEqual({ text: "disk_full: x" });
+    const uncoded = target({ ...failed.target.data, errorCode: null });
+    expect(rows["copy-error"]?.args?.(uncoded)).toEqual({ text: "x" });
     expect(enabled(rows.reveal as never, failed)).toBe(false);
     // Open file: only a finished file opens.
     expect(enabled(rows["export.queue_open"] as never, failed)).toBe(false);
-    const done = target({ id: id(5), path: "C:\\out\\clip5.mp4", state: "succeeded", error: null });
+    const done = target({
+      id: id(5),
+      path: "C:\\out\\clip5.mp4",
+      state: "succeeded",
+      error: null,
+      errorCode: null,
+    });
     expect(enabled(rows["export.queue_open"] as never, done)).toBe(true);
   });
 
@@ -322,7 +346,13 @@ describe("ExportQueuePanel", () => {
         target: {
           surface: "export.row",
           ids: [],
-          data: { id: id(5), path: "C:\\out\\clip5.mp4", state: "succeeded", error: null },
+          data: {
+            id: id(5),
+            path: "C:\\out\\clip5.mp4",
+            state: "succeeded",
+            error: null,
+            errorCode: null,
+          },
         },
         ids: [],
         keys: {},

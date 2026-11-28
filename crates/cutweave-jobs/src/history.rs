@@ -134,6 +134,7 @@ mod tests {
             progress: JobProgress::default(),
             cancel_requested: false,
             error: None,
+            error_code: None,
         }
     }
 

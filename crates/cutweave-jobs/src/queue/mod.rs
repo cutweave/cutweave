@@ -163,6 +163,8 @@ struct Entry<T> {
     /// The state as the queue knows it (and stored): `running` from its dispatch.
     state: JobState,
     error: Option<String>,
+    /// A failure's machine code (ADR-0038).
+    error_code: Option<String>,
     /// Released at dispatch.
     hold: Option<Hold>,
 }
@@ -186,6 +188,7 @@ impl<T> Entry<T> {
             ),
             cancel_requested: false,
             error: self.error.clone(),
+            error_code: self.error_code.clone(),
         }
     }
 }
@@ -211,8 +214,14 @@ impl<T> Inner<T> {
     }
 
     /// Writes a state change, logging a failure (the in-memory queue goes on).
-    fn persist(&mut self, id: JobId, state: JobState, error: Option<&str>) {
-        if let Err(e) = self.store.update(id, state, error) {
+    fn persist(
+        &mut self,
+        id: JobId,
+        state: JobState,
+        error: Option<&str>,
+        error_code: Option<&str>,
+    ) {
+        if let Err(e) = self.store.update(id, state, error, error_code) {
             tracing::warn!(job = %id, error = %e, store = %self.store.describe(), "cannot save an export job's state");
         }
     }
@@ -282,9 +291,11 @@ impl<T: Send + Sync + 'static> Shared<T> {
         };
         entry.state = state;
         entry.error.clone_from(&info.error);
+        entry.error_code.clone_from(&info.error_code);
         entry.hold = None;
         let error = entry.error.clone();
-        inner.persist(info.id, state, error.as_deref());
+        let code = entry.error_code.clone();
+        inner.persist(info.id, state, error.as_deref(), code.as_deref());
         self.dispatch(&mut inner);
     }
 
@@ -318,7 +329,7 @@ impl<T: Send + Sync + 'static> Shared<T> {
             free -= 1;
         }
         for id in started {
-            inner.persist(id, JobState::Running, None);
+            inner.persist(id, JobState::Running, None, None);
         }
     }
 
@@ -438,6 +449,7 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
             output: output.as_ref().map(|p| p.to_string_lossy().into_owned()),
             state: JobState::Queued,
             error: None,
+            error_code: None,
             payload,
         };
         if inner.store.persistent() == persistent {
@@ -458,6 +470,7 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
             task,
             state: JobState::Queued,
             error: None,
+            error_code: None,
             hold: None,
         });
         let index = inner.entries.len() - 1;
@@ -565,7 +578,8 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
         let entry = &mut inner.entries[index];
         entry.state = state;
         entry.error = None;
-        inner.persist(id, state, None);
+        entry.error_code = None;
+        inner.persist(id, state, None, None);
         self.shared.dispatch(&mut inner);
         Ok(())
     }
@@ -762,6 +776,7 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
                 task,
                 state,
                 error: stored.error,
+                error_code: stored.error_code,
                 hold: None,
             });
             let index = inner.entries.len() - 1;
@@ -774,7 +789,7 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
                 inner.entries.pop();
                 continue;
             }
-            inner.persist(id, JobState::Queued, None);
+            inner.persist(id, JobState::Queued, None, None);
         }
         interrupted
     }
@@ -799,6 +814,7 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
                         .map(|p| p.to_string_lossy().into_owned()),
                     state: entry.state,
                     error: entry.error.clone(),
+                    error_code: entry.error_code.clone(),
                     payload,
                 })
             });

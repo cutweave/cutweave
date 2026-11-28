@@ -507,7 +507,7 @@ fn a_cancelled_or_failed_zip_leaves_no_file() {
     let moved = f.t.path("Footage/day2/gone.mp4");
     fs::rename(f.t.path("Footage/day2/clip.mp4"), &moved).unwrap();
     let err = run_archive_zip(&plan, &zip, &*host, &Progress::all()).unwrap_err();
-    assert!(matches!(err, JobError::Failed(_)), "{err:?}");
+    assert!(matches!(err, JobError::Failed { .. }), "{err:?}");
     assert_eq!(files_below(&f.t.path("Out")), BTreeSet::new());
     // With the file back, the same call makes the zip.
     fs::rename(&moved, f.t.path("Footage/day2/clip.mp4")).unwrap();

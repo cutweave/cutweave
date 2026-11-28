@@ -1839,6 +1839,12 @@ export type ExportQueueJob = {
 	cancel_requested: boolean,
 	/**  Why it failed or was cancelled. */
 	error: string | null,
+	/**
+	 *  The kind of failure as a short stable code: `disk_full`, `output_exists`,
+	 *  `output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,
+	 *  `engine_unavailable`, or `failed` for the rest. null unless it failed.
+	 */
+	error_code: string | null,
 	/**  The output file. */
 	path: string,
 	/**  The exported sequence. */
@@ -3314,6 +3320,11 @@ export type JobInfo = {
 	cancel_requested: boolean,
 	/**  Why it failed, was skipped or was cancelled. */
 	error: string | null,
+	/**
+	 *  The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`
+	 *  when nothing more specific is known). null unless the job failed.
+	 */
+	error_code: string | null,
 };
 
 /**  What kind of work a job does. The kind decides which [`Budget`] it runs under. */

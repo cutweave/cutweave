@@ -197,6 +197,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "description": "Why it failed, was skipped or was cancelled."
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed."
         }
       },
       "required": [
@@ -207,7 +214,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "state",
         "progress",
         "cancel_requested",
-        "error"
+        "error",
+        "error_code"
       ],
       "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
       "title": "JobInfo"
@@ -392,6 +400,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "description": "Why it failed, was skipped or was cancelled."
+      },
+      "error_code": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed."
       }
     },
     "required": [
@@ -402,7 +417,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "state",
       "progress",
       "cancel_requested",
-      "error"
+      "error",
+      "error_code"
     ],
     "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
     "title": "JobInfo"

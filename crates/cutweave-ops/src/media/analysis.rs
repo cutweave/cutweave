@@ -335,7 +335,7 @@ fn run_stage(
                 }));
             }
         }
-        Err(JobError::Failed(error)) if !ctx.is_cancelled() => {
+        Err(JobError::Failed { message: error, .. }) if !ctx.is_cancelled() => {
             sink.publish(MediaEvent::AnalysisFailed(MediaAnalysisFailed {
                 media_id: media.media_id,
                 stage: stage.name().to_owned(),

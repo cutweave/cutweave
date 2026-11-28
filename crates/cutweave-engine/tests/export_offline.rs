@@ -315,6 +315,7 @@ fn a_queued_export_fails_when_its_media_is_gone_by_its_turn() {
 
     let info = wait(conn, &strict["job_id"], WAIT);
     assert_eq!(info.state, JobState::Failed, "{info:?}");
+    assert_eq!(info.error_code.as_deref(), Some("media_offline"));
     let error = format!("{info:?}");
     assert!(
         error.contains("1 media file is missing: `b.mp4`"),

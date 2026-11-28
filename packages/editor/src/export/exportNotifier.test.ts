@@ -20,6 +20,7 @@ const job = (patch: Partial<JobInfo>): JobInfo => ({
   progress: { fraction: 0.5, message: null },
   cancel_requested: false,
   error: null,
+  error_code: null,
   ...patch,
 });
 

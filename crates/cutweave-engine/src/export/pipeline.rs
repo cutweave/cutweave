@@ -42,6 +42,14 @@
 //!   [`CancelCheck`], on every push, muxed packet and 32 KiB written (so `finish` stops too).
 //!   A cancelled or failed export removes its partial file and leaves an existing file alone;
 //!   a cancel is never retried.
+//! - **Failures** carry a machine code beside their message (ADR-0038; the job's `error_code`):
+//!   `output_exists` (the file appeared while the export waited and it may not replace it),
+//!   `media_offline` (a file its range plays is gone and it does not allow that),
+//!   `render_failed` (a frame could not be evaluated, compiled or drawn), `disk_full` (the drive
+//!   filled up while the file was written), `output_unwritable` (the file could not be created,
+//!   written or moved into place), `encoder_failed` (any other encoder error) and `failed` for
+//!   the rest (the mixdown, a thread that could not start). The queue's runner adds
+//!   `engine_unavailable`.
 //! - **Progress** ([`JobProgress`]): the done fraction (the encoded length over the range),
 //!   frames handed to the encoder, speed, time left and bytes written, reported when the
 //!   fraction moved by 1 % or [`PROGRESS_INTERVAL`] passed (4 Hz for the queue panel).
@@ -57,7 +65,7 @@ use std::sync::{Arc, PoisonError};
 use std::time::{Duration as StdDuration, Instant};
 
 use cutweave_audio::{BusGraph, LimiterConfig, Mixdown, mixdown_with};
-use cutweave_jobs::{CancelToken, JobError, JobProgress};
+use cutweave_jobs::{CancelToken, JobError, JobProgress, error_code};
 use cutweave_media::{
     AudioChunk, AudioEncodeSpec, CancelCheck, EncodeSpec, EncodeSummary, Encoder, HwEncode,
     MediaBackend, MediaError, PixelFormat, Plane, ProgressSink, RateControl, SpeedPreset,
@@ -212,21 +220,68 @@ pub enum ExportError {
     #[error("cancelled")]
     Cancelled,
     /// It failed; the partial file is gone.
-    #[error("{0}")]
-    Failed(String),
+    #[error("{message}")]
+    Failed {
+        /// What kind of failure, for programs (one of [`cutweave_jobs::error_code`]).
+        code: &'static str,
+        /// Why, for people.
+        message: String,
+    },
+}
+
+impl ExportError {
+    /// The machine code of a failure (`None` for a cancel).
+    #[must_use]
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            ExportError::Cancelled => None,
+            ExportError::Failed { code, .. } => Some(code),
+        }
+    }
 }
 
 impl From<ExportError> for JobError {
     fn from(e: ExportError) -> JobError {
         match e {
             ExportError::Cancelled => JobError::Cancelled,
-            ExportError::Failed(msg) => JobError::Failed(msg),
+            ExportError::Failed { code, message } => JobError::coded(code, message),
         }
     }
 }
 
+/// A failure with the general code.
 fn failed(msg: impl Into<String>) -> ExportError {
-    ExportError::Failed(msg.into())
+    coded(error_code::FAILED, msg)
+}
+
+/// A failure with its machine code.
+fn coded(code: &'static str, msg: impl Into<String>) -> ExportError {
+    ExportError::Failed {
+        code,
+        message: msg.into(),
+    }
+}
+
+/// A frame that could not be evaluated, compiled or drawn.
+fn render_failed(msg: impl Into<String>) -> ExportError {
+    coded(error_code::RENDER_FAILED, msg)
+}
+
+/// The encoder did not do its part.
+fn encoder_failed(msg: impl Into<String>) -> ExportError {
+    coded(error_code::ENCODER_FAILED, msg)
+}
+
+/// The code of an encoder error: a full drive, a file that cannot be written, or the encoder
+/// itself.
+fn encoder_code(e: &MediaError) -> &'static str {
+    match e {
+        MediaError::DiskFull { .. } => error_code::DISK_FULL,
+        MediaError::Io { .. } | MediaError::InvalidPath { .. } | MediaError::NotFound { .. } => {
+            error_code::OUTPUT_UNWRITABLE
+        }
+        _ => error_code::ENCODER_FAILED,
+    }
 }
 
 /// Why one encoding attempt stopped: an encoder error (which [`encode_with_fallback`] may
@@ -309,10 +364,10 @@ pub fn prepare_frame(
     options: &GraphOptions,
 ) -> Result<(SceneDescription, RenderGraph), ExportError> {
     let mut scene =
-        evaluate(doc, seq, t).map_err(|e| failed(format!("cannot evaluate {t}: {e}")))?;
+        evaluate(doc, seq, t).map_err(|e| render_failed(format!("cannot evaluate {t}: {e}")))?;
     Quality::EXPORT.apply(&mut scene);
     let graph = build(&scene, Target::rgba8(size.0, size.1), source, options)
-        .map_err(|e| failed(format!("cannot compile the frame at {t}: {e}")))?;
+        .map_err(|e| render_failed(format!("cannot compile the frame at {t}: {e}")))?;
     Ok((scene, graph))
 }
 
@@ -329,9 +384,9 @@ pub fn rasterize_frame(
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .rasterize(scene, graph)
-        .map_err(|e| failed(format!("rendering the frame at {t} failed: {e}")))?;
+        .map_err(|e| render_failed(format!("rendering the frame at {t} failed: {e}")))?;
     if (image.width, image.height) != size || !image.is_valid() {
-        return Err(failed(format!(
+        return Err(render_failed(format!(
             "the renderer returned a {}x{} image for a {}x{} export",
             image.width, image.height, size.0, size.1
         )));
@@ -766,12 +821,12 @@ impl EncodeSide<'_> {
                 return Err(Stop::Export(if self.cancel.is_cancelled() {
                     ExportError::Cancelled
                 } else {
-                    failed("the render thread stopped")
+                    render_failed("the render thread stopped")
                 }));
             };
             let picture = picture?;
             if picture.index != expected {
-                return Err(failed("frames arrived out of order").into());
+                return Err(render_failed("frames arrived out of order").into());
             }
             if self.cancel.is_cancelled() {
                 return Err(ExportError::Cancelled.into());
@@ -915,11 +970,30 @@ fn refuse_offline(plan: &ExportPlan, services: &ExportServices) -> Result<(), Ex
     if missing.is_empty() {
         return Ok(());
     }
-    Err(failed(format!(
-        "{}; relink them and export again, or export with allow_offline: true to get a \"media \
-         offline\" slate in their place",
-        describe_offline(&missing)
-    )))
+    Err(coded(
+        error_code::MEDIA_OFFLINE,
+        format!(
+            "{}; relink them and export again, or export with allow_offline: true to get a \
+             \"media offline\" slate in their place",
+            describe_offline(&missing)
+        ),
+    ))
+}
+
+/// Fails an export that may not replace a file when its output appeared while it waited its
+/// turn: the request was checked when it was queued.
+fn refuse_existing(plan: &ExportPlan) -> Result<(), ExportError> {
+    if plan.overwrite || !plan.path.exists() {
+        return Ok(());
+    }
+    Err(coded(
+        error_code::OUTPUT_EXISTS,
+        format!(
+            "`{}` was created after the export was requested; not replacing it (export again \
+             with overwrite: true)",
+            plan.path.display()
+        ),
+    ))
 }
 
 /// Runs the export of `plan` (see the module docs): renders, mixes and encodes it into
@@ -936,13 +1010,7 @@ pub fn run_export(
     if cancel.is_cancelled() {
         return Err(ExportError::Cancelled);
     }
-    if !plan.overwrite && plan.path.exists() {
-        return Err(failed(format!(
-            "`{}` was created after the export was requested; not replacing it (export again \
-             with overwrite: true)",
-            plan.path.display()
-        )));
-    }
+    refuse_existing(plan)?;
     refuse_offline(plan, services)?;
     let written = Arc::new(AtomicI64::new(0));
     let bytes = Arc::new(AtomicU64::new(0));
@@ -1003,10 +1071,12 @@ pub fn run_export(
         Ok(encoded) => encoded,
         Err(MediaError::Cancelled) => return Err(ExportError::Cancelled),
         Err(e) => {
-            return Err(failure.unwrap_or_else(|| failed(format!("encoding failed: {e}"))));
+            return Err(
+                failure.unwrap_or_else(|| coded(encoder_code(&e), format!("encoding failed: {e}")))
+            );
         }
     };
-    let pushed = pushed.ok_or_else(|| failed("the encoder finished without frames"))?;
+    let pushed = pushed.ok_or_else(|| encoder_failed("the encoder finished without frames"))?;
     let failed_encoder = (encoders.len() > 1).then(|| {
         encoders
             .first()

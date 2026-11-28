@@ -638,6 +638,7 @@ fn a_forced_hardware_encoder_that_fails_does_not_fall_back() {
     let started = must(&conn, "export.start", params);
     let info = wait(&conn, &started["job_id"], WAIT);
     assert_eq!(info.state, JobState::Failed, "{info:?}");
+    assert_eq!(info.error_code.as_deref(), Some("encoder_failed"));
     let error = info.error.unwrap_or_default();
     assert!(error.contains("device lost"), "{error}");
     assert_eq!(pseudo.opened(), [HwEncode::Force(PSEUDO_HW.into())]);

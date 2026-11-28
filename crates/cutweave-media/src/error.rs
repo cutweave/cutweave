@@ -36,6 +36,16 @@ pub enum MediaError {
         /// The failure.
         message: String,
     },
+    /// Writing the file failed because its drive is full (or the user's quota is used up): an
+    /// [`Io`](MediaError::Io) failure whose cause is known, so callers can say "free some space"
+    /// (the export job's `disk_full` code, ADR-0038). Reads the same as `Io`.
+    #[error("I/O error on `{path}`: {message}")]
+    DiskFull {
+        /// The path.
+        path: String,
+        /// The failure.
+        message: String,
+    },
     /// The data is damaged or is not a media file this backend can read (truncated container,
     /// garbage, a missing header).
     #[error("`{path}` is damaged or not a media file: {message}")]

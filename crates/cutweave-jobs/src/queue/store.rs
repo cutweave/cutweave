@@ -12,13 +12,14 @@
 //!             output TEXT,               -- the file the job writes
 //!             state TEXT NOT NULL,       -- queued | running | succeeded | failed | cancelled
 //!             error TEXT,
-//!             payload BLOB NOT NULL)     -- the job itself, encoded by the queue's codec
+//!             payload BLOB NOT NULL,     -- the job itself, encoded by the queue's codec
+//!             error_code TEXT)           -- a failed job's machine code (version 2, ADR-0038)
 //! queue_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)  -- `paused`: "0" | "1"
 //! ```
 //!
 //! WAL journal, `synchronous = NORMAL`: every write is in the file before the call returns, so
 //! a killed engine loses none (a power cut may lose the last ones). The schema evolves through
-//! append-only migrations counted by `PRAGMA user_version` (now 1); a database from a newer
+//! append-only migrations counted by `PRAGMA user_version` (now 2); a database from a newer
 //! build is refused (the queue then runs in memory and says so).
 
 use std::path::{Path, PathBuf};
@@ -53,6 +54,8 @@ pub struct StoredEntry {
     pub state: JobState,
     /// Why it failed or was cancelled.
     pub error: Option<String>,
+    /// A failed job's machine code (`None` for a job stored before codes existed).
+    pub error_code: Option<String>,
     /// The job itself (the queue's codec).
     pub payload: Vec<u8>,
 }
@@ -77,9 +80,15 @@ pub trait QueueStore: Send {
     /// Adds a job at the end of the queue (or replaces the job with that ID, keeping its
     /// place).
     fn insert(&mut self, entry: &StoredEntry) -> Result<(), StoreError>;
-    /// Records a job's new state.
-    fn update(&mut self, id: JobId, state: JobState, error: Option<&str>)
-    -> Result<(), StoreError>;
+    /// Records a job's new state, with why it failed or was cancelled and a failure's machine
+    /// code.
+    fn update(
+        &mut self,
+        id: JobId,
+        state: JobState,
+        error: Option<&str>,
+        error_code: Option<&str>,
+    ) -> Result<(), StoreError>;
     /// Puts the jobs in this order (IDs it does not hold are ignored).
     fn reorder(&mut self, order: &[JobId]) -> Result<(), StoreError>;
     /// Forgets a job.
@@ -104,7 +113,13 @@ impl QueueStore for MemoryQueueStore {
     fn insert(&mut self, _: &StoredEntry) -> Result<(), StoreError> {
         Ok(())
     }
-    fn update(&mut self, _: JobId, _: JobState, _: Option<&str>) -> Result<(), StoreError> {
+    fn update(
+        &mut self,
+        _: JobId,
+        _: JobState,
+        _: Option<&str>,
+        _: Option<&str>,
+    ) -> Result<(), StoreError> {
         Ok(())
     }
     fn reorder(&mut self, _: &[JobId]) -> Result<(), StoreError> {
@@ -122,13 +137,14 @@ impl QueueStore for MemoryQueueStore {
 }
 
 /// The schema version this build writes.
-pub const QUEUE_SCHEMA_VERSION: i64 = 1;
+pub const QUEUE_SCHEMA_VERSION: i64 = 2;
 
 /// The file name of a project's export queue in its `.cutweave` folder.
 pub const QUEUE_FILE: &str = "exports.sqlite";
 
 /// Append-only migrations: `MIGRATIONS[n]` takes the database from version `n` to `n + 1`.
-const MIGRATIONS: [&str; 1] = ["CREATE TABLE export_jobs (
+const MIGRATIONS: [&str; 2] = [
+    "CREATE TABLE export_jobs (
         id TEXT PRIMARY KEY,
         position INTEGER NOT NULL,
         label TEXT NOT NULL,
@@ -137,7 +153,10 @@ const MIGRATIONS: [&str; 1] = ["CREATE TABLE export_jobs (
         error TEXT,
         payload BLOB NOT NULL
     );
-    CREATE TABLE queue_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"];
+    CREATE TABLE queue_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+    // ADR-0038: a failed job's machine code. Jobs stored before it have none.
+    "ALTER TABLE export_jobs ADD COLUMN error_code TEXT;",
+];
 
 /// A queue in a SQLite file (see the module docs).
 #[derive(Debug)]
@@ -226,7 +245,7 @@ impl QueueStore for SqliteQueueStore {
             .optional()?
             .is_some_and(|v| v == "1");
         let mut stmt = self.db.prepare(
-            "SELECT id, label, output, state, error, payload FROM export_jobs \
+            "SELECT id, label, output, state, error, payload, error_code FROM export_jobs \
              ORDER BY position, rowid",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -237,11 +256,12 @@ impl QueueStore for SqliteQueueStore {
                 r.get::<_, String>(3)?,
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, Vec<u8>>(5)?,
+                r.get::<_, Option<String>>(6)?,
             ))
         })?;
         let mut entries = Vec::new();
         for row in rows {
-            let (id, label, output, state, error, payload) = row?;
+            let (id, label, output, state, error, payload, error_code) = row?;
             let (Ok(id), Some(state)) = (JobId::from_str(&id), state_of(&state)) else {
                 tracing::warn!(id, state, file = %self.path.display(), "skipping an unreadable queued job");
                 continue;
@@ -252,6 +272,7 @@ impl QueueStore for SqliteQueueStore {
                 output,
                 state,
                 error,
+                error_code,
                 payload,
             });
         }
@@ -262,28 +283,31 @@ impl QueueStore for SqliteQueueStore {
         let id = entry.id.to_string();
         let updated = self.db.execute(
             "UPDATE export_jobs SET label = ?2, output = ?3, state = ?4, error = ?5, \
-             payload = ?6 WHERE id = ?1",
+             payload = ?6, error_code = ?7 WHERE id = ?1",
             params![
                 id,
                 entry.label,
                 entry.output,
                 state_name(entry.state),
                 entry.error,
-                entry.payload
+                entry.payload,
+                entry.error_code
             ],
         )?;
         if updated == 0 {
             self.db.execute(
-                "INSERT INTO export_jobs (id, position, label, output, state, error, payload) \
+                "INSERT INTO export_jobs \
+                 (id, position, label, output, state, error, payload, error_code) \
                  VALUES (?1, (SELECT COALESCE(MAX(position), 0) + 1 FROM export_jobs), \
-                 ?2, ?3, ?4, ?5, ?6)",
+                 ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     id,
                     entry.label,
                     entry.output,
                     state_name(entry.state),
                     entry.error,
-                    entry.payload
+                    entry.payload,
+                    entry.error_code
                 ],
             )?;
         }
@@ -295,10 +319,11 @@ impl QueueStore for SqliteQueueStore {
         id: JobId,
         state: JobState,
         error: Option<&str>,
+        error_code: Option<&str>,
     ) -> Result<(), StoreError> {
         self.db.execute(
-            "UPDATE export_jobs SET state = ?2, error = ?3 WHERE id = ?1",
-            params![id.to_string(), state_name(state), error],
+            "UPDATE export_jobs SET state = ?2, error = ?3, error_code = ?4 WHERE id = ?1",
+            params![id.to_string(), state_name(state), error, error_code],
         )?;
         Ok(())
     }
@@ -361,6 +386,7 @@ mod tests {
             output: Some(format!("/out/{n}.mp4")),
             state,
             error: None,
+            error_code: None,
             payload: vec![u8::try_from(n).unwrap(); 3],
         }
     }
@@ -375,10 +401,15 @@ mod tests {
             for n in 1..=3 {
                 s.insert(&entry(n, JobState::Queued)).unwrap();
             }
-            s.update(JobId::from_u128(1), JobState::Succeeded, None)
+            s.update(JobId::from_u128(1), JobState::Succeeded, None, None)
                 .unwrap();
-            s.update(JobId::from_u128(2), JobState::Failed, Some("disk full"))
-                .unwrap();
+            s.update(
+                JobId::from_u128(2),
+                JobState::Failed,
+                Some("disk full"),
+                Some("disk_full"),
+            )
+            .unwrap();
             s.reorder(&[
                 JobId::from_u128(1),
                 JobId::from_u128(3),
@@ -394,6 +425,8 @@ mod tests {
         assert_eq!(ids, [1, 3, 2]);
         assert_eq!(q.entries[0].state, JobState::Succeeded);
         assert_eq!(q.entries[2].error.as_deref(), Some("disk full"));
+        assert_eq!(q.entries[2].error_code.as_deref(), Some("disk_full"));
+        assert_eq!(q.entries[0].error_code, None);
         assert_eq!(q.entries[1].payload, vec![3, 3, 3]);
         // Replacing keeps the place; removing forgets; new ones go last.
         s.insert(&StoredEntry {
@@ -408,6 +441,77 @@ mod tests {
         assert!(!q.paused);
         let ids: Vec<u128> = q.entries.iter().map(|e| e.id.as_u128()).collect();
         assert_eq!(ids, [3, 2, 4]);
+        drop(s);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// The first schema, as builds before ADR-0038 created it (no `error_code` column).
+    const VERSION_1: &str = "CREATE TABLE export_jobs (
+            id TEXT PRIMARY KEY,
+            position INTEGER NOT NULL,
+            label TEXT NOT NULL,
+            output TEXT,
+            state TEXT NOT NULL,
+            error TEXT,
+            payload BLOB NOT NULL
+        );
+        CREATE TABLE queue_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
+
+    #[test]
+    fn a_queue_written_before_error_codes_opens_and_takes_them() {
+        let path = temp_db("before-codes");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(VERSION_1).unwrap();
+            db.pragma_update(None, "user_version", 1).unwrap();
+            for (n, state, error) in [(1i64, "failed", Some("disk full")), (2, "queued", None)] {
+                db.execute(
+                    "INSERT INTO export_jobs (id, position, label, output, state, error, payload) \
+                     VALUES (?1, ?2, 'export', '/out/a.mp4', ?3, ?4, x'010203')",
+                    params![
+                        JobId::from_u128(n.unsigned_abs().into()).to_string(),
+                        n,
+                        state,
+                        error
+                    ],
+                )
+                .unwrap();
+            }
+            db.execute(
+                "INSERT INTO queue_meta (key, value) VALUES ('paused', '1')",
+                [],
+            )
+            .unwrap();
+        }
+        let mut s = SqliteQueueStore::open(&path).unwrap();
+        let q = s.load().unwrap();
+        assert!(q.paused);
+        assert_eq!(q.entries.len(), 2);
+        // The old failure keeps its message and has no code.
+        assert_eq!(q.entries[0].state, JobState::Failed);
+        assert_eq!(q.entries[0].error.as_deref(), Some("disk full"));
+        assert_eq!(q.entries[0].error_code, None);
+        assert_eq!(q.entries[0].payload, vec![1, 2, 3]);
+        // New failures are stored with their code, and the file is at this build's version.
+        s.update(
+            JobId::from_u128(2),
+            JobState::Failed,
+            Some("cannot create the file"),
+            Some("output_unwritable"),
+        )
+        .unwrap();
+        drop(s);
+        let mut s = SqliteQueueStore::open(&path).unwrap();
+        let q = s.load().unwrap();
+        assert_eq!(
+            q.entries[1].error_code.as_deref(),
+            Some("output_unwritable")
+        );
+        assert_eq!(q.entries[0].error_code, None);
+        let version: i64 =
+            s.db.pragma_query_value(None, "user_version", |r| r.get(0))
+                .unwrap();
+        assert_eq!(version, QUEUE_SCHEMA_VERSION);
         drop(s);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }

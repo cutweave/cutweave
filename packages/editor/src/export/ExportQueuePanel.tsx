@@ -2,7 +2,8 @@
 // The export queue panel (WP-2G.04, dockable; View > Panels > Exports): every export of the
 // project's queue, first in line first, with its progress, speed and time left. Row actions are
 // icon buttons with tooltips: cancel, retry, move up and down (or drag a waiting export onto
-// another), open the file, reveal it and take it off the list; a failed export says why. The same actions
+// another), open the file, reveal it and take it off the list; a failed export says why, with the
+// engine's error code in mono before the message (ADR-0038). The same actions
 // are on the row's context menu (`export.row`). Each row follows its own job in `jobStore`, so a
 // progress event re-renders that row only.
 
@@ -49,6 +50,8 @@ export interface QueueRowData {
   readonly path: string;
   readonly state: ExportQueueJob["state"];
   readonly error: string | null;
+  /** The failure's machine code (`disk_full`, …); null when the engine gave none. */
+  readonly errorCode: string | null;
 }
 
 /** The row's speed and time left: "31 fps · about 0:15 left". */
@@ -83,6 +86,7 @@ const QueueRow = memo(function QueueRow({ job, canUp, canDown, canReveal, canOpe
   const state = (live?.state ?? job.state) as ExportQueueJob["state"];
   const progress = live?.progress ?? job.progress;
   const error = live?.error ?? job.error;
+  const errorCode = state === "failed" ? (live?.error_code ?? job.error_code ?? null) : null;
   const name = baseName(job.path);
   const pct = state === "succeeded" ? 100 : percent(progress.fraction);
   const [over, setOver] = useState(false);
@@ -90,7 +94,7 @@ const QueueRow = memo(function QueueRow({ job, canUp, canDown, canReveal, canOpe
   const ref = useContextMenu<HTMLLIElement>("export.row", () => ({
     ids: [job.id],
     name,
-    data: { id: job.id, path: job.path, state, error } satisfies QueueRowData,
+    data: { id: job.id, path: job.path, state, error, errorCode } satisfies QueueRowData,
   }));
   const speed = state === "running" ? speedText(progress, t) : null;
   const drop = (event: DragEvent<HTMLLIElement>) => {
@@ -151,6 +155,11 @@ const QueueRow = memo(function QueueRow({ job, canUp, canDown, canReveal, canOpe
         </span>
         {state === "failed" && error !== null ? (
           <span className="cw-queue__error caption" role="alert">
+            {errorCode !== null ? (
+              <>
+                <code className="cw-queue__code cw-mono">{errorCode}</code>{" "}
+              </>
+            ) : null}
             {t("exportQueue.error", { message: error })}
           </span>
         ) : null}

@@ -45,6 +45,7 @@ function job(patch: Partial<JobInfo>): JobInfo {
     progress: { fraction: 0.5, message: "frame 5 of 10, 12 fps, about 0:01 left" },
     cancel_requested: false,
     error: null,
+    error_code: null,
     ...patch,
   };
 }
