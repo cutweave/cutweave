@@ -7515,7 +7515,7 @@
       "title": "Font manager & bundled font set",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 64
+        "line": 70
       },
       "phase": "P3",
       "epic": "3A",
@@ -7544,7 +7544,7 @@
       "title": "Shaping & rich-text layout",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 75
+        "line": 81
       },
       "phase": "P3",
       "epic": "3A",
@@ -7580,7 +7580,7 @@
       "title": "MSDF glyph atlas",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 86
+        "line": 92
       },
       "phase": "P3",
       "epic": "3A",
@@ -7614,7 +7614,7 @@
       "title": "Text render pass (fill, outline, shadow, glow, gradient, box)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 97
+        "line": 103
       },
       "phase": "P3",
       "epic": "3A",
@@ -7648,7 +7648,7 @@
       "title": "Vector/colour glyph fallback & text golden + perf suite",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 108
+        "line": 114
       },
       "phase": "P3",
       "epic": "3A",
@@ -7677,7 +7677,7 @@
       "title": "Text UI: add, inspector, on-canvas editing",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 119
+        "line": 125
       },
       "phase": "P3",
       "epic": "3A",
@@ -7744,7 +7744,7 @@
       "title": "`cutweave-plugins` v0 skeleton (manifest, discovery, contribution registry)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 136
+        "line": 142
       },
       "phase": "P3",
       "epic": "3B",
@@ -7787,7 +7787,7 @@
       "title": "`@cutweave/compose` scene API v1",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 147
+        "line": 153
       },
       "phase": "P3",
       "epic": "3B",
@@ -7817,7 +7817,7 @@
       "title": "`cutweave-compose`: oxc transpile + QuickJS sandbox runtime",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 158
+        "line": 164
       },
       "phase": "P3",
       "epic": "3B",
@@ -7850,7 +7850,7 @@
       "title": "Scene-graph rendering in `cutweave-render`",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 169
+        "line": 175
       },
       "phase": "P3",
       "epic": "3B",
@@ -7886,7 +7886,7 @@
       "title": "Composition packaging, instances, commands & props inspector",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 180
+        "line": 186
       },
       "phase": "P3",
       "epic": "3B",
@@ -7936,7 +7936,7 @@
       "title": "Compositions batch A: lower thirds ×8 + titles ×6",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 191
+        "line": 197
       },
       "phase": "P3",
       "epic": "3B",
@@ -7967,7 +7967,7 @@
       "title": "Compositions batch B: callouts ×6, progress bars ×4, CTA ×4",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 202
+        "line": 208
       },
       "phase": "P3",
       "epic": "3B",
@@ -7998,7 +7998,7 @@
       "title": "Text animator framework (per-glyph / word / line)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 217
+        "line": 223
       },
       "phase": "P3",
       "epic": "3C",
@@ -8033,7 +8033,7 @@
       "title": "Text animation binding (in / out / loop), commands & picker UI",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 228
+        "line": 234
       },
       "phase": "P3",
       "epic": "3C",
@@ -8066,7 +8066,7 @@
       "title": "Text animations pack: IN ×10",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 239
+        "line": 245
       },
       "phase": "P3",
       "epic": "3C",
@@ -8095,7 +8095,7 @@
       "title": "Text animations pack: OUT ×8 + LOOP ×6",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 250
+        "line": 256
       },
       "phase": "P3",
       "epic": "3C",
@@ -8124,7 +8124,7 @@
       "title": "Text presets: L0 format, commands & pack of 30",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 261
+        "line": 267
       },
       "phase": "P3",
       "epic": "3C",
@@ -8157,7 +8157,7 @@
       "title": "Transcript model, queries & commands",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 276
+        "line": 282
       },
       "phase": "P3",
       "epic": "3D",
@@ -8198,7 +8198,7 @@
       "title": "Minimal AI-gateway slice in `cutweave-ai` (Stt only) — **E5A foundation**",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 287
+        "line": 293
       },
       "phase": "P3",
       "epic": "3D",
@@ -8248,7 +8248,7 @@
       "title": "Cloud Stt provider: ElevenLabs Scribe adapter",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 298
+        "line": 304
       },
       "phase": "P3",
       "epic": "3D",
@@ -8279,7 +8279,7 @@
       "title": "Local Stt provider: whisper.cpp + model manager (minimal)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 309
+        "line": 315
       },
       "phase": "P3",
       "epic": "3D",
@@ -8310,7 +8310,7 @@
       "title": "`transcript.generate`: audio prep, chunking, normalisation, job command",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 320
+        "line": 326
       },
       "phase": "P3",
       "epic": "3D",
@@ -8355,7 +8355,7 @@
       "title": "Transcript panel UI & AI-provider settings",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 331
+        "line": 337
       },
       "phase": "P3",
       "epic": "3D",
@@ -8404,7 +8404,7 @@
       "title": "Caption model, time mapping & commands",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 348
+        "line": 354
       },
       "phase": "P3",
       "epic": "3E",
@@ -8454,7 +8454,7 @@
       "title": "Caption chunking engine",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 359
+        "line": 365
       },
       "phase": "P3",
       "epic": "3E",
@@ -8483,7 +8483,7 @@
       "title": "Caption style package format & per-word context",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 370
+        "line": 376
       },
       "phase": "P3",
       "epic": "3E",
@@ -8518,7 +8518,7 @@
       "title": "Caption renderer (word states, karaoke, pop/bounce, backgrounds)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 381
+        "line": 387
       },
       "phase": "P3",
       "epic": "3E",
@@ -8551,7 +8551,7 @@
       "title": "Emoji emphasis (keyword → emoji)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 392
+        "line": 398
       },
       "phase": "P3",
       "epic": "3E",
@@ -8582,7 +8582,7 @@
       "title": "Caption styles batch A: active-word highlight ×7",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 403
+        "line": 409
       },
       "phase": "P3",
       "epic": "3E",
@@ -8613,7 +8613,7 @@
       "title": "Caption styles batch B: karaoke & sweep ×7",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 414
+        "line": 420
       },
       "phase": "P3",
       "epic": "3E",
@@ -8644,7 +8644,7 @@
       "title": "Caption styles batch C: pop, bounce & kinetic ×7",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 425
+        "line": 431
       },
       "phase": "P3",
       "epic": "3E",
@@ -8675,7 +8675,7 @@
       "title": "Caption styles batch D: boxes, cinematic, creator ×7",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 436
+        "line": 442
       },
       "phase": "P3",
       "epic": "3E",
@@ -8708,7 +8708,7 @@
       "title": "Caption style gallery design review (human gate)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 447
+        "line": 453
       },
       "phase": "P3",
       "epic": "3E",
@@ -8743,7 +8743,7 @@
       "title": "Captions panel UI",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 458
+        "line": 464
       },
       "phase": "P3",
       "epic": "3E",
@@ -8796,7 +8796,7 @@
       "title": "SRT / VTT / ASS import & export",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 471
+        "line": 477
       },
       "phase": "P3",
       "epic": "3E",
@@ -8825,7 +8825,7 @@
       "title": "Export integration: burn-in vs sidecar, bilingual layout, safe zones",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 482
+        "line": 488
       },
       "phase": "P3",
       "epic": "3E",
@@ -8864,7 +8864,7 @@
       "title": "`timeline.ripple_delete_ranges` and `timeline.reorder`",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 497
+        "line": 503
       },
       "phase": "P3",
       "epic": "3F",
@@ -8915,7 +8915,7 @@
       "title": "Transcript ↔ timeline projection & word-edit commands",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 508
+        "line": 514
       },
       "phase": "P3",
       "epic": "3F",
@@ -8948,7 +8948,7 @@
       "title": "Transcript editing UI",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 519
+        "line": 525
       },
       "phase": "P3",
       "epic": "3F",
@@ -8979,7 +8979,7 @@
       "title": "Silence & filler detection and removal commands",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 531
+        "line": 537
       },
       "phase": "P3",
       "epic": "3F",
@@ -9020,7 +9020,7 @@
       "title": "Clean-up review UI (silences & fillers)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 542
+        "line": 548
       },
       "phase": "P3",
       "epic": "3F",
@@ -9051,7 +9051,7 @@
       "title": "L0 asset pack loader, library backend & licence CI",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 557
+        "line": 563
       },
       "phase": "P3",
       "epic": "3G",
@@ -9090,7 +9090,7 @@
       "title": "Sticker, overlay & emoji support in the engine",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 568
+        "line": 574
       },
       "phase": "P3",
       "epic": "3G",
@@ -9131,7 +9131,7 @@
       "title": "Sticker & overlay content (original artwork), ≥ 60 items",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 579
+        "line": 585
       },
       "phase": "P3",
       "epic": "3G",
@@ -9162,7 +9162,7 @@
       "title": "Music & SFX starter library (curation, human-reviewed)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 590
+        "line": 596
       },
       "phase": "P3",
       "epic": "3G",
@@ -9191,7 +9191,7 @@
       "title": "Library UI: Audio, Stickers, Emoji tabs",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 601
+        "line": 607
       },
       "phase": "P3",
       "epic": "3G",
@@ -9240,7 +9240,7 @@
       "title": "MCP tools for captions & transcripts",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 617
+        "line": 623
       },
       "phase": "P3",
       "epic": "3H",
@@ -9289,7 +9289,7 @@
       "title": "MCP resources & vision aids for captions",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 628
+        "line": 634
       },
       "phase": "P3",
       "epic": "3H",
@@ -9320,7 +9320,7 @@
       "title": "Skills: `captions-and-styling` and `transcript-editing`",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 639
+        "line": 645
       },
       "phase": "P3",
       "epic": "3H",
@@ -9349,7 +9349,7 @@
       "title": "Skill `reframe-and-aspect` + 3 MCP prompts",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 650
+        "line": 656
       },
       "phase": "P3",
       "epic": "3H",
@@ -9385,7 +9385,7 @@
       "title": "Scripted-agent e2e & LLM-in-the-loop run (exit criterion #2)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 661
+        "line": 667
       },
       "phase": "P3",
       "epic": "3H",
@@ -9426,7 +9426,7 @@
       "title": "Alpha installers for Windows, macOS, Linux",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 676
+        "line": 682
       },
       "phase": "P3",
       "epic": "3I",
@@ -9462,7 +9462,7 @@
       "title": "First-run experience, sample content & alpha docs",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 687
+        "line": 693
       },
       "phase": "P3",
       "epic": "3I",
@@ -9495,7 +9495,7 @@
       "title": "Installer smoke tests & exit-criterion automation",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 699
+        "line": 705
       },
       "phase": "P3",
       "epic": "3I",
@@ -9526,7 +9526,7 @@
       "title": "Usability gate: < 5-minute short from a 3-min talking-head clip (human)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 710
+        "line": 716
       },
       "phase": "P3",
       "epic": "3I",
@@ -9563,7 +9563,7 @@
       "title": "Opt-in, self-hosted, privacy-preserving crash reporting (ships with Public Alpha)",
       "source": {
         "file": "docs/wbs/P3-text-captions.md",
-        "line": 721
+        "line": 727
       },
       "phase": "P3",
       "epic": "3I",

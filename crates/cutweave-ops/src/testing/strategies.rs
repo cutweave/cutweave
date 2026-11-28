@@ -458,15 +458,15 @@ impl Pools {
 /// The keys of a clip's animated properties.
 fn item_keys(item: &cutweave_model::Item) -> Vec<(&'static str, i64)> {
     use cutweave_model::{PropId, PropRef};
-    let Some(clip) = item.as_clip() else {
-        return Vec::new();
-    };
     let mut out = Vec::new();
     for id in PropId::ALL {
-        let times: Vec<i64> = match clip.prop(id) {
-            PropRef::Scalar(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
-            PropRef::Vec2(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
-            PropRef::Bool(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+        let times: Vec<i64> = match item.prop(id) {
+            Some(PropRef::Scalar(a)) => {
+                a.sample_times().map(cutweave_model::Time::flicks).collect()
+            }
+            Some(PropRef::Vec2(a)) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+            Some(PropRef::Bool(a)) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+            None => Vec::new(),
         };
         out.extend(times.into_iter().map(|t| (id.as_str(), t)));
     }
@@ -492,7 +492,8 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         | "export.queue"
         | "media.list_folders"
         | "media.list_tags"
-        | "media.list_collections" => (1, no_params()),
+        | "media.list_collections"
+        | "text.list_styles" => (1, no_params()),
         "media.add_tags" => (if no_media { 1 } else { 3 }, media_tags(p)),
         "media.remove_tags" => (1, media_tags(p)),
         "media.rename_tag" => (1, media_rename_tag()),
@@ -615,6 +616,13 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "keyframe.paste" => (edits.div_ceil(3), keyframe_paste(p)),
         "keyframe.copy" => (1, keyframe_copy(p)),
         "keyframe.eval" => (1, keyframe_eval(p)),
+        "text.add" => (if p.seqs.is_empty() { 1 } else { 5 }, text_add(p)),
+        "text.set_content" => (3, text_set_content(p)),
+        "text.set_style" => (3, text_set_style(p)),
+        "text.set_run_style" => (3, text_set_run_style(p)),
+        "text.set_box" => (2, text_set_box(p)),
+        "text.add_emoji" => (2, text_add_emoji(p)),
+        "text.get" => (1, text_get(p)),
         "edit.begin_tx" => (2, begin_tx()),
         "edit.commit_tx" => (2, tx_ref()),
         "edit.cancel_tx" => (1, tx_ref()),
@@ -2017,7 +2025,7 @@ fn track_add(p: &Pools) -> BoxedStrategy<Value> {
         .boxed();
     let invalid = (
         one_of(p.seqs.clone()),
-        select(vec!["text", "caption", "adjustment", "video"]),
+        select(vec!["caption", "adjustment", "video"]),
         bad_name(),
     )
         .prop_map(
@@ -3409,9 +3417,270 @@ fn near_any(p: &Pools) -> BoxedStrategy<Value> {
     }
 }
 
+// ----- text.* (WP-3A.01) -------------------------------------------------------------------------
+
+/// Words for a text item, sometimes with a line break, an emoji or a non-Latin script.
+fn words() -> BoxedStrategy<String> {
+    prop_oneof![
+        4 => "[A-Za-z][A-Za-z ]{0,24}".prop_map(String::from),
+        1 => Just("Two\nlines".to_owned()),
+        1 => Just("Gr\u{fc}\u{df}e \u{4e16}\u{754c} \u{1F389}".to_owned()),
+    ]
+    .boxed()
+}
+
+/// A merge patch of a text style, mostly valid.
+fn style_patch() -> BoxedStrategy<Value> {
+    prop_oneof![
+        3 => (1.0..=300.0_f64).prop_map(|s| json!({"size": s})),
+        2 => (select(vec!["#ffd400", "#ff0000", "#00aaff"]), 100_u16..=900).prop_map(
+            |(c, w)| json!({"fill": {"kind": "solid", "color": c}, "font": {"weight": w}})
+        ),
+        2 => (0.0..=12.0_f64).prop_map(|w| json!({"strokes": [
+            {"width": w, "join": "round", "color": "#000000", "order": "behind"}
+        ]})),
+        1 => Just(json!({"glow": {"radius": 10.0, "color": "#ffffff", "intensity": 1.0}})),
+        1 => Just(json!({"glow": null, "align": "left", "v_align": "top"})),
+        1 => (-0.5..=2.0_f64).prop_map(|l| json!({"letter_spacing": l, "line_height": 1.4})),
+    ]
+    .boxed()
+}
+
+/// A merge patch that is invalid: a bad size, colour or key.
+fn bad_style_patch() -> BoxedStrategy<Value> {
+    select(vec![
+        json!({"size": 0}),
+        json!({"size": -4.0}),
+        json!({"fill": {"kind": "solid", "color": "red"}}),
+        json!({"strokes": [{"width": -1.0, "join": "round", "color": "#000000", "order": "behind"}]}),
+        json!({"colour": "#ffffff"}),
+        json!({"font": {"weight": 0}}),
+    ])
+    .boxed()
+}
+
+fn text_items(p: &Pools) -> Vec<Itm> {
+    p.items
+        .iter()
+        .filter(|i| i.kind == TrackKind::Text)
+        .cloned()
+        .collect()
+}
+
+/// `text.add`: mostly one call with only the words (and the odd option).
+fn text_add(p: &Pools) -> BoxedStrategy<Value> {
+    let tracks: Vec<TrackId> = p
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Text)
+        .map(|t| t.id)
+        .collect();
+    let any_track = if tracks.is_empty() {
+        fresh::<TrackId>()
+    } else {
+        one_of(tracks)
+    };
+    let valid = (
+        words(),
+        option::weighted(0.4, one_of(p.seqs.clone())),
+        option::weighted(0.2, any_track),
+        option::weighted(0.6, 0..400_i64),
+        option::weighted(0.5, 1..300_i64),
+        option::weighted(0.3, select(vec!["title", "subtitle", "body"])),
+        option::weighted(0.3, style_patch()),
+        option::weighted(0.2, (-1.0..=1.0_f64, -1.0..=1.0_f64)),
+        option::weighted(0.2, 0.1..=1.0_f64),
+    )
+        .prop_map(
+            |(text, sequence, track, at, dur, style_name, style, position, width)| {
+                let mut v = json!({"text": text});
+                if let Some(s) = sequence {
+                    v["sequence"] = s;
+                }
+                if let Some(t) = track {
+                    v["track"] = t;
+                }
+                if let Some(f) = at {
+                    v["at"] = json!(format!("f:{f}"));
+                }
+                if let Some(f) = dur {
+                    v["duration"] = json!(format!("f:{f}"));
+                }
+                if let Some(n) = style_name {
+                    v["style_name"] = json!(n);
+                }
+                if let Some(s) = style {
+                    v["style"] = s;
+                }
+                if let Some((x, y)) = position {
+                    v["position"] = json!({"x": x, "y": y});
+                }
+                if let Some(w) = width {
+                    v["box"] = json!({"width": w});
+                }
+                v
+            },
+        )
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"text": ""})),
+        Just(json!({"text": "x", "style_name": "huge"})),
+        Just(json!({"text": "x", "at": "-1s"})),
+        Just(json!({"text": "x", "duration": 0})),
+        Just(json!({"text": "x", "box": {"width": 0.0}})),
+        bad_style_patch().prop_map(|s| json!({"text": "x", "style": s})),
+        fresh::<TrackId>().prop_map(|t| json!({"text": "x", "track": t})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// An edit of a text item: `f` makes the params from the item's id.
+fn on_text(
+    p: &Pools,
+    valid: impl Fn(&Itm) -> BoxedStrategy<Value> + Send + Sync + 'static,
+    invalid: BoxedStrategy<Value>,
+) -> BoxedStrategy<Value> {
+    let texts = text_items(p);
+    let unknown = fresh::<ItemId>()
+        .prop_map(|i| json!({"item": i, "text": "x"}))
+        .boxed();
+    if texts.is_empty() {
+        return mix(unknown.clone(), unknown);
+    }
+    let clip_or_missing = if p.items.len() > texts.len() {
+        let others: Vec<Itm> = p
+            .items
+            .iter()
+            .filter(|i| i.kind != TrackKind::Text)
+            .cloned()
+            .collect();
+        select(others)
+            .prop_map(|i| json!({"item": i.id, "text": "x"}))
+            .boxed()
+    } else {
+        unknown
+    };
+    let valid = select(texts).prop_flat_map(move |it| valid(&it)).boxed();
+    mix(valid, prop_oneof![invalid, clip_or_missing].boxed())
+}
+
+fn text_set_content(p: &Pools) -> BoxedStrategy<Value> {
+    on_text(
+        p,
+        |it| {
+            let id = it.id;
+            prop_oneof![
+                3 => words().prop_map(move |t| json!({"item": id, "text": t})),
+                1 => (words(), words()).prop_map(move |(a, b)| json!({"item": id, "runs": [
+                    {"text": a},
+                    {"text": b, "style": {"size": 40.0, "fill": {"kind": "solid", "color": "#ffd400"}}}
+                ]})),
+            ]
+            .boxed()
+        },
+        prop_oneof![
+            Just(json!({"item": ItemId::from_u128(1), "text": ""})),
+            Just(json!({"item": ItemId::from_u128(1), "text": "a", "runs": []})),
+            Just(json!({"item": ItemId::from_u128(1)})),
+        ]
+        .boxed(),
+    )
+}
+
+fn text_set_style(p: &Pools) -> BoxedStrategy<Value> {
+    on_text(
+        p,
+        |it| {
+            let id = it.id;
+            (
+                style_patch(),
+                option::weighted(0.2, select(vec!["title", "subtitle", "body"])),
+            )
+                .prop_map(move |(patch, base)| match base {
+                    Some(b) => json!({"item": id, "patch": patch, "style_name": b}),
+                    None => json!({"item": id, "patch": patch}),
+                })
+                .boxed()
+        },
+        bad_style_patch()
+            .prop_map(|s| json!({"item": ItemId::from_u128(1), "patch": s}))
+            .boxed(),
+    )
+}
+
+fn text_set_run_style(p: &Pools) -> BoxedStrategy<Value> {
+    on_text(
+        p,
+        |it| {
+            let id = it.id;
+            (0..30_u32, 1..30_u32, prop_oneof![
+                3 => (1.0..=200.0_f64).prop_map(|s| json!({"size": s})),
+                1 => Just(json!({"fill": {"kind": "solid", "color": "#ff0000"}})),
+                1 => Just(json!({"size": null})),
+                1 => Just(json!({"size": -1.0})),
+            ])
+                .prop_map(move |(start, len, patch)| {
+                    json!({"item": id, "start": start, "end": start + len, "patch": patch})
+                })
+                .boxed()
+        },
+        Just(json!({"item": ItemId::from_u128(1), "start": 3, "end": 3, "patch": {}})).boxed(),
+    )
+}
+
+fn text_set_box(p: &Pools) -> BoxedStrategy<Value> {
+    on_text(
+        p,
+        |it| {
+            let id = it.id;
+            prop_oneof![
+                3 => (option::of(0.05..=2.0_f64), option::of(0.05..=2.0_f64))
+                    .prop_map(move |(w, h)| json!({"item": id, "box": {"width": w, "height": h}})),
+                1 => Just(json!({"item": id, "box": {}})),
+                1 => Just(json!({"item": id, "box": {"width": -1.0}})),
+            ]
+            .boxed()
+        },
+        Just(json!({"item": ItemId::from_u128(1), "box": {"height": 0.0}})).boxed(),
+    )
+}
+
+fn text_add_emoji(p: &Pools) -> BoxedStrategy<Value> {
+    on_text(
+        p,
+        |it| {
+            let id = it.id;
+            (
+                select(vec![
+                    "\u{1F389}",
+                    "\u{1F469}\u{200D}\u{1F4BB}",
+                    "\u{2764}\u{FE0F}",
+                    "nope",
+                ]),
+                option::weighted(0.5, 0..40_u32),
+            )
+                .prop_map(move |(e, at)| json!({"item": id, "emoji": e, "at": at}))
+                .boxed()
+        },
+        Just(json!({"item": ItemId::from_u128(1), "emoji": ""})).boxed(),
+    )
+}
+
+fn text_get(p: &Pools) -> BoxedStrategy<Value> {
+    let ids = p.item_ids();
+    let any = if ids.is_empty() {
+        fresh::<ItemId>()
+    } else {
+        one_of(ids)
+    };
+    let valid = any.prop_map(|i| json!({"item": i})).boxed();
+    mix(valid, Just(json!({})).boxed())
+}
+
 // ----- keyframe.*, item.reset_props (WP-2C.03) ----------------------------------------------------
 
-const PROP_IDS: [&str; 13] = [
+const PROP_IDS: [&str; 16] = [
     "transform.position",
     "transform.scale",
     "transform.rotation",
@@ -3425,6 +3694,9 @@ const PROP_IDS: [&str; 13] = [
     "flip.vertical",
     "audio_gain",
     "audio_pan",
+    "text.size",
+    "text.letter_spacing",
+    "text.line_height",
 ];
 
 const EASINGS: [&str; 8] = [
@@ -3459,6 +3731,13 @@ fn prop_value(prop: &'static str) -> BoxedStrategy<Value> {
         "audio_gain" => {
             prop_oneof![9 => gain().prop_map(|v| json!(v)), 1 => Just(json!(99.0))].boxed()
         }
+        "text.size" => prop_oneof![
+            9 => (1.0..=300.0_f64).prop_map(|v| json!(v)),
+            1 => Just(json!(0.0)),
+        ]
+        .boxed(),
+        "text.letter_spacing" => (-1.0..=3.0_f64).prop_map(|v| json!(v)).boxed(),
+        "text.line_height" => (0.5..=3.0_f64).prop_map(|v| json!(v)).boxed(),
         _ => prop_oneof![
             9 => (-1.0..=1.0_f64).prop_map(|v| json!(v)),
             1 => Just(json!(-2.0)),

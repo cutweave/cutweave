@@ -582,7 +582,7 @@ function neighbour(fact: ClipFact, edge: Edge) {
   // One pass: a track can hold thousands of clips and a menu reads this several times.
   let near: ClipFact["clip"] | undefined;
   for (const i of Object.values(fact.track.items)) {
-    if (i.id === fact.clip.id) continue;
+    if (i.kind === "text" || i.id === fact.clip.id) continue;
     const closer =
       edge === "end"
         ? i.start >= endOf(fact.clip) && (near === undefined || i.start < near.start)

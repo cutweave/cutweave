@@ -6,7 +6,7 @@
 // property: a property of `props` with `x-ui.group` `transform`, `crop`, `flip` or `compositing`
 // (or none) belongs to the Video part, and a new property in the schema gets a control with no
 // UI code change. `clip` and `audio` groups are other sections' (Clip info, WP-2H.03b).
-import type { Item, ItemProps, PropId, ResetGroup } from "@cutweave/protocol";
+import type { ClipItem as Item, ItemProps, PropId, ResetGroup } from "@cutweave/protocol";
 import type { KeyframeState } from "@cutweave/ui";
 import { getPath, type JsonSchema, setPath, type UiHints } from "@cutweave/ui";
 

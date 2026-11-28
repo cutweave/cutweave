@@ -487,11 +487,10 @@ impl Command for ItemApplyLayout {
         let (_, steps) = self.steps(ctx.doc())?;
         for step in steps {
             let at = ctx.item(step.target.id)?;
-            let mut clip = at
-                .item
-                .as_clip()
-                .ok_or_else(|| CmdError::unsupported("only clips can be arranged"))?
-                .clone();
+            if at.item.as_clip().is_none() {
+                return Err(CmdError::unsupported("only clips can be arranged"));
+            }
+            let mut clip = at.item.clone();
             step.request
                 .update_clip(&mut clip, &step.plan, &step.target)?;
         }
@@ -505,10 +504,10 @@ impl Command for ItemApplyLayout {
         let mut cells = Vec::with_capacity(steps.len());
         for step in &steps {
             let done: ItemChange = tx.update_item(step.target.id, |item| {
-                let Some(clip) = item.as_clip_mut() else {
+                if item.as_clip().is_none() {
                     return Err(CmdError::unsupported("only clips can be arranged"));
-                };
-                step.request.update_clip(clip, &step.plan, &step.target)
+                }
+                step.request.update_clip(item, &step.plan, &step.target)
             })?;
             for c in done.changed {
                 if !changed.contains(&c) {

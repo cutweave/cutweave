@@ -2,7 +2,7 @@
 // Small helpers of the preview's overlay layer (WP-1M.04, WP-2H.06): the generic safe areas and
 // where a clip and its picture size come from. The clip's box and handles are
 // `overlays/TransformOverlay.tsx`, placed with `overlays/geometry.ts`.
-import type { Item, MediaAsset, Project } from "@cutweave/protocol";
+import type { ClipItem as Item, MediaAsset, Project } from "@cutweave/protocol";
 import { SAFE_AREA_PACK } from "./overlays/guides.ts";
 
 /**

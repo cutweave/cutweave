@@ -11,7 +11,7 @@
 // the anchor's offset from the canvas centre in canvas fractions, `scale` multiplies the
 // aspect-fit size, `anchor` is in picture fractions. Crop masks without moving the picture: the
 // anchor and the fitted size refer to the whole picture.
-import type { Animatable, Item, MediaAsset } from "@cutweave/protocol";
+import type { Animatable, ClipItem as Item, MediaAsset } from "@cutweave/protocol";
 import { displaySize } from "../overlay.ts";
 
 export interface Pt {

@@ -94,7 +94,10 @@ fn add_rejects_bad_names_and_unsupported_kinds() {
         "/kind",
     );
     assert_code(
-        h.run("track.add", json!({"sequence": p.sequence, "kind": "text"})),
+        h.run(
+            "track.add",
+            json!({"sequence": p.sequence, "kind": "caption"}),
+        ),
         "unsupported",
     );
     assert_invalid(h.run("track.add", json!({"sequence": p.sequence})), "");

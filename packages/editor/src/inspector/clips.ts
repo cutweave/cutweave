@@ -22,7 +22,7 @@ export function selectSelectedClips(
     };
     for (const track of Object.values(sequence.tracks)) {
       for (const item of Object.values(track.items)) {
-        if (wanted.has(item.id)) {
+        if (wanted.has(item.id) && item.kind !== "text") {
           found.set(item.id, {
             item,
             trackId: track.id,

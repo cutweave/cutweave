@@ -694,6 +694,7 @@ impl Project {
         check_markers(path, item.markers(), out);
         match item {
             Item::Clip(clip) => self.check_clip(path, track, track_kind, clip, out),
+            Item::Text(text) => check_text(path, id, track_kind, text, out),
         }
     }
 
@@ -969,10 +970,53 @@ fn check_finite(path: &str, value: f64, out: &mut Vec<Invariant>) {
 
 /// Every animatable property against its registry row (keyframes §7, KF-4): a static value or
 /// every key must be finite and within the stored range.
+/// A text item sits on a text track, with valid content, style, box and visual properties.
+fn check_text(
+    path: &str,
+    id: ItemId,
+    track_kind: TrackKind,
+    text: &crate::TextItem,
+    out: &mut Vec<Invariant>,
+) {
+    if track_kind != TrackKind::Text {
+        out.push(Invariant::InvalidValue {
+            path: path.to_owned(),
+            reason: format!(
+                "text item `{id}` is on a {track_kind} track; text goes on a text track"
+            ),
+        });
+    }
+    if let Err(e) = text.check() {
+        out.push(Invariant::InvalidValue {
+            path: format!("{path}{}", e.path),
+            reason: e.msg,
+        });
+    }
+    for id in PropId::ALL {
+        let spec = id.spec();
+        if id.is_text_style() {
+            continue; // `TextItem::check` covers the style
+        }
+        let Some(prop) = text.prop(id) else { continue };
+        let checked = match prop {
+            PropRef::Scalar(a) => a.check_range(spec.stored),
+            PropRef::Vec2(a) => a.check_range(spec.stored),
+            PropRef::Bool(a) => a.check_range(spec.stored),
+        };
+        if let Err(e) = checked {
+            out.push(Invariant::InvalidValue {
+                path: format!("{path}/{}", spec.path.replace('.', "/")),
+                reason: e.to_string(),
+            });
+        }
+    }
+}
+
 fn check_props(path: &str, clip: &crate::Clip, out: &mut Vec<Invariant>) {
     for id in PropId::ALL {
         let spec = id.spec();
-        let checked = match clip.prop(id) {
+        let Some(prop) = clip.prop(id) else { continue };
+        let checked = match prop {
             PropRef::Scalar(a) => a.check_range(spec.stored),
             PropRef::Vec2(a) => a.check_range(spec.stored),
             PropRef::Bool(a) => a.check_range(spec.stored),

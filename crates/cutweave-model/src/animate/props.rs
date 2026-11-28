@@ -186,6 +186,15 @@ pub enum PropId {
     /// `audio.pan`: −1 left to 1 right, 0 centre.
     #[serde(rename = "audio_pan")]
     AudioPan,
+    /// `style.size` of a text item: font size in reference pixels (WP-3A.01).
+    #[serde(rename = "text.size")]
+    TextSize,
+    /// `style.letter_spacing` of a text item: extra space between letters, em.
+    #[serde(rename = "text.letter_spacing")]
+    TextLetterSpacing,
+    /// `style.line_height` of a text item: a multiple of the font size.
+    #[serde(rename = "text.line_height")]
+    TextLineHeight,
 }
 
 const UNIT: ValueRange = ValueRange::new(0.0, 1.0);
@@ -209,7 +218,7 @@ const fn spec(
 }
 
 /// The registry, in §7's order.
-static REGISTRY: [PropSpec; 13] = [
+static REGISTRY: [PropSpec; 16] = [
     spec(
         PropId::TransformPosition,
         "visual.transform.position",
@@ -301,11 +310,32 @@ static REGISTRY: [PropSpec; 13] = [
         ValueRange::new(-1.0, 1.0),
         PropValue::Scalar(0.0),
     ),
+    spec(
+        PropId::TextSize,
+        "style.size",
+        ValueType::Scalar,
+        ValueRange::new(1.0, 4000.0),
+        PropValue::Scalar(72.0),
+    ),
+    spec(
+        PropId::TextLetterSpacing,
+        "style.letter_spacing",
+        ValueType::Scalar,
+        ValueRange::new(-1.0, 10.0),
+        PropValue::Scalar(0.0),
+    ),
+    spec(
+        PropId::TextLineHeight,
+        "style.line_height",
+        ValueType::Scalar,
+        ValueRange::new(0.1, 10.0),
+        PropValue::Scalar(1.2),
+    ),
 ];
 
 impl PropId {
-    /// Every P2 property, in §7's order.
-    pub const ALL: [PropId; 13] = [
+    /// Every property, in §7's order (P2's, then the text properties of WP-3A.01).
+    pub const ALL: [PropId; 16] = [
         PropId::TransformPosition,
         PropId::TransformScale,
         PropId::TransformRotation,
@@ -319,7 +349,19 @@ impl PropId {
         PropId::FlipVertical,
         PropId::AudioGain,
         PropId::AudioPan,
+        PropId::TextSize,
+        PropId::TextLetterSpacing,
+        PropId::TextLineHeight,
     ];
+
+    /// Whether the property belongs to a text item's style (not to its visual properties).
+    #[must_use]
+    pub const fn is_text_style(self) -> bool {
+        matches!(
+            self,
+            PropId::TextSize | PropId::TextLetterSpacing | PropId::TextLineHeight
+        )
+    }
 
     /// The property's registry row.
     #[must_use]
@@ -345,6 +387,9 @@ impl PropId {
             PropId::FlipVertical => "flip.vertical",
             PropId::AudioGain => "audio_gain",
             PropId::AudioPan => "audio_pan",
+            PropId::TextSize => "text.size",
+            PropId::TextLetterSpacing => "text.letter_spacing",
+            PropId::TextLineHeight => "text.line_height",
         }
     }
 }
@@ -355,10 +400,19 @@ impl JsonSchema for PropId {
         "PropId".into()
     }
 
+    /// The schema lists the clip and visual properties only. The three text properties
+    /// (`text.size`, `text.letter_spacing`, `text.line_height`, WP-3A.01) are accepted all the
+    /// same and named in the description: listing them would change the `tools/list` result of
+    /// every profile (`keyframe_set` is a listed tool), which R37 keeps byte-identical until
+    /// the standard budget is next decided.
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        let ids: Vec<&str> = PropId::ALL.iter().map(|p| p.as_str()).collect();
+        let ids: Vec<&str> = PropId::ALL
+            .iter()
+            .filter(|p| !p.is_text_style())
+            .map(|p| p.as_str())
+            .collect();
         json_schema!({
-            "description": "An animatable property of an item.",
+            "description": "An animatable property of an item. Text items also take text.size, text.letter_spacing and text.line_height.",
             "type": "string",
             "enum": ids
         })

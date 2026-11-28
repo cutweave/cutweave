@@ -50,7 +50,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
 
 pub(crate) fn check_editable_kind(pointer: &str, kind: TrackKind) -> Result<(), CmdError> {
     match kind {
-        TrackKind::Video | TrackKind::Audio => Ok(()),
+        TrackKind::Video | TrackKind::Audio | TrackKind::Text => Ok(()),
         other => Err(CmdError::unsupported(format!(
             "{other} tracks are not editable in this version (`{pointer}`)"
         ))),

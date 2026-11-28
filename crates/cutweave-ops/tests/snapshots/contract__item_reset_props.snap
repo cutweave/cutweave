@@ -89,7 +89,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "items": {
-            "description": "An animatable property of an item.",
+            "description": "An animatable property of an item. Text items also take text.size, text.letter_spacing and text.line_height.",
             "type": "string",
             "enum": [
               "transform.position",
@@ -210,7 +210,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "items": {
-          "description": "An animatable property of an item.",
+          "description": "An animatable property of an item. Text items also take text.size, text.letter_spacing and text.line_height.",
           "type": "string",
           "enum": [
             "transform.position",

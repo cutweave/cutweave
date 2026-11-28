@@ -28,8 +28,9 @@ use cutweave_model::{
     Duration, FolderId, FrameRate, IdGen, ImageSequence, MIGRATIONS, MatrixCoefficients,
     MediaAsset, MediaFolder, MediaKind, MigrationError, Migrator, OLDEST_SCHEMA_VERSION,
     OpenOutcome, ProbeInfo, Project, SampleRate, SeededGen, Sequence, SequenceFormat, StreamInfo,
-    StreamKind, Time, Track, TrackKind, TransferCharacteristics, Vec2, canonical_json_pretty,
-    migrate_to_current, migrate_value, open, open_str, schema_version_of, to_document_string,
+    StreamKind, TextItem, Time, Track, TrackKind, TransferCharacteristics, Vec2,
+    canonical_json_pretty, migrate_to_current, migrate_value, open, open_str, schema_version_of,
+    to_document_string,
 };
 use serde_json::{Value, json};
 
@@ -485,6 +486,150 @@ fn expected_image_sequence() -> Project {
     project
 }
 
+/// `v3/text.cutweave` (WP-3A.01, R37: text joined v3, no version bump): a title with a styled
+/// run, an animated size and a box, a subtitle on a built-in style, next to a video clip.
+#[allow(clippy::too_many_lines)] // one fixture, field by field
+fn expected_text() -> Project {
+    use cutweave_model::{
+        Interp, Keyframe, Keyframes,
+        text::{
+            Background, BackgroundMode, Fill, FontAxis, Glow, GradientStop, RichText, Run,
+            RunStyle, Shadow, Stroke, StrokeJoin, StrokeOrder, TextBox, TextStyle, TextStyleRef,
+        },
+    };
+    let mut ids = SeededGen::new(6);
+    let mut project = Project::new("Text");
+    stamp(&mut project);
+    let media = MediaAsset::file(
+        ids.mint(),
+        MediaKind::Video,
+        "/media/a.mp4",
+        video_probe(10),
+    );
+    let mut sequence = Sequence::new(
+        ids.mint(),
+        "Main",
+        SequenceFormat::new(1920, 1080, FrameRate::FPS_30, SampleRate::HZ_48_000),
+    );
+    let mut video = Track::new(ids.mint(), TrackKind::Video, "V1");
+    video
+        .items
+        .insert(Clip::new(ids.mint(), media.id, secs(0), span_secs(10)).into());
+    let mut titles = Track::new(ids.mint(), TrackKind::Text, "T1");
+
+    let mut title = TextItem::new(
+        ids.mint(),
+        secs(1),
+        span_secs(4),
+        RichText {
+            runs: vec![
+                Run::plain("Hello, "),
+                Run {
+                    text: "world".into(),
+                    style: Some(RunStyle {
+                        size: Some(120.0),
+                        fill: Some(Fill::solid(Color::rgb(255, 212, 0))),
+                        ..RunStyle::default()
+                    }),
+                },
+                Run::plain(" \u{1F389}"),
+            ],
+        },
+    );
+    title.name = Some("Opening title".into());
+    let mut style = TextStyle::default();
+    style.font.family = "Playfair Display".into();
+    style.font.axes = vec![FontAxis {
+        tag: "wght".into(),
+        value: 650.0,
+    }];
+    style.size = cutweave_model::Animatable::Keyframes(
+        Keyframes::new(vec![
+            Keyframe::new(Time::ZERO, 60.0, Interp::Linear),
+            Keyframe::new(secs(1), 96.0, Interp::Hold),
+        ])
+        .unwrap(),
+    );
+    style.fill = Fill::Linear {
+        angle: 90.0,
+        stops: vec![
+            GradientStop {
+                at: 0.0,
+                color: Color::rgb(255, 255, 255),
+            },
+            GradientStop {
+                at: 1.0,
+                color: Color::rgb(255, 160, 64),
+            },
+        ],
+    };
+    style.strokes = vec![Stroke {
+        width: 4.0,
+        join: StrokeJoin::Round,
+        color: Color::BLACK,
+        order: StrokeOrder::Behind,
+    }];
+    style.shadows = vec![Shadow {
+        offset: Vec2::new(0.0, 6.0),
+        blur: 12.0,
+        color: Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 128,
+        },
+    }];
+    style.glow = Some(Glow {
+        radius: 20.0,
+        color: Color::rgb(255, 200, 100),
+        intensity: 1.5,
+    });
+    style.background = Some(Background {
+        color: Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 160,
+        },
+        padding: 16.0,
+        radius: 8.0,
+        mode: BackgroundMode::PerLine,
+    });
+    title.style = TextStyleRef::Inline {
+        style: Box::new(style),
+    };
+    title.text_box = TextBox {
+        width: Some(0.8),
+        height: None,
+    };
+    title.visual.transform.position.set(Vec2::new(0.0, -0.25));
+    title.visual.opacity = cutweave_model::Animatable::Keyframes(
+        Keyframes::new(vec![
+            Keyframe::new(Time::ZERO, 0.0, Interp::Linear),
+            Keyframe::new(secs(1), 1.0, Interp::Hold),
+        ])
+        .unwrap(),
+    );
+    titles.items.insert(title.into());
+
+    let mut sub = TextItem::new(
+        ids.mint(),
+        secs(5),
+        span_secs(3),
+        RichText::plain("A subtitle\nof two lines"),
+    );
+    sub.style = TextStyleRef::Named {
+        name: "subtitle".into(),
+    };
+    titles.items.insert(sub.into());
+
+    sequence.insert_track(0, video);
+    sequence.insert_track(0, titles);
+    project.media.insert(media.id, media);
+    project.sequences.insert(sequence.id, sequence);
+    project
+}
+
 /// The current fixtures that are the migrated form of a frozen v1 file.
 fn migrated_fixtures() -> [(&'static str, Project); 3] {
     [
@@ -499,6 +644,7 @@ fn current_fixtures() -> Vec<(&'static str, Project)> {
     all.push(("folders", expected_folders()));
     all.push(("animated", expected_animated()));
     all.push(("image-sequence", expected_image_sequence()));
+    all.push(("text", expected_text()));
     all
 }
 
@@ -771,6 +917,97 @@ fn a_document_with_an_image_sequence_is_refused_by_the_older_schema_version() {
     assert_eq!(
         err.to_string(),
         "schema version 3 is newer than this version of Cutweave supports (2)"
+    );
+}
+
+/// WP-3A.01 (R37): text joined schema v3 without a version bump, so the fixture is v3, holds
+/// text items on a text track, keeps every field through a round trip and validates.
+#[test]
+fn the_text_fixture_round_trips_with_every_field() {
+    use cutweave_model::text::TextStyleRef;
+    let text = read(&fixtures().join("v3/text.cutweave"));
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(schema_version_of(&doc), Ok(3));
+    let (project, report) = editable(open_str(&text).unwrap());
+    assert!(!report.migrated());
+    assert_eq!(project.violations(), vec![]);
+    let sequence = project.sequences.values().next().unwrap();
+    let track = sequence
+        .tracks_in_order()
+        .find(|t| t.kind == TrackKind::Text)
+        .unwrap();
+    let items: Vec<_> = track.items.iter().filter_map(|i| i.as_text()).collect();
+    assert_eq!(items.len(), 2);
+    let title = items[0];
+    assert_eq!(title.content.to_plain(), "Hello, world \u{1F389}");
+    let TextStyleRef::Inline { style } = &title.style else {
+        panic!("inline style");
+    };
+    assert!(style.size.is_animated());
+    assert_eq!(style.strokes.len(), 1);
+    assert!(title.animation.is_none());
+    assert_eq!(
+        items[1].style,
+        TextStyleRef::Named {
+            name: "subtitle".into()
+        }
+    );
+    // The wire form: a `kind` tag, `box` and the style source.
+    let value: Value = serde_json::to_value(&project).unwrap();
+    let sequence = value["sequences"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap();
+    let track = sequence["tracks"]
+        .as_object()
+        .unwrap()
+        .values()
+        .find(|t| t["kind"] == "text")
+        .unwrap();
+    let item = track["items"].as_object().unwrap().values().next().unwrap();
+    assert_eq!(item["kind"], "text");
+    assert!(item["box"].is_object());
+    assert_eq!(item["style"]["source"], "inline");
+    // Saving writes the same bytes.
+    assert_eq!(to_document_string(&project).unwrap(), text);
+}
+
+/// A text item on a video track is an invalid document.
+#[test]
+fn text_items_belong_on_text_tracks() {
+    let mut project = expected_text();
+    let seq_id = *project.sequences.keys().next().unwrap();
+    let sequence = project.sequences.get_mut(&seq_id).unwrap();
+    let text_track = sequence
+        .tracks_in_order()
+        .find(|t| t.kind == TrackKind::Text)
+        .unwrap()
+        .id;
+    let video_track = sequence
+        .tracks_in_order()
+        .find(|t| t.kind == TrackKind::Video)
+        .unwrap()
+        .id;
+    let item = sequence.tracks[&text_track]
+        .items
+        .iter()
+        .next()
+        .unwrap()
+        .clone();
+    sequence
+        .track_mut(&text_track)
+        .unwrap()
+        .items
+        .remove(&item.id());
+    sequence.track_mut(&video_track).unwrap().items.insert(item);
+    let problems = project.violations();
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.to_string().contains("text track")),
+        "{problems:?}"
     );
 }
 

@@ -101,6 +101,7 @@ export function selectMediaUsage(project: Project | null): ReadonlyMap<string, n
     for (const sequence of Object.values(project.sequences)) {
       for (const track of Object.values(sequence.tracks)) {
         for (const item of Object.values(track.items)) {
+          if (item.kind === "text") continue;
           counts.set(item.media, (counts.get(item.media) ?? 0) + 1);
         }
       }

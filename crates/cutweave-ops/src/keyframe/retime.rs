@@ -2,7 +2,9 @@
 //! What splits, cuts and trims do to the keys of an item (keyframes §8.1): the rules, applied
 //! to every animated property of a clip. Static properties are never touched.
 
-use cutweave_model::{AnimValue, Animatable, Clip, Duration, KeyframeError, PropId, PropMut, Time};
+#[cfg(test)]
+use cutweave_model::Clip;
+use cutweave_model::{AnimValue, Animatable, Duration, Item, KeyframeError, PropId, PropMut, Time};
 
 /// One retiming rule of keyframes §8.1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,20 +43,36 @@ impl Retime {
     }
 }
 
+fn retime_one<T: AnimValue>(a: &mut Animatable<T>, rule: Retime) -> Result<(), KeyframeError> {
+    if a.is_animated() {
+        *a = rule.apply(a)?;
+    }
+    Ok(())
+}
+
 /// Applies `rule` to every animated property of `clip`. On error the clip may be half changed:
 /// callers discard it.
+#[cfg(test)]
 pub(crate) fn retime_clip(clip: &mut Clip, rule: Retime) -> Result<(), KeyframeError> {
-    fn one<T: AnimValue>(a: &mut Animatable<T>, rule: Retime) -> Result<(), KeyframeError> {
-        if a.is_animated() {
-            *a = rule.apply(a)?;
-        }
-        Ok(())
-    }
     for id in PropId::ALL {
         match clip.prop_mut(id) {
-            PropMut::Scalar(a) => one(a, rule)?,
-            PropMut::Vec2(a) => one(a, rule)?,
-            PropMut::Bool(a) => one(a, rule)?,
+            Some(PropMut::Scalar(a)) => retime_one(a, rule)?,
+            Some(PropMut::Vec2(a)) => retime_one(a, rule)?,
+            Some(PropMut::Bool(a)) => retime_one(a, rule)?,
+            None => {}
+        }
+    }
+    Ok(())
+}
+
+/// [`retime_clip`] for any item: a clip or a text item (whose style properties follow too).
+pub(crate) fn retime_item(item: &mut Item, rule: Retime) -> Result<(), KeyframeError> {
+    for id in PropId::ALL {
+        match item.prop_mut(id) {
+            Some(PropMut::Scalar(a)) => retime_one(a, rule)?,
+            Some(PropMut::Vec2(a)) => retime_one(a, rule)?,
+            Some(PropMut::Bool(a)) => retime_one(a, rule)?,
+            None => {}
         }
     }
     Ok(())
