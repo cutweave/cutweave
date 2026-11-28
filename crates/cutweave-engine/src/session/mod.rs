@@ -812,7 +812,11 @@ fn doc_config(deps: &Deps, tracker: Option<&IdTracker>, doc: Project) -> DocConf
         Some(t) => t.config(Arc::clone(&deps.registry), doc),
         None => DocConfig::new(Arc::clone(&deps.registry), doc),
     };
-    let config = config.with_clock(Arc::clone(&deps.clock));
+    // Transaction ids are per engine run (issue #251): a commit or cancel sent again for a
+    // transaction an earlier run opened never names one this run opens.
+    let config = config
+        .with_clock(Arc::clone(&deps.clock))
+        .with_tx_ids_per_run();
     match *lock(&deps.history_limit) {
         Some(steps) => config.with_history_limits(HistoryLimits {
             max_undo_depth: usize::try_from(steps).unwrap_or(usize::MAX),
