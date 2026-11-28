@@ -3,6 +3,7 @@
 // interval indexes and track geometry. The renderer and hit-testing both read this one structure,
 // so what is drawn is what is hit.
 import { type IndexList, IntervalIndex } from "./interval-index.ts";
+import { type ItemLanes, type KeyframeLane, NO_LANES } from "./keyframes/lanes.ts";
 import type { Rect, TimelineItem, TimelineMarker, TimelineModel, TrackSize } from "./model.ts";
 import { FLICKS_PER_SECOND } from "./time.ts";
 import type { Viewport } from "./viewport.ts";
@@ -20,6 +21,62 @@ export const TRACK_DIMMED = 2;
 export interface TrackMetrics {
   readonly sizes: Readonly<Record<TrackSize, number>>;
   readonly pad: number;
+  /** Height of one keyframe lane row (the `control-sm` token); absent: lanes take no room. */
+  readonly laneRow?: number;
+}
+
+const NO_INDICES: readonly number[] = [];
+
+/** The part of a layout that depends on the items only (a lane change reuses it). */
+interface ItemIndex {
+  markers: readonly TimelineMarker[];
+  markerMaxDuration: number;
+  start: Float64Array;
+  end: Float64Array;
+  trackOf: Int32Array;
+  flags: Uint8Array;
+  contentEnd: number;
+  itemIndexById: ReadonlyMap<string, number>;
+  indexes: readonly IntervalIndex[];
+}
+
+function buildItems(model: TimelineModel, trackIndexById: ReadonlyMap<string, number>): ItemIndex {
+  const nTracks = model.tracks.length;
+  const n = model.items.length;
+  const markers = (model.markers ?? []).slice().sort((a, b) => a.t - b.t);
+  const start = new Float64Array(n);
+  const end = new Float64Array(n);
+  const trackOf = new Int32Array(n);
+  const flags = new Uint8Array(n);
+  const itemIndexById = new Map<string, number>();
+  const perTrack: number[][] = Array.from({ length: nTracks }, () => []);
+  let contentEnd = 0;
+  for (let i = 0; i < n; i++) {
+    const it = model.items[i] as TimelineItem;
+    start[i] = it.start;
+    end[i] = it.start + it.duration;
+    contentEnd = Math.max(contentEnd, it.start + it.duration);
+    const ti = trackIndexById.get(it.trackId) ?? -1;
+    trackOf[i] = ti;
+    let f = 0;
+    if (it.state?.disabled) f |= FLAG_DISABLED;
+    if (it.state?.proposed) f |= FLAG_PROPOSED;
+    if (it.state?.selected) f |= FLAG_SELECTED;
+    flags[i] = f;
+    itemIndexById.set(it.id, i);
+    perTrack[ti]?.push(i);
+  }
+  return {
+    markers,
+    markerMaxDuration: markers.reduce((m, k) => Math.max(m, k.duration ?? 0), 0),
+    start,
+    end,
+    trackOf,
+    flags,
+    contentEnd,
+    itemIndexById,
+    indexes: perTrack.map((ids) => new IntervalIndex(ids, start, end)),
+  };
 }
 
 export class TimelineLayout {
@@ -48,18 +105,79 @@ export class TimelineLayout {
   readonly itemIndexById: ReadonlyMap<string, number>;
   readonly trackIndexById: ReadonlyMap<string, number>;
 
-  constructor(model: TimelineModel, metrics: TrackMetrics) {
+  /** Height of one keyframe lane row, CSS px. */
+  readonly laneRow: number;
+  /** Per track: the room its open keyframe lanes take under the clips (0: none open). */
+  readonly laneExtra: Float64Array;
+  /** Per track: the items (indices) whose lanes are open, by start. */
+  readonly laneItems: readonly (readonly number[])[];
+  /** The open lanes by item index. */
+  readonly lanesByItem: ReadonlyMap<number, readonly KeyframeLane[]>;
+
+  /**
+   * `lanes`: the open keyframe lanes (WP-2C.05). `from`: a layout of the same model whose item
+   * index is reused, so opening a lane or selecting a key rebuilds only the track geometry.
+   */
+  constructor(
+    model: TimelineModel,
+    metrics: TrackMetrics,
+    lanes: readonly ItemLanes[] = NO_LANES,
+    from?: TimelineLayout,
+  ) {
     this.model = model;
     this.items = model.items;
     this.pad = metrics.pad;
+    this.laneRow = metrics.laneRow ?? 0;
     const nTracks = model.tracks.length;
-    const n = model.items.length;
 
-    const trackIndexById = new Map<string, number>();
-    model.tracks.forEach((t, i) => {
-      trackIndexById.set(t.id, i);
-    });
+    let trackIndexById: ReadonlyMap<string, number>;
+    let built: ItemIndex;
+    if (from !== undefined && from.model === model) {
+      trackIndexById = from.trackIndexById;
+      built = from;
+    } else {
+      const byId = new Map<string, number>();
+      model.tracks.forEach((t, i) => {
+        byId.set(t.id, i);
+      });
+      trackIndexById = byId;
+      built = buildItems(model, byId);
+    }
     this.trackIndexById = trackIndexById;
+    this.markers = built.markers;
+    this.markerMaxDuration = built.markerMaxDuration;
+    this.start = built.start;
+    this.end = built.end;
+    this.trackOf = built.trackOf;
+    this.flags = built.flags;
+    this.contentEnd = built.contentEnd;
+    this.itemIndexById = built.itemIndexById;
+    this.indexes = built.indexes;
+
+    // Open lanes: the tallest stack among a track's items is the room the track adds.
+    this.laneExtra = new Float64Array(nTracks);
+    const lanesByItem = new Map<number, readonly KeyframeLane[]>();
+    const laneItems: number[][] = [];
+    if (this.laneRow > 0) {
+      for (const group of lanes) {
+        const i = this.itemIndexById.get(group.itemId);
+        const ti = i === undefined ? -1 : (this.trackOf[i] ?? -1);
+        if (i === undefined || ti < 0 || group.lanes.length === 0) continue;
+        lanesByItem.set(i, group.lanes);
+        let list = laneItems[ti];
+        if (list === undefined) {
+          list = [];
+          laneItems[ti] = list;
+        }
+        list.push(i);
+        this.laneExtra[ti] = Math.max(this.laneExtra[ti] ?? 0, group.lanes.length * this.laneRow);
+      }
+      for (const list of laneItems) {
+        list?.sort((p, q) => (this.start[p] ?? 0) - (this.start[q] ?? 0));
+      }
+    }
+    this.lanesByItem = lanesByItem;
+    this.laneItems = Array.from({ length: nTracks }, (_, ti) => laneItems[ti] ?? NO_INDICES);
 
     this.trackTop = new Float64Array(nTracks);
     this.trackHeight = new Float64Array(nTracks);
@@ -70,43 +188,13 @@ export class TimelineLayout {
         t.height != null && Number.isFinite(t.height)
           ? Math.max(metrics.sizes.sm, Math.round(t.height))
           : (metrics.sizes[t.size ?? "md"] ?? 0);
-      const h = clip + 2 * metrics.pad;
+      const h = clip + 2 * metrics.pad + (this.laneExtra[i] ?? 0);
       this.trackTop[i] = y;
       this.trackHeight[i] = h;
       this.trackFlags[i] = (t.locked ? TRACK_LOCKED : 0) | (t.muted || t.hidden ? TRACK_DIMMED : 0);
       y += h;
     });
     this.totalHeight = y;
-
-    const markers = (model.markers ?? []).slice().sort((a, b) => a.t - b.t);
-    this.markers = markers;
-    this.markerMaxDuration = markers.reduce((m, k) => Math.max(m, k.duration ?? 0), 0);
-
-    this.start = new Float64Array(n);
-    this.end = new Float64Array(n);
-    this.trackOf = new Int32Array(n);
-    this.flags = new Uint8Array(n);
-    const itemIndexById = new Map<string, number>();
-    const perTrack: number[][] = Array.from({ length: nTracks }, () => []);
-    let contentEnd = 0;
-    for (let i = 0; i < n; i++) {
-      const it = model.items[i] as TimelineItem;
-      this.start[i] = it.start;
-      this.end[i] = it.start + it.duration;
-      contentEnd = Math.max(contentEnd, it.start + it.duration);
-      const ti = trackIndexById.get(it.trackId) ?? -1;
-      this.trackOf[i] = ti;
-      let f = 0;
-      if (it.state?.disabled) f |= FLAG_DISABLED;
-      if (it.state?.proposed) f |= FLAG_PROPOSED;
-      if (it.state?.selected) f |= FLAG_SELECTED;
-      this.flags[i] = f;
-      itemIndexById.set(it.id, i);
-      perTrack[ti]?.push(i);
-    }
-    this.contentEnd = contentEnd;
-    this.itemIndexById = itemIndexById;
-    this.indexes = perTrack.map((ids) => new IntervalIndex(ids, this.start, this.end));
   }
 
   get trackCount(): number {
@@ -146,9 +234,14 @@ export class TimelineLayout {
     return idx.queryInto(t0, t1, out);
   }
 
-  /** Clip height of a track (lane height minus padding). */
+  /** Clip height of a track (lane height minus padding and the open keyframe lanes). */
   clipHeight(track: number): number {
-    return (this.trackHeight[track] ?? 0) - 2 * this.pad;
+    return (this.trackHeight[track] ?? 0) - 2 * this.pad - (this.laneExtra[track] ?? 0);
+  }
+
+  /** Whether any keyframe lane is open. */
+  get hasLanes(): boolean {
+    return this.lanesByItem.size > 0;
   }
 
   /** Index of the first marker whose range can reach time `t` (markers sorted by time). */

@@ -2096,7 +2096,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "sequence_create",
-      "description": "Add a sequence from an aspect preset (\"16:9\", \"9:16\", \"1:1\", ...) or an explicit format; returns its id and tracks. E.g. {\"name\":\"Short\",\"preset\":\"9:16\"}",
+      "description": "Add a sequence from an aspect preset (\"16:9\", \"9:16\", \"1:1\", ...) or an explicit format; `main_magnetic: true` makes V1 the magnetic main track; returns its id and tracks. E.g. {\"name\":\"Short\",\"preset\":\"9:16\"}",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -2180,6 +2180,13 @@ expression: catalog.tools_json()
               }
             },
             "description": "Format fields; they win over the preset."
+          },
+          "main_magnetic": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true`: `V1` is the magnetic main track. Absent: `false`."
           }
         },
         "required": [

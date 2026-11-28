@@ -338,8 +338,17 @@ export interface SnapPort {
 
 /** Keyframe drags (WP-2C.05 supplies it). Without one, a press on a keyframe acts on the clip. */
 export interface KeyframeDragHandler {
-  /** The update that puts the key at `time` (sequence time, frame-aligned), or null for none. */
-  command(item: string, keyframeTime: number, time: number): MachineCommand | null;
+  /**
+   * The update that puts the key at `time` (sequence time, frame-aligned), or null for none.
+   * `prop`: the property of the keyframe lane the key was pressed in; null for a diamond of the
+   * clip's own key row (every property's key at that time).
+   */
+  command(
+    item: string,
+    keyframeTime: number,
+    time: number,
+    prop: string | null,
+  ): MachineCommand | null;
 }
 
 /** Where animation frames come from (the canvas's own window; a 16 ms timer by default). */

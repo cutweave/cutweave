@@ -5,6 +5,7 @@ import type { SnapKindName } from "@cutweave/protocol/wasm";
 import type { MediaCaches } from "../cache.ts";
 import type { MutableRect } from "../geometry.ts";
 import { IndexList } from "../interval-index.ts";
+import { KeyMarks } from "../keyframes/marks.ts";
 import type { TimelineLayout } from "../layout.ts";
 import type { Rect, TimelineDisplay, ViewState } from "../model.ts";
 import type { Theme } from "../theme.ts";
@@ -110,6 +111,8 @@ export class RenderState {
   readonly itemLabels = new FittedLabels();
   readonly trackNames = new FittedLabels();
   readonly glyphs = new GlyphCache();
+  /** The keyframe-lane marks of the track being drawn. */
+  readonly keys = new KeyMarks();
 
   resetStats(): void {
     const s = this.stats;

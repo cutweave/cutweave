@@ -14,6 +14,7 @@ export const ZONE_SURFACE: Readonly<Record<HitZone, string | null>> = {
   "left-edge": "timeline.edge",
   "right-edge": "timeline.edge",
   keyframe: "timeline.keyframe",
+  "keyframe-lane": null,
   lane: "timeline.lane",
   header: "timeline.track",
   "header-name": "timeline.track",
@@ -47,7 +48,12 @@ export function requestForHit(
     target: {
       ids,
       place: { time: hit.time, ...(hit.trackId !== null && { trackId: hit.trackId }) },
-      data: { zone: hit.zone, keyframeIndex: hit.keyframeIndex, keyframeTime: hit.keyframeTime },
+      data: {
+        zone: hit.zone,
+        keyframeIndex: hit.keyframeIndex,
+        keyframeTime: hit.keyframeTime,
+        prop: hit.prop,
+      },
     },
   };
 }

@@ -41,9 +41,10 @@ export function computeBinView(
   input: BinViewInput,
   open: FolderId | null,
   collection: CollectionId | null = null,
+  /** The asset usage; omitted, it is read from the project's sequences. */
+  usage: ReadonlyMap<string, number> = selectMediaUsage(project),
 ): BinView {
   const all = selectMediaCards(project);
-  const usage = selectMediaUsage(project);
   const base = toMediaFilter({ text: input.text, filters: input.filters });
   const terms = termsOf(input.text);
   const searching = terms.length > 0 || Object.keys(base).some((k) => k !== "text");

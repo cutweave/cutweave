@@ -17,6 +17,7 @@ import {
   createProject,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -122,6 +123,8 @@ test.describe("F35 keyboard shortcuts", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
+      // Clips stay where they are dropped; the setting is kept for the relaunch below.
+      await freeMainTrack(app, page);
       await clipWithPlayhead(page, app, work, "Keys");
 
       // The page lists the keys the app has now, and the preset.
@@ -271,6 +274,8 @@ test.describe("F35 keyboard shortcuts", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
+      // Clips stay where they are dropped; the setting is kept for the relaunch below.
+      await freeMainTrack(app, page);
       await clipWithPlayhead(page, app, work, "CapCut keys");
 
       // With the NLE preset Ctrl+B does nothing on the timeline.

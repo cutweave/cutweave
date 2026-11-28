@@ -14,6 +14,7 @@ import { useDocStore } from "../state/docStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { translator } from "./errors.ts";
 import type { TimelineHost } from "./host.ts";
+import { lanesLaidStore } from "./keyframes.ts";
 import { LocksFeed, locksStore } from "./locks.ts";
 
 /** Keeps `locksStore` current while the timeline shows an engine's sequence. */
@@ -54,6 +55,8 @@ function Marks({
   useViewStore((s) => s.scroll);
   useViewStore((s) => s.zoom);
   useDocStore((s) => s.project);
+  // A keyframe lane opened or closed: the tracks below it moved (WP-2C.05).
+  useStore(lanesLaidStore);
   const tr = translator(t);
   const marks: ReactElement[] = [];
   for (const [item, actor] of byItem) {

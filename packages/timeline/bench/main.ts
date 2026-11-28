@@ -3,9 +3,14 @@
 // 50,000-keyframe S1 project with synthetic filmstrip and waveform loaders, driving the same
 // `TimelineView` API the wheel and drag handlers use. Frame time is the rAF delta; draw time is
 // the wall time of `view.flush()`. `run.mjs` loads this page in headless Chromium and prints the
-// result. URL params: `seconds` (default 30).
+// result. URL params: `seconds` (default 30); `lanes=1` opens the keyframe lanes of every clip
+// (WP-2C.05: two lanes each, the clip's 10 keys in both), the worst case for the lanes;
+// `fixture=1` reads the model and the lanes of a real project from `fixture.json` instead (the
+// P-5K benchmark project, written by `packages/editor/src/timeline/keyframes.p5k.test.ts`).
 import "../../ui/src/tokens/tokens.css";
 import { generateTimeline, syntheticLoaders } from "../src/fixtures.ts";
+import type { ItemLanes } from "../src/keyframes/lanes.ts";
+import type { TimelineModel } from "../src/model.ts";
 import { FLICKS_PER_SECOND as F } from "../src/time.ts";
 import { TimelineView } from "../src/timeline-view.ts";
 
@@ -55,7 +60,14 @@ async function main(): Promise<void> {
   document.body.classList.add("body");
   await document.fonts.ready;
 
-  const model = generateTimeline();
+  const fixture =
+    params.get("fixture") === "1"
+      ? ((await (await fetch("./fixture.json")).json()) as {
+          model: TimelineModel;
+          lanes: ItemLanes[];
+        })
+      : null;
+  const model = fixture?.model ?? generateTimeline();
   // The sweep flushes by hand each frame to time the draw; the view's own scheduler stays idle.
   const view = new TimelineView(canvas, {
     ...(media && { loaders: syntheticLoaders() }),
@@ -70,9 +82,30 @@ async function main(): Promise<void> {
   const buildT0 = performance.now();
   view.setModel(model);
   const modelBuildMs = performance.now() - buildT0;
+  const withLanes = params.get("lanes") === "1";
+  let lanesBuildMs = 0;
+  if (withLanes) {
+    const lanes: ItemLanes[] =
+      fixture?.lanes ??
+      model.items.map((item) => {
+        const times = Float64Array.from(item.keyframes ?? []);
+        const glyphs = Uint8Array.from(times, (_, i) => i % 4);
+        return {
+          itemId: item.id,
+          lanes: [
+            { prop: "opacity", label: "Opacity", times, glyphs, selected: [0] },
+            { prop: "transform.position", label: "Position", times, glyphs },
+          ],
+        };
+      });
+    const t0 = performance.now();
+    view.setKeyframeLanes(lanes);
+    lanesBuildMs = performance.now() - t0;
+  }
   const end = Math.max(...model.items.map((i) => i.start + i.duration));
   const laneW = window.innerWidth - 4 * 48;
-  const maxScrollY = 20 * 60;
+  // With every lane open each track is two rows taller.
+  const maxScrollY = 20 * (withLanes ? 108 : 60);
 
   const frameMs: number[] = [];
   const drawMs: number[] = [];
@@ -159,9 +192,17 @@ async function main(): Promise<void> {
     dataset: {
       clips: model.items.length,
       tracks: model.tracks.length,
-      keyframes: model.items.reduce((n, i) => n + (i.keyframes?.length ?? 0), 0),
+      keyframes: withLanes
+        ? view
+            .getKeyframeLanes()
+            .reduce((n, g) => n + g.lanes.reduce((m, l) => m + l.times.length, 0), 0)
+        : model.items.reduce((n, i) => n + (i.keyframes?.length ?? 0), 0),
     },
     modelBuildMs: round(modelBuildMs),
+    fixture: fixture !== null,
+    lanes: withLanes
+      ? { open: view.getKeyframeLanes().length, buildMs: round(lanesBuildMs) }
+      : null,
     frames: fm.length,
     fps: {
       mean: round(1000 / (fm.reduce((p, q) => p + q, 0) / fm.length)),

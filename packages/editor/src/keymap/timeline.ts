@@ -45,6 +45,9 @@ export const EDITOR_COMMANDS = [
   "timeline.mark_out",
   "timeline.match_frame",
   "track.rename",
+  "timeline.toggle_keyframe_lanes",
+  "timeline.keyframe_next",
+  "timeline.keyframe_previous",
 ] as const;
 export type TimelineEditorCommand = (typeof EDITOR_COMMANDS)[number];
 

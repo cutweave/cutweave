@@ -1,0 +1,36 @@
+{
+  "description": "The magnetic main track of a new project and a new sequence (ADR-0037): `main_magnetic` on project.new and sequence.create (true, false and absent), two clips dropped on the magnetic V1 (they stay butted from 0), and a value that is not a boolean.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Magnetic", "main_magnetic": true } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.mp4" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": "5s",
+        "duration": "2s"
+      }
+    },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[1]" },
+        "at": 0,
+        "duration": "3s"
+      }
+    },
+    { "cmd": "sequence.create", "args": { "name": "Reel", "preset": "9:16", "main_magnetic": true } },
+    { "cmd": "sequence.create", "args": { "name": "Free", "main_magnetic": false } },
+    { "cmd": "sequence.create", "args": { "name": "Absent" } },
+    { "cmd": "sequence.create", "args": { "name": "Bad", "main_magnetic": "yes" }, "expect": { "error": "invalid" } },
+    { "cmd": "track.list", "args": { "sequence": { "$ref": "steps[4].output.sequence" } } },
+    { "cmd": "track.list", "args": { "sequence": { "$ref": "steps[6].output.sequence" } } },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
+    { "cmd": "edit.undo" },
+    { "cmd": "sequence.list" }
+  ]
+}

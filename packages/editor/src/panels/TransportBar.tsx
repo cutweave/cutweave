@@ -12,7 +12,7 @@ import {
   ToolbarSeparator,
   Tooltip,
 } from "@cutweave/ui";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
@@ -135,17 +135,20 @@ export function TransportBar() {
   const playhead = useViewStore((s) => s.playhead);
   const gain = useViewStore((s) => s.masterGain);
   const muted = useViewStore((s) => s.muted);
-  const project = useDocStore((s) => s.project);
-  const { fps, hasContent } = useMemo(() => {
-    const id = selectActiveSequenceId(project);
-    const sequence = id === null ? undefined : project?.sequences[id];
-    return {
-      fps: sequence?.format.frame_rate,
-      hasContent: Object.values(sequence?.tracks ?? {}).some(
-        (track) => Object.keys(track.items).length > 0,
-      ),
-    };
-  }, [project]);
+  // Only the frame rate and whether there is anything to play: a clip dragged on the timeline
+  // changes the document on every update, and the bar must not draw again for it (issue #244).
+  // The frame rate keeps its identity across patches that do not touch it.
+  const fps = useDocStore((s) => {
+    const id = selectActiveSequenceId(s.project);
+    return id === null ? undefined : s.project?.sequences[id]?.format.frame_rate;
+  });
+  const hasContent = useDocStore((s) => {
+    const id = selectActiveSequenceId(s.project);
+    const sequence = id === null ? undefined : s.project?.sequences[id];
+    return Object.values(sequence?.tracks ?? {}).some(
+      (track) => Object.keys(track.items).length > 0,
+    );
+  });
   // A source plays whatever the timeline holds, and the buttons then act on it.
   const live = connected && (hasContent || source !== null) && support !== "unsupported";
   const off = !live;

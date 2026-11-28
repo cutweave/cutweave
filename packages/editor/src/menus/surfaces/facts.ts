@@ -73,7 +73,7 @@ export function mediaPath(id: string): string | null {
 }
 
 /** Where each animatable property lives in a clip (keyframes §7). */
-const PROP_PATHS: Readonly<Record<string, readonly string[]>> = {
+export const PROP_PATHS: Readonly<Record<string, readonly string[]>> = {
   "transform.position": ["visual", "transform", "position"],
   "transform.scale": ["visual", "transform", "scale"],
   "transform.rotation": ["visual", "transform", "rotation"],

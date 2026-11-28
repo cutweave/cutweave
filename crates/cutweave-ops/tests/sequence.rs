@@ -17,6 +17,7 @@ mod common;
 use std::collections::BTreeSet;
 
 use common::{H, P, assert_code, assert_invalid, id};
+use cutweave_commands::apply_patch;
 use cutweave_model::{
     ASPECT_PRESETS, Clip, FrameRate, Item, ItemId, MediaId, Project, Rounding, Sequence,
     SequenceId, TrackId, Vec2,
@@ -73,6 +74,54 @@ fn create_from_each_preset() {
     }
     assert_eq!(h.doc().sequences.len(), 1 + ASPECT_PRESETS.len());
     assert!(h.doc().sequences.contains_key(&p.sequence));
+}
+
+/// The magnetic track of a sequence, if it has one.
+fn magnetic_track(s: &Sequence) -> Option<TrackId> {
+    s.tracks_in_order().find(|t| t.magnetic).map(|t| t.id)
+}
+
+#[test]
+fn create_makes_the_main_track_magnetic_only_when_asked() {
+    // ADR-0037: `main_magnetic` is optional; a call without it (an agent's, the CLI's, an
+    // existing script's) gets the free `V1` it always got.
+    let (mut h, _) = H::project();
+    let absent = h.ok("sequence.create", json!({"name": "Absent"}));
+    let off = h.ok(
+        "sequence.create",
+        json!({"name": "Off", "main_magnetic": false}),
+    );
+    for out in [&absent, &off] {
+        assert_eq!(magnetic_track(&seq(&h, id(&out["sequence"]))), None);
+    }
+
+    let before = h.doc();
+    let commits = h.commits();
+    let on = h.ok(
+        "sequence.create",
+        json!({"name": "On", "preset": "9:16", "main_magnetic": true}),
+    );
+    assert_eq!(h.commits(), commits + 1, "one history entry");
+    let s = seq(&h, id(&on["sequence"]));
+    let v1: TrackId = id(&on["video_track"]);
+    assert_eq!(magnetic_track(&s), Some(v1), "V1 is the magnetic track");
+    assert!(
+        s.tracks.values().filter(|t| t.magnetic).count() == 1,
+        "and the only one"
+    );
+    assert_eq!((s.format.width, s.format.height), (1080, 1920));
+
+    // One undo takes the sequence, its tracks and the magnet away together.
+    let step = h.last.as_ref().unwrap();
+    assert_eq!(apply_patch(&step.doc, &step.inverse).unwrap(), before);
+
+    assert_invalid(
+        h.run(
+            "sequence.create",
+            json!({"name": "Bad", "main_magnetic": "yes"}),
+        ),
+        "/main_magnetic",
+    );
 }
 
 #[test]

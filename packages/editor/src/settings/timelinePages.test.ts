@@ -77,6 +77,7 @@ describe("the pages", () => {
       "timeline.snap_targets",
       "timeline.snap_distance",
       "timeline.follow",
+      "timeline.magnetic_main",
       "timeline.thumbnails",
       "timeline.waveforms",
       "timeline.track_height",

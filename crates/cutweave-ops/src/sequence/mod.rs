@@ -133,10 +133,17 @@ fn new_format(
     Ok(f)
 }
 
-/// A new sequence with `V1` over `A1`.
-fn new_sequence(tx: &mut Tx<'_>, name: String, format: SequenceFormat) -> NewSequence {
+/// A new sequence with `V1` over `A1`; `main_magnetic` makes `V1` the magnetic main track
+/// (ADR-0037).
+fn new_sequence(
+    tx: &mut Tx<'_>,
+    name: String,
+    format: SequenceFormat,
+    main_magnetic: bool,
+) -> NewSequence {
     let mut sequence = Sequence::new(tx.new_id(), name, format);
-    let video = Track::new(tx.new_id(), TrackKind::Video, "V1");
+    let mut video = Track::new(tx.new_id(), TrackKind::Video, "V1");
+    video.magnetic = main_magnetic;
     let audio = Track::new(tx.new_id(), TrackKind::Audio, "A1");
     let (video_id, audio_id) = (video.id, audio.id);
     sequence.insert_track(0, video);
@@ -186,6 +193,8 @@ pub struct SequenceCreate {
     pub preset: Option<String>,
     /// Format fields; they win over the preset.
     pub format: Option<FormatPatch>,
+    /// `true`: `V1` is the magnetic main track. Absent: `false`.
+    pub main_magnetic: Option<bool>,
 }
 
 impl Command for SequenceCreate {
@@ -199,7 +208,7 @@ impl Command for SequenceCreate {
     fn apply(&self, tx: &mut Tx<'_>) -> Result<SequenceCreateOutput, CmdError> {
         let name = check_name("/name", &self.name)?;
         let format = new_format(tx.doc(), self.preset.as_deref(), self.format.as_ref())?;
-        let new = new_sequence(tx, name, format);
+        let new = new_sequence(tx, name, format, self.main_magnetic.unwrap_or(false));
         tx.insert_sequence(&new.sequence)?;
         Ok(new.output())
     }
@@ -322,7 +331,7 @@ impl Command for SequenceCreateFromMedia {
             Some(n) => check_name("/name", n)?,
             None => format!("Sequence {}", tx.doc().sequences.len() + 1),
         };
-        let mut new = new_sequence(tx, name, format);
+        let mut new = new_sequence(tx, name, format, false);
         let (video, audio) = (new.video, new.audio);
         let mut cursor = Time::ZERO;
         for p in placed {

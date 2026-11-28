@@ -324,11 +324,14 @@ export class ProjectController {
         // Settings > Media and import > Proxies for new projects its proxy policy (ADR-0027).
         // The format saved with "Use as defaults for new projects" (#221) becomes the format of
         // the first sequence and of new ones; not set, the engine's own applies.
+        // Settings > Timeline > Main track is magnetic in new sequences decides whether V1
+        // starts as the magnetic main track (ADR-0037).
         const format = parseFormatPreference(preferences.get("editing.sequence_format"));
         await this.#call("project.new", {
           name: target.name,
           still_duration: `${preferences.get("editing.still_duration")}s`,
           proxy_policy: preferences.get("media.proxy_policy"),
+          main_magnetic: preferences.get("timeline.magnetic_main"),
           ...(format === null ? {} : { settings: { default_format: format } }),
         });
         const saved = (await this.#call("project.save_as", { path: target.path })) as {

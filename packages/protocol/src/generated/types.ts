@@ -5556,6 +5556,11 @@ export type ProjectNew = {
 	 *  default. `default_format` here is the full form of `format`.
 	 */
 	settings?: { [key in string]: JsonValue } | null,
+	/**
+	 *  `true` makes `V1` the magnetic main track (clips stay butted from 0); absent: `false`.
+	 *  The editor passes the person's "Main track is magnetic in new sequences" setting.
+	 */
+	main_magnetic?: boolean | null,
 };
 
 /**  Result of `project.new`. */
@@ -6377,6 +6382,8 @@ export type SequenceCreate = {
 	preset?: string | null,
 	/**  Format fields; they win over the preset. */
 	format?: FormatPatch | null,
+	/**  `true`: `V1` is the magnetic main track. Absent: `false`. */
+	main_magnetic?: boolean | null,
 };
 
 /**

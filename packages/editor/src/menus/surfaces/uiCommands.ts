@@ -55,6 +55,7 @@ import {
   pasteClips,
 } from "../../timeline/clipboard.ts";
 import { translator } from "../../timeline/errors.ts";
+import { copyKeys } from "../../timeline/keyframes.ts";
 import {
   canReplaceWith,
   pickedClip,
@@ -67,6 +68,7 @@ import { floatPanel, movePanel, toggleMaximizePanel } from "../../workspace/dock
 import type { UiCommand } from "../commands.ts";
 import { menuDialogStore } from "../dialogs.ts";
 import { activeSequence, clipFact, clipFacts, trackFact } from "./facts.ts";
+import { keyTarget } from "./keyframes.ts";
 
 const tr = () => translator(i18n.t.bind(i18n));
 
@@ -580,6 +582,41 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     icon: "copy",
     run: async (_args, ctx) => {
       await copyClips(ctx.call, ctx.ids);
+    },
+  },
+  {
+    // A keyframe's Copy (WP-2C.05): the keys the menu is on, as the engine's payload.
+    id: "timeline.copy_keyframes",
+    label: "contextMenu.item.copyKeyframe",
+    icon: "copy",
+    hidden: true,
+    run: async (_args, ctx) => {
+      const found = keyTarget(ctx.target);
+      if (found !== null) await copyKeys(ctx.call, found.item, found.keys);
+    },
+  },
+  {
+    // A keyframe's Go to keyframe: the playhead goes to the key's time.
+    id: "timeline.go_to_keyframe",
+    label: "contextMenu.item.goToKeyframe",
+    icon: "arrow-right",
+    hidden: true,
+    run: async (args) => {
+      const time = arg<{ t?: number | null }>(args).t;
+      if (time != null) await transportController().seek(time);
+    },
+  },
+  {
+    // Bezier… on a keyframe and Easing… on an Inspector row: the curve editor for one key.
+    id: "timeline.edit_keyframe_curve",
+    label: "contextMenu.item.easingEdit",
+    hidden: true,
+    run: (args) => {
+      const key = arg<{ item?: string; prop?: string; t?: number }>(args);
+      if (key.item === undefined || key.prop === undefined || key.t === undefined) return;
+      menuDialogStore
+        .getState()
+        .open({ kind: "keyframe-curve", item: key.item, prop: key.prop, t: key.t });
     },
   },
   {

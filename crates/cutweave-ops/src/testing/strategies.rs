@@ -797,10 +797,12 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!("3600s")),
     ]);
     let policy = option::of(select(vec!["off", "auto", "all"]));
-    let valid = (name(), option::of(format), still, policy)
-        .prop_map(|(name, format, still, policy)| {
-            json!({"name": name, "format": format, "still_duration": still,
-                   "proxy_policy": policy})
+    let valid = (name(), option::of(format), still, policy, main_magnetic())
+        .prop_map(|(name, format, still, policy, magnetic)| {
+            let mut v = json!({"name": name, "format": format, "still_duration": still,
+                   "proxy_policy": policy});
+            with_main_magnetic(&mut v, magnetic);
+            v
         })
         .boxed();
     let invalid = prop_oneof![
@@ -813,6 +815,7 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!({"name": "P", "still_duration": "0s"})),
         Just(json!({"name": "P", "still_duration": "3601s"})),
         Just(json!({"name": "P", "proxy_policy": "some"})),
+        Just(json!({"name": "P", "main_magnetic": "on"})),
         Just(json!({"name": "P", "settings": {"nope": 1}})),
         Just(json!({"name": "P", "settings": {"still_duration": 0}})),
         Just(json!({"name": "P", "proxy_policy": "off", "settings": {"proxy_policy": "all"}})),
@@ -1791,6 +1794,20 @@ pub fn fake_files() -> crate::media::MemoryFiles {
 
 const PRESET_IDS: [&str; 6] = ["16:9", "16:9-4k", "9:16", "1:1", "4:5", "21:9"];
 
+/// `main_magnetic` of `project.new` and `sequence.create` (ADR-0037): absent half the time, as in an
+/// agent's call, else `true` or `false`.
+fn main_magnetic() -> BoxedStrategy<Option<bool>> {
+    option::weighted(0.5, any::<bool>()).boxed()
+}
+
+/// Adds `main_magnetic` to `params` when it is given, so an absent one stays absent and not
+/// `null`.
+fn with_main_magnetic(params: &mut Value, magnetic: Option<bool>) {
+    if let (Some(on), Some(map)) = (magnetic, params.as_object_mut()) {
+        map.insert("main_magnetic".to_owned(), json!(on));
+    }
+}
+
 fn sequence_create() -> BoxedStrategy<Value> {
     let format = (
         option::of(16..=2000_u32),
@@ -1806,14 +1823,18 @@ fn sequence_create() -> BoxedStrategy<Value> {
         name(),
         option::weighted(0.6, select(PRESET_IDS.to_vec())),
         option::weighted(0.3, format),
+        main_magnetic(),
     )
-        .prop_map(
-            |(name, preset, format)| json!({"name": name, "preset": preset, "format": format}),
-        )
+        .prop_map(|(name, preset, format, magnetic)| {
+            let mut v = json!({"name": name, "preset": preset, "format": format});
+            with_main_magnetic(&mut v, magnetic);
+            v
+        })
         .boxed();
     let invalid = prop_oneof![
         bad_name().prop_map(|name| json!({"name": name})),
         Just(json!({"name": "S", "preset": "2:3"})),
+        Just(json!({"name": "S", "main_magnetic": 1})),
         Just(json!({"name": "S", "format": {"width": 0}})),
         Just(json!({"name": "S", "format": {"background": "red"}})),
         Just(json!({"name": "S", "format": {"frame_rate": {"num": 1001, "den": 7}}})),

@@ -5,6 +5,7 @@
 // (scrolling, zooming), and a fake engine that records commands and checks the transaction
 // protocol: a gesture opens once, updates only while open, and closes exactly once.
 import { hitTest } from "../../hit-test.ts";
+import { type ItemLanes, laneRowHeight } from "../../keyframes/lanes.ts";
 import { TimelineLayout } from "../../layout.ts";
 import type { Rect, TimelineItem, TimelineModel, TimelineTrack } from "../../model.ts";
 import { testTheme } from "../../test-support.ts";
@@ -115,11 +116,11 @@ export const IMAGE: DroppedMedia = { id: "mi", kind: "image", duration: null };
 
 /** A keyframe handler like WP-2C.05's: moves the key of property `opacity` on the item. */
 export const KEYFRAMES: KeyframeDragHandler = {
-  command: (item, keyframeTime, time) => ({
+  command: (item, keyframeTime, time, prop) => ({
     name: "keyframe.move",
     args: {
       item: item as never,
-      keys: [{ prop: "opacity" as never, t: keyframeTime }],
+      keys: [{ prop: (prop ?? "opacity") as never, t: keyframeTime }],
       to_at: time,
     },
   }),
@@ -130,6 +131,8 @@ export interface WorldOptions {
   readonly env?: Partial<MachineEnv>;
   /** Supply the keyframe drag handler (WP-2C.05). */
   readonly keyframes?: boolean;
+  /** Open keyframe lanes (WP-2C.05). */
+  readonly lanes?: readonly ItemLanes[];
 }
 
 /** One shared snap index for every world in a test file (`initMath()` must have resolved). */
@@ -204,8 +207,10 @@ export class World {
   readonly edges: ChartEdge[] = [];
   readonly deps: MachineDeps;
   private readonly theme = testTheme();
+  private readonly lanes: readonly ItemLanes[];
 
   constructor(o: WorldOptions = {}) {
+    this.lanes = o.lanes ?? [];
     this.model = o.model ?? MODEL;
     const env: Partial<MachineEnv> = {
       model: this.model,
@@ -253,10 +258,15 @@ export class World {
 
   private buildLayout(): TimelineLayout {
     const th = this.theme;
-    return new TimelineLayout(this.model, {
-      sizes: { sm: th.trackSm, md: th.trackMd, lg: th.trackLg },
-      pad: th.space1,
-    });
+    return new TimelineLayout(
+      this.model,
+      {
+        sizes: { sm: th.trackSm, md: th.trackMd, lg: th.trackLg },
+        pad: th.space1,
+        laneRow: laneRowHeight(th),
+      },
+      this.lanes,
+    );
   }
 
   /** Runs one event through the machine, then plays host and engine for its intents. */

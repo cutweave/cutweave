@@ -3,6 +3,7 @@
 export const packageName = "@cutweave/ui";
 
 export * from "./components/index.ts";
+export * from "./curve-editor/index.ts";
 export * from "./icons/index.ts";
 
 import "./components/components.css";

@@ -3,6 +3,7 @@
 // destroys the view, and forwards props. All timeline logic stays in the framework-agnostic class.
 import { type CSSProperties, useEffect, useRef } from "react";
 import type { MediaLoaders } from "./cache.ts";
+import type { ItemLanes } from "./keyframes/lanes.ts";
 import type { TimelineDisplay, TimelineModel, ViewState } from "./model.ts";
 import { type TimelinePointerEvent, TimelineView } from "./timeline-view.ts";
 
@@ -14,6 +15,8 @@ export interface TimelineCanvasProps {
   readonly loaders?: MediaLoaders;
   /** Display preferences (how the ruler and the playhead show time). */
   readonly display?: Partial<TimelineDisplay>;
+  /** The open keyframe lanes (WP-2C.05); the same array while nothing changed. */
+  readonly keyframeLanes?: readonly ItemLanes[];
   readonly headerWidth?: number;
   /** Middle-button pan in the view (`builtin`, default) or reported to `onPointer` (`host`). */
   readonly pan?: "builtin" | "host";
@@ -61,6 +64,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     viewRef.current = view;
     view.bind();
     view.setModel(p.model);
+    if (p.keyframeLanes) view.setKeyframeLanes(p.keyframeLanes);
     if (p.display) view.setDisplay(p.display);
     if (p.viewState) view.setViewState(p.viewState);
     const offPointer = view.onPointer((e) => latest.current.onPointer?.(e));
@@ -79,6 +83,10 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
   useEffect(() => {
     viewRef.current?.setModel(props.model);
   }, [props.model]);
+
+  useEffect(() => {
+    if (props.keyframeLanes) viewRef.current?.setKeyframeLanes(props.keyframeLanes);
+  }, [props.keyframeLanes]);
 
   useEffect(() => {
     if (props.viewState) viewRef.current?.setViewState(props.viewState);

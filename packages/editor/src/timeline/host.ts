@@ -18,6 +18,7 @@ import {
   createTimelineMachine,
   type DropPreview,
   type DroppedMedia,
+  FLICKS_PER_SECOND,
   type FrameScheduler,
   type GestureEdit,
   type HitResult,
@@ -51,6 +52,26 @@ import type { ViewStore } from "../state/viewStore.ts";
 import { describeRefusal, FAILED_TITLE, heldByOther, type Translate } from "./errors.ts";
 import { EngineQueue, GestureTransactions, toRpcError } from "./gestureTx.ts";
 import { inOutArgs, markerArgs } from "./inOut.ts";
+import {
+  addKey,
+  animatedProps,
+  clearKeys,
+  createLanesToggle,
+  deleteKeys,
+  findClip,
+  type KeyAddress,
+  keySelectionStore,
+  keysAt,
+  type LanesToggle,
+  moveArgs,
+  movedKeys,
+  nudgeKeys,
+  orderedKeys,
+  pruneKeys,
+  sameKey,
+  selectKeys,
+  toggleKey,
+} from "./keyframes.ts";
 import type { LocksState } from "./locks.ts";
 import { callWithNewTrackHeight, createdTracks, setNewTrackHeights } from "./newTracks.ts";
 import type { MachinePrefs } from "./prefs.ts";
@@ -195,6 +216,13 @@ const COMMAND_FAILED: Readonly<Record<string, TKey>> = {
   "clip.replace": "timeline.failed.replace",
 };
 
+/** The toast title when a keyframe edit from a key or a double-click is refused. */
+const KEY_FAILED = {
+  move: "timeline.failed.keyframe",
+  delete: "timeline.failed.keyframeDelete",
+  add: "timeline.failed.keyframeAdd",
+} as const satisfies Record<string, TKey>;
+
 const NO_HIT: HitResult = {
   zone: "none",
   time: 0,
@@ -204,6 +232,7 @@ const NO_HIT: HitResult = {
   itemIndex: -1,
   keyframeIndex: -1,
   keyframeTime: null,
+  prop: null,
   toggle: null,
 };
 
@@ -219,6 +248,9 @@ const trackRef = (id: string): SelectionRef => ({ kind: "track", id: id as Track
 
 /** The keys the host keeps for itself (not the machine's). */
 export type HostKeyCommand =
+  | "timeline.toggle_keyframe_lanes"
+  | "timeline.keyframe_next"
+  | "timeline.keyframe_previous"
   | "timeline.add_marker"
   | "timeline.mark_in"
   | "timeline.mark_out"
@@ -263,6 +295,17 @@ export class TimelineHost {
   #started = false;
   /** What the drag over the canvas carries (a card, or the Source view's marked range). */
   #dragged: DraggedMedia | null = null;
+  /**
+   * The keys a keyframe drag moves, by their stored times when it began (every update names
+   * them: the transaction replaces its previous update), and how far they are now.
+   */
+  #keyDrag: {
+    readonly item: string;
+    readonly at: number;
+    readonly prop: string | null;
+    readonly keys: readonly KeyAddress[];
+    delta: number;
+  } | null = null;
 
   constructor(deps: TimelineHostDeps) {
     this.#deps = deps;
@@ -274,7 +317,10 @@ export class TimelineHost {
       queue: this.#queue,
       label: (edit) => deps.t(HISTORY[edit]),
       answer: (event) => this.send(event),
-      refused: (edit, error) => this.#notify(GESTURE_FAILED[edit], error),
+      refused: (edit, error) => {
+        if (edit === "keyframe") this.#endKeyDrag(null);
+        this.#notify(GESTURE_FAILED[edit], error);
+      },
       beforeCommit: async (_edit, output, tx) => {
         const rpc = this.#rpc();
         const height = deps.newTrackHeight?.() ?? null;
@@ -290,6 +336,7 @@ export class TimelineHost {
         itemsInRect: (rect) => this.#geometry?.itemsInRect(rect) ?? NO_ITEMS,
         lanes: () => this.#lanes?.() ?? { left: 0, right: 0, top: 0, bottom: 0 },
         snap: this.#snap,
+        keyframes: { command: (item, at, time, prop) => this.#keyCommand(item, at, time, prop) },
         ...(deps.frames !== undefined && { frames: deps.frames }),
       },
       this.#env,
@@ -400,6 +447,12 @@ export class TimelineHost {
     // Only a new state is written: every write re-renders the panel (a pointer move each frame).
     const state = this.#machine.state.mode.name;
     if (this.ui.getState().state !== state) this.ui.setState({ state });
+    // The dragged keys stay marked where the drag has them.
+    const drag = this.#keyDrag;
+    if (drag !== null && state === "keyframe_dragging") {
+      const selection = keySelectionStore.getState();
+      if (selection.offset !== drag.delta) keySelectionStore.setState({ offset: drag.delta });
+    }
   }
 
   /** For good (tests): stops, and the machine with it. */
@@ -451,6 +504,7 @@ export class TimelineHost {
   #syncEnv(): void {
     if (this.#disposed) return;
     if (this.#pruneSelection()) return; // the store change syncs again
+    if (this.#keyDrag === null) pruneKeys(this.#deps.doc.getState().project);
     const next = this.#readEnv();
     const changed: Record<string, unknown> = {};
     let any = false;
@@ -513,8 +567,13 @@ export class TimelineHost {
     const header = hit.zone === "header" || hit.zone === "header-name";
     if (e.type === "dblclick") {
       if (hit.zone === "header-name" && hit.trackId !== null) this.beginRename(hit.trackId);
+      // A double-click on an open lane adds a key there, with the property's value there.
+      if (hit.zone === "keyframe-lane" && hit.itemId !== null && hit.prop !== null) {
+        this.addKeyAt(hit.itemId, hit.prop, hit.time);
+      }
       return;
     }
+    if (e.type === "down" && e.button === 0) this.#pressKey(e);
     if (e.type === "down" && e.button === 0 && hit.trackId !== null) {
       if (hit.zone === "header-toggle" && hit.toggle !== null) {
         this.toggleTrack(hit.trackId, hit.toggle);
@@ -568,6 +627,9 @@ export class TimelineHost {
       ctrl: e.ctrlKey === true,
       meta: e.metaKey === true,
     };
+    if (down && this.#keyAction(action === undefined ? machineKeyAction(e.key, mods) : action)) {
+      return true;
+    }
     if (down) {
       this.send({
         type: "key.down",
@@ -587,6 +649,13 @@ export class TimelineHost {
   runHostKey(command: HostKeyCommand): boolean {
     if (this.#busy()) return false;
     switch (command) {
+      case "timeline.toggle_keyframe_lanes":
+        this.toggleKeyframeLanes();
+        return true;
+      case "timeline.keyframe_next":
+        return this.stepKey(1);
+      case "timeline.keyframe_previous":
+        return this.stepKey(-1);
       case "timeline.add_marker":
         this.addMarker();
         return true;
@@ -635,6 +704,261 @@ export class TimelineHost {
   /** The window lost focus, or the panel goes away: roll back any gesture. */
   cancel(): void {
     this.send({ type: "blur" });
+  }
+
+  // ---- keyframes (WP-2C.05) -------------------------------------------------------------------
+
+  /** The selected clips that have an animated property (their lanes can open). */
+  #animatedSelection(): string[] {
+    const project = this.#deps.doc.getState().project;
+    return this.#itemSelection(this.#deps.view.getState().selection).filter((id) => {
+      const clip = findClip(project, id);
+      return clip !== null && animatedProps(clip).length > 0;
+    });
+  }
+
+  readonly #lanesToggle = createLanesToggle();
+  #lanesToggleState: LanesToggle = "none";
+
+  /**
+   * What the toolbar's Keyframe lanes button shows. While a gesture's transaction is open (a
+   * clip is dragged, trimmed, placed) the answer is the one from before it: a drag changes
+   * neither which clips are selected nor whether they have keyframes, so its updates do no key
+   * work at all. Otherwise it is read once per document, selection and set of open lanes.
+   */
+  lanesToggleState(): LanesToggle {
+    if ("tx" in this.#machine.state.mode) return this.#lanesToggleState;
+    const view = this.#deps.view.getState();
+    this.#lanesToggleState = this.#lanesToggle(
+      this.#deps.doc.getState().project,
+      this.#itemSelection(view.selection),
+      view.keyframeLanes,
+    );
+    return this.#lanesToggleState;
+  }
+
+  /** Whether the lanes of every selected animated clip are open (the toolbar's pressed state). */
+  lanesOpen(): boolean {
+    const open = this.#deps.view.getState().keyframeLanes;
+    const ids = this.#animatedSelection();
+    return ids.length > 0 && ids.every((id) => open.includes(id));
+  }
+
+  /**
+   * Opens the keyframe lanes of the selected clips that have keyframes, or closes them when
+   * they are all open. View state only: nothing in the project changes.
+   */
+  toggleKeyframeLanes(): void {
+    const view = this.#deps.view.getState();
+    const ids = this.#animatedSelection();
+    if (ids.length === 0) return;
+    const open = view.keyframeLanes;
+    if (ids.every((id) => open.includes(id))) {
+      view.setKeyframeLanes(open.filter((id) => !ids.includes(id)));
+      if (ids.includes(keySelectionStore.getState().item ?? "")) clearKeys();
+    } else {
+      view.setKeyframeLanes([...open, ...ids.filter((id) => !open.includes(id))]);
+    }
+  }
+
+  /**
+   * Selects the next (`1`) or previous (`-1`) key of the clip whose keys are selected (else of
+   * the selected clip), opens its lanes and moves the playhead to it: the keyboard's way to a
+   * key. Returns whether there was one.
+   */
+  stepKey(direction: 1 | -1): boolean {
+    const view = this.#deps.view.getState();
+    const selection = keySelectionStore.getState();
+    const item = selection.item ?? this.#animatedSelection()[0] ?? null;
+    const clip = item === null ? null : findClip(this.#deps.doc.getState().project, item);
+    if (item === null || clip === null) return false;
+    const keys = orderedKeys(clip);
+    const current = selection.item === item ? selection.keys[0] : undefined;
+    let index = current === undefined ? -1 : keys.findIndex((k) => sameKey(k, current));
+    if (index < 0) {
+      // From the playhead: the first key after it, or the last key before it.
+      const after = keys.findIndex((k) => k.at > view.playhead);
+      index =
+        direction === 1
+          ? after < 0
+            ? keys.length
+            : after
+          : keys.findLastIndex((k) => k.at < view.playhead);
+    } else {
+      index += direction;
+    }
+    const next = keys[index];
+    if (next === undefined) return false;
+    if (!view.keyframeLanes.includes(item)) view.setKeyframeLanes([...view.keyframeLanes, item]);
+    selectKeys(item, [{ prop: next.prop, t: next.t }]);
+    if (this.#deps.seek !== undefined) this.#deps.seek(next.at);
+    else view.setPlayhead(next.at);
+    return true;
+  }
+
+  /**
+   * A right-click on a key: it becomes the key selection unless it already is part of it, and
+   * its clip is selected (the Inspector shows it).
+   */
+  contextKey(hit: HitResult): void {
+    if (hit.zone !== "keyframe" || hit.itemId === null || hit.keyframeTime === null) return;
+    const clip = findClip(this.#deps.doc.getState().project, hit.itemId);
+    if (clip === null) return;
+    const t = hit.keyframeTime - clip.start;
+    const keys = hit.prop === null ? keysAt(clip, t) : [{ prop: hit.prop, t }];
+    const selection = keySelectionStore.getState();
+    const kept =
+      selection.item === hit.itemId &&
+      keys.every((key) => selection.keys.some((k) => sameKey(k, key)));
+    if (!kept) selectKeys(hit.itemId, keys);
+    const view = this.#deps.view.getState();
+    if (!this.#itemSelection(view.selection).includes(hit.itemId)) {
+      view.setSelection([itemRef(hit.itemId)]);
+    }
+  }
+
+  /**
+   * The clip pasted keys go onto: the one whose keys are selected, else the selected clip whose
+   * lanes are open, else the one selected clip. `null` when that is not exactly one clip.
+   */
+  keyPasteTarget(): string | null {
+    const selected = keySelectionStore.getState().item;
+    if (selected !== null) return selected;
+    const view = this.#deps.view.getState();
+    const items = this.#itemSelection(view.selection);
+    const open = items.filter((id) => view.keyframeLanes.includes(id));
+    if (open.length === 1) return open[0] ?? null;
+    return open.length === 0 && items.length === 1 ? (items[0] ?? null) : null;
+  }
+
+  /** Adds a key of `prop` on the clip at sequence time `at` (on its frame). */
+  addKeyAt(item: string, prop: string, at: number): void {
+    this.#keyEdit("add", (call) => addKey(call, item, prop, Math.max(0, Math.round(at))));
+  }
+
+  /** Deletes the selected keys (one undo step). Returns whether any were selected. */
+  deleteSelectedKeys(): boolean {
+    const { item, keys } = keySelectionStore.getState();
+    if (item === null || keys.length === 0) return false;
+    this.#keyEdit("delete", (call) => deleteKeys(call, item, keys));
+    return true;
+  }
+
+  /** Moves the selected keys by `frames` frames (one undo step). */
+  nudgeSelectedKeys(frames: number): boolean {
+    const { item, keys } = keySelectionStore.getState();
+    if (item === null || keys.length === 0) return false;
+    const fps = this.#model().fps;
+    const delta = Math.round((frames * FLICKS_PER_SECOND * fps.den) / fps.num);
+    this.#keyEdit("move", (call) => nudgeKeys(call, item, keys, delta));
+    return true;
+  }
+
+  /** One keyframe command after the panel's earlier engine work; a refusal is a toast. */
+  #keyEdit(what: keyof typeof KEY_FAILED, work: (call: Call) => Promise<void>): void {
+    void this.#queue.run(async () => {
+      const rpc = this.#rpc();
+      if (rpc === null) return;
+      try {
+        await work((name, args) => (rpc.call.bind(rpc) as unknown as Call)(name, args));
+      } catch (error) {
+        this.#notify(KEY_FAILED[what], error);
+      }
+    });
+  }
+
+  /**
+   * A machine action while keys are selected and nothing is dragged: Delete removes them, the
+   * nudge keys move them, Esc and Deselect let go of them. Returns whether it was taken.
+   */
+  #keyAction(action: MachineAction | null): boolean {
+    if (action === null || this.#busy()) return false;
+    if (keySelectionStore.getState().keys.length === 0) return false;
+    switch (action) {
+      case "delete":
+      case "ripple_delete":
+        return this.deleteSelectedKeys();
+      case "nudge_left":
+        return this.nudgeSelectedKeys(-1);
+      case "nudge_right":
+        return this.nudgeSelectedKeys(1);
+      case "nudge_left_10":
+        return this.nudgeSelectedKeys(-10);
+      case "nudge_right_10":
+        return this.nudgeSelectedKeys(10);
+      case "cancel":
+      case "deselect":
+        clearKeys();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * A primary press: on a key it selects it (Shift, Ctrl or Cmd adds it or takes it out; a key
+   * already selected keeps the others, so they can be dragged together); anywhere else it lets
+   * go of the selected keys.
+   */
+  #pressKey(e: TimelinePointerEvent): void {
+    const { hit } = e;
+    if (hit.zone !== "keyframe" || hit.itemId === null || hit.keyframeTime === null) {
+      if (hit.zone !== "keyframe-lane" || !(e.shiftKey || e.ctrlKey || e.metaKey)) clearKeys();
+      return;
+    }
+    const clip = findClip(this.#deps.doc.getState().project, hit.itemId);
+    if (clip === null) return;
+    const t = hit.keyframeTime - clip.start;
+    if (hit.prop === null) {
+      // A diamond of the clip's own key row: every property's key at that time.
+      selectKeys(hit.itemId, keysAt(clip, t));
+      return;
+    }
+    const key = { prop: hit.prop, t };
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      toggleKey(hit.itemId, key);
+      return;
+    }
+    const selection = keySelectionStore.getState();
+    const kept = selection.item === hit.itemId && selection.keys.some((k) => sameKey(k, key));
+    if (!kept) selectKeys(hit.itemId, [key]);
+  }
+
+  /**
+   * The update of a keyframe drag (the machine's `KeyframeDragHandler`): the pressed key, with
+   * the other selected keys when it is one of them, moved to `time`. A query: the keys are read
+   * once when the drag begins, and what it does to the selection happens after the step.
+   */
+  #keyCommand(item: string, at: number, time: number, prop: string | null): MachineCommand | null {
+    let drag = this.#keyDrag;
+    const dragging = this.#machine.state.mode.name === "keyframe_dragging";
+    if (drag === null || !dragging || drag.item !== item || drag.at !== at || drag.prop !== prop) {
+      const clip = findClip(this.#deps.doc.getState().project, item);
+      if (clip === null) return null;
+      const t = at - clip.start;
+      const selection = keySelectionStore.getState();
+      const key = prop === null ? null : { prop, t };
+      const keys =
+        key === null
+          ? keysAt(clip, t)
+          : selection.item === item && selection.keys.some((k) => sameKey(k, key))
+            ? selection.keys
+            : [key];
+      if (keys.length === 0) return null;
+      drag = { item, at, prop, keys, delta: 0 };
+      this.#keyDrag = drag;
+    }
+    drag.delta = time - at;
+    return { name: "keyframe.move", args: moveArgs(item, drag.keys, at, time) };
+  }
+
+  /** A keyframe drag ended: the keys are selected where they are now (`null`: where they were). */
+  #endKeyDrag(output: unknown): void {
+    const drag = this.#keyDrag;
+    this.#keyDrag = null;
+    if (drag === null) return;
+    const moved = output === null ? [] : movedKeys(output);
+    selectKeys(drag.item, moved.length > 0 ? moved : drag.keys);
   }
 
   // ---- the bin --------------------------------------------------------------------------------
@@ -868,6 +1192,7 @@ export class TimelineHost {
         this.#tx.commit(intent.gesture);
         return;
       case "cancel_tx":
+        this.#endKeyDrag(null);
         this.#tx.cancel(intent.gesture, intent.reason);
         return;
       case "command":
@@ -980,6 +1305,7 @@ export class TimelineHost {
   /** What a gesture created becomes the selection (INV-343): an insert's clips, a duplicate's copies. */
   #committed(edit: GestureEdit, output: unknown): void {
     let created: readonly string[] = [];
+    if (edit === "keyframe") this.#endKeyDrag(output);
     if (edit === "insert") created = (output as { clips?: string[] } | null)?.clips ?? [];
     else if (edit === "duplicate") {
       created = ((output as { copies?: { copy: string }[] } | null)?.copies ?? []).map(

@@ -15,6 +15,7 @@ import {
   dropCard,
   editorCaughtUp,
   engineChip,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   laneY,
@@ -39,6 +40,7 @@ test.describe("F11 engine crash mid-edit", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       const doc = await createProject(app, page, "Crash", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

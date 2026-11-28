@@ -76,7 +76,13 @@ export type PressTarget =
   | { readonly kind: "roll"; readonly left: string; readonly right: string }
   | { readonly kind: "slip"; readonly item: string }
   | { readonly kind: "slide"; readonly item: string }
-  | { readonly kind: "keyframe"; readonly item: string; readonly keyframeTime: number }
+  | {
+      readonly kind: "keyframe";
+      readonly item: string;
+      readonly keyframeTime: number;
+      /** The lane's property; null for the clip's own key row. */
+      readonly prop: string | null;
+    }
   /** A click only: nothing to drag (locked track, a still under the slip tool, ...). */
   | { readonly kind: "none"; readonly item: string; readonly notice: "partial_group" | null };
 
@@ -183,6 +189,7 @@ export interface KeyframeMode extends DragFields {
   readonly name: "keyframe_dragging";
   readonly item: string;
   readonly keyframeTime: number;
+  readonly prop: string | null;
 }
 
 /** A bin card over the lanes: a `timeline.insert` gesture, the last update kept on drop. */

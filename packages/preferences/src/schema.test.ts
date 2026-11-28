@@ -74,6 +74,7 @@ describe("Editing and Timeline (WP-2A.13)", () => {
     expect(d["timeline.snap_targets"]).toEqual(["playhead", "edges", "markers", "beats"]);
     expect(d["timeline.snap_distance"]).toBe(8);
     expect(d["timeline.follow"]).toBe("page");
+    expect(d["timeline.magnetic_main"]).toBe(true);
     expect(d["timeline.thumbnails"]).toBe("filmstrip");
     expect(d["timeline.waveforms"]).toBe(true);
     expect(d["timeline.track_height"]).toBe("medium");

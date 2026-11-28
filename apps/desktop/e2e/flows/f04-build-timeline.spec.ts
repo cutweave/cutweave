@@ -11,6 +11,7 @@ import {
   dropCard,
   editorCaughtUp,
   FRAME,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   laneY,
@@ -35,6 +36,7 @@ test.describe("F4 build a timeline", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Timeline", work.dir);
       await importWithButton(
         app,
