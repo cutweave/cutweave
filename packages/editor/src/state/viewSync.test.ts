@@ -420,7 +420,9 @@ describe("diffView and panel layout", () => {
     const store = createViewStore();
     const sync = new ViewSync({ store, rpc: new RpcClient(transport), timers: new FakeTimers() });
     await sync.restore();
+    // The second open comes while the first one's view is on its way.
     transport.emit("project.opened", { name: "B" });
+    await settle();
     transport.emit("project.opened", { name: "C" });
     await settle();
     expect(answers).toHaveLength(2);
@@ -430,6 +432,70 @@ describe("diffView and panel layout", () => {
     await settle();
     expect(store.getState().playhead).toBe(33);
     expect(store.getState().zoom).toBe(33);
+  });
+
+  // The view names clips of the opened project: it is read once that project's document is in
+  // the mirror, as after a handshake. Read earlier, the timeline would check the selection
+  // against the document of the project before and drop it (issue #233).
+  it("another project opened: its view is read only once its document is in", async () => {
+    const held = { view: viewA(), gets: 0 };
+    const transport = new MockTransport()
+      .handle("view.get", () => {
+        held.gets += 1;
+        return held.view;
+      })
+      .handle("view.set", () => held.view);
+    const store = createViewStore();
+    let documentIn: () => void = () => {};
+    let asked = 0;
+    const sync = new ViewSync({
+      store,
+      rpc: new RpcClient(transport),
+      timers: new FakeTimers(),
+      documentReady: () => {
+        asked += 1;
+        return new Promise<void>((resolve) => {
+          documentIn = resolve;
+        });
+      },
+    });
+    await sync.restore();
+    expect(asked).toBe(0); // a handshake has its document already
+    const gets = held.gets;
+    held.view = viewB();
+    transport.emit("project.opened", { name: "B" });
+    await settle();
+    expect(asked).toBe(1);
+    // The old view is gone at once; the new one waits for the document.
+    expect(held.gets).toBe(gets);
+    expect(store.getState().selection).toEqual([]);
+    documentIn();
+    await settle();
+    expect(held.gets).toBe(gets + 1);
+    expect(store.getState().selection).toEqual([{ kind: "item", id: "itm_b" }]);
+    expect(store.getState().zoom).toBe(64);
+  });
+
+  it("reads the opened project's view all the same when its document could not be read", async () => {
+    const held = { view: viewA() };
+    const transport = new MockTransport()
+      .handle("view.get", () => held.view)
+      .handle("view.set", () => held.view);
+    const store = createViewStore();
+    const errors: unknown[] = [];
+    const sync = new ViewSync({
+      store,
+      rpc: new RpcClient(transport),
+      timers: new FakeTimers(),
+      onError: (e) => errors.push(e),
+      documentReady: () => Promise.reject(new Error("no snapshot")),
+    });
+    await sync.restore();
+    held.view = viewB();
+    transport.emit("project.opened", { name: "B" });
+    await settle();
+    expect(store.getState().zoom).toBe(64);
+    expect(errors).toHaveLength(1);
   });
 
   it("leave() sends what is still waiting before the project is left", async () => {

@@ -202,7 +202,15 @@ export function startEngineRuntime(
   const rpc = new RpcClient(connection);
 
   const docSync = new DocSync(rpc, docSink(stores.doc), { onError });
-  const viewSync = new ViewSync({ store: stores.view, rpc, onError, ...options.view });
+  const viewSync = new ViewSync({
+    store: stores.view,
+    rpc,
+    onError,
+    // A project opened in the running app: its document (the snapshot `doc.reset` asked for,
+    // or one more) before its view, the order `afterHandshake` has (issue #233).
+    documentReady: () => docSync.resync(),
+    ...options.view,
+  });
   const sessionSync =
     stores.session === undefined
       ? null
