@@ -1,6 +1,6 @@
 # ADR-0042: An export warning code for a transparent background that the file cannot carry
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-28); built under issue #238
 - **Date:** 2026-11-28
 - **Deciders:** Product owner (issue #238)
 - **Supersedes:** none
@@ -22,15 +22,15 @@ Telling people needs one new value in that code list. That is a change to the co
 
 ## Considered options
 
-1. **A new warning code `transparent_background`** in the existing `warnings` of the three export commands, set by the engine when the sequence's background is transparent and the planned output has no alpha. The export is not blocked.
+1. **A new warning code for a transparent background** (`TransparentBackground` on the wire) in the existing `warnings` of the three export commands, set by the engine when the sequence's background is transparent and the planned output has no alpha. The export is not blocked.
 2. **A rule in the editor only.** No schema change, but agents and the CLI get nothing, and the editor would need its own list of alpha-capable codecs.
 3. **Refuse the export.** Stricter than the WBS asks, and it blocks a person who wants the black background.
 
 ## Decision
 
-Not decided here. Recommended: **option 1**. It is built on branch `fix/233-238-view-restore-alpha-warning` and waits for this decision.
+**Option 1.** `PresetWarningCode` gains one code for a transparent background that the file cannot carry. On the wire it is written `TransparentBackground`, like the other codes of that list (`AspectMismatch`, `SoftwareEncoder`). The engine sets it in the `warnings` of `export.resolve_preset`, `export.start` and `export.enqueue` when the sequence's background is transparent and the planned output has no alpha channel. The export is not blocked.
 
-**Decided by:** the product owner: may `PresetWarningCode` gain `transparent_background`?
+**Decided by:** the product owner, 2026-11-28.
 
 **Pass criteria:** the three export commands return the code when, and only when, the background is transparent and the planned output has no alpha; the Export dialog shows it with a translated sentence and leaves Export enabled; an export started by an agent or the CLI carries the same warning; flow F67 covers the dialog.
 
