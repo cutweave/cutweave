@@ -81,10 +81,9 @@ pub struct ExportQueueJob {
     pub cancel_requested: bool,
     /// Why it failed or was cancelled.
     pub error: Option<String>,
-    /// What kind of failure, as a short stable code: `disk_full`, `output_exists`,
+    /// The kind of failure as a short stable code: `disk_full`, `output_exists`,
     /// `output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,
-    /// `engine_unavailable`, or `failed` for the rest. null unless it failed (and for a failure
-    /// stored before codes existed).
+    /// `engine_unavailable`, or `failed` for the rest. null unless it failed.
     pub error_code: Option<String>,
     /// The output file.
     pub path: String,

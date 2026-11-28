@@ -7522,6 +7522,13 @@ expression: text
               "null"
             ]
           },
+          "error_code": {
+            "description": "The kind of failure as a short stable code: `disk_full`, `output_exists`,\n`output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,\n`engine_unavailable`, or `failed` for the rest. null unless it failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "frame_rate": {
             "additionalProperties": false,
             "description": "Frame rate of the file.",
@@ -7699,6 +7706,7 @@ expression: text
           "progress",
           "cancel_requested",
           "error",
+          "error_code",
           "path",
           "sequence",
           "in",
@@ -9496,263 +9504,8 @@ expression: text
                     "null"
                   ]
                 },
-                "frame_rate": {
-                  "additionalProperties": false,
-                  "description": "Frame rate of the file.",
-                  "properties": {
-                    "den": {
-                      "description": "Seconds.",
-                      "maximum": 4294967295,
-                      "minimum": 1,
-                      "type": "integer"
-                    },
-                    "num": {
-                      "description": "Frames.",
-                      "maximum": 4294967295,
-                      "minimum": 1,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "num",
-                    "den"
-                  ],
-                  "type": "object"
-                },
-                "frames": {
-                  "description": "Video frames the file will hold.",
-                  "format": "uint32",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "height": {
-                  "description": "Frame height in pixels.",
-                  "format": "uint32",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "id": {
-                  "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
-                  "pattern": "^job_[0-9a-f]{32}$",
-                  "type": "string"
-                },
-                "in": {
-                  "description": "Range start (sequence time, flicks).",
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "out": {
-                  "description": "Range end, exclusive.",
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "path": {
-                  "description": "The output file.",
-                  "type": "string"
-                },
-                "progress": {
-                  "additionalProperties": false,
-                  "description": "Done fraction, frames, speed, time left and bytes written.",
-                  "properties": {
-                    "bytes": {
-                      "description": "Bytes written so far.",
-                      "format": "uint64",
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "eta_ms": {
-                      "description": "Estimated time left, in milliseconds.",
-                      "format": "uint64",
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "fps": {
-                      "description": "Speed in units per second.",
-                      "format": "double",
-                      "type": [
-                        "number",
-                        "null"
-                      ]
-                    },
-                    "fraction": {
-                      "description": "Done fraction, `0..=1` (1 once the job succeeded).",
-                      "format": "double",
-                      "type": "number"
-                    },
-                    "frame": {
-                      "description": "Units done so far (an export: frames handed to the encoder).",
-                      "format": "uint64",
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "frames": {
-                      "description": "Units in all (an export: frames in the file).",
-                      "format": "uint64",
-                      "minimum": 0,
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "message": {
-                      "description": "What it is doing, for status lines.",
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "fraction",
-                    "message"
-                  ],
-                  "type": "object"
-                },
-                "rev": {
-                  "description": "The document revision it renders (later edits are not in the file).",
-                  "format": "uint64",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "sequence": {
-                  "description": "The exported sequence.",
-                  "pattern": "^seq_[0-9a-f]{32}$",
-                  "type": "string"
-                },
-                "state": {
-                  "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
-                  "oneOf": [
-                    {
-                      "const": "queued",
-                      "description": "Waiting for the jobs it depends on or for a budget slot.",
-                      "type": "string"
-                    },
-                    {
-                      "const": "running",
-                      "description": "Running.",
-                      "type": "string"
-                    },
-                    {
-                      "const": "succeeded",
-                      "description": "Finished its work.",
-                      "type": "string"
-                    },
-                    {
-                      "const": "failed",
-                      "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
-                      "type": "string"
-                    },
-                    {
-                      "const": "cancelled",
-                      "description": "Cancelled before or while running.",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "width": {
-                  "description": "Frame width in pixels.",
-                  "format": "uint32",
-                  "minimum": 0,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "id",
-                "state",
-                "progress",
-                "cancel_requested",
-                "error",
-                "path",
-                "sequence",
-                "in",
-                "out",
-                "width",
-                "height",
-                "frame_rate",
-                "frames",
-                "duration",
-                "rev"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "parallel": {
-            "description": "How many exports run at once.",
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "paused": {
-            "description": "Whether the queue is paused: no export starts (a running one finishes).",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "paused",
-          "parallel",
-          "jobs"
-        ],
-        "title": "ExportQueueOutput",
-        "type": "object"
-      },
-      "scope": "any",
-      "secret_fields": [],
-      "summary": "Pause or resume the export queue (a running export finishes)",
-      "undoable": false,
-      "view": false
-    },
-    {
-      "annotations": {
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": true
-      },
-      "input_schema": {
-        "additionalProperties": false,
-        "description": "Lists the export queue in order: each export's state, progress (fraction, frames, fps, time\nleft, bytes), output file and what it renders, and whether the queue is paused.",
-        "title": "ExportQueue",
-        "type": "object"
-      },
-      "kind": "engine",
-      "mcp": "catalog",
-      "mcp_tool": "export_queue",
-      "name": "export.queue",
-      "namespace": "export",
-      "output_schema": {
-        "additionalProperties": false,
-        "description": "The export queue: result of `export.queue` and the queue commands.",
-        "properties": {
-          "jobs": {
-            "description": "The exports, first in line first; finished ones stay until `export.remove`.",
-            "items": {
-              "additionalProperties": false,
-              "description": "One export of the queue.",
-              "properties": {
-                "cancel_requested": {
-                  "description": "Whether a cancel was asked and the export has not stopped yet.",
-                  "type": "boolean"
-                },
-                "duration": {
-                  "description": "Length of the file.",
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "error": {
-                  "description": "Why it failed or was cancelled.",
+                "error_code": {
+                  "description": "The kind of failure as a short stable code: `disk_full`, `output_exists`,\n`output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,\n`engine_unavailable`, or `failed` for the rest. null unless it failed.",
                   "type": [
                     "string",
                     "null"
@@ -9935,6 +9688,277 @@ expression: text
                 "progress",
                 "cancel_requested",
                 "error",
+                "error_code",
+                "path",
+                "sequence",
+                "in",
+                "out",
+                "width",
+                "height",
+                "frame_rate",
+                "frames",
+                "duration",
+                "rev"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "parallel": {
+            "description": "How many exports run at once.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "paused": {
+            "description": "Whether the queue is paused: no export starts (a running one finishes).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused",
+          "parallel",
+          "jobs"
+        ],
+        "title": "ExportQueueOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Pause or resume the export queue (a running export finishes)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the export queue in order: each export's state, progress (fraction, frames, fps, time\nleft, bytes), output file and what it renders, and whether the queue is paused.",
+        "title": "ExportQueue",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_queue",
+      "name": "export.queue",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The export queue: result of `export.queue` and the queue commands.",
+        "properties": {
+          "jobs": {
+            "description": "The exports, first in line first; finished ones stay until `export.remove`.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One export of the queue.",
+              "properties": {
+                "cancel_requested": {
+                  "description": "Whether a cancel was asked and the export has not stopped yet.",
+                  "type": "boolean"
+                },
+                "duration": {
+                  "description": "Length of the file.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "error": {
+                  "description": "Why it failed or was cancelled.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error_code": {
+                  "description": "The kind of failure as a short stable code: `disk_full`, `output_exists`,\n`output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,\n`engine_unavailable`, or `failed` for the rest. null unless it failed.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "frame_rate": {
+                  "additionalProperties": false,
+                  "description": "Frame rate of the file.",
+                  "properties": {
+                    "den": {
+                      "description": "Seconds.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "num": {
+                      "description": "Frames.",
+                      "maximum": 4294967295,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "num",
+                    "den"
+                  ],
+                  "type": "object"
+                },
+                "frames": {
+                  "description": "Video frames the file will hold.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "description": "Frame height in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The job (`job.status`, `job.wait`, `export.cancel`, …).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "in": {
+                  "description": "Range start (sequence time, flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "out": {
+                  "description": "Range end, exclusive.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "The output file.",
+                  "type": "string"
+                },
+                "progress": {
+                  "additionalProperties": false,
+                  "description": "Done fraction, frames, speed, time left and bytes written.",
+                  "properties": {
+                    "bytes": {
+                      "description": "Bytes written so far.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "eta_ms": {
+                      "description": "Estimated time left, in milliseconds.",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "fps": {
+                      "description": "Speed in units per second.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "fraction": {
+                      "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    "frame": {
+                      "description": "Units done so far (an export: frames handed to the encoder).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "frames": {
+                      "description": "Units in all (an export: frames in the file).",
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "description": "What it is doing, for status lines.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "fraction",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "rev": {
+                  "description": "The document revision it renders (later edits are not in the file).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sequence": {
+                  "description": "The exported sequence.",
+                  "pattern": "^seq_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "state": {
+                  "description": "`queued`, `running`, `succeeded`, `failed` or `cancelled`.",
+                  "oneOf": [
+                    {
+                      "const": "queued",
+                      "description": "Waiting for the jobs it depends on or for a budget slot.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "running",
+                      "description": "Running.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "succeeded",
+                      "description": "Finished its work.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cancelled",
+                      "description": "Cancelled before or while running.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "width": {
+                  "description": "Frame width in pixels.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "state",
+                "progress",
+                "cancel_requested",
+                "error",
+                "error_code",
                 "path",
                 "sequence",
                 "in",
@@ -10031,6 +10055,13 @@ expression: text
                     "null"
                   ]
                 },
+                "error_code": {
+                  "description": "The kind of failure as a short stable code: `disk_full`, `output_exists`,\n`output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,\n`engine_unavailable`, or `failed` for the rest. null unless it failed.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "frame_rate": {
                   "additionalProperties": false,
                   "description": "Frame rate of the file.",
@@ -10208,6 +10239,7 @@ expression: text
                 "progress",
                 "cancel_requested",
                 "error",
+                "error_code",
                 "path",
                 "sequence",
                 "in",
@@ -10313,6 +10345,13 @@ expression: text
                     "null"
                   ]
                 },
+                "error_code": {
+                  "description": "The kind of failure as a short stable code: `disk_full`, `output_exists`,\n`output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,\n`engine_unavailable`, or `failed` for the rest. null unless it failed.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "frame_rate": {
                   "additionalProperties": false,
                   "description": "Frame rate of the file.",
@@ -10490,6 +10529,7 @@ expression: text
                 "progress",
                 "cancel_requested",
                 "error",
+                "error_code",
                 "path",
                 "sequence",
                 "in",
@@ -10977,6 +11017,13 @@ expression: text
               "null"
             ]
           },
+          "error_code": {
+            "description": "The kind of failure as a short stable code: `disk_full`, `output_exists`,\n`output_unwritable`, `media_offline`, `encoder_failed`, `render_failed`,\n`engine_unavailable`, or `failed` for the rest. null unless it failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "frame_rate": {
             "additionalProperties": false,
             "description": "Frame rate of the file.",
@@ -11154,6 +11201,7 @@ expression: text
           "progress",
           "cancel_requested",
           "error",
+          "error_code",
           "path",
           "sequence",
           "in",
@@ -15686,6 +15734,13 @@ expression: text
               "null"
             ]
           },
+          "error_code": {
+            "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "description": "The job.",
             "pattern": "^job_[0-9a-f]{32}$",
@@ -15834,7 +15889,8 @@ expression: text
           "state",
           "progress",
           "cancel_requested",
-          "error"
+          "error",
+          "error_code"
         ],
         "title": "JobInfo",
         "type": "object"
@@ -15979,6 +16035,13 @@ expression: text
                 },
                 "error": {
                   "description": "Why it failed, was skipped or was cancelled.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error_code": {
+                  "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed.",
                   "type": [
                     "string",
                     "null"
@@ -16132,7 +16195,8 @@ expression: text
                 "state",
                 "progress",
                 "cancel_requested",
-                "error"
+                "error",
+                "error_code"
               ],
               "type": "object"
             },
@@ -16190,6 +16254,13 @@ expression: text
           },
           "error": {
             "description": "Why it failed, was skipped or was cancelled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_code": {
+            "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed.",
             "type": [
               "string",
               "null"
@@ -16343,7 +16414,8 @@ expression: text
           "state",
           "progress",
           "cancel_requested",
-          "error"
+          "error",
+          "error_code"
         ],
         "title": "JobInfo",
         "type": "object"
@@ -16407,6 +16479,13 @@ expression: text
               "null"
             ]
           },
+          "error_code": {
+            "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "description": "The job.",
             "pattern": "^job_[0-9a-f]{32}$",
@@ -16555,7 +16634,8 @@ expression: text
           "state",
           "progress",
           "cancel_requested",
-          "error"
+          "error",
+          "error_code"
         ],
         "title": "JobInfo",
         "type": "object"

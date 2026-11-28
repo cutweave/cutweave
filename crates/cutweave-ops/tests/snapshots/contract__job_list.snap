@@ -277,6 +277,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "string",
                   "null"
                 ]
+              },
+              "error_code": {
+                "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "additionalProperties": false,
@@ -288,7 +295,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "state",
               "progress",
               "cancel_requested",
-              "error"
+              "error",
+              "error_code"
             ]
           },
           "description": "The jobs, newest first."
@@ -567,6 +575,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "string",
                 "null"
               ]
+            },
+            "error_code": {
+              "description": "The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`\nwhen nothing more specific is known). null unless the job failed.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
@@ -578,7 +593,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "state",
             "progress",
             "cancel_requested",
-            "error"
+            "error",
+            "error_code"
           ]
         },
         "description": "The jobs, newest first."

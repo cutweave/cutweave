@@ -144,9 +144,8 @@ pub struct JobInfo {
     pub cancel_requested: bool,
     /// Why it failed, was skipped or was cancelled.
     pub error: Option<String>,
-    /// What kind of failure it was, for programs: a short stable code in lower snake case
-    /// ([`error_code`]; `failed` when nothing more specific is known). Only a failed job has
-    /// one; a cancelled job and a job stored before codes existed have none (ADR-0038).
+    /// The kind of failure as a short stable code (`disk_full`, `media_offline`, …; `failed`
+    /// when nothing more specific is known). null unless the job failed.
     pub error_code: Option<String>,
 }
 
