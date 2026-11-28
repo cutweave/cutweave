@@ -512,6 +512,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
                     "type": "string",
                     "const": "SoftwareEncoder"
+                  },
+                  {
+                    "description": "The sequence's background is transparent and the file keeps no alpha channel, so the\nbackground is black in it.",
+                    "type": "string",
+                    "const": "TransparentBackground"
                   }
                 ]
               },
@@ -1106,6 +1111,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
                   "type": "string",
                   "const": "SoftwareEncoder"
+                },
+                {
+                  "description": "The sequence's background is transparent and the file keeps no alpha channel, so the\nbackground is black in it.",
+                  "type": "string",
+                  "const": "TransparentBackground"
                 }
               ]
             },
