@@ -528,6 +528,41 @@ async fn the_visual_commands_are_found_described_and_kept_out_of_the_list() {
         "the item names are described as untrusted text"
     );
 
+    // What each returns matches the result schema `cutweave_describe_command` serves
+    // (ADR-0028): the engine's schema without the image field, the item names wrapped.
+    let calls = [
+        ("render.contact_sheet", json!({ "count": 4 })),
+        (
+            "render.contact_sheet",
+            json!({ "at": "cuts", "labels": false }),
+        ),
+        ("media.filmstrip", json!({ "media": h.media[0] })),
+        (
+            "media.filmstrip",
+            json!({ "media": h.media[0], "from": "1s", "count": 3 }),
+        ),
+        (
+            "audio.waveform",
+            json!({ "target": { "kind": "media", "media": h.media[0] } }),
+        ),
+        (
+            "audio.waveform",
+            json!({
+                "target": { "kind": "range" }, "to": "4s", "loudness": true,
+                "channels": "split", "scale_db": 60
+            }),
+        ),
+    ];
+    for (name, args) in calls {
+        let result = query(&client, name, args.clone()).await;
+        let schema = &commands.iter().find(|c| c["name"] == name).unwrap()["output_schema"];
+        assert_eq!(
+            mcp_support::schema_error(schema, result.structured_content.as_ref().unwrap(), ""),
+            None,
+            "{name} {args}"
+        );
+    }
+
     // Pictures show the committed document: not inside a batch.
     let refused = client
         .execute(json!([
