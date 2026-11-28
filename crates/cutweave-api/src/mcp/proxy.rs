@@ -539,7 +539,7 @@ mod tests {
         flight.sent(&client(
             r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}"#,
         ));
-        assert!(flight.unanswered().is_empty());
+        assert_eq!(flight.unanswered(), Vec::<RequestId>::new());
     }
 
     #[test]

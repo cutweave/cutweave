@@ -4,7 +4,7 @@
 
 The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §14). Generated from the core tool table, `crates/cutweave-api/mcp_core.toml`, and the command registry.
 
-- **Listed:** 32 tools (28 core and the 4 generic ones), 31489 bytes, about 7873 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens. Every profile's budget is          in the table's `[profiles]`, and only there.
+- **Listed:** 32 tools (28 core and the 4 generic ones), 31489 bytes, about 7873 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens. Every profile's budget is in the table's `[profiles]`, and only there.
 - **`/mcp/minimal`** (`--profile minimal`): 10 tools of 12, about 1959 tokens of 3000.
 - **`/mcp/full`** (`--profile full`): 32 tools of 36, about 7873 tokens of 8000.
 - **`/mcp/described`** (`--profile described`): 32 tools of 36, about 14145 tokens of 16000.

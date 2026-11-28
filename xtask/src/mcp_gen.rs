@@ -61,7 +61,8 @@ fn overview(out: &mut String, registry: &Arc<Registry>, table: &CoreTable) {
     let _ = writeln!(
         out,
         "- **Listed:** {} tools ({} core and the {} generic ones), {} bytes, about {} tokens \
-         (`ceil(bytes / 4)`). The budget is {} tools and {} tokens. Every profile's budget is          in the table's `[profiles]`, and only there.",
+         (`ceil(bytes / 4)`). The budget is {} tools and {} tokens. Every profile's budget is \
+         in the table's `[profiles]`, and only there.",
         size.tools,
         table.tools.len(),
         catalog::GENERIC_TOOLS.len(),
