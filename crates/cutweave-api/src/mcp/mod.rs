@@ -68,7 +68,8 @@ use rmcp::transport::streamable_http_server::{
 };
 
 pub use catalog::{
-    Budget, Catalog, DESCRIBED_BUDGET, ListSize, MINIMAL_BUDGET, Profile, STANDARD_BUDGET,
+    Budget, Catalog, DESCRIBED_BUDGET, ListSize, MINIMAL_BUDGET, OverBudget, Profile,
+    STANDARD_BUDGET,
 };
 pub use dispatch::{Dispatch, DispatchCall, DispatchConn, DispatchReply};
 pub use handler::CutweaveMcp;

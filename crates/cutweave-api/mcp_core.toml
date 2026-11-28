@@ -3,7 +3,7 @@
 # The core MCP tools (WP-2I.01; arch §14, ADR-0009): the tools the standard profile lists
 # next to the 4 generic ones, and what each listing says. This file is the checked-in gate of
 # the tool list: a command marked `mcp = "core"` that is missing here (or the reverse) fails
-# `cargo nextest run -p cutweave-api`, and so does a list beyond `[budget]`.
+# `cargo nextest run -p cutweave-api`, and so does a list beyond its budget in `[profiles]`.
 #
 # - `name`: the tool. It is the command name with `.` replaced by `_`; an entry whose name is
 #   not that needs an ADR (arch §14).
@@ -31,18 +31,24 @@
 #
 # Generated from this file: docs/reference/mcp-core-tools.md (`cargo xtask gen`).
 
-[budget]
-# Arch §14, R36: the standard profile lists at most this many tools (the 4 generic tools
-# included) in at most this many tokens (`ceil(bytes / 4)` of the compact `tools/list` result).
-max_tools = 36
-max_tokens = 8000
-
-[described_budget]
-# ADR-0040, question 2 (WP-2I.07): `/mcp/described` lists the same tools in the same order with
-# full parameter descriptions, for clients that defer tool definitions (Claude Code, Copilot
-# CLI) and so do not pay for the list at the start. Its own budget, enforced like the one above.
-max_tools = 36
-max_tokens = 16000
+[profiles]
+# The tool-list budget of every profile, and the only place the figures are written: the
+# endpoints, `cutweave mcp --profile`, the tests and the generated reference read them from
+# here (WP-2I.05; ADR-0040: "the budgets live in `mcp_core.toml` per profile"). A list that
+# leaves its budget fails `cargo nextest run -p cutweave-api`. `max_tools` counts the 4
+# generic tools; `max_tokens` is `ceil(bytes / 4)` of the compact `tools/list` result.
+#
+# - `minimal` (`/mcp/minimal`): look, wait, undo and the generic tools, for small context
+#   windows (arch §14).
+# - `standard` (`/mcp`): the core tools, for clients that load every definition at the start
+#   (arch §14, R36). `full` (`/mcp/full`) lists exactly the standard tools and has this budget:
+#   its long tail is found with `cutweave_search_commands`, not listed.
+# - `described` (`/mcp/described`): the standard tools in the same order with full parameter
+#   descriptions, for clients that defer tool definitions (Claude Code, Copilot CLI) and so do
+#   not pay for the list at the start (ADR-0040, question 2).
+minimal = { max_tools = 12, max_tokens = 3000 }
+standard = { max_tools = 36, max_tokens = 8000 }
+described = { max_tools = 36, max_tokens = 16000 }
 
 [[tool]]
 name = "audio_set"

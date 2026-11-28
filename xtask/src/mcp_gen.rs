@@ -67,8 +67,8 @@ fn overview(out: &mut String, registry: &Arc<Registry>, table: &CoreTable) {
         catalog::GENERIC_TOOLS.len(),
         size.bytes,
         size.tokens(),
-        table.budget.max_tools,
-        table.budget.max_tokens
+        table.profiles.standard.max_tools,
+        table.profiles.standard.max_tokens
     );
     for profile in [Profile::Minimal, Profile::Full, Profile::Described] {
         let size = Catalog::new(Arc::clone(registry), profile).size();
