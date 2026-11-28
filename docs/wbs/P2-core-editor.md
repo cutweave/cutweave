@@ -407,7 +407,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Size:** S
 - **Executor:** sonnet
 - **Scope:**
-  - Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin).
+  - Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin). A sequence the editor creates passes `main_magnetic` from the `timeline.magnetic_main` preference to `sequence.create` (ADR-0037; #240 wired only `project.new`, since the editor had no caller of `sequence.create` yet).
   - Active sequence persisted in `viewStore` and the project's `ui` state.
   - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on the sequence tab (`sequence.tab`): Rename, Duplicate, Settings…, Aspect ▸ (the presets), Close, Close others.
 - **Interfaces:** consumes 2B.01/02 commands.
