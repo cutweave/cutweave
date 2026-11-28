@@ -576,8 +576,8 @@ function mainDragTarget(
   const y = laneY(g, name);
   if (y < top || y > bottom) return null;
   const px = (frames: number) => (frames * manifest.frame * g.pxPerSec) / FLICKS;
-  // Not the last clips: the drag needs clips to its right to pass.
-  for (const item of track.items.slice(0, -8)) {
+  // Not the last clip: the drag needs a clip to its right to pass.
+  for (const item of track.items.slice(0, -1)) {
     const x = xAt(g, item.start * manifest.frame);
     if (x > right) break;
     const clipPx = px(item.duration);
