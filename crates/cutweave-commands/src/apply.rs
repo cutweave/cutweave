@@ -12,14 +12,15 @@
 use std::str::FromStr;
 
 use cutweave_model::{
-    EntityId, Item, ItemId, MediaAsset, MediaId, Project, Sequence, SequenceId, Track, TrackId,
-    TrackItems,
+    EntityId, Item, ItemId, Marker, MarkerId, Markers, MediaAsset, MediaId, Project, Sequence,
+    SequenceId, Time, Track, TrackId, TrackItems,
 };
 use imbl::OrdMap;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::{
+    effort,
     json::{self, Edit, json_eq},
     patch::{PatchError, PatchOp},
     path::DocPath,
@@ -76,6 +77,7 @@ pub(crate) fn to_json<T: Serialize + ?Sized>(
     value: &T,
     path: &DocPath,
 ) -> Result<Value, PatchError> {
+    effort::converted();
     serde_json::to_value(value).map_err(|e| type_error(path, e.to_string()))
 }
 
@@ -84,6 +86,7 @@ fn from_json<T: Serialize + DeserializeOwned>(
     value: &Value,
     path: &DocPath,
 ) -> Result<T, PatchError> {
+    effort::converted();
     let typed = T::deserialize(value).map_err(|e| type_error(path, e.to_string()))?;
     if !json_eq(&to_json(&typed, path)?, value) {
         return Err(type_error(
@@ -278,6 +281,9 @@ fn edit_sequence(seq: &mut Sequence, rest: &[String], edit: Edit<'_>, path: &Doc
             edit_keyed(&mut seq.tracks, tail, edit, path, edit_track)
         }
         Some((head, _)) if head == "id" => Err(immutable(path)),
+        Some((head, [key, ..])) if head == "markers" && MarkerId::from_str(key).is_ok() => {
+            edit_marker(&mut seq.markers, &rest[1..], edit, path)
+        }
         _ => edit_shallow(
             seq,
             rest,
@@ -288,6 +294,32 @@ fn edit_sequence(seq: &mut Sequence, rest: &[String], edit: Edit<'_>, path: &Doc
             |s, tracks| s.tracks = tracks,
         ),
     }
+}
+
+/// Edits one marker of a sequence (`…/markers/<id>` and below; `segments` starts at the ID)
+/// through the JSON form of that marker alone. The general path puts the whole sequence, every
+/// marker with it, into its JSON form and reads it back for each such op (issue #230); what it
+/// does to this marker, and what it refuses, is the same: the same JSON edit, the same exact
+/// read-back, on the one member the op names.
+fn edit_marker(markers: &mut Markers, segments: &[String], edit: Edit<'_>, path: &DocPath) -> Out {
+    let key = &segments[0];
+    let id = parse_key::<MarkerId>(key, path)?;
+    let mut one = serde_json::Map::new();
+    if let Some(marker) = markers.get(&id) {
+        one.insert(key.clone(), to_json(marker, path)?);
+    }
+    let mut one = Value::Object(one);
+    let out = json::edit(&mut one, segments, edit, path)?;
+    match one.get(key) {
+        Some(value) => {
+            let marker: Marker = from_json(value, path)?;
+            markers.insert(id, marker);
+        }
+        None => {
+            markers.remove(&id);
+        }
+    }
+    Ok(out)
 }
 
 fn edit_track(track: &mut Track, rest: &[String], edit: Edit<'_>, path: &DocPath) -> Out {
@@ -328,6 +360,12 @@ fn edit_items(items: &mut TrackItems, segments: &[String], edit: Edit<'_>, path:
         if rest[0] == "id" {
             return Err(immutable(path));
         }
+        if let ([field], Edit::Replace { value, expect }) = (rest, &edit)
+            && field == "start"
+            && let Some(old) = replace_start(items, &id, value, *expect)
+        {
+            return Ok(Some(old));
+        }
         let mut value = to_json(items.get(&id).ok_or_else(|| not_found(path))?, path)?;
         let out = json::edit(&mut value, rest, edit, path)?;
         let item: Item = from_json(&value, path)?;
@@ -361,6 +399,54 @@ fn edit_items(items: &mut TrackItems, segments: &[String], edit: Edit<'_>, path:
             Ok(Some(old))
         }
     }
+}
+
+/// `replace …/items/<id>/start` with a JSON integer of flicks: the op a ripple applies to every
+/// item it shifts (issue #231). Sets the start on the typed item, which is what the general
+/// path arrives at through the item's JSON form (serialize, replace the member, read back and
+/// check the round trip). Returns the replaced value; `None`, and nothing changed, for anything
+/// but the plain case (no such item, a preimage that does not match, a value that is not an
+/// integer in range): the general path then decides and words the error.
+fn replace_start(
+    items: &mut TrackItems,
+    id: &ItemId,
+    value: &Value,
+    expect: Option<&Value>,
+) -> Option<Value> {
+    let start = Time::from_flicks(value.as_i64()?).ok()?;
+    let old = Value::from(items.get(id)?.start().flicks());
+    if expect.is_some_and(|expected| !json_eq(&old, expected)) {
+        return None;
+    }
+    // Debug builds (every test run) take the general path as well and compare.
+    #[cfg(debug_assertions)]
+    let general = effort::uncounted(|| replace_start_as_json(items.get(id)?, value, expect))?;
+    items.update(id, |item| item.set_start(start));
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(
+        (items.get(id), &old),
+        (Some(&general.0), &general.1),
+        "the JSON form of a start replaced"
+    );
+    Some(old)
+}
+
+/// What the general path makes of `replace …/start` on `item`: the item after it and the
+/// value it replaced.
+#[cfg(debug_assertions)]
+fn replace_start_as_json(
+    item: &Item,
+    value: &Value,
+    expect: Option<&Value>,
+) -> Option<(Item, Value)> {
+    let path = DocPath::root();
+    let mut json = to_json(item, &path).ok()?;
+    let edit = Edit::Replace {
+        value: value.clone(),
+        expect,
+    };
+    let old = json::edit(&mut json, &["start".to_owned()], edit, &path).ok()??;
+    Some((from_json(&json, &path).ok()?, old))
 }
 
 /// Edits a field of `entity` outside its nested collections: `take` swaps empty collections in

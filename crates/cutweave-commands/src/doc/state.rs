@@ -1766,9 +1766,17 @@ impl DocState {
             let delta = LiveDelta::between(&self.live, &live);
             (live, delta)
         } else if replace {
-            // The live document is this gesture's view: undo its ops, then apply the update.
-            let mut delta = self.open.get(&tx_id).map_or_default(|t| t.ops.invert());
-            delta.extend(step.iter().cloned());
+            // The live document is this gesture's view before the update, and `view` the one
+            // after it. Subscribers get what differs between the two: for a drag that carries
+            // a clip one place further along a track that ripples, the clip and the one it
+            // passed, not every shifted clip put back and shifted again (issue #231). A change
+            // that has no field-level form is sent as before: the gesture's ops undone, then
+            // the update's.
+            let delta = diff(&self.live, &view).unwrap_or_else(|_| {
+                let mut delta = self.open.get(&tx_id).map_or_default(|t| t.ops.invert());
+                delta.extend(step.iter().cloned());
+                delta
+            });
             (view.clone(), LiveDelta::Ops(delta))
         } else {
             (view.clone(), LiveDelta::Ops(step.clone()))

@@ -101,6 +101,32 @@ value = 2500
 unit = "ms"
 machine_scope = ["any"]
 
+# The UI benchmarks (`pnpm --filter @cutweave/desktop perf:ui`, WP-2J.02): limits its WBS entry
+# sets, each a §19 figure measured through the app's window instead of at the engine.
+[[wp]]
+id = "project_open_1h_ui_ms"
+metric = "Open the 1-hour, 400-item project in the app: the click on Open to the first timeline frame with every item (WP-2J.02)"
+op = "<"
+value = 2000
+unit = "ms"
+machine_scope = ["any"]
+
+[[wp]]
+id = "ui_command_rtt_p95_ms"
+metric = "Round trip of a drag update in the app on the 5,000-item project (UI -> engine -> patch -> UI), p95 over 500 updates (WP-2J.02)"
+op = "<"
+value = 16
+unit = "ms"
+machine_scope = ["any"]
+
+[[wp]]
+id = "timeline_panzoom_5000_frame_p95_ms"
+metric = "Timeline pan/zoom with 5,000 items in the app: frame time, p95 (WP-2J.02)"
+op = "<"
+value = 25
+unit = "ms"
+machine_scope = ["any"]
+
 # Not a §19 row: budget for the synthetic metric emitted by `cargo xtask bench --suite smoke`,
 # so the harness can be exercised end to end before real benchmarks exist (P2).
 [[synthetic]]

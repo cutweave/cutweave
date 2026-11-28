@@ -111,6 +111,8 @@ pub struct WsClient {
     next_id: u64,
     /// The newest revision a `doc.patched` notification announced.
     patched: u64,
+    /// Bytes of the text messages received so far.
+    received: u64,
 }
 
 impl WsClient {
@@ -136,6 +138,7 @@ impl WsClient {
             ws,
             next_id: 1,
             patched: 0,
+            received: 0,
         })
     }
 
@@ -145,7 +148,7 @@ impl WsClient {
     }
 
     fn next_within(&mut self, wait: Duration) -> Result<Value, BenchError> {
-        let ws = &mut self.ws;
+        let (ws, received) = (&mut self.ws, &mut self.received);
         self.rt.block_on(async {
             loop {
                 let msg = tokio::time::timeout(wait, ws.next())
@@ -153,6 +156,7 @@ impl WsClient {
                     .map_err(|_| BenchError::Other("no message from the engine in time".into()))?;
                 match msg {
                     Some(Ok(Message::Text(text))) => {
+                        *received += text.len() as u64;
                         return serde_json::from_str(text.as_str())
                             .map_err(|e| other("a message that is not JSON", e));
                     }
@@ -220,17 +224,50 @@ impl WsClient {
     }
 
     /// Calls a mutating `method` (with a request id of its own) and returns its result.
-    pub fn mutate(&mut self, method: &str, mut params: Value) -> Result<Value, BenchError> {
+    pub fn mutate(&mut self, method: &str, params: Value) -> Result<Value, BenchError> {
+        self.mutate_with(method, params, json!({}))
+    }
+
+    /// [`mutate`](Self::mutate) with more fields in the envelope (`_meta.tx`, `_meta.replace`).
+    fn mutate_with(
+        &mut self,
+        method: &str,
+        mut params: Value,
+        mut meta: Value,
+    ) -> Result<Value, BenchError> {
         // UUIDv7-shaped and unique per client and call; the doc actor deduplicates on it.
         let id = format!(
             "0190f5c2-{:04x}-7000-8000-{:012x}",
             std::process::id() & 0xFFFF,
             (u64::from(self.ws_port()) << 32) | self.next_id
         );
+        meta["request_id"] = json!(id);
         if let Value::Object(map) = &mut params {
-            map.insert("_meta".into(), json!({"request_id": id}));
+            map.insert("_meta".into(), meta);
         }
         self.call(method, &params)
+    }
+
+    /// Bytes of the text messages received so far (responses and events).
+    #[must_use]
+    pub fn received_bytes(&self) -> u64 {
+        self.received
+    }
+
+    /// One update of the open gesture `tx`, as the editor sends it during a drag (`_meta.tx`
+    /// and `_meta.replace`): the request, its response and, when it changed the live document,
+    /// the `doc.patched` it caused (the connection must have subscribed).
+    pub fn gesture_update(
+        &mut self,
+        method: &str,
+        params: Value,
+        tx: &Value,
+    ) -> Result<(), BenchError> {
+        let result = self.mutate_with(method, params, json!({"tx": tx, "replace": true}))?;
+        let rev = result["_meta"]["rev"]
+            .as_u64()
+            .ok_or_else(|| BenchError::Other(format!("`{method}` returned no revision")))?;
+        self.wait_patched(rev)
     }
 
     fn ws_port(&self) -> u16 {

@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "node scripts/ensure-electron.ts && node scripts/build-bridge.ts --fixture && playwright test",
-    "e2e:flows": "node scripts/ensure-electron.ts && playwright test e2e/flows"
+    "e2e:flows": "node scripts/ensure-electron.ts && playwright test e2e/flows",
+    "perf:ui": "node scripts/perf-ui.ts"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",

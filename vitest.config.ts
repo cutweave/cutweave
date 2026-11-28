@@ -22,7 +22,9 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ["{packages,apps}/*/src/**/*.test.ts"],
+    // The second pattern: the unit tests of the UI benchmarks' own arithmetic (WP-2J.02); the
+    // Playwright files next to them are `*.spec.ts` and `*.perf.ts`.
+    include: ["{packages,apps}/*/src/**/*.test.ts", "apps/desktop/e2e/perf/**/*.test.ts"],
     passWithNoTests: false,
     // The merge gate often runs while agents compile Rust in parallel: cap workers and give
     // worker startup / slow jsdom suites headroom so load never turns into a false failure.

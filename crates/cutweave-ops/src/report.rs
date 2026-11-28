@@ -107,6 +107,12 @@ pub struct EditReport {
     pub created_tracks: Vec<TrackId>,
 }
 
+thread_local! {
+    /// How many items [`EditReport::diff`] read so far on this thread: its tests count them
+    /// instead of timing it.
+    static INDEXED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 impl EditReport {
     /// Whether the edit changed nothing.
     #[must_use]
@@ -125,13 +131,19 @@ impl EditReport {
         created_tracks: &[TrackId],
     ) -> EditReport {
         type Seen<'a> = BTreeMap<ItemId, (TrackId, &'a Item)>;
-        fn index(seq: &Sequence) -> Seen<'_> {
+        // The items of the tracks whose items changed. A track that holds the very same items
+        // in `other` has nothing to report: each of its items is on the same track, unchanged,
+        // and (IDs being unique) nowhere else. So a command that moves one clip reads that
+        // clip's track, not every item of the sequence (issue #230).
+        fn index<'a>(seq: &'a Sequence, other: &Sequence) -> Seen<'a> {
             seq.tracks
                 .values()
+                .filter(|t| other.track(&t.id).is_none_or(|o| !o.items.ptr_eq(&t.items)))
                 .flat_map(|t| t.items.iter_by_id().map(move |(_, i)| (i.id(), (t.id, i))))
+                .inspect(|_| INDEXED.with(|n| n.set(n.get() + 1)))
                 .collect()
         }
-        let (old, new) = (index(before), index(after));
+        let (old, new) = (index(before, after), index(after, before));
         let rights: std::collections::BTreeSet<ItemId> = splits.iter().map(|s| s.right).collect();
         let mut report = EditReport {
             split: splits.to_vec(),
@@ -223,6 +235,57 @@ mod tests {
             Duration::from_flicks(dur).unwrap(),
         )
         .into()
+    }
+
+    /// Issue #230: the report of a command that moves one clip reads the track it is on, not
+    /// every item of the sequence. Counted, not timed.
+    #[test]
+    fn a_report_reads_only_the_tracks_whose_items_changed() {
+        let (mut before, a, b) = seq();
+        for n in 0..500 {
+            let item = clip(1000 + n, i64::try_from(n).unwrap() * 100, 100);
+            before.track_mut(&a).unwrap().items.insert(item);
+        }
+        for n in 0..3 {
+            before.track_mut(&b).unwrap().items.insert(clip(
+                n + 1,
+                i64::try_from(n).unwrap() * 100,
+                100,
+            ));
+        }
+        let mut after = before.clone();
+        after
+            .track_mut(&b)
+            .unwrap()
+            .items
+            .update(&ItemId::from_u128(2), |i| {
+                i.set_start(Time::from_flicks(900).unwrap());
+            });
+        let read = INDEXED.with(std::cell::Cell::get);
+        let report = EditReport::diff(&before, &after, &[], &[]);
+        assert_eq!(
+            INDEXED.with(std::cell::Cell::get) - read,
+            6,
+            "three items, before and after"
+        );
+        assert_eq!(report.moved.len(), 1);
+        assert_eq!(report.moved[0].item, ItemId::from_u128(2));
+        // An item that changes track is read on both.
+        let mut moved = before.clone();
+        let item = moved
+            .track_mut(&b)
+            .unwrap()
+            .items
+            .remove(&ItemId::from_u128(3))
+            .unwrap();
+        moved.track_mut(&a).unwrap().items.insert(item);
+        let report = EditReport::diff(&before, &moved, &[], &[]);
+        assert_eq!(report.moved.len(), 1);
+        assert_eq!(
+            (report.moved[0].item, report.moved[0].track),
+            (ItemId::from_u128(3), a)
+        );
+        assert!(report.created.is_empty() && report.removed.is_empty());
     }
 
     #[test]

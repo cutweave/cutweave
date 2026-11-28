@@ -60,6 +60,21 @@ export interface SequenceSummary {
   readonly duration: number;
 }
 
+const trackEnds = new WeakMap<Track, number>();
+
+/** The end of a track's last item; read once per version of the track (issue #230). */
+function trackEnd(track: Track): number {
+  let end = trackEnds.get(track);
+  if (end === undefined) {
+    end = 0;
+    for (const item of Object.values(track.items)) {
+      end = Math.max(end, item.start + item.duration);
+    }
+    trackEnds.set(track, end);
+  }
+  return end;
+}
+
 /** The active sequence's summary, or `null` without a project or a sequence. */
 export function selectSequenceSummary(project: Project | null): SequenceSummary | null {
   const id = selectActiveSequenceId(project);
@@ -69,9 +84,7 @@ export function selectSequenceSummary(project: Project | null): SequenceSummary 
   }
   let duration = 0;
   for (const track of Object.values(sequence.tracks)) {
-    for (const item of Object.values(track.items)) {
-      duration = Math.max(duration, item.start + item.duration);
-    }
+    duration = Math.max(duration, trackEnd(track));
   }
   const { width, height, frame_rate } = sequence.format;
   return { width, height, frameRate: frame_rate, duration };
@@ -188,6 +201,82 @@ function toItem(item: Item, track: Track, project: Project): TimelineItem {
   };
 }
 
+/**
+ * What was derived from one engine object, and from what besides it. The mirror shares every
+ * part of the document a patch did not touch (`applyPatch`), so the timeline's items are derived
+ * again only for the clips and tracks that changed: a drag update on a project of 5,000 clips
+ * builds one item, not 5,000 (issues #230, #231).
+ */
+interface DerivedItem {
+  readonly track: Track["id"];
+  readonly kind: EngineTrackKind;
+  readonly media: MediaAsset | undefined;
+  readonly item: TimelineItem;
+}
+
+interface DerivedTrack {
+  readonly media: Project["media"];
+  readonly track: TimelineTrack;
+  readonly items: readonly TimelineItem[];
+}
+
+const derivedItems = new WeakMap<Item, DerivedItem>();
+const derivedTracks = new WeakMap<Track, DerivedTrack>();
+
+/** How many items `selectTimelineModel` derived so far; tests count them instead of timing. */
+export const selectorWork = { items: 0 };
+
+/** The timeline's item for `item`: the one derived before while nothing it is made of changed. */
+function itemOf(item: Item, track: Track, project: Project): TimelineItem {
+  const media = project.media[item.media];
+  const known = derivedItems.get(item);
+  if (
+    known !== undefined &&
+    known.track === track.id &&
+    known.kind === track.kind &&
+    known.media === media
+  ) {
+    return known.item;
+  }
+  selectorWork.items += 1;
+  const derived = toItem(item, track, project);
+  derivedItems.set(item, { track: track.id, kind: track.kind, media, item: derived });
+  return derived;
+}
+
+/** A track's lane and its items in time order: the ones derived before for the same objects. */
+function trackOf(track: Track, project: Project): DerivedTrack {
+  const known = derivedTracks.get(track);
+  if (known !== undefined && known.media === project.media) {
+    return known;
+  }
+  const own = Object.values(track.items).sort((a, b) => a.start - b.start);
+  const derived: DerivedTrack = {
+    media: project.media,
+    track: toTrack(track),
+    items: own.map((item) => itemOf(item, track, project)),
+  };
+  derivedTracks.set(track, derived);
+  return derived;
+}
+
+const derivedMarkers = new WeakMap<object, readonly TimelineMarker[]>();
+
+/** Sequence markers, drawn in the ruler (by time, then ID, so the order is stable). */
+function markersOf(markers: Sequence["markers"] | undefined): readonly TimelineMarker[] {
+  if (markers === undefined) {
+    return [];
+  }
+  let derived = derivedMarkers.get(markers);
+  if (derived === undefined) {
+    derived = Object.values(markers)
+      .sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(toMarker);
+    derivedMarkers.set(markers, derived);
+  }
+  return derived;
+}
+
 function build(sequence: Sequence, project: Project): TimelineModel {
   const tracks: TimelineTrack[] = [];
   const items: TimelineItem[] = [];
@@ -197,16 +286,13 @@ function build(sequence: Sequence, project: Project): TimelineModel {
     if (track === undefined) {
       continue;
     }
-    tracks.push(toTrack(track));
-    const own = Object.values(track.items).sort((a, b) => a.start - b.start);
-    for (const item of own) {
-      items.push(toItem(item, track, project));
+    const derived = trackOf(track, project);
+    tracks.push(derived.track);
+    for (const item of derived.items) {
+      items.push(item);
     }
   }
-  // Sequence markers, drawn in the ruler (by time, then ID, so the order is stable).
-  const markers = Object.values(sequence.markers ?? {})
-    .sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    .map(toMarker);
+  const markers = markersOf(sequence.markers);
   return {
     fps: { num: sequence.format.frame_rate.num, den: sequence.format.frame_rate.den },
     tracks,

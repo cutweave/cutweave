@@ -757,6 +757,63 @@ fn replacing_updates_compose_with_another_actors_proposal() {
     s.verify().unwrap();
 }
 
+/// Issue #231: a replacing update tells subscribers what it changed in the live document, not
+/// the gesture's earlier update undone and the new one applied. A drag along a track that
+/// ripples shifts the same clips on every update but for the one it passed: the event of such
+/// an update names that clip, not every shifted clip twice. Counted in ops, not timed.
+#[test]
+fn a_replacing_update_broadcasts_the_net_change_of_the_live_document() {
+    const CLIPS: u32 = 40;
+    let (doc, tracks, _) = project(2);
+    let (mut s, _clock) = clocked(doc);
+    let user = ui();
+    let clips: Vec<ItemId> = (0..CLIPS)
+        .map(|_| append(&mut s, &user, tracks[0], 30))
+        .collect();
+    let mut mirror = Mirror::new(s.doc(), s.rev());
+    let _ = s.take_events();
+    let drag = s.begin_tx(&user, TxKind::Gesture, "Ripple").unwrap().id;
+    // The ops of the one `doc.patched` an update causes, after the mirror followed it.
+    let mut ripple = |s: &mut DocState, from_clip: u32| -> (usize, usize) {
+        let step = update(
+            s,
+            &user,
+            drag,
+            "timeline.shift_after",
+            json!({"track": tracks[0], "at": from_clip * 30, "frames": 10}),
+        )
+        .unwrap();
+        let events = s.take_events();
+        let mut sent = 0;
+        for e in &events {
+            if let DocEvent::Patched(p) = e {
+                assert_eq!(p.cause, PatchCause::Live);
+                sent += p.ops.len();
+            }
+            mirror.apply(e);
+        }
+        mirror.assert_matches(s.doc());
+        (step.ops.len(), sent)
+    };
+    // Everything from the first clip on moves: nothing was live before, so that is the change.
+    assert_eq!(ripple(&mut s, 0), (40, 40));
+    // From clip 20 on: the update shifts 20 clips, which are where they were already; the
+    // first 20 go back. 20 ops, not the 40 undone and the 20 applied.
+    assert_eq!(ripple(&mut s, 20), (20, 20));
+    // One clip further: 19 clips shifted, one changed.
+    assert_eq!(ripple(&mut s, 21), (19, 1));
+    assert_eq!(start_frame(s.doc(), clips[20]), 20 * 30);
+    assert_eq!(start_frame(s.doc(), clips[21]), 21 * 30 + 10);
+    // And back.
+    assert_eq!(ripple(&mut s, 20), (20, 1));
+    s.verify().unwrap();
+    // What the gesture commits is its last update applied once, as before.
+    let closed = s.commit_tx(&user, drag).unwrap();
+    assert_eq!(closed.patch.len(), 20);
+    assert_eq!(closed.patch.touched_items().len(), 20);
+    s.verify().unwrap();
+}
+
 /// Ripple-shifted items are in the touched set (spec INV-304): the gesture's ripple locks
 /// them, and another actor's ripple that would shift a locked item is refused while one that
 /// shifts only other items proceeds.

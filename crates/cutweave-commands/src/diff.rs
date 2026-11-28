@@ -6,7 +6,7 @@
 //! proportional to what changed, plus one pass over the items of each changed track.
 
 use cutweave_model::{
-    BackgroundFill, Collection, Item, MediaAsset, Project, Sequence, Track, TrackItems,
+    BackgroundFill, Collection, Item, Markers, MediaAsset, Project, Sequence, Track, TrackItems,
 };
 use imbl::{OrdMap, ordmap::DiffItem};
 use serde::Serialize;
@@ -86,15 +86,37 @@ pub(crate) fn diff_sequence(
     after: &Sequence,
     out: &mut Ops,
 ) -> Result<(), PatchError> {
-    let shallow = |s: &Sequence| {
+    // The markers are diffed by themselves, like the tracks: a sequence can hold thousands, and
+    // every command that changes anything in it would put them all into their JSON form to
+    // compare them (issue #230). The key stays in the stripped form, empty, to keep its place.
+    let shallow = |s: &Sequence| -> Result<Value, PatchError> {
         let mut s = Sequence {
             tracks: OrdMap::new(),
+            markers: Markers::new(),
             ..s.clone()
         };
         s.format.background_fill = None;
-        s
+        let mut v = to_json(&s, path)?;
+        if let Value::Object(map) = &mut v {
+            // As `diff_shallow` strips it (the last member takes its place).
+            map.remove("tracks");
+        }
+        Ok(v)
     };
-    diff_shallow(path, &shallow(before), &shallow(after), &["tracks"], out)?;
+    let own = shallow(before)?;
+    let from = out.len();
+    json::diff(path, &own, &shallow(after)?, out);
+    if !before.markers.ptr_eq(&after.markers) {
+        let mut markers = Vec::new();
+        diff_markers(
+            &path.join("markers"),
+            &before.markers,
+            &after.markers,
+            &mut markers,
+        )?;
+        let at = from + markers_place(path, &own, &out[from..]);
+        out.splice(at..at, markers);
+    }
     diff_background_fill(
         &path.join("format").join("background_fill"),
         before.format.background_fill.as_ref(),
@@ -108,6 +130,67 @@ pub(crate) fn diff_sequence(
         out,
         diff_track,
     )
+}
+
+/// The ops between two versions of a sequence's markers, in the order the JSON diff of the two
+/// maps gives them: the markers that went, then the changed ones field by field, then the new
+/// ones, each group in ID order. Markers in nodes both versions share are not visited.
+fn diff_markers(
+    path: &DocPath,
+    before: &Markers,
+    after: &Markers,
+    out: &mut Ops,
+) -> Result<(), PatchError> {
+    for change in before.diff(after) {
+        if let DiffItem::Remove(key, value) = change {
+            remove(&path.join(key), value, out)?;
+        }
+    }
+    for change in before.diff(after) {
+        if let DiffItem::Update {
+            old: (key, old),
+            new: (_, new),
+        } = change
+        {
+            diff_value(&path.join(key), old, new, out)?;
+        }
+    }
+    for change in before.diff(after) {
+        if let DiffItem::Add(key, value) = change {
+            add(&path.join(key), value, out)?;
+        }
+    }
+    Ok(())
+}
+
+/// Where the ops of a sequence's markers go among `ops`, the JSON diff of its other fields
+/// (`own` is the sequence's JSON form they were found in, at `path`): where that diff would
+/// have put them. It emits the members that went, then the changes of the members both sides
+/// have in the order `own` lists them, then the new members; `markers` is always a member of
+/// both, so its ops come before the changes of the members listed after it.
+fn markers_place(path: &DocPath, own: &Value, ops: &[PatchOp]) -> usize {
+    let later: Vec<&str> = own.as_object().map_or_else(Vec::new, |map| {
+        map.keys()
+            .skip_while(|key| *key != "markers")
+            .skip(1)
+            .map(String::as_str)
+            .collect()
+    });
+    let member = path.depth() + 1;
+    ops.iter()
+        .position(|op| {
+            let at = op.path();
+            let whole = at.depth() == member;
+            match op {
+                PatchOp::Remove { .. } if whole => false,
+                PatchOp::Add { .. } if whole => true,
+                _ => at
+                    .segments()
+                    .nth(member - 1)
+                    .is_some_and(|key| later.contains(&key.as_ref())),
+            }
+        })
+        .unwrap_or(ops.len())
 }
 
 /// A sequence's background fill (WP-2B.02) is left out of the document while there is none, and
@@ -178,7 +261,10 @@ fn diff_items(
                 }
                 std::cmp::Ordering::Equal => {
                     if !std::ptr::eq::<Item>(*bv, *av) && bv != av {
-                        diff_value(&path.join(bk), *bv, *av, out)?;
+                        let path = path.join(bk);
+                        if !diff_moved(&path, bv, av, out) {
+                            diff_value(&path, *bv, *av, out)?;
+                        }
                     }
                     b.next();
                     a.next();
@@ -195,6 +281,40 @@ fn diff_items(
             (None, None) => return Ok(()),
         }
     }
+}
+
+/// The op for two versions of an item that differ in nothing but `start`: what a ripple does
+/// to every item it shifts, so a ripple of 2,000 items is 2,000 of these (issue #231). It is
+/// the op [`diff_value`] finds (`replace …/start`, flicks as JSON integers), without putting
+/// both items into their JSON form to find it. `false`, and nothing pushed, when the items
+/// differ in anything else.
+fn diff_moved(path: &DocPath, before: &Item, after: &Item, out: &mut Ops) -> bool {
+    if before.start() == after.start() {
+        return false;
+    }
+    let mut moved = before.clone();
+    moved.set_start(after.start());
+    if moved != *after {
+        return false;
+    }
+    let op = PatchOp::Replace {
+        path: path.join("start"),
+        old: Value::from(before.start().flicks()),
+        value: Value::from(after.start().flicks()),
+    };
+    // Debug builds (every test run) compute the general diff as well and compare.
+    #[cfg(debug_assertions)]
+    crate::effort::uncounted(|| {
+        let mut general = Vec::new();
+        debug_assert!(diff_value(path, before, after, &mut general).is_ok());
+        debug_assert_eq!(
+            general,
+            std::slice::from_ref(&op),
+            "the JSON diff of a moved item"
+        );
+    });
+    out.push(op);
+    true
 }
 
 fn diff_keyed<K, V>(
@@ -372,6 +492,85 @@ mod tests {
                 format!("{kind} {}", op.path())
             })
             .collect()
+    }
+
+    /// A sequence's ops as they were before its markers were diffed by themselves: the JSON
+    /// diff of the whole sequence but its tracks.
+    fn whole_json_diff(path: &DocPath, before: &Sequence, after: &Sequence) -> Ops {
+        let shallow = |s: &Sequence| {
+            let mut s = Sequence {
+                tracks: OrdMap::new(),
+                ..s.clone()
+            };
+            s.format.background_fill = None;
+            s
+        };
+        let mut out = Vec::new();
+        diff_shallow(
+            path,
+            &shallow(before),
+            &shallow(after),
+            &["tracks"],
+            &mut out,
+        )
+        .unwrap();
+        out
+    }
+
+    /// Markers that come, go and change in one edit, alone and together with each of the
+    /// sequence's other fields, listed before and after them: the same ops in the same order
+    /// as the JSON diff of the whole sequence.
+    #[test]
+    fn a_sequences_markers_diff_as_part_of_its_json_form_would() {
+        use cutweave_model::{InOut, Marker, MarkerId, SequenceFormat, SequenceId, Time, TrackId};
+        let t = |n: i64| Time::from_flicks(n).unwrap();
+        let id = SequenceId::from_u128(1);
+        let path = DocPath::sequence(id);
+        let mut before = Sequence::new(id, "Before", SequenceFormat::default());
+        for n in 1..=6 {
+            let m = MarkerId::from_u128(n);
+            before
+                .markers
+                .insert(m, Marker::new(m, t(i64::try_from(n).unwrap())));
+        }
+        before.track_order.push_back(TrackId::from_u128(7));
+        before.extra =
+            serde_json::from_value(serde_json::json!({"later": 1, "gone": true})).unwrap();
+        let edits: [fn(&mut Sequence); 9] = [
+            |s| drop(s.markers.remove(&MarkerId::from_u128(2))),
+            |s| s.markers.get_mut(&MarkerId::from_u128(3)).unwrap().label = "three".into(),
+            |s| {
+                let m = MarkerId::from_u128(9);
+                s.markers.insert(m, Marker::new(m, Time::ZERO));
+            },
+            |s| {
+                s.markers.get_mut(&MarkerId::from_u128(5)).unwrap().duration =
+                    Some(cutweave_model::Duration::from_flicks(4).unwrap());
+            },
+            |s| s.name = "After".into(),
+            |s| s.format.width += 2,
+            |s| s.track_order.push_back(TrackId::from_u128(8)),
+            |s| s.in_out = Some(InOut::new(Time::ZERO, Time::from_flicks(9).unwrap())),
+            |s| {
+                s.extra =
+                    serde_json::from_value(serde_json::json!({"later": 2, "new": []})).unwrap();
+            },
+        ];
+        for mask in 1_u32..(1 << edits.len()) {
+            let mut after = before.clone();
+            for (n, edit) in edits.iter().enumerate() {
+                if mask & (1 << n) != 0 {
+                    edit(&mut after);
+                }
+            }
+            let mut ops = Vec::new();
+            diff_sequence(&path, &before, &after, &mut ops).unwrap();
+            assert_eq!(
+                ops,
+                whole_json_diff(&path, &before, &after),
+                "edits {mask:#b}"
+            );
+        }
     }
 
     #[test]

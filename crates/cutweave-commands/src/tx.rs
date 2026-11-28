@@ -41,6 +41,10 @@ pub struct Transaction {
     base: Project,
     doc: Project,
     ops: Vec<PatchOp>,
+    /// `ops` is known to be exactly `diff(base, doc)`: [`commit`](Transaction::commit) then
+    /// takes it as the net patch without computing and verifying that diff again (which costs
+    /// as much as the edit itself: issues #230, #231). See [`Transaction::record_diff`].
+    exact: bool,
 }
 
 /// A savepoint inside a [`Transaction`] (see [`Transaction::rollback_to`]).
@@ -48,6 +52,7 @@ pub struct Transaction {
 pub struct Mark {
     len: usize,
     doc: Project,
+    exact: bool,
 }
 
 /// A committed transaction.
@@ -80,6 +85,7 @@ impl Transaction {
             doc: base.clone(),
             base,
             ops: Vec::new(),
+            exact: false,
         }
     }
 
@@ -122,6 +128,7 @@ impl Transaction {
         Mark {
             len: self.ops.len(),
             doc: self.doc.clone(),
+            exact: self.exact,
         }
     }
 
@@ -137,14 +144,28 @@ impl Transaction {
         debug_assert!(mark.len <= self.ops.len(), "mark from a later state");
         self.ops.truncate(mark.len);
         self.doc = mark.doc;
+        self.exact = mark.exact;
     }
 
     /// Ends the transaction. The net patch is the verified [`diff`] of base and result when it
-    /// can be expressed field by field, otherwise the recorded ops.
+    /// can be expressed field by field, otherwise the recorded ops. When the recorded ops are
+    /// known to be that diff already (one diff-based edit, the usual command), they are taken
+    /// as they are.
     #[must_use]
     pub fn commit(self) -> Committed {
         let patch = if self.ops.is_empty() {
             Patch::new()
+        } else if self.exact {
+            // Debug builds (every test run) compute the diff as well and compare.
+            #[cfg(debug_assertions)]
+            crate::effort::uncounted(|| {
+                debug_assert_eq!(
+                    diff(&self.base, &self.doc).ok().as_ref().map(|p| &p.0),
+                    Some(&self.ops),
+                    "the recorded ops are not the diff of the transaction"
+                );
+            });
+            Patch(self.ops)
         } else {
             diff(&self.base, &self.doc).unwrap_or(Patch(self.ops))
         };
@@ -174,6 +195,30 @@ impl Transaction {
         }
         self.doc = next;
         self.ops.extend(ops);
+        self.exact = false;
+        Ok(())
+    }
+
+    /// [`record`](Self::record) for ops that are the field-level diff of one entity of the
+    /// working document and its edited copy; `reached` says whether the document they led to
+    /// holds exactly that copy.
+    ///
+    /// When they are the transaction's first ops and `reached` holds, they are the transaction's
+    /// net patch as [`diff`] would compute and verify it: the working document was the base, so
+    /// `diff(base, doc)` visits this one entity with the same two values and yields the same
+    /// ops, and applying them to the base is how the working document was made. `commit` then
+    /// skips that second diff and its verification.
+    fn record_diff(
+        &mut self,
+        ops: Vec<PatchOp>,
+        reached: impl FnOnce(&Project) -> bool,
+    ) -> Result<(), CmdError> {
+        let first = self.ops.is_empty();
+        let any = !ops.is_empty();
+        self.record(ops)?;
+        if first && any {
+            self.exact = reached(&self.doc);
+        }
         Ok(())
     }
 }
@@ -190,14 +235,19 @@ fn check_locks(doc: &Project, op: &PatchOp) -> Result<(), CmdError> {
     for (i, path) in op.paths().enumerate() {
         // For a move, `from` (i == 0) is removed: like a removal.
         let removes = whole_track_change || (i == 0 && matches!(op, PatchOp::Move { .. }));
-        let segments = path.to_segments();
-        let [s0, sequence, s2, track, rest @ ..] = segments.as_slice() else {
+        let mut segments = path.segments();
+        let (Some(s0), Some(sequence), Some(s2), Some(track)) = (
+            segments.next(),
+            segments.next(),
+            segments.next(),
+            segments.next(),
+        ) else {
             continue;
         };
         if s0 != "sequences" || s2 != "tracks" {
             continue;
         }
-        let touches_items = match rest.first() {
+        let touches_items = match segments.next() {
             None => removes,
             Some(head) => head == "items",
         };
@@ -353,7 +403,8 @@ impl Tx<'_> {
         let mut after = self.txn.doc.clone();
         let out = f(&mut after)?;
         let patch = diff(&self.txn.doc, &after).map_err(patch_failed)?;
-        self.txn.record(patch.0)?;
+        // `diff` verified that these ops lead from the working document to `after`.
+        self.txn.record_diff(patch.0, |_| true)?;
         Ok(out)
     }
 
@@ -414,7 +465,8 @@ impl Tx<'_> {
         }
         let mut ops = Vec::new();
         diff::diff_value(&DocPath::media(id), &before, &after, &mut ops).map_err(patch_failed)?;
-        self.txn.record(ops)?;
+        self.txn
+            .record_diff(ops, |doc| doc.media.get(&id) == Some(&after))?;
         Ok(out)
     }
 
@@ -463,7 +515,8 @@ impl Tx<'_> {
         let mut ops = Vec::new();
         diff::diff_sequence(&DocPath::sequence(id), &before, &after, &mut ops)
             .map_err(patch_failed)?;
-        self.txn.record(ops)?;
+        self.txn
+            .record_diff(ops, |doc| doc.sequences.get(&id) == Some(&after))?;
         Ok(out)
     }
 
@@ -545,7 +598,9 @@ impl Tx<'_> {
         let mut ops = Vec::new();
         diff::diff_track(&DocPath::track(sequence, id), &before, &after, &mut ops)
             .map_err(patch_failed)?;
-        self.txn.record(ops)?;
+        self.txn.record_diff(ops, |doc| {
+            find_track(doc, id).is_ok_and(|(_, track)| *track == after)
+        })?;
         Ok(out)
     }
 
@@ -602,7 +657,9 @@ impl Tx<'_> {
         }
         let mut ops = Vec::new();
         diff::diff_value(&path, &before, &after, &mut ops).map_err(patch_failed)?;
-        self.txn.record(ops)?;
+        self.txn.record_diff(ops, |doc| {
+            find_item(doc, id).is_ok_and(|at| *at.item == after)
+        })?;
         Ok(out)
     }
 

@@ -186,21 +186,25 @@ impl DocPath {
     /// not parse land in the nearest enclosing entity.
     #[must_use]
     pub fn entity(&self) -> EntityRef {
-        let segments: Vec<Cow<'_, str>> = self.segments().collect();
-        let seg = |i: usize| segments.get(i).map(AsRef::as_ref);
-        match (seg(0), seg(1)) {
+        // Read segment by segment, as far as needed: this runs for every op of every patch
+        // (soft locks, the revision log), and a ripple's patch has thousands (issue #231).
+        let mut segments = self.segments();
+        let (s0, s1) = (segments.next(), segments.next());
+        match (s0.as_deref(), s1.as_deref()) {
             (Some("media"), Some(id)) => id.parse().map_or(EntityRef::Project, EntityRef::Media),
             (Some("sequences"), Some(id)) => {
                 let Ok(sequence) = id.parse::<SequenceId>() else {
                     return EntityRef::Project;
                 };
-                let Some(Ok(track)) = (seg(2) == Some("tracks"))
-                    .then(|| seg(3).map(str::parse::<TrackId>))
+                let (s2, s3) = (segments.next(), segments.next());
+                let Some(Ok(track)) = (s2.as_deref() == Some("tracks"))
+                    .then(|| s3.as_deref().map(str::parse::<TrackId>))
                     .flatten()
                 else {
                     return EntityRef::Sequence(sequence);
                 };
-                match (seg(4), seg(5).map(str::parse::<ItemId>)) {
+                let (s4, s5) = (segments.next(), segments.next());
+                match (s4.as_deref(), s5.as_deref().map(str::parse::<ItemId>)) {
                     (Some("items"), Some(Ok(item))) => EntityRef::Item {
                         sequence,
                         track,

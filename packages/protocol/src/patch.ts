@@ -98,92 +98,135 @@ function get(doc: Json, tokens: readonly string[]): Json {
   return node;
 }
 
-type Edit = (parent: Json, key: string) => Json;
+/**
+ * The containers one `applyPatch` call made: copies of what the document held, reachable from
+ * the new document only, so a later op of the same patch changes them in place. Without it
+ * every op copied the path from the root again, and a patch of 2,000 ops on the clips of one
+ * track copied that track's 2,000-entry map 2,000 times (issue #231).
+ */
+type Made = Set<object>;
 
-/** Copies the spine down to the parent of `tokens` and lets `edit` change that parent. */
-function update(doc: Json, tokens: readonly string[], edit: Edit): Json {
-  const [head, ...rest] = tokens;
+/** How often `applyPatch` copied a container; tests count copies instead of timing them. */
+export const patchWork = { copies: 0 };
+
+type Edit = (parent: Json, key: string, made: Made) => Json;
+
+/** `node` when this call made it, else a copy of it that is this call's own. */
+function own<T extends object>(node: T, made: Made): T {
+  if (made.has(node)) {
+    return node;
+  }
+  const copy = (Array.isArray(node) ? [...node] : { ...node }) as T;
+  patchWork.copies += 1;
+  made.add(copy);
+  return copy;
+}
+
+/** Copies the spine down to the parent of `tokens` (once per patch) and lets `edit` change it. */
+function update(doc: Json, tokens: readonly string[], at: number, edit: Edit, made: Made): Json {
+  const head = tokens[at];
   if (head === undefined) {
     throw new Error("the root cannot be edited");
   }
-  if (rest.length === 0) {
-    return edit(doc, head);
+  if (at === tokens.length - 1) {
+    return edit(doc, head, made);
   }
   if (isObject(doc) && Object.hasOwn(doc, head)) {
-    return { ...doc, [head]: update(doc[head] as Json, rest, edit) };
+    const child = update(doc[head] as Json, tokens, at + 1, edit, made);
+    const copy = own(doc, made) as { [key: string]: Json };
+    copy[head] = child;
+    return copy;
   }
   if (isArray(doc)) {
     const index = arrayIndex(head, doc.length - 1);
-    const copy = [...doc];
-    copy[index] = update(doc[index] as Json, rest, edit);
+    const child = update(doc[index] as Json, tokens, at + 1, edit, made);
+    const copy = own(doc, made) as Json[];
+    copy[index] = child;
     return copy;
   }
   throw new Error(`path does not exist (at \`${head}\`)`);
 }
 
-function addAt(parent: Json, key: string, value: Json): Json {
-  if (isObject(parent)) {
-    if (Object.hasOwn(parent, key)) {
-      throw new Error(`\`${key}\` already exists`);
+const addAt =
+  (value: Json): Edit =>
+  (parent, key, made) => {
+    if (isObject(parent)) {
+      if (Object.hasOwn(parent, key)) {
+        throw new Error(`\`${key}\` already exists`);
+      }
+      const copy = own(parent, made) as { [key: string]: Json };
+      copy[key] = value;
+      return copy;
     }
-    return { ...parent, [key]: value };
-  }
-  if (isArray(parent)) {
-    const index = arrayIndex(key, parent.length);
-    return [...parent.slice(0, index), value, ...parent.slice(index)];
-  }
-  throw new Error("parent is not a container");
-}
+    if (isArray(parent)) {
+      const index = arrayIndex(key, parent.length);
+      const copy = own(parent, made) as Json[];
+      copy.splice(index, 0, value);
+      return copy;
+    }
+    throw new Error("parent is not a container");
+  };
 
-function removeAt(parent: Json, key: string): Json {
+const removeAt: Edit = (parent, key, made) => {
   if (isObject(parent) && Object.hasOwn(parent, key)) {
-    const { [key]: _removed, ...rest } = parent;
-    return rest;
+    const copy = own(parent, made) as { [key: string]: Json };
+    delete copy[key];
+    return copy;
   }
   if (isArray(parent)) {
     const index = arrayIndex(key, parent.length - 1);
-    return [...parent.slice(0, index), ...parent.slice(index + 1)];
-  }
-  throw new Error(`\`${key}\` does not exist`);
-}
-
-function replaceAt(parent: Json, key: string, value: Json): Json {
-  if (isObject(parent) && Object.hasOwn(parent, key)) {
-    return { ...parent, [key]: value };
-  }
-  if (isArray(parent)) {
-    const index = arrayIndex(key, parent.length - 1);
-    const copy = [...parent];
-    copy[index] = value;
+    const copy = own(parent, made) as Json[];
+    copy.splice(index, 1);
     return copy;
   }
   throw new Error(`\`${key}\` does not exist`);
-}
+};
 
-function applyOp(doc: Json, op: PatchOp): Json {
+const replaceAt =
+  (value: Json): Edit =>
+  (parent, key, made) => {
+    if (isObject(parent) && Object.hasOwn(parent, key)) {
+      const copy = own(parent, made) as { [key: string]: Json };
+      copy[key] = value;
+      return copy;
+    }
+    if (isArray(parent)) {
+      const index = arrayIndex(key, parent.length - 1);
+      const copy = own(parent, made) as Json[];
+      copy[index] = value;
+      return copy;
+    }
+    throw new Error(`\`${key}\` does not exist`);
+  };
+
+function applyOp(doc: Json, op: PatchOp, made: Made): Json {
   switch (op.op) {
     case "add":
-      return update(doc, parsePointer(op.path), (p, k) => addAt(p, k, op.value));
+      return update(doc, parsePointer(op.path), 0, addAt(op.value), made);
     case "remove": {
       const tokens = parsePointer(op.path);
       if (!jsonEqual(get(doc, tokens), op.old)) {
         throw new Error(`value at \`${op.path}\` differs from the expected one`);
       }
-      return update(doc, tokens, removeAt);
+      return update(doc, tokens, 0, removeAt, made);
     }
     case "replace": {
       const tokens = parsePointer(op.path);
       if (!jsonEqual(get(doc, tokens), op.old)) {
         throw new Error(`value at \`${op.path}\` differs from the expected one`);
       }
-      return update(doc, tokens, (p, k) => replaceAt(p, k, op.value));
+      return update(doc, tokens, 0, replaceAt(op.value), made);
     }
     case "move": {
       // Remove at `from`, then add at `path` resolved in the document after the removal.
       const from = parsePointer(op.from);
       const value = get(doc, from);
-      return update(update(doc, from, removeAt), parsePointer(op.path), (p, k) =>
-        addAt(p, k, value),
+      return update(
+        update(doc, from, 0, removeAt, made),
+        parsePointer(op.path),
+        0,
+        addAt(value),
+        made,
       );
     }
   }
@@ -196,9 +239,10 @@ function applyOp(doc: Json, op: PatchOp): Json {
  */
 export function applyPatch<T extends Json>(doc: T, patch: readonly PatchOp[]): T {
   let current: Json = doc;
+  const made: Made = new Set();
   patch.forEach((op, index) => {
     try {
-      current = applyOp(current, op);
+      current = applyOp(current, op, made);
     } catch (error) {
       throw new PatchError(index, error instanceof Error ? error.message : String(error));
     }
