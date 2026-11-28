@@ -712,7 +712,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `audio.get_levels` for a −20 dBFS test tone returns −20 ± 0.2 dB RMS; −23 LUFS pink-noise reference returns −23 ± 0.3 LUFS.
 - **Tests:** DSP unit tests, soak, no-alloc.
 - **Out of scope:** sidechain ducking, EQ, reverb.
-- **Follow-up (#203, WP-2E.02b):** track pan, keyframed track gain and the master settings in the document, by [ADR-0034](../adr/0034-track-pan-gain-automation-and-master-bus-in-the-project.md) (accepted 2026-11-28): `Track.pan`, `Track.gain` animatable (sequence-time keys), `Sequence.mix` per sequence, in v2 (no v3); `track.set_gain{track, db, at?}`, `track.set_pan`, `audio.set_master{sequence?, gain?, limiter?}`, the `keyframe.*` commands on a track gain target, and the mixer and exports reading them. Pass criteria as in the ADR.
+- **Follow-up (#203, WP-2E.02b):** track pan, keyframed track gain and the master settings in the document, by [ADR-0034](../adr/0034-track-pan-gain-automation-and-master-bus-in-the-project.md) (accepted 2026-11-28): `Track.pan`, `Track.gain` animatable (sequence-time keys), `Sequence.mix` per sequence, in the current unreleased schema version (v3, no new bump); `track.set_gain{track, db, at?}`, `track.set_pan`, `audio.set_master{sequence?, gain?, limiter?}`, the `keyframe.*` commands on a track gain target, and the mixer and exports reading them. Pass criteria as in the ADR.
 
 ### WP-2E.03 — Loudness normalization and extract audio
 - **Area:** crates/cutweave-ops/src/audio/{normalize.rs, extract.rs}, crates/cutweave-jobs
