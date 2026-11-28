@@ -464,11 +464,16 @@ mod tests {
             let db = Connection::open(&path).unwrap();
             db.execute_batch(VERSION_1).unwrap();
             db.pragma_update(None, "user_version", 1).unwrap();
-            for (n, state, error) in [(1, "failed", Some("disk full")), (2, "queued", None)] {
+            for (n, state, error) in [(1i64, "failed", Some("disk full")), (2, "queued", None)] {
                 db.execute(
                     "INSERT INTO export_jobs (id, position, label, output, state, error, payload) \
                      VALUES (?1, ?2, 'export', '/out/a.mp4', ?3, ?4, x'010203')",
-                    params![JobId::from_u128(n).to_string(), n as i64, state, error],
+                    params![
+                        JobId::from_u128(n.unsigned_abs().into()).to_string(),
+                        n,
+                        state,
+                        error
+                    ],
                 )
                 .unwrap();
             }

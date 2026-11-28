@@ -267,6 +267,11 @@ fn render_failed(msg: impl Into<String>) -> ExportError {
     coded(error_code::RENDER_FAILED, msg)
 }
 
+/// The encoder did not do its part.
+fn encoder_failed(msg: impl Into<String>) -> ExportError {
+    coded(error_code::ENCODER_FAILED, msg)
+}
+
 /// The code of an encoder error: a full drive, a file that cannot be written, or the encoder
 /// itself.
 fn encoder_code(e: &MediaError) -> &'static str {
@@ -975,6 +980,22 @@ fn refuse_offline(plan: &ExportPlan, services: &ExportServices) -> Result<(), Ex
     ))
 }
 
+/// Fails an export that may not replace a file when its output appeared while it waited its
+/// turn: the request was checked when it was queued.
+fn refuse_existing(plan: &ExportPlan) -> Result<(), ExportError> {
+    if plan.overwrite || !plan.path.exists() {
+        return Ok(());
+    }
+    Err(coded(
+        error_code::OUTPUT_EXISTS,
+        format!(
+            "`{}` was created after the export was requested; not replacing it (export again \
+             with overwrite: true)",
+            plan.path.display()
+        ),
+    ))
+}
+
 /// Runs the export of `plan` (see the module docs): renders, mixes and encodes it into
 /// `plan.path`, reporting its progress to `report`, until done or `cancel`. After a mid-stream
 /// hardware-encoder failure (`hw: auto`) it starts over in software from frame 0, reporting
@@ -989,16 +1010,7 @@ pub fn run_export(
     if cancel.is_cancelled() {
         return Err(ExportError::Cancelled);
     }
-    if !plan.overwrite && plan.path.exists() {
-        return Err(coded(
-            error_code::OUTPUT_EXISTS,
-            format!(
-                "`{}` was created after the export was requested; not replacing it (export \
-                 again with overwrite: true)",
-                plan.path.display()
-            ),
-        ));
-    }
+    refuse_existing(plan)?;
     refuse_offline(plan, services)?;
     let written = Arc::new(AtomicI64::new(0));
     let bytes = Arc::new(AtomicU64::new(0));
@@ -1064,12 +1076,7 @@ pub fn run_export(
             );
         }
     };
-    let pushed = pushed.ok_or_else(|| {
-        coded(
-            error_code::ENCODER_FAILED,
-            "the encoder finished without frames",
-        )
-    })?;
+    let pushed = pushed.ok_or_else(|| encoder_failed("the encoder finished without frames"))?;
     let failed_encoder = (encoders.len() > 1).then(|| {
         encoders
             .first()
