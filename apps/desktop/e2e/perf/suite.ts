@@ -414,7 +414,7 @@ const viewZoom = async (page: Page): Promise<number> =>
 async function zoomOutUntil(
   page: Page,
   enough: (pxPerSec: number) => boolean | Promise<boolean>,
-  clicks = 14,
+  clicks = 24,
 ): Promise<boolean> {
   const zoomOut = timelineTools(page).getByRole("button", { name: "Zoom out", exact: true });
   for (let n = 0; n < clicks; n += 1) {
