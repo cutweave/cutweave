@@ -12,8 +12,8 @@
 use std::str::FromStr;
 
 use cutweave_model::{
-    EntityId, Item, ItemId, MediaAsset, MediaId, Project, Sequence, SequenceId, Time, Track,
-    TrackId, TrackItems,
+    EntityId, Item, ItemId, Marker, MarkerId, Markers, MediaAsset, MediaId, Project, Sequence,
+    SequenceId, Time, Track, TrackId, TrackItems,
 };
 use imbl::OrdMap;
 use serde::{Serialize, de::DeserializeOwned};
@@ -281,6 +281,9 @@ fn edit_sequence(seq: &mut Sequence, rest: &[String], edit: Edit<'_>, path: &Doc
             edit_keyed(&mut seq.tracks, tail, edit, path, edit_track)
         }
         Some((head, _)) if head == "id" => Err(immutable(path)),
+        Some((head, [key, ..])) if head == "markers" && MarkerId::from_str(key).is_ok() => {
+            edit_marker(&mut seq.markers, &rest[1..], edit, path)
+        }
         _ => edit_shallow(
             seq,
             rest,
@@ -291,6 +294,32 @@ fn edit_sequence(seq: &mut Sequence, rest: &[String], edit: Edit<'_>, path: &Doc
             |s, tracks| s.tracks = tracks,
         ),
     }
+}
+
+/// Edits one marker of a sequence (`…/markers/<id>` and below; `segments` starts at the ID)
+/// through the JSON form of that marker alone. The general path puts the whole sequence, every
+/// marker with it, into its JSON form and reads it back for each such op (issue #230); what it
+/// does to this marker, and what it refuses, is the same: the same JSON edit, the same exact
+/// read-back, on the one member the op names.
+fn edit_marker(markers: &mut Markers, segments: &[String], edit: Edit<'_>, path: &DocPath) -> Out {
+    let key = &segments[0];
+    let id = parse_key::<MarkerId>(key, path)?;
+    let mut one = serde_json::Map::new();
+    if let Some(marker) = markers.get(&id) {
+        one.insert(key.clone(), to_json(marker, path)?);
+    }
+    let mut one = Value::Object(one);
+    let out = json::edit(&mut one, segments, edit, path)?;
+    match one.get(key) {
+        Some(value) => {
+            let marker: Marker = from_json(value, path)?;
+            markers.insert(id, marker);
+        }
+        None => {
+            markers.remove(&id);
+        }
+    }
+    Ok(out)
 }
 
 fn edit_track(track: &mut Track, rest: &[String], edit: Edit<'_>, path: &DocPath) -> Out {

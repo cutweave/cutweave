@@ -132,6 +132,46 @@ fn a_ripple_converts_no_more_for_two_thousand_clips_than_for_twenty() {
     assert!(many_work <= 8, "{many_work} conversions for one ripple");
 }
 
+#[test]
+fn an_edit_converts_no_more_in_a_sequence_with_thousands_of_markers() {
+    for edit in ["item", "ripple", "marker"] {
+        let work = |markers: usize| {
+            let d = doc(40, markers);
+            let (done, work) = match edit {
+                "item" => {
+                    let item = d.items[7];
+                    committed(&d.doc, |tx| {
+                        tx.update_item(item, |i| {
+                            i.set_duration(Duration::from_flicks(CLIP / 2).unwrap());
+                            Ok(())
+                        })
+                        .unwrap();
+                    })
+                }
+                "ripple" => ripple(&d),
+                _ => {
+                    let sequence = d.sequence;
+                    committed(&d.doc, |tx| {
+                        let id: MarkerId = tx.new_id();
+                        tx.update_sequence(sequence, |s| {
+                            s.markers
+                                .insert(id, Marker::new(id, Time::from_flicks(7).unwrap()));
+                            Ok(())
+                        })
+                        .unwrap();
+                    })
+                }
+            };
+            assert!(!done.patch.is_empty());
+            assert_is_the_diff(&d.doc, &done);
+            work
+        };
+        let (none, thousands) = (work(0), work(3000));
+        assert_eq!(thousands, none, "`{edit}`: the work grew with the markers");
+        assert!(thousands <= 12, "`{edit}`: {thousands} conversions");
+    }
+}
+
 /// Committing one write converts nothing: its ops are the transaction's patch as they are.
 /// (They used to be computed a second time from the two documents and applied again to
 /// verify them, which cost as much as the edit.)
