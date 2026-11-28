@@ -19,9 +19,10 @@
 //    PASS or FAIL, and exits 1 when one is over budget. `cargo xtask bench-check <file>
 //    [--baseline <file>]` judges the same file again (the CI gate, WP-2J.04).
 //
-// `--slow RATE` slows the editor's main thread by RATE (Chromium's CPU throttling) during the
-// timeline probes, to show that the budgets catch a slow build: such a run must fail, and its
-// result goes to {date}.ui-slowed.json so it is never taken for a measurement.
+// `--slow RATE` slows the editor's main thread by RATE (Chromium's CPU throttling) while the
+// timeline is panned and zoomed, to show that the budgets catch a slow build: such a run must
+// fail the frame budgets, and its result goes to {date}.ui-slowed.json so it is never taken for
+// a measurement.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";

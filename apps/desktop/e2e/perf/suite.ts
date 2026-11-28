@@ -11,7 +11,9 @@
 // - memory: the working sets of the app's processes (`app.getAppMetrics()`) and of the engine.
 // - a clip dragged at a hand's pace (`handPacedDrag` of the flows): the app's own round-trip probe
 //   (User Timing `cutweave.timeline.rtt`: UI, engine, patch, UI), the frame intervals, and the
-//   main-thread script and layout time per update (Chromium's counters, `Performance.getMetrics`).
+//   main-thread script and layout time per update (Chromium's counters, `Performance.getMetrics`)
+//   and how long the engine took to answer each update (the editor's WebSocket frames, as the
+//   DevTools protocol's Network domain reports them).
 // - the timeline panned with the wheel and zoomed with Ctrl+wheel, events sent at a steady pace
 //   whether or not the page keeps up: frame intervals from an animation-frame loop in the page.
 //
@@ -166,8 +168,8 @@ export interface SuiteOptions {
   realMedia: boolean;
   /**
    * Slow the editor's main thread down by this factor (Chromium's CPU throttling, DevTools
-   * protocol) while the timeline probes run: the stand-in for a slowed build, which must fail
-   * the budgets. 1: off.
+   * protocol) while the timeline is panned and zoomed: the stand-in for a slowed build, which
+   * must fail the frame budgets. 1: off.
    */
   cpuThrottle: number;
   log(line: string): void;
@@ -182,6 +184,8 @@ export const REQUIRED_IDS = [
   "app_memory_p5k_mb",
   "ui_command_rtt_p95_ms",
   "ui_command_rtt_p50_ms",
+  "ui_command_answer_p50_ms",
+  "ui_command_answer_p95_ms",
   "ui_drag_frame_p95_ms",
   "ui_drag_script_ms_per_update",
   "ui_drag_layout_ms_per_update",
@@ -361,6 +365,53 @@ async function pageCounters(cdp: CDPSession): Promise<Record<string, number>> {
   return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
 }
 
+/**
+ * Times the engine's answers to the gesture updates of a drag, from the editor's own WebSocket as
+ * the DevTools protocol reports its frames: from the frame that carries an update (a request with
+ * `_meta.replace`) to the frame that carries its response. This is the engine's and the socket's
+ * share of a round trip; the rest of `cutweave.timeline.rtt` is the patch arriving and the editor
+ * applying it. Returns what it adds to: the answers, ms, and the characters the socket received
+ * (responses and `doc.patched` events: how much the editor is sent per update).
+ */
+async function watchUpdateAnswers(
+  cdp: CDPSession,
+): Promise<{ answers: number[]; received: { chars: number } }> {
+  const sent = new Map<string, number>();
+  const answers: number[] = [];
+  const received = { chars: 0 };
+  const read = (payload: string): { id?: unknown; method?: unknown; replace: boolean } | null => {
+    try {
+      const message = JSON.parse(payload) as {
+        id?: unknown;
+        method?: unknown;
+        params?: { _meta?: { replace?: unknown } };
+      };
+      return { ...message, replace: message.params?._meta?.replace === true };
+    } catch {
+      return null;
+    }
+  };
+  cdp.on("Network.webSocketFrameSent", (event) => {
+    const message = read(event.response.payloadData);
+    if (message?.replace === true && message.id !== undefined) {
+      sent.set(String(message.id), event.timestamp);
+    }
+  });
+  cdp.on("Network.webSocketFrameReceived", (event) => {
+    received.chars += event.response.payloadData.length;
+    // Cheap test first: every `doc.patched` of a 5,000-item project passes through here.
+    if (sent.size === 0) return;
+    const message = read(event.response.payloadData);
+    if (message === null || message.method !== undefined || message.id === undefined) return;
+    const at = sent.get(String(message.id));
+    if (at === undefined) return;
+    sent.delete(String(message.id));
+    answers.push((event.timestamp - at) * 1000);
+  });
+  await cdp.send("Network.enable");
+  return { answers, received };
+}
+
 /** The frame rate of the page when nothing happens: the display's rate, the ceiling of the rest. */
 async function idleFps(page: Page): Promise<number> {
   await startFrameProbe(page);
@@ -467,9 +518,6 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Performance.enable");
   const idle = await idleFps(page);
-  if (options.cpuThrottle > 1) {
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: options.cpuThrottle });
-  }
 
   // ---- a clip dragged at a hand's pace ----
   await viewSettled(page);
@@ -497,6 +545,7 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
   };
   const rtt: number[] = [];
   const dragFrames: number[] = [];
+  const { answers, received } = await watchUpdateAnswers(cdp);
   let drags = 0;
   c0 = await pageCounters(cdp);
   while (drags < scale.maxDrags && rtt.length < scale.dragUpdates) {
@@ -506,6 +555,7 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
     drags += 1;
   }
   c1 = await pageCounters(cdp);
+  await cdp.send("Network.disable");
   if (rtt.length === 0) throw new Error("the drag made no update: nothing to measure");
   const perUpdate = (total: number, check: number): number =>
     (Math.max(0, total - drags * check) * 1000) / rtt.length;
@@ -522,35 +572,45 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
     `drag: ${drags} drag(s), ${rtt.length} updates, round trip p50 ${round(quantile(rtt, 0.5))} ` +
       `p95 ${round(quantile(rtt, 0.95))} max ${round(Math.max(...rtt))} ms; frames ` +
       `${round(drag.fps)} fps, p95 ${round(drag.p95)} ms, max ${round(drag.max)} ms; script ` +
-      `${round(script, 2)} ms and layout ${round(layout, 2)} ms per update`,
+      `${round(script, 2)} ms and layout ${round(layout, 2)} ms per update; engine answers ` +
+      `p50 ${round(quantile(answers, 0.5))} p95 ${round(quantile(answers, 0.95))} ms (${answers.length}), ${round(received.chars / 1024 / rtt.length)} KB received per update`,
   );
 
   // ---- pan: the wheel, sideways, out and back ----
-  let g = await timelineGeometry(page);
+  const g = await timelineGeometry(page);
   const middle = {
     x: g.box.x + g.headerWidth + (g.box.width - g.headerWidth) / 2,
     y: g.box.y + g.rulerHeight + (g.box.height - g.rulerHeight) / 2,
   };
+  // `--slow`: the editor's main thread is slowed while a sweep runs, and only then (the steps
+  // between the sweeps read the whole timeline back through the page).
+  const sweep = async (seconds: number, delta: Parameters<typeof wheelSweep>[3]) => {
+    const slowed = options.cpuThrottle > 1;
+    if (slowed) await cdp.send("Emulation.setCPUThrottlingRate", { rate: options.cpuThrottle });
+    try {
+      return await wheelSweep(page, middle, seconds, delta);
+    } finally {
+      if (slowed) await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    }
+  };
   const pan = (t: number, dt: number) => ({ dx: swing(PAN_PEAK_PX_S, t, dt), dy: 0 });
-  const panFrames = await wheelSweep(page, middle, scale.panSeconds / 2, pan);
+  const panFrames = await sweep(scale.panSeconds / 2, pan);
   // Again with far more clips on screen.
   await zoomOutUntil(page, (pxPerSec) => pxPerSec <= OVERVIEW_PX_PER_SEC);
   await viewSettled(page);
-  g = await timelineGeometry(page);
-  panFrames.push(...(await wheelSweep(page, middle, scale.panSeconds / 2, pan)));
+  panFrames.push(...(await sweep(scale.panSeconds / 2, pan)));
 
   // ---- zoom: Ctrl+wheel, in and out, anchored at the pointer ----
   await page.keyboard.down("Control");
   let zoomFrames: number[];
   try {
-    zoomFrames = await wheelSweep(page, middle, scale.zoomSeconds, (t, dt) => ({
+    zoomFrames = await sweep(scale.zoomSeconds, (t, dt) => ({
       dx: 0,
       dy: -swing(ZOOM_PEAK_PX_S, t, dt),
     }));
   } finally {
     await page.keyboard.up("Control");
   }
-  if (options.cpuThrottle > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   await cdp.detach();
 
   const panStats = frameStats(panFrames);
@@ -566,6 +626,9 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
     metric("ui_command_rtt_p95_ms", quantile(rtt, 0.95), "ms", rtt.length),
     metric("ui_command_rtt_p50_ms", quantile(rtt, 0.5), "ms", rtt.length),
     metric("ui_command_rtt_max_ms", Math.max(...rtt), "ms", rtt.length),
+    metric("ui_command_answer_p50_ms", quantile(answers, 0.5), "ms", answers.length),
+    metric("ui_command_answer_p95_ms", quantile(answers, 0.95), "ms", answers.length),
+    metric("ui_drag_received_kb_per_update", received.chars / 1024 / rtt.length, "KB", rtt.length),
     metric("ui_drag_fps", drag.fps, "fps", drag.frames),
     metric("ui_drag_frame_p95_ms", drag.p95, "ms", drag.frames),
     metric("ui_drag_frame_max_ms", drag.max, "ms", drag.frames),

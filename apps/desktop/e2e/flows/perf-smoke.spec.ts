@@ -70,7 +70,7 @@ test.describe("UI benchmarks, smoke run", () => {
         expect(Number.isFinite(m.value), `${m.id} = ${m.value}`).toBe(true);
         expect(m.value, m.id).toBeGreaterThanOrEqual(0);
         expect(m.samples, m.id).toBeGreaterThanOrEqual(1);
-        expect(["ms", "fps", "MB"], m.id).toContain(m.unit);
+        expect(["ms", "fps", "MB", "KB"], m.id).toContain(m.unit);
       }
       // Times that cannot be zero if the probe saw what it claims to time.
       for (const id of ["app_start_ms", "project_open_1h_ui_ms", "ui_command_rtt_p95_ms"]) {
