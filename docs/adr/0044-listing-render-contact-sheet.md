@@ -1,6 +1,6 @@
 # ADR-0044: Whether `render_contact_sheet` is a listed MCP tool
 
-- **Status:** Proposed (drafted in WP-2I.02, #252; waits for the product owner)
+- **Status:** Accepted (product owner, 2026-11-28)
 - **Date:** 2026-11-28
 - **Deciders:** Product owner
 - **Supersedes:** none. It applies point 3 of [ADR-0039](0039-mcp-tool-list-budget-and-parameter-docs.md) and meets the same budget as [ADR-0041](0041-expected-rev-in-the-listed-tool-schemas.md)
@@ -57,7 +57,9 @@ That is a seventh of what is needed. The rest would have to come from facts (wha
 
 ## Decision
 
-**Proposed: option 1**, which is what WP-2I.02 built, with the question returned to the product owner together with ADR-0041 and the first measurements of WP-2I.06 and WP-2I.09.
+Accepted by the product owner on 2026-11-28 as recommended: option 1, not listed for now. The first agent evaluation (#247) ran on the stub engine, which has no renderer, so it did not measure this; the listing is decided again with ADR-0041 at the next change to the standard budget.
+
+**Option 1**, which is what WP-2I.02 built, with the question returned to the product owner together with ADR-0041 and the first measurements of WP-2I.06 and WP-2I.09.
 
 1. `render.contact_sheet` is registered with `mcp = "catalog"`. `mcp_core.toml` keeps `render_contact_sheet` under `[[pending]]` with the reason; `media_filmstrip` and `audio_waveform` leave that table (they are catalog commands by decision, not tools waiting to be listed).
 2. The standard, full, minimal and described lists are byte-identical to before WP-2I.02. No budget changes.
