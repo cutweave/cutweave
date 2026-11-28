@@ -89,8 +89,9 @@ test.describe("UI benchmarks, smoke run", () => {
         expect(budget, `budget row ${id}`).toBeDefined();
         expect(read.metrics.find((m) => m.id === id)?.unit, id).toBe(budget?.unit);
       }
-      // No thresholds here: the table is for whoever reads the run's output.
-      console.info(`${lines.join("\n")}\n${table(budgets, read)}`);
+      // No thresholds here (a debug engine on a tiny project): the values, without verdicts, are
+      // for whoever reads the run's output.
+      console.info(`${lines.join("\n")}\n${table([], read)}`);
     } finally {
       removeDir(dir);
     }
