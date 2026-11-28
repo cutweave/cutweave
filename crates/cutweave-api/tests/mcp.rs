@@ -2194,6 +2194,175 @@ async fn concise_reads_over_mcp() {
     client.close().await;
 }
 
+/// A name that is no command is `not_found` with the closest commands in the hint (#258): the
+/// three cases of the first agent evaluation, on every tool that takes a command name. The
+/// code and the shape of the error do not change.
+#[tokio::test]
+async fn an_unknown_command_names_the_closest_commands() {
+    let h = Harness::start(None);
+    for revision in Revision::ALL {
+        let client = h.client(Profile::Standard, revision).await;
+        let hint_of = |e: &Value| e["error"]["hint"].as_str().unwrap().to_owned();
+        // The guess of three evaluation sessions.
+        let described = client
+            .call("cutweave_describe_command", json!({ "name": "clip.speed" }))
+            .await;
+        let e = described.structured_content.clone().unwrap();
+        assert_eq!(e["error"]["code"], "not_found");
+        assert_eq!(e["error"]["kind"], "command");
+        assert_eq!(e["error"]["id"], "clip.speed");
+        let mut fields: Vec<&str> = e["error"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        fields.sort_unstable();
+        assert_eq!(fields, ["code", "hint", "id", "kind", "message"]);
+        let hint = hint_of(&e);
+        assert!(hint.starts_with("Did you mean `clip.set_speed`"), "{hint}");
+        assert!(hint.ends_with("cutweave_search_commands lists every command and query"));
+        // The summary line a model reads first carries it too.
+        assert!(
+            text_of(&described).contains("Hint: Did you mean `clip.set_speed`"),
+            "{}",
+            text_of(&described)
+        );
+        // The same guess in `names`, in a batch and as a query.
+        let e = client
+            .err(
+                "cutweave_describe_command",
+                json!({ "names": ["clip.split", "clip.speed"] }),
+            )
+            .await;
+        assert!(hint_of(&e).starts_with("Did you mean `clip.set_speed`"));
+        let e = client
+            .err(
+                "cutweave_execute",
+                json!({ "steps": [
+                    { "cmd": "track.add", "args": {} },
+                    { "cmd": "clip.speed", "args": { "speed": 2 } },
+                ] }),
+            )
+            .await;
+        assert_eq!(e["error"]["code"], "not_found");
+        assert_eq!(e["failed_step"], 1);
+        assert_eq!(e["rolled_back"], true);
+        assert!(hint_of(&e).starts_with("Did you mean `clip.set_speed`"));
+        let e = client
+            .err("cutweave_query", json!({ "name": "timeline.gett" }))
+            .await;
+        assert_eq!(e["error"]["code"], "not_found");
+        assert!(
+            hint_of(&e).starts_with("Did you mean `timeline.get`"),
+            "{}",
+            hint_of(&e)
+        );
+        // A tool name used as a command: a core tool's name is its command (it resolves), a
+        // misspelt one is matched like a command name, and a generic tool is said to be one.
+        let moved = client
+            .ok("cutweave_describe_command", json!({ "name": "item_move" }))
+            .await;
+        assert_eq!(moved["name"], "item.move");
+        let e = client
+            .err("cutweave_describe_command", json!({ "name": "clip_speed" }))
+            .await;
+        assert!(hint_of(&e).starts_with("Did you mean `clip.set_speed`"));
+        let e = client
+            .err(
+                "cutweave_execute",
+                json!({ "steps": [{ "cmd": "cutweave_query", "args": {} }] }),
+            )
+            .await;
+        assert_eq!(e["error"]["code"], "not_found");
+        assert!(
+            hint_of(&e).starts_with("`cutweave_query` is a tool, not a command"),
+            "{}",
+            hint_of(&e)
+        );
+        // Nothing near: the hint is the one it always was.
+        for far in ["zebra.frobnicate", ""] {
+            let e = client
+                .err("cutweave_describe_command", json!({ "name": far }))
+                .await;
+            assert_eq!(e["error"]["code"], "not_found");
+            assert_eq!(
+                hint_of(&e),
+                "cutweave_search_commands lists every command and query"
+            );
+        }
+        client.close().await;
+    }
+}
+
+/// A suggestion is something the agent can call: every command a `not_found` can name is
+/// reachable and not UI-only, whatever the guess (#258).
+#[test]
+fn suggestions_only_name_commands_an_agent_can_call() {
+    let registry = registry();
+    let ui_only: Vec<&str> = registry
+        .list()
+        .filter(|e| e.meta.scope != cutweave_commands::Scope::Any)
+        .map(|e| e.meta.name)
+        .collect();
+    assert!(!ui_only.is_empty(), "the registry has UI-only commands");
+    for profile in Profile::ALL {
+        let catalog = Catalog::new(Arc::clone(&registry), profile);
+        // Guessing each UI-only command with a typo never gets it back.
+        for name in &ui_only {
+            let guess = format!("{name}x");
+            let near = search::nearest(&catalog, &guess);
+            assert!(!near.contains(name), "{guess}: {near:?}");
+            for suggested in near {
+                let entry = catalog.reachable(suggested).expect(suggested);
+                assert_eq!(entry.meta.scope, cutweave_commands::Scope::Any);
+            }
+        }
+        // Every callable command is found from a one-letter typo of its own name.
+        for entry in catalog
+            .reachable_entries()
+            .filter(|e| e.meta.scope == cutweave_commands::Scope::Any)
+        {
+            let guess = format!("{}x", entry.meta.name);
+            let near = search::nearest(&catalog, &guess);
+            assert!(near.len() <= 3, "{guess}: {near:?}");
+            assert!(near.contains(&entry.meta.name), "{guess}: {near:?}");
+        }
+    }
+}
+
+/// A call of a tool this endpoint does not list stays a protocol error; its message names the
+/// command the tool stands for and how to run it here, or the closest commands (#258).
+#[tokio::test]
+async fn an_unlisted_tool_call_says_how_to_run_the_command() {
+    let h = Harness::start(None);
+    let minimal = h.client(Profile::Minimal, Revision::Stateless).await;
+    let e = minimal
+        .try_call("clip_set_speed", json!({}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("unknown tool `clip_set_speed`"), "{e}");
+    assert!(e.contains("it is the command `clip.set_speed`"), "{e}");
+    assert!(e.contains("cutweave_execute {"), "{e}");
+    let e = minimal
+        .try_call("clip_speed", json!({}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("the closest commands are clip.set_speed"), "{e}");
+    let e = minimal
+        .try_call("zebra", json!({}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("unknown tool `zebra`; cutweave_search_commands finds every command"),
+        "{e}"
+    );
+    minimal.close().await;
+}
+
 /// The actor of every MCP change is `agent:<token label>`, derived from the credential.
 #[tokio::test]
 async fn the_actor_comes_from_the_token() {

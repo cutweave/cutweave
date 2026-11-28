@@ -355,8 +355,7 @@ impl CutweaveMcp {
             );
         };
         let Some(entry) = self.catalog.reachable(name) else {
-            let e = CmdError::not_found(cutweave_commands::ResourceKind::Command, name);
-            return error_result(tool, &e, None);
+            return self.unknown_command(tool, name);
         };
         if !entry.meta.annotations.read_only {
             let e = CmdError::invalid(
@@ -452,6 +451,39 @@ impl CutweaveMcp {
         results::success(summary, out, None)
     }
 
+    /// The `not_found` of `tool` for `name`, which is no command: the hint names the closest
+    /// commands when some are near (#258).
+    fn unknown_command(&self, tool: &str, name: &str) -> CallToolResult {
+        let e = CmdError::not_found(cutweave_commands::ResourceKind::Command, name);
+        let mut error = results::error_json(&e, None, "");
+        if let Some(hint) = search::unknown_command_hint(&self.catalog, name) {
+            error["hint"] = json!(hint);
+        }
+        results::failure(tool, error, &[])
+    }
+
+    /// The message of the protocol error for a call of `name`, which is no tool of this
+    /// endpoint: the command it stands for and how to run it here when there is one (a core
+    /// tool another profile lists), else the closest commands (#258).
+    fn unknown_tool(&self, name: &str) -> String {
+        let rest = "cutweave_search_commands finds every command";
+        if let Some(entry) = self.catalog.reachable(name) {
+            return format!(
+                "unknown tool `{name}`; it is the command `{}`, not listed as a tool here: {}; \
+                 {rest}",
+                entry.meta.name,
+                catalog::how_to_call(&self.catalog, &entry.meta)
+            );
+        }
+        match search::nearest(&self.catalog, name).as_slice() {
+            [] => format!("unknown tool `{name}`; {rest}"),
+            near => format!(
+                "unknown tool `{name}`; the closest commands are {}; {rest}",
+                near.join(", ")
+            ),
+        }
+    }
+
     /// What `cutweave_describe_command` says about one command.
     fn description(&self, meta: &cutweave_commands::CommandMeta) -> Value {
         let mut out = catalog::entry_summary(&self.catalog, meta);
@@ -478,8 +510,7 @@ impl CutweaveMcp {
             (_, None) => {
                 let name = args["name"].as_str().unwrap_or_default();
                 let Some(entry) = self.catalog.reachable(name) else {
-                    let e = CmdError::not_found(cutweave_commands::ResourceKind::Command, name);
-                    return error_result(tool, &e, None);
+                    return self.unknown_command(tool, name);
                 };
                 let meta = &entry.meta;
                 return results::success(
@@ -507,8 +538,7 @@ impl CutweaveMcp {
                 return error_result(tool, &e, None);
             };
             let Some(entry) = self.catalog.reachable(name) else {
-                let e = CmdError::not_found(cutweave_commands::ResourceKind::Command, name);
-                return error_result(tool, &e, None);
+                return self.unknown_command(tool, name);
             };
             listed.push(entry.meta.name);
             commands.push(self.description(&entry.meta));
@@ -587,7 +617,7 @@ fn execute_error(e: &execute::ExecError) -> CallToolResult {
         .failed_step
         .map_or_else(String::new, |i| format!("/steps/{i}/args"));
     let mut error = results::error_json(&e.error, e.args.as_ref(), &prefix);
-    if let Some(hint) = e.hint {
+    if let Some(hint) = &e.hint {
         error["hint"] = json!(hint);
     }
     let failed_step = e.failed_step.map_or(Value::Null, |i| json!(i));
@@ -897,10 +927,7 @@ impl ServerHandler for CutweaveMcp {
     ) -> Result<CallToolResponse, McpError> {
         let Some(target) = self.catalog.target(&request.name) else {
             return Err(McpError::invalid_params(
-                format!(
-                    "unknown tool `{}`; cutweave_search_commands finds every command",
-                    request.name
-                ),
+                self.unknown_tool(&request.name),
                 None,
             ));
         };

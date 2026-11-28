@@ -17,9 +17,22 @@
 //! `timeline.set_in_out`, not `timeline`). Ties are in name order, so results are the same from
 //! run to run.
 
-use cutweave_commands::Entry;
+//!
+//! # A name that is no command (#258)
+//!
+//! `cutweave_describe_command`, `cutweave_execute` and `cutweave_query` answer a name they do
+//! not know with `not_found`; its `hint` names up to [`MAX_SUGGESTIONS`] commands close to the
+//! guess ([`nearest`]), so `clip.speed` is answered with `clip.set_speed`. A candidate's
+//! closeness is half the likeness of the two spellings and half the overlap of their parts,
+//! where a part of the guess also matches a keyword of the command; a guess that shares only
+//! the namespace is not close. Only commands an agent can call are named.
 
-use crate::mcp::{catalog::Catalog, core::CoreTable};
+use cutweave_commands::{Entry, Scope};
+
+use crate::mcp::{
+    catalog::{self, Catalog},
+    core::CoreTable,
+};
 
 /// Default number of hits returned.
 pub const DEFAULT_LIMIT: usize = 20;
@@ -172,6 +185,172 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
     needle.chars().all(|c| chars.any(|h| h == c))
 }
 
+/// Most names a `not_found` suggests (#258).
+pub const MAX_SUGGESTIONS: usize = 3;
+/// The lowest [`closeness`] a suggested name has.
+const NEAR: f64 = 0.55;
+/// The likeness of two spellings from which a guess is near without sharing a word.
+const CLOSE_SPELLING: f64 = 0.8;
+/// A suggestion is at most this far below the best one.
+const NEAR_BEST: f64 = 0.15;
+/// Longer guesses than this are not compared: no command is that long.
+const MAX_COMPARED: usize = 96;
+
+/// The names reachable through `catalog` that are closest to `unknown`, a name that is no
+/// command: best first, at most [`MAX_SUGGESTIONS`], none when nothing is near. Only what an
+/// agent can call is suggested: never a `hidden` entry, never a UI-only one.
+#[must_use]
+pub fn nearest<'a>(catalog: &'a Catalog, unknown: &str) -> Vec<&'a str> {
+    let table = CoreTable::get();
+    nearest_of(
+        catalog
+            .reachable_entries()
+            .filter(|e| e.meta.scope == Scope::Any)
+            .map(|e| (e.meta.name, table.keywords_of(e.meta.name))),
+        unknown,
+    )
+}
+
+/// The hint of a `not_found` for `unknown`, a name that is no command (#258): the closest
+/// commands when some are near, or that the name is one of the generic tools. `None` when
+/// there is nothing better to say than the error kind's own hint.
+#[must_use]
+pub fn unknown_command_hint(catalog: &Catalog, unknown: &str) -> Option<String> {
+    let rest = "cutweave_search_commands lists every command and query";
+    if let Some(tool) = catalog::GENERIC_TOOLS
+        .iter()
+        .find(|tool| unknown.trim().eq_ignore_ascii_case(tool))
+    {
+        return Some(format!(
+            "`{tool}` is a tool, not a command: call it as a tool; {rest}"
+        ));
+    }
+    let near: Vec<String> = nearest(catalog, unknown)
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect();
+    let (last, first) = near.split_last()?;
+    Some(if first.is_empty() {
+        format!("Did you mean {last}? {rest}")
+    } else {
+        format!("Did you mean {} or {last}? {rest}", first.join(", "))
+    })
+}
+
+/// [`nearest`] over `(name, keywords)` pairs.
+fn nearest_of<'a>(
+    names: impl Iterator<Item = (&'a str, &'a [String])>,
+    unknown: &str,
+) -> Vec<&'a str> {
+    let unknown = command_form(unknown);
+    if unknown.is_empty() || unknown.len() > MAX_COMPARED {
+        return Vec::new();
+    }
+    let mut near: Vec<(f64, &str)> = names
+        .map(|(name, keywords)| (closeness(&unknown, name, keywords), name))
+        .filter(|(score, _)| *score >= NEAR)
+        .collect();
+    near.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(b.1)));
+    let best = near.first().map_or(0.0, |(score, _)| *score);
+    near.into_iter()
+        .take_while(|(score, _)| *score >= best - NEAR_BEST)
+        .take(MAX_SUGGESTIONS)
+        .map(|(_, name)| name)
+        .collect()
+}
+
+/// A guessed name in the form of a command name: lower case, and a tool-style name
+/// (`clip_speed`) with its first `_` as the dot.
+fn command_form(name: &str) -> String {
+    let name = name.trim().to_lowercase();
+    if name.contains('.') {
+        name
+    } else {
+        name.replacen('_', ".", 1)
+    }
+}
+
+fn ratio(part: usize, whole: usize) -> f64 {
+    let small = |n: usize| u32::try_from(n).map_or(f64::MAX, f64::from);
+    small(part) / small(whole.max(1))
+}
+
+/// How close the guess `unknown` is to the command `name`, 0 to 1: half the likeness of the
+/// two spellings (1 minus the edit distance over the longer length), half the overlap of their
+/// parts ([`part_overlap`]). A guess that shares no word of what the command does (the parts
+/// after the dot, the keywords) is as close as its spelling when that is near
+/// ([`CLOSE_SPELLING`]: a typo in a short word), else 0: the same namespace alone is not a
+/// suggestion.
+fn closeness(unknown: &str, name: &str, keywords: &[String]) -> f64 {
+    let longer = unknown.chars().count().max(name.chars().count());
+    let spelling = 1.0 - ratio(edit_distance(unknown, name), longer);
+    match part_overlap(unknown, name, keywords) {
+        Some(overlap) => 0.5 * spelling + 0.5 * overlap,
+        None if spelling >= CLOSE_SPELLING => spelling,
+        None => 0.0,
+    }
+}
+
+/// Whether two parts of a name are the same word: equal, or one typo apart when both have at
+/// least 4 letters.
+fn same_part(a: &str, b: &str) -> bool {
+    a == b || (a.len().min(b.len()) >= 4 && edit_distance(a, b) <= 1)
+}
+
+/// The parts of a command name with their weights: the namespace (before the dot) counts 1,
+/// each word of what the command does (after it, or a name without a dot) counts 2.
+fn weighted_parts(name: &str) -> Vec<(&str, usize)> {
+    let (namespace, verb) = name.split_once('.').unwrap_or(("", name));
+    let words = |text, weight| {
+        str::split(text, ['.', '_'])
+            .filter(|part| !part.is_empty())
+            .map(move |part| (part, weight))
+    };
+    words(namespace, 1).chain(words(verb, 2)).collect()
+}
+
+/// The overlap of the parts of a guess and of a command name, 0 to 1: mostly how much of the
+/// guess the command has (as a part of its name, as a keyword, or one typo away), and for the
+/// rest how much of the name the guess has. `None` when the guess has none of the words of
+/// what the command does.
+fn part_overlap(unknown: &str, name: &str, keywords: &[String]) -> Option<f64> {
+    let (guessed, parts) = (weighted_parts(unknown), weighted_parts(name));
+    let total = |parts: &[(&str, usize)]| parts.iter().map(|(_, weight)| weight).sum::<usize>();
+    let keyword = |g: &str| keywords.iter().any(|k| k == g);
+    let found: usize = guessed
+        .iter()
+        .filter(|(g, _)| parts.iter().any(|(p, _)| same_part(g, p)) || keyword(g))
+        .map(|(_, weight)| weight)
+        .sum();
+    let covered: usize = parts
+        .iter()
+        .filter(|(p, _)| guessed.iter().any(|(g, _)| same_part(g, p)))
+        .map(|(_, weight)| weight)
+        .sum();
+    let does = parts
+        .iter()
+        .filter(|(_, weight)| *weight == 2)
+        .any(|(p, _)| guessed.iter().any(|(g, _)| same_part(g, p)));
+    (does || guessed.iter().any(|(g, _)| keyword(g)))
+        .then(|| 0.7 * ratio(found, total(&guessed)) + 0.3 * ratio(covered, total(&parts)))
+}
+
+/// The Levenshtein distance of two strings, in characters.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut diagonal = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let substituted = diagonal + usize::from(ca != *cb);
+            diagonal = row[j + 1];
+            row[j + 1] = substituted.min(diagonal + 1).min(row[j] + 1);
+        }
+    }
+    row[b.len()]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +384,75 @@ mod tests {
         // A keyword is a whole word, not a part of one.
         assert_eq!(score("clip.split", "Split a clip", &keywords, &["cuts"]), 3);
         assert_eq!(score("clip.split", "x", &keywords, &["cu"]), 0);
+    }
+
+    fn near(unknown: &str) -> Vec<&'static str> {
+        const NAMES: [&str; 12] = [
+            "clip.reset_speed",
+            "clip.set_speed",
+            "clip.split",
+            "clip.trim",
+            "edit.undo",
+            "item.delete",
+            "item.move",
+            "item.set",
+            "timeline.add_marker",
+            "timeline.get",
+            "timeline.insert",
+            "track.add",
+        ];
+        let faster: &'static [String] = Vec::leak(vec!["faster".to_owned()]);
+        nearest_of(
+            NAMES.iter().map(|name| {
+                let words = if *name == "clip.set_speed" {
+                    faster
+                } else {
+                    &[]
+                };
+                (*name, words)
+            }),
+            unknown,
+        )
+    }
+
+    #[test]
+    fn an_unknown_name_finds_the_closest_commands() {
+        // The first evaluation's guess (#258), and the same guess as a tool name.
+        assert_eq!(near("clip.speed")[0], "clip.set_speed");
+        assert_eq!(near("clip_speed")[0], "clip.set_speed");
+        assert_eq!(near("Clip.Set_Speed "), ["clip.set_speed"]);
+        // Typos, a missing part, a keyword in place of the name's word.
+        assert_eq!(near("clip.splt"), ["clip.split"]);
+        assert_eq!(near("timeline.insrt"), ["timeline.insert"]);
+        assert_eq!(near("timeline.marker")[0], "timeline.add_marker");
+        assert_eq!(near("clip.faster")[0], "clip.set_speed");
+        // At most three, best first.
+        assert!(near("item.sett").len() <= MAX_SUGGESTIONS);
+        assert_eq!(near("item.sett")[0], "item.set");
+        // Nothing near: no suggestion.
+        // The namespace alone says nothing about which of its commands is meant.
+        assert_eq!(near("clip.move"), ["item.move"]);
+        for far in [
+            "",
+            "zebra.frobnicate",
+            "x",
+            "clip",
+            "timeline.zoom",
+            "foo_bar_baz",
+        ] {
+            assert_eq!(near(far), [""; 0], "{far}");
+        }
+        assert_eq!(near(&"clip.".repeat(40)), [""; 0], "too long to compare");
+    }
+
+    #[test]
+    fn edit_distance_counts_characters() {
+        assert_eq!(edit_distance("", "abc"), 3);
+        assert_eq!(edit_distance("clip.speed", "clip.set_speed"), 4);
+        assert_eq!(edit_distance("kitten", "sitting"), 3);
+        assert_eq!(edit_distance("\u{e9}", "e"), 1);
+        assert_eq!(command_form("item_set_props"), "item.set_props");
+        assert_eq!(command_form("a.b_c"), "a.b_c");
     }
 
     #[test]

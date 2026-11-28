@@ -76,7 +76,7 @@ pub(crate) struct ExecError {
     /// The failing step's args (resolved when the step ran), to locate a missing id.
     pub args: Option<Value>,
     /// What to do about it, when more specific than the error kind's hint.
-    pub hint: Option<&'static str>,
+    pub hint: Option<String>,
 }
 
 /// A batch result; the error is boxed (it is large and rare).
@@ -201,10 +201,9 @@ fn parse_step(catalog: &Catalog, i: usize, step: Value) -> ExecResult<Step> {
         Some(_) => return Err(at("/args", "expected an object of params")),
     };
     let Some(entry) = catalog.reachable(&cmd) else {
-        return Err(ExecError::at(
-            i,
-            CmdError::not_found(ResourceKind::Command, &cmd),
-        ));
+        let mut error = ExecError::at(i, CmdError::not_found(ResourceKind::Command, &cmd));
+        error.hint = crate::mcp::search::unknown_command_hint(catalog, &cmd);
+        return Err(error);
     };
     check_step_refs(&args, i).map_err(|e| ExecError::step(i, e, args.clone()))?;
     Ok(Step {
@@ -233,7 +232,7 @@ fn check_render_steps(steps: &[Step]) -> ExecResult<()> {
         )),
         failed_step: Some(i),
         args: None,
-        hint: Some(crate::mcp::frame::TRANSACTION_HINT),
+        hint: Some(crate::mcp::frame::TRANSACTION_HINT.to_owned()),
     }))
 }
 
