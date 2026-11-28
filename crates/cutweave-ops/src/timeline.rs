@@ -15,6 +15,8 @@ use cutweave_model::{
     TimeInput, TrackId, TrackKind,
 };
 
+use crate::detail::{Detail, present};
+
 /// Length of a still image when `duration` is omitted and the project stores no still
 /// duration: five seconds (ADR-0035).
 pub const DEFAULT_STILL_SECS: i64 = cutweave_model::DEFAULT_STILL_DURATION_SECS;
@@ -110,9 +112,61 @@ pub struct ItemSummary {
     pub color_label: Option<Color>,
 }
 
-/// One track (depth 1 and 2).
+/// One item of a track as `timeline.get` lists it (depth 2). With `detail: "concise"` it is
+/// `id`, `name` (when it has one), `start` and `duration`, plus `kind` when it is not `clip`
+/// and `enabled` when it is `false`; `item.get` or a full read returns the rest.
 #[wire]
-#[allow(clippy::struct_excessive_bools)] // mirrors the track's independent toggles
+pub struct TimelineItem {
+    /// The item.
+    pub id: ItemId,
+    /// Its own name, when it has one (`item.set_props`); otherwise its media's name is shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Item kind (`clip`). Concise leaves out `clip`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "String")]
+    pub kind: Option<String>,
+    /// Timeline position of the first frame.
+    pub start: Time,
+    /// Length on the timeline.
+    pub duration: Duration,
+    /// The media a clip plays. Concise leaves it out.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "Option<MediaId>")]
+    pub media: Option<Option<MediaId>>,
+    /// The linked group, if any. Concise leaves it out.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "Option<GroupId>")]
+    pub linked_group: Option<Option<GroupId>>,
+    /// Whether the item is rendered and heard. Concise leaves out `true`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "bool")]
+    pub enabled: Option<bool>,
+    /// The color label, `#rrggbb`, when it has one (`item.set_label_color`). Concise leaves it
+    /// out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_label: Option<Color>,
+}
+
+/// One track (depth 1 and 2). With `detail: "concise"` the toggles, `height` and `gain` are
+/// left out at their defaults (`false`, `null`, `0`).
+#[wire]
 pub struct TrackSummary {
     /// The track.
     pub id: TrackId,
@@ -120,27 +174,69 @@ pub struct TrackSummary {
     pub kind: TrackKind,
     /// Display name.
     pub name: String,
-    /// Silenced.
-    pub muted: bool,
-    /// Not rendered.
-    pub hidden: bool,
-    /// Item edits fail with `Locked`.
-    pub locked: bool,
-    /// Solo.
-    pub solo: bool,
-    /// The magnetic main track.
-    pub magnetic: bool,
-    /// Row height in pixels; `None` is the default.
-    pub height: Option<u32>,
-    /// Gain in dB.
-    pub gain: f64,
+    /// Silenced. Concise leaves out `false`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "bool")]
+    pub muted: Option<bool>,
+    /// Not rendered. Concise leaves out `false`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "bool")]
+    pub hidden: Option<bool>,
+    /// Item edits fail with `Locked`. Concise leaves out `false`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "bool")]
+    pub locked: Option<bool>,
+    /// Solo. Concise leaves out `false`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "bool")]
+    pub solo: Option<bool>,
+    /// The magnetic main track. Concise leaves out `false`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "bool")]
+    pub magnetic: Option<bool>,
+    /// Row height in pixels; `None` is the default. Concise leaves out `null`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "Option<u32>")]
+    pub height: Option<Option<u32>>,
+    /// Gain in dB. Concise leaves out `0`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "f64")]
+    pub gain: Option<f64>,
     /// Number of items.
     pub item_count: u32,
     /// End of its last item.
     pub end: Time,
     /// The items in start order (depth 2 only).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub items: Option<Vec<ItemSummary>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<Vec<TimelineItem>>,
 }
 
 /// Result of `timeline.get`.
@@ -188,7 +284,11 @@ pub const GET_FIELDS: [&str; 4] = ["name", "format", "duration", "tracks"];
 /// whole sequence. At depth 2, `range` lists only the items that overlap `[from, to)`, and
 /// `limit` pages them in track order, then start order: `next_cursor` is the `cursor` of the
 /// next page (absent on the last one). A long timeline is best read as the depth 1 overview,
-/// then depth 2 pages of the part that matters.
+/// then depth 2 pages of the part that matters. `detail: "concise"` makes each track and item
+/// smaller: it keeps ids, names, kinds, counts and times, and leaves out a track's toggles,
+/// `height` and `gain` at their defaults and an item's `media`, `linked_group`, `color_label`,
+/// `kind: "clip"` and `enabled: true` (`item.get` or a full read returns them). The sequence's
+/// own fields are the same in both.
 #[query(
     name = "timeline.get",
     summary = "Get a sequence: summary (depth 0), tracks (1) or tracks with items (2)",
@@ -207,6 +307,9 @@ pub struct TimelineGet {
     pub limit: Option<u32>,
     /// Depth 2 with `limit`: the previous page's `next_cursor`.
     pub cursor: Option<ItemId>,
+    /// `full` (default) or `concise`: ids, names and times, without track and item values at
+    /// their defaults or an item's media, link and color label.
+    pub detail: Option<Detail>,
 }
 
 /// The items `timeline.get` lists at depth 2: which of them, and how many.
@@ -215,10 +318,11 @@ struct ItemPage {
     range: Option<(i64, i64)>,
     limit: Option<usize>,
     cursor: Option<ItemId>,
+    detail: Detail,
 }
 
 /// The listed items of each track, in track order, and the next page's cursor.
-type Picked = (Vec<Vec<ItemSummary>>, Option<ItemId>);
+type Picked = (Vec<Vec<TimelineItem>>, Option<ItemId>);
 
 impl ItemPage {
     fn of(get: &TimelineGet, sequence: &Sequence, depth: u8) -> Result<ItemPage, CmdError> {
@@ -277,6 +381,7 @@ impl ItemPage {
             range,
             limit,
             cursor: get.cursor,
+            detail: get.detail.unwrap_or_default(),
         })
     }
 
@@ -310,7 +415,7 @@ impl ItemPage {
                 }
                 left -= 1;
                 last = Some(item.id());
-                items.push(item_summary(item));
+                items.push(timeline_item(item, self.detail));
             }
             tracks.push(items);
         }
@@ -350,6 +455,23 @@ pub(crate) fn item_summary(item: &Item) -> ItemSummary {
     }
 }
 
+/// An item as `timeline.get` lists it: all of [`item_summary`] in a full read, and what
+/// [`TimelineItem`] says in a concise one.
+fn timeline_item(item: &Item, detail: Detail) -> TimelineItem {
+    let all = item_summary(item);
+    TimelineItem {
+        id: all.id,
+        name: all.name,
+        kind: detail.unless_default(all.kind, &"clip".to_owned()),
+        start: all.start,
+        duration: all.duration,
+        media: detail.full_only(all.media),
+        linked_group: detail.full_only(all.linked_group),
+        enabled: detail.unless_default(all.enabled, &true),
+        color_label: detail.full_only(all.color_label).flatten(),
+    }
+}
+
 impl Query for TimelineGet {
     type Output = TimelineGetOutput;
 
@@ -378,6 +500,7 @@ impl Query for TimelineGet {
             }
         }
         let page = ItemPage::of(self, sequence, depth)?;
+        let detail = page.detail;
         let (listed, next_cursor) = if depth >= 2 && wants("tracks") {
             page.pick(sequence)?
         } else {
@@ -391,13 +514,13 @@ impl Query for TimelineGet {
                     id: t.id,
                     kind: t.kind,
                     name: t.name.clone(),
-                    muted: t.muted,
-                    hidden: t.hidden,
-                    locked: t.locked,
-                    solo: t.solo,
-                    magnetic: t.magnetic,
-                    height: t.height,
-                    gain: t.gain,
+                    muted: detail.unless_default(t.muted, &false),
+                    hidden: detail.unless_default(t.hidden, &false),
+                    locked: detail.unless_default(t.locked, &false),
+                    solo: detail.unless_default(t.solo, &false),
+                    magnetic: detail.unless_default(t.magnetic, &false),
+                    height: detail.unless_default(t.height, &None),
+                    gain: detail.unless_default(t.gain, &0.0),
                     item_count: count(t.items.len()),
                     end: t.items.end(),
                     items: (depth >= 2).then(|| listed.next().unwrap_or_default()),

@@ -1,0 +1,5 @@
+---
+source: crates/cutweave-ops/tests/read_detail.rs
+expression: "wire(&get(&h, p, json!({\"depth\": depth, \"detail\": \"concise\"})))"
+---
+{"id":"seq_000000000001728ea8c5c5607e51aeb3","name":"Sequence 1","format":{"width":1920,"height":1080,"frame_rate":{"num":30,"den":1},"sample_rate":48000,"color_space":"rec709","background":"#000000"},"duration":57859200000,"track_count":2,"item_count":4,"tracks":[{"id":"trk_00000000000275fdb7ee40b8a0cac642","kind":"video","name":"Picture","muted":true,"height":96,"item_count":3,"end":57859200000,"items":[{"id":"itm_0000000000077cbb900f1e596bc68105","start":0,"duration":42336000000},{"id":"itm_000000000009738ab9233f0ca6296043","name":"Opening title","start":49392000000,"duration":2822400000},{"id":"itm_00000000000a76b5b5b4fdda2666ec6c","start":56448000000,"duration":1411200000,"enabled":false}]},{"id":"trk_00000000000376549cec3098cb8b0e21","kind":"audio","name":"A1","gain":-3.0,"item_count":1,"end":42336000000,"items":[{"id":"itm_0000000000087cc89c1cf78003a798ed","start":0,"duration":42336000000}]}]}

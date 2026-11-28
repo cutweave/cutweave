@@ -1,0 +1,5 @@
+---
+source: crates/cutweave-ops/tests/read_detail.rs
+expression: "wire(&h.query(\"media.list\",\njson!({\"include\": [\"note\"], \"limit\": 1, \"detail\": \"concise\"})).unwrap())"
+---
+{"media":[{"id":"med_000000000004709b90035e27460a4efb","kind":"video","name":"interview.mp4","folder":"fld_00000000000674b5a94a9f653c219f74","duration":42336000000,"tags":["b-roll","interview"],"rating":4,"note":"Good take."}],"next_cursor":"med_000000000004709b90035e27460a4efb","total":2,"matched":2}
