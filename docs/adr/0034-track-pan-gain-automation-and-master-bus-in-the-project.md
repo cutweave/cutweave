@@ -32,7 +32,7 @@ The model has `Track.gain` (a plain dB number), `Track.muted` and `Track.solo`, 
 
 ## Decision
 
-Accepted by the product owner on 2026-11-28: option 1, with the master settings per sequence (`Sequence.mix`), and the keyframed track gain joins the unreleased v2 (arch §17, "One v2"): no v3 and no schema version bump.
+Accepted by the product owner on 2026-11-28: option 1, with the master settings per sequence (`Sequence.mix`), and the keyframed track gain joins the current unreleased schema version (v3 since ADR-0035; arch §17: contract changes inside one unreleased version share its migration): no new version and no schema version bump.
 
 **Decided by:** the maintainers' review of WP-2E.02. Pass criteria for the follow-up (WP-2E.02b): a round-trip test (a document without the fields opens with the defaults and saves byte-identical; a document with them opens in an older build, which keeps `pan` and `mix` in `extra`); undo identity and CLI = MCP = RPC parity for the new commands; the mixer applies them in playback and export alike (null test between the real-time render and the mixdown under −120 dBFS, keyframed gain without zipper noise: the 64-frame control points of WP-2E.01); the v2 golden fixtures unchanged.
 

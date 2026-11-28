@@ -145,6 +145,8 @@ At about 6 parallel agents, that is roughly 40 weeks of pure execution. Serial d
 
 ## Phase 3 — Text, Captions & Transcript Editing (≈8 weeks) → M3 Public Alpha
 
+> **Started early (2026-11-28, [R37](05-work-breakdown.md)):** the text chain (WP-3A.01 to 3A.05) and the plugins skeleton (WP-3B.01) run beside the end of Phase 2.
+
 **Goal:** CapCut's moat: fast, beautiful captions and text-driven editing.
 
 - **Text engine:**
@@ -173,6 +175,8 @@ At about 6 parallel agents, that is roughly 40 weeks of pure execution. Serial d
 ---
 
 ## Phase 4 — Effects, Transitions & Color (≈9 weeks, parallel with P3/P5) → M4
+
+> **Started early (2026-11-28, [R37](05-work-breakdown.md)):** the effect framework and transitions engine (WP-4A.01 to 4A.04, 4A.06), then the dissolves and fades (4B.01) and blur and glow (4C.01) packs, run beside the end of Phase 2.
 
 **Goal:** creative parity with CapCut's visual toolbox, built entirely on the L1 plugin interface.
 
