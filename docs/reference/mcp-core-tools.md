@@ -4,10 +4,10 @@
 
 The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §14). Generated from the core tool table, `crates/cutweave-api/mcp_core.toml`, and the command registry.
 
-- **Listed:** 32 tools (28 core and the 4 generic ones), 31489 bytes, about 7873 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
-- **`/mcp/minimal`** (minimal): 10 tools, about 1959 tokens of 3000.
-- **`/mcp/full`** (full): 32 tools, about 7873 tokens of 8000.
-- **`/mcp/described`** (described): 32 tools, about 14145 tokens of 16000.
+- **Listed:** 32 tools (28 core and the 4 generic ones), 31489 bytes, about 7873 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens. Every profile's budget is          in the table's `[profiles]`, and only there.
+- **`/mcp/minimal`** (`--profile minimal`): 10 tools of 12, about 1959 tokens of 3000.
+- **`/mcp/full`** (`--profile full`): 32 tools of 36, about 7873 tokens of 8000.
+- **`/mcp/described`** (`--profile described`): 32 tools of 36, about 14145 tokens of 16000.
 - **Server instructions:** 3344 characters of at most 4096: a map of the command namespaces, how to find, describe and run a command, batches, the revision and undo. Built from the registry and the `[[namespace]]` lines of the core tool table.
 - **Loaded at the start:** `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` carry `_meta` `"anthropic/alwaysLoad": true`, which asks a client that defers tool definitions (Claude Code's tool search) to load them at the start. They are what an agent needs before it can search; other clients ignore the key. Marked **always** below.
 - **Names:** a tool is named after its command with `.` replaced by `_` (`clip.split` is `clip_split`). A core tool is only that command: the same input schema, result and errors as over JSON-RPC and the CLI.
