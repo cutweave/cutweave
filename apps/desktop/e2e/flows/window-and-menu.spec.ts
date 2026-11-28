@@ -434,7 +434,7 @@ test.describe("F18 window and menu", () => {
       await openFromRecent("Alpha");
       await expect(timecode(page)).toHaveText("00:00:02:00");
       await expect(clipInspector).toBeVisible();
-      expect(await zoom()).toBe(zoomA);
+      await expect.poll(zoom).toBe(zoomA);
       await movePlayhead(page, 2.2);
       await expect(timecode(page)).toHaveText("00:00:02:06");
       // One more zoom step, and away at once: the project being left keeps it.
@@ -443,8 +443,9 @@ test.describe("F18 window and menu", () => {
       // Open recent > Beta: Beta's own.
       await openFromRecent("Beta");
       await expect(timecode(page)).toHaveText("00:00:01:00");
-      expect(await clipInspector.isVisible()).toBe(selectedInBeta);
-      expect(await zoom()).toBe(zoomB);
+      if (selectedInBeta) await expect(clipInspector).toBeVisible();
+      else await expect(clipInspector).toBeHidden();
+      await expect.poll(zoom).toBe(zoomB);
       await movePlayhead(page, 1.2);
       await expect(timecode(page)).toHaveText("00:00:01:06");
 
@@ -452,7 +453,7 @@ test.describe("F18 window and menu", () => {
       await openFromRecent("Alpha");
       await expect(timecode(page)).toHaveText("00:00:02:06");
       await expect(clipInspector).toBeVisible();
-      expect(await zoom()).toBeGreaterThan(zoomA);
+      await expect.poll(zoom).toBeGreaterThan(zoomA);
       await movePlayhead(page, 2);
       await expect(timecode(page)).toHaveText("00:00:02:00");
     } finally {
