@@ -195,7 +195,11 @@ if (!args.includes("--no-renderer") && slow === 1) {
 }
 
 if (slow > 1) result.suite = "ui-slowed";
-const out = path.resolve(value("--out") ?? defaultResultPath(root, result));
+// `--out` is read from where the command was typed (pnpm runs the script in apps/desktop).
+const out = path.resolve(
+  process.env.INIT_CWD ?? process.cwd(),
+  value("--out") ?? defaultResultPath(root, result),
+);
 writeResult(out, result);
 const budgets = loadBudgets(root);
 const over = failed(budgets, result);
