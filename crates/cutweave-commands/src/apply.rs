@@ -20,6 +20,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::{
+    effort,
     json::{self, Edit, json_eq},
     patch::{PatchError, PatchOp},
     path::DocPath,
@@ -76,6 +77,7 @@ pub(crate) fn to_json<T: Serialize + ?Sized>(
     value: &T,
     path: &DocPath,
 ) -> Result<Value, PatchError> {
+    effort::converted();
     serde_json::to_value(value).map_err(|e| type_error(path, e.to_string()))
 }
 
@@ -84,6 +86,7 @@ fn from_json<T: Serialize + DeserializeOwned>(
     value: &Value,
     path: &DocPath,
 ) -> Result<T, PatchError> {
+    effort::converted();
     let typed = T::deserialize(value).map_err(|e| type_error(path, e.to_string()))?;
     if !json_eq(&to_json(&typed, path)?, value) {
         return Err(type_error(

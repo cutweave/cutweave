@@ -47,6 +47,8 @@ mod ctx;
 mod diff;
 mod doc;
 pub mod edit;
+#[doc(hidden)]
+pub mod effort;
 mod error;
 mod json;
 mod meta;
