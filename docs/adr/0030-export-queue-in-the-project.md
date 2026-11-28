@@ -34,7 +34,7 @@ Accepted by the product owner on 2026-11-26 as built in WP-2G.03a (option 1).
 
 Option 1, as built in WP-2G.03a:
 
-- **File:** `.cutweave/exports.sqlite`, append-only migrations counted by `PRAGMA user_version` (schema 1: `export_jobs`, `queue_meta`), WAL journal with `synchronous = NORMAL`. A file from a newer build is refused, and the queue then runs in memory and logs a warning. A read-only project (newer schema) also keeps its queue in memory.
+- **File:** `.cutweave/exports.sqlite`, append-only migrations counted by `PRAGMA user_version` (schema 1: `export_jobs`, `queue_meta`; schema 2 adds the nullable `export_jobs.error_code`, ADR-0038), WAL journal with `synchronous = NORMAL`. A file from a newer build is refused, and the queue then runs in memory and logs a warning. A read-only project (newer schema) also keeps its queue in memory.
 - **Payload:** the resolved plan plus the committed document as project-format JSON (`StoredPlan`, version 1), migrated on load like a project file. A payload that cannot be read is dropped from the queue, with a log line.
 - **Engine-private:** like the journal, the file is not part of the document contract. Clients reach it only through the `export.*` commands. It is never written into backups or `generated/`, and the document never references it.
 
