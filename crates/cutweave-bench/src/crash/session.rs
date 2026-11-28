@@ -984,17 +984,13 @@ impl Session {
                     row.journaled += 1;
                     self.record(What::Drag(drag), answer);
                 }
-                // The journal has the commit, but a commit is not answered twice after a
-                // recovery (issue #235). A drag runs alone, so a revision past the last
-                // acknowledged one can only be its commit.
-                Answer::Refused(_) if recovered > self.max_committed => {
-                    row.journaled += 1;
-                    let committed = Answer::Done {
-                        output: Value::Null,
-                        rev: recovered,
-                        committed: recovered,
-                    };
-                    self.record(What::Drag(drag), committed);
+                // A drag runs alone, so a revision past the last acknowledged one can only be
+                // its commit: the journal had it, and its original result must come back.
+                Answer::Refused(refusal) if recovered > self.max_committed => {
+                    return Err(format!(
+                        "the journal had the drag's commit (revision {recovered}), but the \
+                         commit sent again was refused: {refusal:?}"
+                    ));
                 }
                 // The gesture died with the engine, uncommitted.
                 Answer::Refused(_) => {}
