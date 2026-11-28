@@ -1,6 +1,6 @@
 # ADR-0041: Where `expected_rev` is listed on the MCP tools
 
-- **Status:** Proposed (drafted in WP-2I.04, #250; waits for the product owner)
+- **Status:** Accepted (product owner, 2026-11-28)
 - **Date:** 2026-11-28
 - **Deciders:** Product owner
 - **Supersedes:** none. It applies the budgets of [ADR-0039](0039-mcp-tool-list-budget-and-parameter-docs.md) and the two audiences of [ADR-0040](0040-mcp-at-scale.md)
@@ -40,7 +40,9 @@ Every listed input schema says `additionalProperties: false`. The engine does no
 
 ## Decision
 
-**Proposed: option 2**, which is what WP-2I.04 built, until the standard budget is next decided.
+Accepted by the product owner on 2026-11-28 as recommended: option 2, as built, until the standard budget is next decided. The first agent evaluation (#247, [agent evaluation](../reference/agent-eval.md)) had no concurrent editors and did not measure this; the question returns with the next change to the standard budget.
+
+**Option 2**, which is what WP-2I.04 built, until the standard budget is next decided.
 
 1. `Profile::lists_expected_rev` (in `crates/cutweave-api/src/mcp/catalog.rs`) is true for the described profile only. One generator adds the same property to every mutating core tool of a list that shows it.
 2. The standard, full and minimal lists are byte-identical to before WP-2I.04. Their budgets do not change.
