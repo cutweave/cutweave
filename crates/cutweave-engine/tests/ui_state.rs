@@ -133,6 +133,37 @@ fn playhead_and_selection_survive_close_and_reopen() {
     assert_eq!(s.preview_quality, PreviewQuality::Half);
 }
 
+/// A stored `active_sequence` that the document no longer has (the sequence was deleted after
+/// the last write, or the file is from another copy of the project) is not handed out on open:
+/// the view names no sequence and the first one shows. A stored one that exists is kept.
+#[test]
+fn a_stored_active_sequence_that_is_gone_is_dropped_on_load() {
+    let tmp = TempDir::new();
+    let folder = tmp.0.join("UiState");
+    let (project, _clip) = project_with_clip();
+    let shown = *project.sequences.keys().next().unwrap();
+    let store = ProjectStore::create(&folder, &project).unwrap();
+    let mut ui = UiStateStore::open_for(&store, &project);
+    run(
+        &mut ui,
+        Instant::now(),
+        "view.set_active_sequence",
+        json!({ "sequence": shown }),
+    );
+    ui.close().unwrap();
+
+    let ui = UiStateStore::open_for(&store, &project);
+    assert_eq!(ui.ctx().state().active_sequence, Some(shown));
+    drop(ui);
+    let mut without = project.clone();
+    without.sequences.remove(&shown);
+    let mut ui = UiStateStore::open_for(&store, &without);
+    assert_eq!(ui.ctx().state().active_sequence, None);
+    // The sequence coming back (an undo of its delete) does not bring the choice back.
+    assert!(!ui.set_doc(Instant::now(), &project));
+    assert_eq!(ui.ctx().state().active_sequence, None);
+}
+
 #[test]
 fn stale_selection_ids_are_dropped_on_load() {
     let tmp = TempDir::new();
