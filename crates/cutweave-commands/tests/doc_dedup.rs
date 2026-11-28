@@ -662,7 +662,7 @@ fn per_run_transaction_ids_continue_past_the_journaled_ones() {
     assert_eq!(open_drag(&actor.handle(), &ctx, 1, tracks[0]), TxId::new(1));
 }
 
-/// What issue #251 left open (ADR-0043, Proposed): a commit or cancel that names no
+/// ADR-0043 (B1): `tx` stays optional. A commit or cancel that names no
 /// transaction means "this connection's open one", so one sent again after the client opened
 /// another transaction closes that one. Nothing in the request tells the engine it is a
 /// repeat; a client that sends a close again must name the transaction, as the editor, the

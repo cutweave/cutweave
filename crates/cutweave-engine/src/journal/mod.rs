@@ -11,8 +11,14 @@
 //! fields redacted, `request_id` with its dedup record and result), the net patch (with
 //! preimages, so it is the transaction's resulting ids and values), the history cause, and in
 //! `--deterministic-ids` mode the id streams' positions ([`IdState`]). Gestures and proposals
-//! are journaled once, on commit, as their collapsed patch; cancelled ones and `view.*`
-//! commands never reach the journal (they never commit a document change).
+//! are journaled once, on commit, as their collapsed patch; the changes of cancelled ones and
+//! `view.*` commands never reach the journal (they never commit a document change).
+//!
+//! What commits no change but must outlive a crash is journaled as a transaction marker
+//! ([`TxEntry`], ADR-0043), without a revision: a cancel and a commit of a transaction that
+//! changed nothing, with the requests to keep answering (not a cancelled transaction's
+//! commands), and the transaction ids that may be handed out, a block at a time, before a
+//! transaction opens, so a restarted engine issues none of them again.
 //!
 //! Changes of the checkpoints (WP-2I.03) are journaled the same way, as [`CheckpointEntry`]
 //! markers: the checkpoint made (metadata only: recovery rebuilds its document by replaying to

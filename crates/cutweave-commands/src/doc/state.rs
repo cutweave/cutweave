@@ -489,8 +489,12 @@ impl DocConfig {
     /// Unix epoch times 1,000,000, plus one), and is never below
     /// [`with_first_tx_id`](Self::with_first_tx_id). Ids stay `tx_<n>` and increasing. A clock
     /// frozen at the Unix epoch (`--deterministic-ids`) gives the plain numbering, so such
-    /// runs stay reproducible and keep the reuse; so does a wall clock that stepped back
-    /// across the restart to before the earlier run's start.
+    /// runs stay reproducible.
+    ///
+    /// For a journaled document this is the second line: the journal is told which ids may
+    /// be handed out before they are ([`TxMarker`], ADR-0043), on any clock. This covers what
+    /// has no such record: a document without a journal, and a reservation lost with the
+    /// last unsynced writes in a power cut.
     #[must_use]
     pub fn with_tx_ids_per_run(mut self) -> DocConfig {
         self.tx_ids_per_run = true;
