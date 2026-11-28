@@ -46,9 +46,15 @@ export function makeCurve(
     const t0 = times[i] as number;
     const t1 = times[i + 1] as number;
     const u = (t - t0) / (t1 - t0);
-    // 257 samples of the easing, read at the nearest one: close enough for a picture.
-    const eased = easedTable(interps[i] as CurveValue);
-    const p = eased[Math.round(u * 256)] as number;
+    // 257 samples of the easing, read between the two nearest: close enough for a picture. A
+    // hold stays a step.
+    const interp = interps[i] as CurveValue;
+    const eased = easedTable(interp);
+    const place = u * 256;
+    const lo = Math.floor(place);
+    const a = eased[lo] as number;
+    const b = eased[Math.min(256, lo + 1)] as number;
+    const p = interp.kind === "hold" ? a : a + (b - a) * (place - lo);
     return (values[i] as number) + p * ((values[i + 1] as number) - (values[i] as number));
   };
   return {

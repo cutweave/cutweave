@@ -191,6 +191,18 @@ const tools = (page: Page) => {
   };
 };
 
+/**
+ * Closes the notes in the corner ("Import finished"): they lie over the bottom right of the
+ * window, where the graph is, and stay while the pointer is over them.
+ */
+async function dismissNotes(page: Page): Promise<void> {
+  const notes = page.locator(".cw-toast");
+  for (let n = await notes.count(); n > 0; n -= 1) {
+    await notes.first().getByRole("button", { name: "Dismiss" }).click();
+    await expect(notes).toHaveCount(n - 1);
+  }
+}
+
 /** View > Panels > Graph editor, with real clicks (it toggles). */
 async function toggleGraphPanel(page: Page): Promise<void> {
   await page
@@ -278,6 +290,7 @@ test.describe("F70 graph editor", () => {
       // 2. View > Panels > Graph editor: a tab beside the Timeline with the clip's curves. View
       // state: the document does not change.
       await toggleGraphPanel(page);
+      await dismissNotes(page);
       const t = tools(page);
       await expect(t.panel).toBeVisible();
       await expect(t.panel.getByRole("list", { name: "Curves" })).toContainText("Position");
@@ -318,6 +331,7 @@ test.describe("F70 graph editor", () => {
       const handle = at(g, 4 + 2 * 0.333333, 300 - 200 * 0.333333);
       const target = at(g, 4.5, 250);
       await dragTo(page, handle, target);
+      await expect(page.locator(".cw-toast")).toHaveCount(0); // nothing was refused
       const wantX1 = (secondsAt(g, target.x) - 4) / 2;
       const wantY1 = (valueAt(g, target.y) - 300) / -200;
       await expect
