@@ -16,7 +16,6 @@ import {
   valueStep,
 } from "./graphEdits.ts";
 import type { StepSend } from "./graphGesture.ts";
-import { keyedProject } from "./testing.ts";
 import {
   buildCurves,
   CompiledCache,
@@ -28,6 +27,7 @@ import {
   sameClips,
   selectedClips,
 } from "./graphModel.ts";
+import { keyedProject } from "./testing.ts";
 
 const inputs = (project: Project, more: Partial<CurveInputs> = {}): CurveInputs => ({
   project,
@@ -77,10 +77,10 @@ describe("the curves of the selected clips", () => {
     ]);
     const x = built.curves[0];
     // The clip starts at 1 s: its keys at 0, 1 and 2 s of item time are at 1, 2 and 3 s.
-    expect([...(x?.times as Float64Array)]).toEqual([sec(1), sec(2), sec(3)]);
-    expect([...(x?.itemTimes as Float64Array)]).toEqual([0, sec(1), sec(2)]);
-    expect([...(x?.values as Float64Array)]).toEqual([-400, 200, 0]);
-    expect([...(built.curves[1]?.values as Float64Array)]).toEqual([0, -150, 300]);
+    expect(Array.from(x?.times ?? [])).toEqual([sec(1), sec(2), sec(3)]);
+    expect(Array.from(x?.itemTimes ?? [])).toEqual([0, sec(1), sec(2)]);
+    expect(Array.from(x?.values ?? [])).toEqual([-400, 200, 0]);
+    expect(Array.from(built.curves[1]?.values ?? [])).toEqual([0, -150, 300]);
     expect(x?.interps[0]).toMatchObject({ kind: "bezier", x1: 0.42 });
     expect(built.curves.map((c) => c.color)).toEqual([0, 1, 2]);
     expect(built.groups.map((g) => [g.prop, g.colors, g.hidden])).toEqual([

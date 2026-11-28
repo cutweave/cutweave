@@ -223,13 +223,13 @@ describe("the performance rule", () => {
     const before = commits.n;
     const frames = handle.view.stats.frames;
     const rebuilds = graphWork.rebuilds;
-    const times = [...(handle.view.curves[0]?.times as Float64Array)];
+    const times = Array.from(handle.view.curves[0]?.times ?? []);
     dragClip("itm_v", "trk_v");
     // The panel's shell (toolbar, curve list, the canvas element) did not render...
     expect(commits.n - before).toBe(0);
     // ...the curves followed the clip (its keys are half a second later on the sequence)...
     expect(graphWork.rebuilds - rebuilds).toBe(UPDATES);
-    expect([...(handle.view.curves[0]?.times as Float64Array)]).toEqual(
+    expect(Array.from(handle.view.curves[0]?.times ?? [])).toEqual(
       times.map((t) => t + UPDATES * sec(0.1)),
     );
     // ...and the canvas draws them, once however many updates a frame holds.
@@ -411,6 +411,43 @@ describe("the panel", () => {
     expect(handle.view.viewport?.v0).toBeCloseTo(-0.1, 6);
     expect(handle.view.viewport?.v1).toBeCloseTo(1.1, 6);
     expect(engine.calls).toEqual([]);
+  });
+
+  it("copies the selected keys and pastes them at the playhead from the canvas's keys", async () => {
+    const payload = { version: 1, keys: [{ prop: "opacity", dt: 0, value: 0.8 }] };
+    engine.answer("keyframe.copy", () => ({ clipboard: payload }));
+    const { container } = mount();
+    const keys = [{ prop: "opacity", t: sec(2) }];
+    act(() => selectKeys("itm_v", keys));
+    act(() => playbackStore.getState().setPlayhead(sec(4)));
+    const canvas = container.querySelector("canvas") as HTMLCanvasElement;
+    fireEvent.keyDown(canvas, { key: "c", ctrlKey: true });
+    await settle();
+    fireEvent.keyDown(canvas, { key: "v", ctrlKey: true });
+    await settle();
+    expect(engine.calls.map((c) => [c.name, c.input])).toEqual([
+      ["keyframe.copy", { item: "itm_v", keys }],
+      ["keyframe.paste", { item: "itm_v", payload, at: sec(4) }],
+    ]);
+  });
+
+  it("selects every key of the clip with Ctrl+A and steps through keys with Alt+arrows", () => {
+    const { container } = mount();
+    const canvas = container.querySelector("canvas") as HTMLCanvasElement;
+    fireEvent.keyDown(canvas, { key: "a", ctrlKey: true });
+    expect(keySelectionStore.getState().keys).toHaveLength(5); // three of position, two of opacity
+    fireEvent.keyDown(canvas, { key: "Escape" });
+    expect(keySelectionStore.getState().keys).toEqual([]);
+    // The playhead is at 0: the first key of the first curve, then the next, then back.
+    fireEvent.keyDown(canvas, { key: "ArrowRight", altKey: true });
+    expect(keySelectionStore.getState().keys).toEqual([{ prop: "transform.position", t: 0 }]);
+    fireEvent.keyDown(canvas, { key: "ArrowRight", altKey: true });
+    expect(keySelectionStore.getState().keys).toEqual([{ prop: "transform.position", t: sec(1) }]);
+    fireEvent.keyDown(canvas, { key: "ArrowLeft", altKey: true });
+    expect(keySelectionStore.getState().keys).toEqual([{ prop: "transform.position", t: 0 }]);
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      "Position X, keyframe 1 of 3, time 00:00:01:00, value -400",
+    );
   });
 
   it("passes axe", async () => {

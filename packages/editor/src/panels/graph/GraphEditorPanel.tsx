@@ -167,8 +167,9 @@ const GraphToolbar = memo(function GraphToolbar({
   const some = readout.count > 0 && readout.editable;
   const mixed = t("graph.toolbar.mixed");
   return (
-    <div className="cw-graph-panel__tools">
-      {/* biome-ignore lint/a11y/useSemanticElements: a fieldset draws a frame the toolbar has no room for */}
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset draws a frame the tools have no room for
+    <div className="cw-graph-panel__tools" role="group" aria-label={t("graph.toolbar.label")}>
+      {/* biome-ignore lint/a11y/useSemanticElements: as above */}
       <div className="cw-graph-panel__group" role="group" aria-label={t("graph.toolbar.kind")}>
         {KINDS.map(({ kind, icon, label }) => (
           <Tool

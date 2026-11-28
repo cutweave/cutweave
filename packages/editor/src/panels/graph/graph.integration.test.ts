@@ -373,7 +373,9 @@ describe("the graph editor against the real engine (WP-2C.07)", () => {
     expect(entries[0]?.label).toBe("Adjust curve handle");
     expect(await openTransactions()).toBe(0);
     await rpc.call("edit.undo", {});
-    await until(() => (keysOf("transform.position")[1]?.interp as { x1?: number }).x1 === 0.42);
+    await until(
+      () => (keysOf("transform.position")[1]?.interp as { x1?: number } | undefined)?.x1 === 0.42,
+    );
     expect(keysOf("transform.position")).toEqual(original);
     await expectDrawnIsEngine();
   });
