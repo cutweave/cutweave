@@ -213,7 +213,7 @@ export class GraphController {
     view.events = {
       select: (points, mode) => this.#select(points, mode),
       gesture: (phase, edit) => this.#onGesture(phase, edit),
-      add: (curve, t) => this.#add(curve, t),
+      add: (curve, t) => this.#insert(curve, t),
       nudge: (frames, steps) => void this.nudge(frames, steps),
       action: (name) => void this.action(name),
       scrub: (t) => d.seek(this.#toFrame(Math.max(0, t))),
@@ -705,7 +705,7 @@ export class GraphController {
     if (keys.getState().offset !== 0) keys.setState({ offset: 0 });
   }
 
-  #add(curveId: string, t: number): void {
+  #insert(curveId: string, t: number): void {
     const curve = this.#built.curves.find((c) => c.id === curveId);
     if (curve === undefined) return;
     const at = this.#toFrame(t);
