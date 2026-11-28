@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MediaId, SelectionRef, SourceMarks, UiState } from "@cutweave/protocol";
+import type { MediaId, SelectionRef, SequenceId, SourceMarks, UiState } from "@cutweave/protocol";
 import type { SerializedDockview } from "dockview-react";
 import { useStore } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
@@ -98,7 +98,25 @@ export interface EngineViewState {
    * state (`ui-state.json`), so they survive a reopen; they are not part of the document.
    */
   sourceMarks: SourceMarksMap;
+  /**
+   * The sequence the editor shows (WP-2B.03): the timeline, the preview and playback are its.
+   * `null` until one is chosen: the first sequence then shows. The engine keeps it with the
+   * project's view state (`active_sequence`) and plays that sequence.
+   */
+  activeSequence: SequenceId | null;
 }
+
+/**
+ * The sequence tabs above the timeline (WP-2B.03): the order the person gave them and the ones
+ * they closed (a closed sequence stays in the project). Sequences in neither list follow in
+ * their own order. Kept with the project's panel layout (`panel_layout`).
+ */
+export interface SequenceTabs {
+  readonly order: readonly SequenceId[];
+  readonly closed: readonly SequenceId[];
+}
+
+export const NO_SEQUENCE_TABS: SequenceTabs = { order: [], closed: [] };
 
 /** The marks of every marked asset, by media id. */
 export type SourceMarksMap = Readonly<Partial<Record<MediaId, SourceMarks>>>;
@@ -111,6 +129,7 @@ export const initialEngineView: EngineViewState = {
   scroll: { x: 0, y: 0 },
   selection: [],
   sourceMarks: NO_MARKS,
+  activeSequence: null,
 };
 
 export interface ViewState extends EngineViewState {
@@ -140,6 +159,8 @@ export interface ViewState extends EngineViewState {
   layouts: Partial<Record<WorkspaceId, SerializedDockview>>;
   /** Bumped when a layout must be rebuilt from its default (reset). */
   layoutRevision: number;
+  /** The project's sequence tabs: their order and the closed ones (WP-2B.03). */
+  sequenceTabs: SequenceTabs;
 }
 
 export interface ViewActions {
@@ -154,6 +175,13 @@ export interface ViewActions {
   setZoom: (pxPerSec: number | null) => void;
   setScroll: (x: number, y: number) => void;
   setSelection: (selection: SelectionRef[]) => void;
+  /**
+   * Shows another sequence (WP-2B.03). The selection is of the sequence before, so it is
+   * emptied; `viewSync` tells the engine at once, and playback follows.
+   */
+  setActiveSequence: (sequence: SequenceId | null) => void;
+  /** Replaces the order and the closed list of the sequence tabs. */
+  setSequenceTabs: (tabs: SequenceTabs) => void;
   /** Replaces the marks of `media`; `null` (or marks with neither end) clears them. */
   setSourceMarks: (media: MediaId, marks: SourceMarks | null) => void;
   setMasterGain: (gain: number) => void;
@@ -191,6 +219,7 @@ export const initialViewState: ViewState = {
   aspect: WORKSPACE_DEFS["short-form"].defaultAspect,
   layouts: {},
   layoutRevision: 0,
+  sequenceTabs: NO_SEQUENCE_TABS,
 };
 
 export const VIEW_STORAGE_KEY = "cutweave.view";
@@ -224,19 +253,42 @@ export interface PanelLayout {
   workspaceId: WorkspaceId;
   aspect: AspectId;
   layouts: Partial<Record<WorkspaceId, SerializedDockview>>;
+  /** Absent in a blob written before there were tabs: every sequence then has a tab. */
+  sequenceTabs: SequenceTabs;
 }
 
 /** Version tag of the `panel_layout` blob; bump when its shape changes. */
 export const PANEL_LAYOUT_VERSION = 1;
 
 /** The `panel_layout` value to store in the engine for the current view state. */
-export function panelLayoutOf(s: Pick<ViewState, "workspaceId" | "aspect" | "layouts">): unknown {
+export function panelLayoutOf(
+  s: Pick<ViewState, "workspaceId" | "aspect" | "layouts"> & { sequenceTabs?: SequenceTabs },
+): unknown {
+  const tabs = s.sequenceTabs ?? NO_SEQUENCE_TABS;
   return {
     v: PANEL_LAYOUT_VERSION,
     workspaceId: s.workspaceId,
     aspect: s.aspect,
     layouts: s.layouts,
+    // Left out while the person never ordered or closed a tab, so the blob reads as before.
+    ...((tabs.order.length > 0 || tabs.closed.length > 0) && {
+      sequenceTabs: { order: tabs.order, closed: tabs.closed },
+    }),
   };
+}
+
+const idList = (value: unknown): SequenceId[] =>
+  Array.isArray(value)
+    ? [...new Set(value.filter((id): id is SequenceId => typeof id === "string"))]
+    : [];
+
+/** The tabs of a `panel_layout` blob; anything malformed reads as "every sequence has a tab". */
+function sequenceTabsFrom(value: unknown): SequenceTabs {
+  if (typeof value !== "object" || value === null) return NO_SEQUENCE_TABS;
+  const v = value as Record<string, unknown>;
+  const order = idList(v.order);
+  const closed = idList(v.closed);
+  return order.length === 0 && closed.length === 0 ? NO_SEQUENCE_TABS : { order, closed };
 }
 
 /**
@@ -249,7 +301,12 @@ export function panelLayoutFrom(value: unknown): PanelLayout | null {
   if (v.v !== PANEL_LAYOUT_VERSION) return null;
   const clean = sanitize({ workspaceId: v.workspaceId, aspect: v.aspect, layouts: v.layouts });
   if (clean.workspaceId === undefined || clean.aspect === undefined) return null;
-  return { workspaceId: clean.workspaceId, aspect: clean.aspect, layouts: clean.layouts ?? {} };
+  return {
+    workspaceId: clean.workspaceId,
+    aspect: clean.aspect,
+    layouts: clean.layouts ?? {},
+    sequenceTabs: sequenceTabsFrom(v.sequenceTabs),
+  };
 }
 
 /** The browser's localStorage when it works; `undefined` (no persistence) when it does not. */
@@ -304,6 +361,13 @@ export function createViewStore(storage?: StateStorage) {
         setZoom: (zoom) => set(() => ({ zoom })),
         setScroll: (x, y) => set(() => ({ scroll: { x: Math.max(0, x), y: Math.max(0, y) } })),
         setSelection: (selection) => set(() => ({ selection })),
+        setActiveSequence: (activeSequence) =>
+          set((s) =>
+            s.activeSequence === activeSequence
+              ? {}
+              : { activeSequence, selection: s.selection.length === 0 ? s.selection : [] },
+          ),
+        setSequenceTabs: (sequenceTabs) => set(() => ({ sequenceTabs })),
         setSourceMarks: (media, marks) =>
           set((s) => {
             const { [media]: _old, ...rest } = s.sourceMarks;
@@ -331,6 +395,8 @@ export function createViewStore(storage?: StateStorage) {
             if (typeof ui.source_marks === "object" && ui.source_marks !== null) {
               next.sourceMarks = ui.source_marks;
             }
+            // `null`: none chosen, or the chosen one was deleted (the first sequence shows).
+            if (ui.active_sequence !== undefined) next.activeSequence = ui.active_sequence;
             const layout = panelLayoutFrom(ui.panel_layout);
             if (layout !== null) {
               Object.assign(next, layout, { layoutRevision: s.layoutRevision + 1 });
@@ -343,6 +409,7 @@ export function createViewStore(storage?: StateStorage) {
             keyframeLanes: initialViewState.keyframeLanes,
             masterGain: initialViewState.masterGain,
             muted: initialViewState.muted,
+            sequenceTabs: NO_SEQUENCE_TABS,
           })),
       }),
       {

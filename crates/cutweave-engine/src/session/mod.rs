@@ -45,7 +45,7 @@ use cutweave_commands::{
 };
 use cutweave_jobs::JobManager;
 use cutweave_model::Project;
-use cutweave_ops::view::ViewCtx;
+use cutweave_ops::view::{UiState, ViewChanged, ViewCtx};
 
 use crate::autosave::{
     AutosaveConfig, AutosavePreference, AutosaveService, AutosaveSettings, AutosaveTask,
@@ -176,6 +176,27 @@ impl ViewHost {
 
     fn set_doc(&mut self, doc: &Project) -> bool {
         self.with_ctx(|ctx| ctx.set_doc(doc))
+    }
+
+    /// Brings the view in line with the committed document `doc`: what it names that the
+    /// document no longer has is dropped (selected entities, the source marks of removed
+    /// media, the sequence shown). Returns the `view.changed` to send when anything was
+    /// dropped, and the state to hand the subsystems when the sequence shown was (playback
+    /// then goes back to the first one, WP-2B.03).
+    ///
+    /// Two callers, one rule. The document event forwarder calls it after every patch, so the
+    /// clients hear of it without asking; it runs on its own thread, a moment after the
+    /// command that changed the document has answered. Every `view.*` command calls it first
+    /// ([`Core::view`](crate::engine)), so what a caller reads or sets right after that answer
+    /// is already in line: `view.get` never names an entity the committed document lacks.
+    pub(crate) fn prune(&mut self, doc: &Project) -> (Option<ViewChanged>, Option<UiState>) {
+        let before = self.with_ctx(|vc| vc.state().active_sequence);
+        if !self.set_doc(doc) {
+            return (None, None);
+        }
+        let after = self.with_ctx(|vc| vc.state().clone());
+        let shown = (after.active_sequence != before).then_some(after);
+        (self.with_ctx(ViewCtx::take_event), shown)
     }
 
     fn poll(&mut self) {
@@ -923,6 +944,7 @@ fn spawn_doc(deps: &Deps, config: DocConfig, view: &Arc<Mutex<ViewHost>>) -> Res
     let handle = actor.handle();
     let mut stream = handle.subscribe();
     let (bus, view, reader) = (deps.events.clone(), Arc::clone(view), handle.clone());
+    let subsystems = Arc::clone(&deps.subsystems);
     let forwarder = std::thread::Builder::new()
         .name("cutweave-doc-events".into())
         .spawn(move || {
@@ -933,19 +955,16 @@ fn spawn_doc(deps: &Deps, config: DocConfig, view: &Arc<Mutex<ViewHost>>) -> Res
                         bus.publish(EngineEvent::Doc(event));
                         if patched {
                             let doc = reader.committed_snapshot();
-                            let change = {
-                                let mut view = lock(&view);
-                                if view.set_doc(&doc.doc) {
-                                    view.with_ctx(ViewCtx::take_event)
-                                } else {
-                                    None
-                                }
-                            };
+                            // Nothing to do when a `view.*` command got there first.
+                            let (change, shown) = lock(&view).prune(&doc.doc);
                             if let Some(change) = change {
                                 bus.publish(EngineEvent::View {
                                     change,
                                     origin: None,
                                 });
+                            }
+                            if let Some(state) = shown {
+                                subsystems.on_view(&state, false);
                             }
                         }
                     }
@@ -994,4 +1013,47 @@ pub(crate) fn io_error(e: &ProjectIoError, pointer: &str) -> CmdError {
 /// Opens `path` for editing (the lock), as `project.open` and engine start do.
 pub(crate) fn open_store(path: &Path) -> Result<Opened, ProjectIoError> {
     ProjectStore::open(path)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use cutweave_model::{FrameRate, SampleRate, Sequence, SequenceFormat, SequenceId};
+
+    use super::*;
+
+    /// `ViewHost::prune`: a sequence the document lost is dropped from the view at once, with
+    /// the `view.changed` to send and the state for the subsystems; nothing is reported when
+    /// nothing was dropped, and the sequence coming back does not bring the choice back.
+    #[test]
+    fn prune_drops_the_shown_sequence_the_document_lost() {
+        let (a, b) = (SequenceId::from_u128(1), SequenceId::from_u128(2));
+        let format = SequenceFormat::new(1920, 1080, FrameRate::FPS_30, SampleRate::HZ_48_000);
+        let mut both = Project::new("Two");
+        both.sequences
+            .insert(a, Sequence::new(a, "A", format.clone()));
+        both.sequences.insert(b, Sequence::new(b, "B", format));
+        let mut only_a = both.clone();
+        only_a.sequences.remove(&b);
+
+        let mut view = ViewHost::Memory(ViewCtx::new(both.clone()));
+        view.with_ctx(|vc| vc.set_active_sequence(b)).unwrap();
+        view.with_ctx(ViewCtx::take_event);
+        // The document as it was: nothing to drop, nothing to send.
+        let (change, shown) = view.prune(&both);
+        assert!(change.is_none() && shown.is_none());
+
+        let (change, shown) = view.prune(&only_a);
+        assert_eq!(change.unwrap().state.active_sequence, None);
+        assert_eq!(shown.unwrap().active_sequence, None);
+        assert_eq!(view.with_ctx(|vc| vc.state().active_sequence), None);
+        // Said once.
+        let (change, shown) = view.prune(&only_a);
+        assert!(change.is_none() && shown.is_none());
+        // The delete undone: the view stays valid and names none.
+        let (change, shown) = view.prune(&both);
+        assert!(change.is_none() && shown.is_none());
+        assert_eq!(view.with_ctx(|vc| vc.state().active_sequence), None);
+    }
 }

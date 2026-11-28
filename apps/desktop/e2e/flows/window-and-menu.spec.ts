@@ -648,6 +648,11 @@ test.describe("F18 window and menu", () => {
       await expect(item(view, "Reset layout")).toBeFocused();
       await page.keyboard.press("ArrowDown");
       await expect(item(view, "Reset all workspaces")).toBeFocused();
+      // Next and Previous sequence (WP-2B.03) sit before Toggle full screen.
+      await page.keyboard.press("ArrowDown");
+      await expect(item(view, "Next sequence")).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expect(item(view, "Previous sequence")).toBeFocused();
       await page.keyboard.press("ArrowDown");
       await expect(
         item(page.getByRole("menu", { name: "View" }), "Toggle full screen"),

@@ -54,6 +54,24 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
     "menu.projectSettings",
     "shortcuts.menu.projectSettings",
   ),
+  // The sequence tabs (WP-2B.03): File > New sequence and Sequence settings…, View > Next and
+  // Previous sequence.
+  cmd("sequences.new", "menu", "global", "menu.newSequence", "shortcuts.menu.newSequence"),
+  cmd(
+    "sequences.settings",
+    "menu",
+    "global",
+    "menu.sequenceSettings",
+    "shortcuts.menu.sequenceSettings",
+  ),
+  cmd("sequences.next", "menu", "global", "menu.nextSequence", "shortcuts.menu.nextSequence"),
+  cmd(
+    "sequences.previous",
+    "menu",
+    "global",
+    "menu.previousSequence",
+    "shortcuts.menu.previousSequence",
+  ),
   cmd("export.start", "menu", "global", "menu.export", "shortcuts.menu.export"),
   cmd("app.open_settings", "menu", "global", "menu.settings", "shortcuts.menu.settings"),
   cmd("app.quit", "menu", "global", "menu.quit", "shortcuts.menu.quit"),

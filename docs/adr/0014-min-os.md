@@ -1,6 +1,6 @@
 # ADR-0014: Minimum supported operating systems
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-28)
 - **Date:** 2026-11-22
 - **Deciders:** Cutweave maintainers (decision pending WP-0J.03)
 - **Supersedes:** none
@@ -25,6 +25,8 @@ The minimum OS set drives build baselines (Linux glibc), CI and smoke-test image
 4. **Newer Linux baseline (24.04+)** to match the CI image; excludes many LTS users.
 
 ## Decision
+
+Accepted by the product owner on 2026-11-28 as proposed: Windows 10 22H2 and Windows 11 (Windows 10 only while the pinned Electron supports it, else Windows 11 only), macOS 13+, Ubuntu 22.04+ and Fedora 40+ (X11 and Wayland) with Mesa >= 23, built in the glibc 2.35 container. The nightly smoke test on these floors waits for the reference machines (WP-0I.04, #34), and the floor is checked again on each Electron upgrade.
 
 **Decided by: WP-0J.03** (human), with evidence from WP-0A.03 (CI matrix), the Spike S2 audio results (WP-0D.02) and the Electron, wgpu and FFmpeg floors. Criteria: choose the lowest versions that (a) the pinned Electron officially supports, (b) provide a wgpu backend that passes the golden-frame and spike tests, and (c) can be smoke-tested nightly on a real or VM image. Proposed baseline: Windows 10 22H2+ if supported, else Windows 11 only; macOS 13+ (Metal 3, arm64 and Intel as supported); Ubuntu 22.04+ and Fedora 40+ with Mesa >= 23, glibc 2.35 build container. The evidence is recorded in the Accepted ADR. Not decided here.
 

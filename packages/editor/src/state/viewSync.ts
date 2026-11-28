@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Mirrors the persisted part of `viewStore` to the engine (`view.set`, debounced) and restores
-// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout, and the Source
+// it from `view.get` (WP-1C.04): playhead, zoom, scroll, selection, panel layout (with the
+// sequence tabs), the sequence shown (WP-2B.03, sent at once: the engine plays it), and the Source
 // view's marks (WP-2A.14, sent at once: a mark is a deliberate act and must survive a quit). The preview
 // quality is a preference, not part of it (WP-2H.10). `view.*` commands never touch the document
 // and are not undoable.
@@ -21,6 +22,14 @@ import {
 
 /** The engine mirror is flushed this long after the last change (WP-1M.02). */
 export const VIEW_SYNC_DEBOUNCE_MS = 500;
+
+/**
+ * How often a refused "show this sequence" is sent again on its own (WP-2B.03). The engine's
+ * view learns of a new sequence a moment after the command that made it answers, so the choice
+ * of a sequence just created can arrive too early; the engine must end up playing what the
+ * timeline shows, so this one field does not wait for the next change.
+ */
+export const ACTIVE_SEQUENCE_RETRIES = 3;
 
 export interface ViewSyncTimers {
   setTimeout(callback: () => void, ms: number): unknown;
@@ -58,7 +67,13 @@ function mirrored(state: ViewStore): Mirrored {
     scroll: state.scroll,
     selection: state.selection,
     sourceMarks: state.sourceMarks,
-    panel: { workspaceId: state.workspaceId, aspect: state.aspect, layouts: state.layouts },
+    activeSequence: state.activeSequence,
+    panel: {
+      workspaceId: state.workspaceId,
+      aspect: state.aspect,
+      layouts: state.layouts,
+      sequenceTabs: state.sequenceTabs,
+    },
   };
 }
 
@@ -80,9 +95,15 @@ export function diffView(sent: Mirrored | null, now: Mirrored): ViewPatch | null
     sent === null ||
     sent.panel.workspaceId !== now.panel.workspaceId ||
     sent.panel.aspect !== now.panel.aspect ||
-    sent.panel.layouts !== now.panel.layouts
+    sent.panel.layouts !== now.panel.layouts ||
+    sent.panel.sequenceTabs !== now.panel.sequenceTabs
   ) {
     patch.panel_layout = panelLayoutOf(now.panel);
+  }
+  // `view.set` treats null as "absent": "none chosen" cannot be sent, and need not be (the
+  // engine forgets a deleted sequence itself).
+  if ((sent?.activeSequence ?? null) !== now.activeSequence && now.activeSequence !== null) {
+    patch.active_sequence = now.activeSequence;
   }
   const marks = diffMarks(sent?.sourceMarks ?? {}, now.sourceMarks);
   if (marks !== null) patch.source_marks = marks;
@@ -126,6 +147,8 @@ export class ViewSync {
   #offProject: (() => void)[] = [];
   /** Grows with every project change: what was asked of the project before is not taken. */
   #project = 0;
+  /** Refused sends of the sequence shown since the last accepted one. */
+  #activeRetries = 0;
 
   constructor(options: ViewSyncOptions) {
     this.#store = options.store;
@@ -201,8 +224,18 @@ export class ViewSync {
       await this.#rpc.call("view.set", { patch });
       // Another project opened meanwhile: what the engine holds now is what was read from it.
       if (project === this.#project) this.#sent = now;
+      this.#activeRetries = 0;
     } catch (error) {
       this.#onError(error); // `#sent` is unchanged: the next change retries the difference
+      // The sequence shown is sent again on its own, a few times (see ACTIVE_SEQUENCE_RETRIES).
+      if (
+        patch.active_sequence !== undefined &&
+        project === this.#project &&
+        this.#activeRetries < ACTIVE_SEQUENCE_RETRIES
+      ) {
+        this.#activeRetries += 1;
+        this.#schedule();
+      }
     }
   }
 
@@ -210,7 +243,11 @@ export class ViewSync {
     if (this.#unsubscribe === null) {
       this.#unsubscribe = this.#store.subscribe((state, previous) => {
         if (this.#adopting) return; // the engine's own state: nothing to send
-        if (state.sourceMarks !== previous.sourceMarks) {
+        // A mark, and the sequence shown (the engine plays it: WP-2B.03), go at once.
+        if (
+          state.sourceMarks !== previous.sourceMarks ||
+          state.activeSequence !== previous.activeSequence
+        ) {
           this.flush().catch(this.#onError);
           return;
         }
@@ -221,7 +258,8 @@ export class ViewSync {
           state.selection !== previous.selection ||
           state.workspaceId !== previous.workspaceId ||
           state.aspect !== previous.aspect ||
-          state.layouts !== previous.layouts
+          state.layouts !== previous.layouts ||
+          state.sequenceTabs !== previous.sequenceTabs
         ) {
           this.#schedule();
         }
@@ -253,6 +291,7 @@ export class ViewSync {
    */
   async #reload(): Promise<void> {
     const project = ++this.#project;
+    this.#activeRetries = 0;
     this.#cancelTimer();
     this.#dirtyAgain = false;
     this.#adopting = true;

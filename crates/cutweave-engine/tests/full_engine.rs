@@ -902,3 +902,165 @@ fn an_audio_only_media_item_plays_its_sound() {
     drop(conn);
     engine.shutdown();
 }
+
+/// WP-2B.03: playback is of the sequence the editor shows (`view.set_active_sequence`), not of
+/// the first one. A second, shorter sequence is shown: the transport takes its extent (a seek
+/// past its end is clamped to it). Deleting it puts the first sequence back, and undoing the
+/// delete does not bring the choice back with it (the view names no sequence then).
+#[test]
+fn playback_is_of_the_sequence_the_editor_shows() {
+    let t = TempDir::new("shown");
+    let (fake, clip) = fake_clip(t.path(), "a.mp4", FakeBackend::new());
+    let clocks = Clocks::new();
+    let (engine, _handle) = manual_engine(t.path(), fake, &clocks);
+    let conn = agent(&engine);
+    // The first sequence holds 2 s.
+    let (media, _item, _imported) = build_timeline(&conn, &clip);
+    let seek = |to: &str| call(&conn, "view.seek", json!({ "t": to })).unwrap()["t"].clone();
+    assert_eq!(seek("1.5s"), json!(SEC * 3 / 2));
+
+    // A second sequence with 1 s in it; nothing changes until it is shown.
+    let second = call(&conn, "sequence.create", json!({ "name": "Short" })).unwrap();
+    call(
+        &conn,
+        "timeline.insert",
+        json!({
+            "sequence": second["sequence"], "track": second["video_track"],
+            "media": media, "at": 0, "duration": "1s",
+        }),
+    )
+    .unwrap();
+    assert_eq!(seek("1.5s"), json!(SEC * 3 / 2));
+
+    let shown = call(
+        &conn,
+        "view.set_active_sequence",
+        json!({ "sequence": second["sequence"] }),
+    )
+    .unwrap();
+    assert_eq!(shown["sequence"], second["sequence"]);
+    // Its extent is the transport's now: 1.5 s is past its end.
+    let clamped = seek("1.5s").as_i64().unwrap();
+    assert!(clamped <= SEC, "clamped to the 1 s sequence: {clamped}");
+    assert_eq!(seek("0.5s"), json!(SEC / 2));
+
+    // Deleted: once the delete has answered, the view names it no more (no waiting: the very
+    // next read), and the first sequence plays again.
+    call(
+        &conn,
+        "sequence.delete",
+        json!({ "sequence": second["sequence"] }),
+    )
+    .unwrap();
+    let view = call(&conn, "view.get", json!({})).unwrap();
+    assert_eq!(view["active_sequence"], Value::Null, "{view}");
+    assert_eq!(seek("1.5s"), json!(SEC * 3 / 2));
+
+    // The undo brings the sequence back, not the choice: the first one still plays.
+    call(&conn, "edit.undo", json!({})).unwrap();
+    assert_eq!(seek("1.5s"), json!(SEC * 3 / 2));
+    let view = call(&conn, "view.get", json!({})).unwrap();
+    assert_eq!(view["active_sequence"], Value::Null, "{view}");
+    drop(conn);
+    engine.shutdown();
+}
+
+/// Once a command that removes something has answered, the view no longer names it: the very
+/// next `view.get` (no waiting) has the deleted clip out of the selection and the removed
+/// media's source marks gone, and a `view.set` right after a `sequence.create` can show the
+/// new sequence. The view is brought in line with the committed document before every
+/// `view.*` command, not only by the event forwarder a moment later.
+#[test]
+fn the_view_never_names_what_a_finished_command_removed() {
+    let t = TempDir::new("view-prune");
+    let (fake, clip) = fake_clip(t.path(), "a.mp4", FakeBackend::new());
+    let (fake, other) = fake_media(
+        t.path(),
+        "b.mp4",
+        fake,
+        (4, FrameRate::FPS_30),
+        (true, true),
+    );
+    let clocks = Clocks::new();
+    let (engine, _handle) = manual_engine(t.path(), fake, &clocks);
+    let conn = agent(&engine);
+    let (_media, item, _imported) = build_timeline(&conn, &clip);
+    let marked = import_one(&conn, &other);
+
+    // Busy threads, twice the cores: the forwarder thread, which prunes the view on its own a
+    // moment after each patch, is kept waiting for a core, as on a loaded machine. Without the
+    // prune at the head of every `view.*` command the reads below see stale names then.
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let cores = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+    let busy: Vec<_> = (0..cores * 2)
+        .map(|_| {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    std::hint::spin_loop();
+                }
+            })
+        })
+        .collect();
+
+    for round in 0..150 {
+        // A sequence just made can be shown at once, and deleting it is seen at once.
+        let made = call(
+            &conn,
+            "sequence.create",
+            json!({ "name": format!("S{round}") }),
+        )
+        .unwrap();
+        let view = call(
+            &conn,
+            "view.set",
+            json!({ "patch": { "active_sequence": made["sequence"] } }),
+        )
+        .unwrap();
+        assert_eq!(view["active_sequence"], made["sequence"], "round {round}");
+        call(
+            &conn,
+            "sequence.delete",
+            json!({ "sequence": made["sequence"] }),
+        )
+        .unwrap();
+        let view = call(&conn, "view.get", json!({})).unwrap();
+        assert_eq!(
+            view["active_sequence"],
+            Value::Null,
+            "round {round}: {view}"
+        );
+        // The undo brings it back; the view stays valid and names none.
+        call(&conn, "edit.undo", json!({})).unwrap();
+        let view = call(&conn, "view.get", json!({})).unwrap();
+        assert_eq!(
+            view["active_sequence"],
+            Value::Null,
+            "round {round}: {view}"
+        );
+        call(&conn, "edit.redo", json!({})).unwrap();
+    }
+
+    // The same for a selected clip and for the source marks of removed media.
+    call(
+        &conn,
+        "view.set",
+        json!({ "patch": {
+            "selection": [{ "kind": "item", "id": item }],
+            "source_marks": { marked.as_str().unwrap(): { "in": 0, "out": SEC } },
+        } }),
+    )
+    .unwrap();
+    call(&conn, "item.delete", json!({ "items": [item] })).unwrap();
+    let view = call(&conn, "view.get", json!({})).unwrap();
+    assert_eq!(view["selection"], json!([]), "{view}");
+    call(&conn, "media.remove", json!({ "id": marked })).unwrap();
+    let view = call(&conn, "view.get", json!({})).unwrap();
+    assert_eq!(view["source_marks"], json!({}), "{view}");
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    for thread in busy {
+        thread.join().unwrap();
+    }
+    drop(conn);
+    engine.shutdown();
+}

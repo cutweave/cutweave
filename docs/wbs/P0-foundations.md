@@ -738,6 +738,7 @@ Human gates: D0.* (day 0), 0B.01 (legal text), 0C.04/0D.02/0E.03/0F.03 (hardware
 - **Acceptance criteria:** `m0-go-no-go.md` has a signed-off decision line and a checklist where each of the 3 exit criteria has a link to evidence; ADR-014 (min OS) status Accepted.
 - **Tests:** n/a.
 - **Out of scope:** schedule (0J.04).
+- **Decided (2026-11-28):** [ADR-0014](../adr/0014-min-os.md) accepted by the product owner as proposed; the nightly min-OS smoke test waits for the reference machines (WP-0I.04).
 
 ### WP-0J.04 — Re-estimate roadmap and Phase 1 backlog
 - **Area:** `docs/m0-reestimate.md`

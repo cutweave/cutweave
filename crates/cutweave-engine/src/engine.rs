@@ -538,21 +538,23 @@ impl Core {
             Some(roots) => ImportPolicy::restricted(roots),
         };
         // `media.import_frame` renders the document of the moment into the project's folder.
+        let shown = Core::view_state(session).active_sequence;
         let frames = Arc::new(EngineFrames {
             snapshot: handle.snapshot(),
             backend: self.deps.subsystems.frame_backend(),
             project_root: session.project_root().map(Path::to_path_buf),
             seed: self.deps.seed,
+            shown,
         });
-        // The sequence the editor shows (the first one): `media.import_sequence` gives a run
-        // its frame rate when the caller names none (ADR-0035).
-        let sequence_fps = handle
-            .snapshot()
-            .doc
-            .sequences
-            .values()
-            .next()
-            .map(|s| s.format.frame_rate);
+        // The sequence the editor shows: `media.import_sequence` gives a run its frame rate
+        // when the caller names none (ADR-0035).
+        let sequence_fps = {
+            let snapshot = handle.snapshot();
+            shown
+                .and_then(|id| snapshot.doc.sequences.get(&id))
+                .or_else(|| snapshot.doc.sequences.values().next())
+                .map(|s| s.format.frame_rate)
+        };
         // Where `copy_to_project` copies to (WP-2F.04c): the open project's folder, with the
         // free-space probe collect uses; an untitled document has none.
         let project = session.project_root().map(|root| {
@@ -703,8 +705,13 @@ impl Core {
         let Some(session) = guard.as_ref() else {
             return Err(stopped());
         };
-        let (result, change) = {
+        let (pruned, result, change) = {
             let mut view = session.view.lock().unwrap_or_else(PoisonError::into_inner);
+            // The view first drops what the committed document no longer has (a deleted
+            // sequence that was shown, deleted clips that were selected): the document event
+            // forwarder does the same, but a moment after the command that deleted them has
+            // answered, and a caller that reads the view right then must not be told of them.
+            let pruned = view.prune(&session.handle().committed_snapshot().doc);
             let result = view.with_ctx(|vc| {
                 self.deps
                     .registry
@@ -712,9 +719,20 @@ impl Core {
             });
             let change =
                 view.with_ctx(|vc| vc.take_event().map(|change| (change, vc.state().clone())));
-            (result, change)
+            (pruned, result, change)
         };
         drop(guard);
+        // What the document took away is everyone's news (no origin), and comes first.
+        let (dropped, shown) = pruned;
+        if let Some(change) = dropped {
+            self.deps.events.publish(EngineEvent::View {
+                change,
+                origin: None,
+            });
+        }
+        if let (Some(state), None) = (&shown, &change) {
+            self.deps.subsystems.on_view(state, false);
+        }
         if let Some((change, state)) = change {
             self.deps.events.publish(EngineEvent::View {
                 change,
