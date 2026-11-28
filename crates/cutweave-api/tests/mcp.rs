@@ -2220,17 +2220,32 @@ async fn the_actor_comes_from_the_token() {
     // `edit_undo` undoes the caller's own latest change.
     let undone = cli.ok("edit_undo", json!({})).await;
     assert_eq!(undone["actor"], "agent:cli");
+    // The fan-out forwards events on its own task, so the undo's `doc.patched` may arrive
+    // after the response (#242): wait for it, with a bound, instead of draining once.
     let mut patched = Vec::new();
-    while let Ok(event) = events.try_recv() {
-        if event.name() == "doc.patched" {
+    let wait = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let event = events.recv().await.expect("the event stream stays open");
+            if event.name() != "doc.patched" {
+                continue;
+            }
             patched.push(event.payload()["actor"].as_str().unwrap().to_owned());
+            // The split and its undo are the two changes made with the CLI token.
+            if patched.iter().filter(|a| *a == "agent:cli").count() == 2 {
+                break;
+            }
         }
-    }
+    })
+    .await;
+    assert!(
+        wait.is_ok(),
+        "no doc.patched for the undo within 10 s: {patched:?}"
+    );
     assert!(
         patched.iter().all(|a| a == "agent:mcp" || a == "agent:cli"),
         "{patched:?}"
     );
-    assert!(patched.contains(&"agent:cli".to_owned()));
+    assert_eq!(patched.last().map(String::as_str), Some("agent:cli"));
     mcp.close().await;
     cli.close().await;
 }
