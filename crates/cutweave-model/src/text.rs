@@ -130,11 +130,16 @@ impl FontSpec {
         if n == 0 || n > MAX_FAMILY_CHARS || self.family.chars().any(char::is_control) {
             return Err(TextError::new(
                 "/family",
-                format!("the family must be 1 to {MAX_FAMILY_CHARS} characters, no control characters"),
+                format!(
+                    "the family must be 1 to {MAX_FAMILY_CHARS} characters, no control characters"
+                ),
             ));
         }
         if !(1..=1000).contains(&self.weight) {
-            return Err(TextError::new("/weight", "the weight must be from 1 to 1000"));
+            return Err(TextError::new(
+                "/weight",
+                "the weight must be from 1 to 1000",
+            ));
         }
         if self.axes.len() > MAX_FONT_AXES {
             return Err(TextError::new(
@@ -615,9 +620,7 @@ impl TextStyle {
 
 /// A style override for a run: only the fields given replace the item's style for those
 /// characters. Static values only (no keys).
-#[derive(
-    Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type,
-)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
 #[serde(deny_unknown_fields)]
 pub struct RunStyle {
     /// Font.
@@ -765,7 +768,8 @@ impl RichText {
                 ));
             }
             if let Some(s) = &run.style {
-                s.check().map_err(|e| e.under(&format!("/runs/{i}/style")))?;
+                s.check()
+                    .map_err(|e| e.under(&format!("/runs/{i}/style")))?;
             }
         }
         Ok(())
@@ -1091,9 +1095,7 @@ impl TextItem {
     pub fn check(&self) -> Result<(), TextError> {
         self.content.check().map_err(|e| e.under("/content"))?;
         match &self.style {
-            TextStyleRef::Inline { style } => style
-                .check()
-                .map_err(|e| e.under("/style/style"))?,
+            TextStyleRef::Inline { style } => style.check().map_err(|e| e.under("/style/style"))?,
             TextStyleRef::Named { name } => {
                 if builtin_style(name).is_none() {
                     return Err(TextError::new(

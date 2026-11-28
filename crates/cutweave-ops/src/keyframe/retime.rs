@@ -2,9 +2,9 @@
 //! What splits, cuts and trims do to the keys of an item (keyframes §8.1): the rules, applied
 //! to every animated property of a clip. Static properties are never touched.
 
-use cutweave_model::{AnimValue, Animatable, Duration, Item, KeyframeError, PropId, PropMut, Time};
 #[cfg(test)]
 use cutweave_model::Clip;
+use cutweave_model::{AnimValue, Animatable, Duration, Item, KeyframeError, PropId, PropMut, Time};
 
 /// One retiming rule of keyframes §8.1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

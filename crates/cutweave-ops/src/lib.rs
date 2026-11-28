@@ -22,9 +22,9 @@ pub mod media;
 pub mod project;
 pub mod report;
 pub mod sequence;
-pub mod text;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod text;
 pub mod timeline;
 pub mod track;
 mod util;

@@ -165,9 +165,7 @@ impl Command for ItemResetProps {
         let targets = keyframe::targets(tx.doc(), self.item, self.items.as_deref())?;
         let mut changed: Vec<String> = Vec::new();
         for t in &targets {
-            let done = tx.update_item(t.id, |item| {
-                ItemResetProps::reset(item, &what)
-            })?;
+            let done = tx.update_item(t.id, |item| ItemResetProps::reset(item, &what))?;
             for c in done {
                 if !changed.contains(&c) {
                     changed.push(c);

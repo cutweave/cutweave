@@ -267,11 +267,7 @@ pub(crate) fn no_prop(id: PropId) -> CmdError {
 /// Sets a property to a static value (dropping any keys), returning whether its value
 /// changed. A static property that already has the value is untouched; the value must have the
 /// property's type and fit its range (callers validate).
-pub(crate) fn set_static(
-    clip: &mut Item,
-    id: PropId,
-    value: &KeyValue,
-) -> Result<bool, CmdError> {
+pub(crate) fn set_static(clip: &mut Item, id: PropId, value: &KeyValue) -> Result<bool, CmdError> {
     fn one<T: Wire>(a: &mut Animatable<T>, value: &KeyValue) -> bool {
         match T::pick(value) {
             Some(v) if *a != Animatable::Static(v.clone()) => {

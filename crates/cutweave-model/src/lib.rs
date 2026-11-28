@@ -76,8 +76,6 @@ pub use item::{
     AudioProps, BlendMode, Clip, Crop, Fade, FadeCurve, Flip, Item, PropMut, PropRef, Transform,
     Vec2, VisualProps,
 };
-pub use text::{NamedStyle, TextItem};
-pub use text_patch::{RunStylePatch, TextStylePatch};
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, ImageSequence, MAX_IMAGE_SEQUENCE_FRAMES,
@@ -104,6 +102,8 @@ pub use snap::{SnapError, SnapIndex, SnapKind, SnapKinds, SnapOptions, SnapTarge
 pub use speed::{
     Freeze, MAX_SPEED_TERM, SourceMap, Speed, SpeedError, fit as fit_source_in, source_time,
 };
+pub use text::{NamedStyle, TextItem};
+pub use text_patch::{RunStylePatch, TextStylePatch};
 pub use time::{
     ABSOLUTE_TIME_PATTERN, Duration, FLICKS_PER_SECOND, MAX_SAFE_FLICKS, Time, TimeError,
 };

@@ -239,9 +239,8 @@ fn tag_differs(
         Some((_, last)) if last == "fill" => "kind",
         _ => return false,
     };
-    let tag = |m: &serde_json::Map<String, Value>| {
-        m.get(key).and_then(Value::as_str).map(str::to_owned)
-    };
+    let tag =
+        |m: &serde_json::Map<String, Value>| m.get(key).and_then(Value::as_str).map(str::to_owned);
     let (b, a) = (tag(before), tag(after));
     b.is_some() && a.is_some() && b != a
 }

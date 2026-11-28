@@ -173,7 +173,10 @@ fn only_sequence(doc: &Project) -> Result<SequenceId, CmdError> {
     let mut it = doc.sequences.keys();
     match (it.next(), it.next()) {
         (Some(id), None) => Ok(*id),
-        (None, _) => Err(CmdError::invalid("/sequence", "the project has no sequence")),
+        (None, _) => Err(CmdError::invalid(
+            "/sequence",
+            "the project has no sequence",
+        )),
         _ => Err(CmdError::invalid(
             "/sequence",
             "the project has several sequences; give `sequence`",
@@ -242,7 +245,10 @@ impl TextAdd {
                 if track.kind != TrackKind::Text {
                     return Err(CmdError::invalid(
                         "/track",
-                        format!("track `{t}` is a {} track; text goes on a text track", track.kind),
+                        format!(
+                            "track `{t}` is a {} track; text goes on a text track",
+                            track.kind
+                        ),
                     ));
                 }
                 if track.locked {
@@ -489,9 +495,7 @@ impl TextSetStyle {
             })?,
             None => text.resolved_style().into_owned(),
         };
-        self.patch
-            .apply(&base)
-            .map_err(|e| text_error("/patch", e))
+        self.patch.apply(&base).map_err(|e| text_error("/patch", e))
     }
 }
 
@@ -630,16 +634,12 @@ impl Command for TextSetBox {
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
         editable(ctx.doc(), self.item)?;
-        self.text_box
-            .check()
-            .map_err(|e| text_error("/box", e))
+        self.text_box.check().map_err(|e| text_error("/box", e))
     }
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<TextSetBoxOutput, CmdError> {
         editable(tx.doc(), self.item)?;
-        self.text_box
-            .check()
-            .map_err(|e| text_error("/box", e))?;
+        self.text_box.check().map_err(|e| text_error("/box", e))?;
         update(tx, self.item, |t| {
             t.text_box = self.text_box;
             Ok(())

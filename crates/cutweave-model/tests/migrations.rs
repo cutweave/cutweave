@@ -28,8 +28,9 @@ use cutweave_model::{
     Duration, FolderId, FrameRate, IdGen, ImageSequence, MIGRATIONS, MatrixCoefficients,
     MediaAsset, MediaFolder, MediaKind, MigrationError, Migrator, OLDEST_SCHEMA_VERSION,
     OpenOutcome, ProbeInfo, Project, SampleRate, SeededGen, Sequence, SequenceFormat, StreamInfo,
-    StreamKind, TextItem, Time, Track, TrackKind, TransferCharacteristics, Vec2, canonical_json_pretty,
-    migrate_to_current, migrate_value, open, open_str, schema_version_of, to_document_string,
+    StreamKind, TextItem, Time, Track, TrackKind, TransferCharacteristics, Vec2,
+    canonical_json_pretty, migrate_to_current, migrate_value, open, open_str, schema_version_of,
+    to_document_string,
 };
 use serde_json::{Value, json};
 
@@ -498,7 +499,12 @@ fn expected_text() -> Project {
     let mut ids = SeededGen::new(6);
     let mut project = Project::new("Text");
     stamp(&mut project);
-    let media = MediaAsset::file(ids.mint(), MediaKind::Video, "/media/a.mp4", video_probe(10));
+    let media = MediaAsset::file(
+        ids.mint(),
+        MediaKind::Video,
+        "/media/a.mp4",
+        video_probe(10),
+    );
     let mut sequence = Sequence::new(
         ids.mint(),
         "Main",
@@ -947,7 +953,12 @@ fn the_text_fixture_round_trips_with_every_field() {
     );
     // The wire form: a `kind` tag, `box` and the style source.
     let value: Value = serde_json::to_value(&project).unwrap();
-    let sequence = value["sequences"].as_object().unwrap().values().next().unwrap();
+    let sequence = value["sequences"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap();
     let track = sequence["tracks"]
         .as_object()
         .unwrap()

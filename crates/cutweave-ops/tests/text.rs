@@ -50,7 +50,11 @@ fn one_call_adds_a_titled_text_with_defaults() {
     );
     let text = text_of(&h, item);
     assert_eq!(text.content.to_plain(), "Hello");
-    assert_eq!(text.resolved_style().size, 96.0.into(), "the built-in title");
+    assert_eq!(
+        text.resolved_style().size,
+        96.0.into(),
+        "the built-in title"
+    );
     // `timeline.get` shows it.
     let got = h
         .query("timeline.get", json!({"sequence": p.sequence, "depth": 2}))
@@ -119,7 +123,10 @@ fn bad_values_are_invalid_with_a_path() {
     );
     let item = item_id(&add(&mut h, json!({"text": "Hello"}))["item"]);
     assert_invalid(
-        h.run("text.set_style", json!({"item": item, "patch": {"size": 100000}})),
+        h.run(
+            "text.set_style",
+            json!({"item": item, "patch": {"size": 100000}}),
+        ),
         "/patch/size",
     );
     assert_invalid(
@@ -131,7 +138,10 @@ fn bad_values_are_invalid_with_a_path() {
         "/patch/strokes/0/width",
     );
     assert_invalid(
-        h.run("text.set_style", json!({"item": item, "patch": {"nope": 1}})),
+        h.run(
+            "text.set_style",
+            json!({"item": item, "patch": {"nope": 1}}),
+        ),
         "/patch/nope",
     );
     assert_invalid(
@@ -153,7 +163,10 @@ fn bad_values_are_invalid_with_a_path() {
         "/emoji",
     );
     assert_invalid(
-        h.run("text.set_box", json!({"item": item, "box": {"height": -1.0}})),
+        h.run(
+            "text.set_box",
+            json!({"item": item, "box": {"height": -1.0}}),
+        ),
         "/box/height",
     );
     assert_invalid(
@@ -173,14 +186,23 @@ fn a_locked_track_is_locked() {
     h.ok("track.set", json!({"track": out["track"], "locked": true}));
     for (name, params) in [
         ("text.set_content", json!({"item": item, "text": "x"})),
-        ("text.set_style", json!({"item": item, "patch": {"size": 40.0}})),
+        (
+            "text.set_style",
+            json!({"item": item, "patch": {"size": 40.0}}),
+        ),
         (
             "text.set_run_style",
             json!({"item": item, "start": 0, "end": 2, "patch": {"size": 40.0}}),
         ),
         ("text.set_box", json!({"item": item, "box": {"width": 0.5}})),
-        ("text.add_emoji", json!({"item": item, "emoji": "\u{1F389}"})),
-        ("text.add", json!({"text": "x", "track": out["track"], "at": "9s"})),
+        (
+            "text.add_emoji",
+            json!({"item": item, "emoji": "\u{1F389}"}),
+        ),
+        (
+            "text.add",
+            json!({"text": "x", "track": out["track"], "at": "9s"}),
+        ),
     ] {
         assert_code(h.run(name, params), "locked");
     }
@@ -211,7 +233,10 @@ fn content_run_styles_emoji_and_box() {
     );
     assert_eq!(text_of(&h, item).content.runs.len(), 1);
     // Emoji at the end and in the middle.
-    h.ok("text.add_emoji", json!({"item": item, "emoji": "\u{1F389}"}));
+    h.ok(
+        "text.add_emoji",
+        json!({"item": item, "emoji": "\u{1F389}"}),
+    );
     h.ok(
         "text.add_emoji",
         json!({"item": item, "emoji": "\u{1F469}\u{200D}\u{1F4BB}", "at": 5}),
@@ -234,7 +259,10 @@ fn content_run_styles_emoji_and_box() {
     );
     assert_eq!(out["box"], json!({"width": 0.6, "height": 0.2}));
     h.ok("text.set_box", json!({"item": item, "box": {}}));
-    assert_eq!(text_of(&h, item).text_box, cutweave_model::text::TextBox::default());
+    assert_eq!(
+        text_of(&h, item).text_box,
+        cutweave_model::text::TextBox::default()
+    );
 }
 
 #[test]
@@ -250,7 +278,10 @@ fn set_style_merges_and_detaches_the_built_in() {
         json!({"item": item, "patch": {"font": {"family": "Lora"}, "align": "left"}}),
     );
     assert_eq!(out["style"]["font"]["family"], "Lora");
-    assert_eq!(out["style"]["font"]["weight"], 800, "the rest of the title stays");
+    assert_eq!(
+        out["style"]["font"]["weight"], 800,
+        "the rest of the title stays"
+    );
     assert!(matches!(
         text_of(&h, item).style,
         cutweave_model::text::TextStyleRef::Inline { .. }
@@ -261,7 +292,10 @@ fn set_style_merges_and_detaches_the_built_in() {
         json!({"item": item, "patch": {"glow": {"radius": 8.0, "color": "#ffffff", "intensity": 1.0}}}),
     );
     assert!(text_of(&h, item).resolved_style().glow.is_some());
-    h.ok("text.set_style", json!({"item": item, "patch": {"glow": null}}));
+    h.ok(
+        "text.set_style",
+        json!({"item": item, "patch": {"glow": null}}),
+    );
     assert!(text_of(&h, item).resolved_style().glow.is_none());
     // Starting over from another built-in.
     let out = h.ok(
@@ -358,10 +392,7 @@ fn style_properties_are_keyed_with_the_keyframe_commands() {
         )
         .unwrap();
     assert_eq!(keys["clipboard"]["keys"].as_array().unwrap().len(), 1);
-    h.ok(
-        "keyframe.clear",
-        json!({"item": item, "prop": "text.size"}),
-    );
+    h.ok("keyframe.clear", json!({"item": item, "prop": "text.size"}));
     // `item.set_props` sets static opacity and position on a text item.
     h.ok(
         "item.set_props",

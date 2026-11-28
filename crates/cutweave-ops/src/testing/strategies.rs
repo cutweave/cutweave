@@ -3549,7 +3549,12 @@ fn on_text(
         return mix(unknown.clone(), unknown);
     }
     let clip_or_missing = if p.items.len() > texts.len() {
-        let others: Vec<Itm> = p.items.iter().filter(|i| i.kind != TrackKind::Text).cloned().collect();
+        let others: Vec<Itm> = p
+            .items
+            .iter()
+            .filter(|i| i.kind != TrackKind::Text)
+            .cloned()
+            .collect();
         select(others)
             .prop_map(|i| json!({"item": i.id, "text": "x"}))
             .boxed()
@@ -3588,7 +3593,10 @@ fn text_set_style(p: &Pools) -> BoxedStrategy<Value> {
         p,
         |it| {
             let id = it.id;
-            (style_patch(), option::weighted(0.2, select(vec!["title", "subtitle", "body"])))
+            (
+                style_patch(),
+                option::weighted(0.2, select(vec!["title", "subtitle", "body"])),
+            )
                 .prop_map(move |(patch, base)| match base {
                     Some(b) => json!({"item": id, "patch": patch, "style_name": b}),
                     None => json!({"item": id, "patch": patch}),
@@ -3644,7 +3652,12 @@ fn text_add_emoji(p: &Pools) -> BoxedStrategy<Value> {
         |it| {
             let id = it.id;
             (
-                select(vec!["\u{1F389}", "\u{1F469}\u{200D}\u{1F4BB}", "\u{2764}\u{FE0F}", "nope"]),
+                select(vec![
+                    "\u{1F389}",
+                    "\u{1F469}\u{200D}\u{1F4BB}",
+                    "\u{2764}\u{FE0F}",
+                    "nope",
+                ]),
                 option::weighted(0.5, 0..40_u32),
             )
                 .prop_map(move |(e, at)| json!({"item": id, "emoji": e, "at": at}))

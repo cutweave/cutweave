@@ -981,7 +981,9 @@ fn check_text(
     if track_kind != TrackKind::Text {
         out.push(Invariant::InvalidValue {
             path: path.to_owned(),
-            reason: format!("text item `{id}` is on a {track_kind} track; text goes on a text track"),
+            reason: format!(
+                "text item `{id}` is on a {track_kind} track; text goes on a text track"
+            ),
         });
     }
     if let Err(e) = text.check() {

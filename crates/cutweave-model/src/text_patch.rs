@@ -98,7 +98,13 @@ fn refine<T: Serialize + serde::de::DeserializeOwned>(
             let mut leaf = Map::new();
             leaf.insert((*key).clone(), inner[*key].clone());
             let mut node = Value::Object(leaf);
-            for seg in pointer.split('/').skip(1).collect::<Vec<_>>().into_iter().rev() {
+            for seg in pointer
+                .split('/')
+                .skip(1)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+            {
                 let seg = seg.replace("~1", "/").replace("~0", "~");
                 let mut m = Map::new();
                 m.insert(seg, node);
