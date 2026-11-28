@@ -54,9 +54,13 @@ function textFieldFocused(): boolean {
   return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA";
 }
 
+/** The commands that replace the open project with another (or none). */
+const LEAVING: ReadonlySet<string> = new Set(["project.open", "project.close", "project.new"]);
+
 export class ProjectController {
   readonly #deps: ProjectControllerDeps;
   #offs: (() => void)[] = [];
+  #beforeLeave: (() => Promise<void>) | null = null;
 
   constructor(deps: ProjectControllerDeps) {
     this.#deps = deps;
@@ -147,8 +151,21 @@ export class ProjectController {
     return engine === "" ? t("projectUi.untitled") : engine;
   }
 
+  /**
+   * What runs before this app leaves the open project (issue #233): the app passes the view
+   * sync's `leave`, so the view changes still waiting are saved with the project being left.
+   */
+  setBeforeLeave(hook: (() => Promise<void>) | null): void {
+    this.#beforeLeave = hook;
+  }
+
   /** A command over the editor's connection (results are cast by each flow). */
-  #call(name: string, input: object): Promise<unknown> {
+  async #call(name: string, input: object): Promise<unknown> {
+    if (LEAVING.has(name)) await this.#beforeLeave?.().catch(() => undefined);
+    return this.#send(name, input);
+  }
+
+  #send(name: string, input: object): Promise<unknown> {
     const { rpc, blocked } = this.#deps.engine.getState();
     if (rpc === null) return Promise.reject(new RpcError("unsupported", "no engine is connected"));
     if (blocked !== null) {

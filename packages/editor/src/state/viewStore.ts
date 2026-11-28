@@ -167,6 +167,13 @@ export interface ViewActions {
    * nothing it sets is sent back.
    */
   applyEngineView: (ui: Partial<UiState>) => void;
+  /**
+   * Another project is open, or none (issue #233): everything that belonged to the one before
+   * goes back to what a launch starts with (playhead, zoom, scroll, selection, source marks,
+   * open keyframe lanes, master gain and mute). The panels stay: the project's own layout, when
+   * it has one, comes with its view (`applyEngineView`).
+   */
+  resetProjectView: () => void;
 }
 
 export type ViewStore = ViewState & ViewActions;
@@ -330,6 +337,13 @@ export function createViewStore(storage?: StateStorage) {
             }
             return next;
           }),
+        resetProjectView: () =>
+          set(() => ({
+            ...initialEngineView,
+            keyframeLanes: initialViewState.keyframeLanes,
+            masterGain: initialViewState.masterGain,
+            muted: initialViewState.muted,
+          })),
       }),
       {
         name: VIEW_STORAGE_KEY,
