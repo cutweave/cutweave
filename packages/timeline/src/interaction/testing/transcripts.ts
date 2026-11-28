@@ -267,15 +267,15 @@ const moving: Transcript[] = [
     end: "hover",
   },
   {
-    name: "dragged away and back: the last update puts it back, then commits",
+    name: "dragged away and back: the clip shows at home again, and the release cancels as unchanged",
     steps: drag(clip("Z"), clip("Z"), { via: [by(clip("Z"), 20)] }),
-    show: ["update_tx", "commit_tx"],
+    show: ["update_tx", "commit_tx", "cancel_tx"],
     expect: [
       `update #1 ${moveZ("start=120f mode=new_track")}`,
       `update #1 ${moveZ("start=100f mode=new_track")}`,
-      "commit #1",
+      "cancel #1 unchanged",
     ],
-    history: [moveZ("start=100f mode=new_track")],
+    history: [],
     end: "hover",
   },
   {

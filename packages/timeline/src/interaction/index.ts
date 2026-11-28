@@ -19,6 +19,7 @@ export {
   type TimelineMachineDeps,
 } from "./machine.ts";
 export { type ChartEdge, type MachineTransition, transition, wantsFrame } from "./reducer.ts";
+export { snapFromHome } from "./snap-home.ts";
 export { createSnapPort, type WasmSnapPort } from "./snap-port.ts";
 export {
   DEFAULT_MACHINE_ENV,
