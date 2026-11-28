@@ -48,6 +48,7 @@ import {
   pickFiles,
   profileDir,
   removeDir,
+  sequence,
   startFrameProbe,
   stopFrameProbe,
   type TimelineGeometry,
@@ -371,7 +372,8 @@ async function pageCounters(cdp: CDPSession): Promise<Record<string, number>> {
  * `_meta.replace`) to the frame that carries its response. This is the engine's and the socket's
  * share of a round trip; the rest of `cutweave.timeline.rtt` is the patch arriving and the editor
  * applying it. Returns what it adds to: the answers, ms, and the characters the socket received
- * (responses and `doc.patched` events: how much the editor is sent per update).
+ * in those responses and in events (`doc.patched` above all: how much the editor is sent per
+ * update; the answers to the suite's own queries are left out).
  */
 async function watchUpdateAnswers(
   cdp: CDPSession,
@@ -398,14 +400,19 @@ async function watchUpdateAnswers(
     }
   });
   cdp.on("Network.webSocketFrameReceived", (event) => {
-    received.chars += event.response.payloadData.length;
-    // Cheap test first: every `doc.patched` of a 5,000-item project passes through here.
+    const payload = event.response.payloadData;
+    // An event (`doc.patched`, `tx.*`, ...) names its method first; a response has none. Read
+    // from the head: the answer to a `timeline.get` of 5,000 items is over a megabyte.
+    if (/"method"\s*:/.test(payload.slice(0, 64))) {
+      received.chars += payload.length;
+      return;
+    }
     if (sent.size === 0) return;
-    const message = read(event.response.payloadData);
-    if (message === null || message.method !== undefined || message.id === undefined) return;
-    const at = sent.get(String(message.id));
-    if (at === undefined) return;
-    sent.delete(String(message.id));
+    const id = /"id"\s*:\s*("[^"]*"|-?\d+)/.exec(payload.slice(0, 96))?.[1]?.replace(/"/g, "");
+    const at = id === undefined ? undefined : sent.get(id);
+    if (id === undefined || at === undefined) return;
+    sent.delete(id);
+    received.chars += payload.length;
     answers.push((event.timestamp - at) * 1000);
   });
   await cdp.send("Network.enable");
@@ -481,30 +488,42 @@ async function zoomOutUntil(
 interface DragTarget {
   from: { x: number; y: number };
   reach: number;
+  item: string;
+  track: string;
 }
+
+/**
+ * A drag that comes this close to an edge of the lanes scrolls the timeline (the interaction
+ * machine's `AUTO_SCROLL_EDGE_PX` is 32): the track under a pointer that never moved up or down
+ * would change, and the move would become one onto another track.
+ */
+const EDGE_CLEARANCE_PX = 48;
 
 /**
  * A clip to drag: on a video track that is not the main track (so it moves freely inside the
  * stretch of track it has to itself, touching nothing), in a lane that shows, wide enough to
- * grab, with room to its right for the drag.
+ * grab, with room to its right for the drag, and all of the drag clear of the lanes' edges.
  */
 function dragTarget(g: TimelineGeometry, manifest: FixtureManifest): DragTarget | null {
-  const left = g.box.x + g.headerWidth;
-  const right = g.box.x + g.box.width - 8;
+  const left = g.box.x + g.headerWidth + EDGE_CLEARANCE_PX;
+  const right = g.box.x + g.box.width - EDGE_CLEARANCE_PX;
+  // Nothing scrolls up while the first track is at the top.
+  const top = g.box.y + g.rulerHeight + (g.scrollY > 0 ? EDGE_CLEARANCE_PX : 4);
+  const bottom = g.box.y + g.box.height - EDGE_CLEARANCE_PX;
   const px = (frames: number) => (frames * manifest.frame * g.pxPerSec) / FLICKS;
   for (const track of manifest.tracks) {
     if (!track.video || track.main) continue;
     const name = g.tracks.find((t) => t.id === track.id)?.name;
     if (name === undefined) continue;
     const y = laneY(g, name);
-    if (y < g.box.y + g.rulerHeight + 4 || y > g.box.y + g.box.height - 4) continue;
+    if (y < top || y > bottom) continue;
     for (const item of track.items.slice(0, 40)) {
       const x = xAt(g, item.start * manifest.frame);
       const grab = x + Math.min(px(item.duration) / 2, 20);
       const room = px(item.slot_start + item.slot_len - item.start - item.duration);
       const reach = Math.min(room - 8, 240, right - grab);
-      if (px(item.duration) >= 24 && x >= left + 4 && reach >= 60) {
-        return { from: { x: grab, y }, reach };
+      if (px(item.duration) >= 24 && grab >= left && reach >= 60) {
+        return { from: { x: grab, y }, reach, item: item.id, track: track.id };
       }
     }
   }
@@ -526,11 +545,13 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
     found.target = dragTarget(await timelineGeometry(page), manifest);
     return found.target !== null;
   });
-  if (found.target === null) throw new Error("no clip of the project can be dragged on screen");
+  if (found.target === null) {
+    throw new Error("no clip of the project can be dragged on screen, clear of the lanes' edges");
+  }
   // Each drag lets go where it pressed. With snapping on (the default, and part of what a drag
   // costs) the clip may then sit on a neighbour's edge a few pixels away, never further than the
   // snap distance, so the next drag presses the same clip at the same point.
-  const { from, reach } = found.target;
+  const { from, reach, item, track } = found.target;
   // What the check after each drag costs by itself (it reads the whole timeline back).
   let c0 = await pageCounters(cdp);
   await editorCaughtUp(page);
@@ -557,6 +578,11 @@ async function timelineProbes(page: Page, options: SuiteOptions): Promise<Metric
   c1 = await pageCounters(cdp);
   await cdp.send("Network.disable");
   if (rtt.length === 0) throw new Error("the drag made no update: nothing to measure");
+  // What was measured is a move along the clip's own track: had the timeline scrolled under the
+  // pointer, the clip would be on another track now (on the main track that is a ripple of every
+  // clip after it, a different and far slower edit).
+  const home = (await sequence(page)).tracks.find((t) => t.items.some((i) => i.id === item));
+  expect(home?.id, "the track of the dragged clip after the drags").toBe(track);
   const perUpdate = (total: number, check: number): number =>
     (Math.max(0, total - drags * check) * 1000) / rtt.length;
   const script = perUpdate((c1.ScriptDuration ?? 0) - (c0.ScriptDuration ?? 0), checkCost.script);
