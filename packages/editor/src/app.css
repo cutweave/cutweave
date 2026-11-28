@@ -2258,3 +2258,95 @@ body {
   width: min(100%, 34vh);
   margin: 0 auto;
 }
+
+/* ---------- Graph editor (WP-2C.07) ---------- */
+.cw-graph-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-1);
+}
+.cw-graph-panel__tools {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+.cw-graph-panel__group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+.cw-graph-panel__entry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+}
+.cw-graph-panel__entry .cw-field {
+  width: calc(var(--space-12) * 2.5);
+}
+.cw-graph-panel__body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.cw-graph-panel__curves {
+  flex: none;
+  box-sizing: border-box;
+  width: var(--layer-width-sm);
+  max-width: 40%;
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+  list-style: none;
+  border-right: var(--border-thin) solid var(--border-subtle);
+}
+.cw-graph-panel__curve {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-1);
+  color: var(--text-primary);
+}
+.cw-graph-panel__swatches {
+  display: inline-flex;
+  flex: none;
+  gap: var(--space-0-5);
+}
+.cw-graph-panel__swatch {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-xs);
+}
+.cw-graph-panel__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-graph-panel__curve[data-hidden] .cw-graph-panel__name {
+  color: var(--text-muted);
+}
+.cw-graph-panel__canvas {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.cw-graph-panel__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-0);
+  pointer-events: none;
+}

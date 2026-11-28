@@ -312,6 +312,8 @@ describe("every key handler in the editor is accounted for", () => {
     "panels/PreviewPanel.tsx": "the Source view's keys: the keymap's `source` context",
     "panels/SourceScrubBar.tsx":
       "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
+    "panels/graph/GraphEditorPanel.tsx":
+      "the graph editor's Time and Value fields: Enter commits, Escape puts the shown number back (dialogs group); the canvas's own keys while it has the focus (arrows nudge the selected keys, Alt+arrows step between keys, Delete, Enter, F) are the widget's, in @cutweave/ui",
     "preview/overlays/TransformOverlay.tsx":
       "the picture's handles: the keymap's `preview` context (nudges, crop); Escape ends a drag or crop mode",
     "sequences/SequenceTabs.tsx":

@@ -933,7 +933,8 @@
     "history": "History",
     "exports": "Exports",
     "close": "Close panel",
-    "closeNamed": "Close {{name}} panel"
+    "closeNamed": "Close {{name}} panel",
+    "graph": "Graph editor"
   },
   "assets": {
     "tablistLabel": "Asset browser",
@@ -2865,6 +2866,57 @@
       "formLabel": "Sequence settings",
       "done": "Done",
       "noImages": "To use a picture as the background, import it into the media bin first."
+    }
+  },
+  "graph": {
+    "canvas": "Graph editor",
+    "help": "Alt+Left and Alt+Right select a keyframe. The arrow keys move the selected keyframes in time and value; Shift moves them ten times as far. Delete removes them, Enter opens the easing, F fits the curves.",
+    "empty": {
+      "title": "No animated properties",
+      "body": "Select a clip with keyframes to see its curves here."
+    },
+    "toolbar": {
+      "label": "Graph editor tools",
+      "kind": "Interpolation",
+      "hold": "Hold",
+      "linear": "Linear",
+      "bezier": "Bezier",
+      "spring": "Spring",
+      "easing": "Easing…",
+      "tangents": "Tangent handles",
+      "free": "Free",
+      "aligned": "Aligned",
+      "mirrored": "Mirrored",
+      "normalize": "Normalize values",
+      "snapping": "Snapping",
+      "fit": "Fit curves",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "delete": "Delete keyframe",
+      "time": "Time",
+      "value": "Value",
+      "mixed": "Mixed"
+    },
+    "curves": {
+      "label": "Curves",
+      "show": "Show {{name}}",
+      "hide": "Hide {{name}}"
+    },
+    "history": {
+      "handle": "Adjust curve handle",
+      "value": "Change keyframe value"
+    },
+    "failed": {
+      "move": "Keyframe not moved",
+      "handle": "Curve handle not moved",
+      "value": "Value not changed",
+      "time": "Keyframe not moved",
+      "easing": "Easing not changed"
+    },
+    "announce": {
+      "none": "No keyframes selected",
+      "several": "{{count}} keyframes selected",
+      "one": "{{name}}, keyframe {{index}} of {{count}}, time {{time}}, value {{value}}"
     }
   }
 }
