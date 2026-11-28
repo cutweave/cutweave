@@ -31,6 +31,13 @@
 //! a `gesture` or `proposal` is open, the items it touched are soft-locked for other actors:
 //! their commands on them fail fast with `Conflict{reason: item_in_gesture, retry_after_ms}`
 //! (see [`SOFT_LOCK_RETRY_MS`](crate::SOFT_LOCK_RETRY_MS)), commands on other items proceed.
+//!
+//! `tx` is optional on `edit.commit_tx` and `edit.cancel_tx` and then means the connection's
+//! open transaction, whichever that is when the request runs. A client that may send a close
+//! again (after a reconnect or an engine restart) names the transaction: ids are not reused
+//! across engine runs ([`DocConfig::with_tx_ids_per_run`](crate::DocConfig::with_tx_ids_per_run),
+//! issue #251), so a named close of an old transaction is `not_found` and never reaches a new
+//! one. What a repeated cancel or empty commit gets after a restart is ADR-0043 (Proposed).
 
 use crate::{
     Actor, Annotations, CheckpointInfo, CmdError, CommandSpec, Described, DocState, EngineCommand,
