@@ -895,7 +895,6 @@ impl ExportRequest<'_> {
             if let Some(adv) = advanced::merge(preset_advanced.as_ref(), self.advanced) {
                 hw = advanced::apply(&adv, &mut output, &mut rate, hw, frame_rate, &mut warnings)?;
             }
-            warnings.extend(presets::transparent_background_warning(seq, &output));
             let wanted = match &template {
                 Some(t) => {
                     let label = region.label.as_deref().unwrap_or_default();
@@ -923,7 +922,7 @@ impl ExportRequest<'_> {
                 quality,
                 hw,
                 rate,
-                warnings,
+                warnings: presets::with_background_warning(warnings, seq, &output),
                 output,
             });
         }

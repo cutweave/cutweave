@@ -992,6 +992,17 @@ pub fn transparent_background_warning(
     })
 }
 
+/// `warnings` with [`transparent_background_warning`] added when it applies.
+#[must_use]
+pub fn with_background_warning(
+    mut warnings: Vec<PresetWarning>,
+    seq: &Sequence,
+    output: &super::PlanOutput,
+) -> Vec<PresetWarning> {
+    warnings.extend(transparent_background_warning(seq, output));
+    warnings
+}
+
 /// The rate control the encoder gets from a preset (stored with queued exports, WP-2G.03a).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1463,8 +1474,7 @@ impl EngineCommand for ResolvePreset {
                     &mut Vec::new(),
                 );
             }
-            plan.warnings
-                .extend(transparent_background_warning(seq, &output));
+            plan.warnings = with_background_warning(plan.warnings, seq, &output);
         }
         let support = spec.engine_support();
         Ok(ResolvePresetOutput {
