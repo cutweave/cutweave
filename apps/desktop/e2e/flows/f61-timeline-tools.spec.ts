@@ -9,7 +9,10 @@
 // (moves that do not wait for the app) keeps the app drawing and the clip keeping up (issue #241:
 // every update re-rendered the whole window; `expectKeptUp`). Every timeline menu
 // (clip, edge, lane, track, ruler, playhead, marker) is opened with a right-click and passes
-// axe. Real clicks, drags and keys; only the OS file picker is stubbed.
+// axe. A clip pressed, carried away and let go back at the press point stays where it was,
+// although an edge is inside the snap distance (issue #263); a sideways drag in the lane at the
+// timeline's bottom edge keeps the clip on its track and scrolls nothing (issue #262). Real
+// clicks, drags and keys; only the OS file picker is stubbed.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -25,6 +28,7 @@ import {
   dropCard,
   editorCaughtUp,
   expectKeptUp,
+  FRAME,
   freeMainTrack,
   handPacedDrag,
   hasRealEngine,
@@ -45,6 +49,7 @@ import {
   timelineTools,
   toast,
   toolbar,
+  viewSettled,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -400,6 +405,102 @@ test.describe("F61 timeline tools, selection and track headers", () => {
         await page.keyboard.press("Escape");
         await expect(page.getByRole("menu")).toHaveCount(0);
       }
+
+      // A clip let go where it was pressed stays where it was (issue #263). The logo goes on
+      // the added track at 14 s and, with snapping off, a few pixels to the left: its start is
+      // then inside the snap distance of the B-roll's start, and not on it.
+      const addedClips = async () =>
+        (await layout(page)).find((t) => t.track === added.name)?.clips ?? [];
+      g = await timelineGeometry(page);
+      box = clipBox(g, clipAt(g, "V1", 26).id);
+      await page.mouse.click(box.x + 10, box.y);
+      await shortcut(app, "Control+C");
+      await page.mouse.click(g.box.x + 12, laneY(g, added.name));
+      await movePlayhead(page, 14);
+      await shortcut(app, "Control+V");
+      await expect.poll(addedClips).toEqual([[14, 5]]);
+      await editorCaughtUp(page);
+      await movePlayhead(page, 20); // the playhead is a snap candidate too: away from the logo
+      await tool("Snapping").click();
+      await expect(tool("Snapping")).toHaveAttribute("aria-pressed", "false");
+      g = await timelineGeometry(page);
+      box = clipBox(g, clipAt(g, added.name, 14).id);
+      await drag(page, { x: box.x + 20, y: box.y }, { x: box.x + 15, y: box.y });
+      await expect.poll(async () => (await addedClips())[0]?.[0]).toBeLessThan(14);
+      await editorCaughtUp(page);
+      await tool("Snapping").click();
+      await expect(tool("Snapping")).toHaveAttribute("aria-pressed", "true");
+      const nearStart = (await addedClips())[0]?.[0] ?? Number.NaN;
+      g = await timelineGeometry(page);
+      const gapPx = (14 - nearStart) * g.pxPerSec;
+      expect(gapPx, "the logo's start is inside the 8 px snap distance of 14 s").toBeLessThan(8);
+      expect(gapPx).toBeGreaterThan(2);
+      // Press it, carry it a good way right (it follows), bring it back and let go at the press
+      // point: it is where it was, not on the edge beside it, and there is no new undo step.
+      const press = { x: xAt(g, sec(nearStart)) + 20, y: laneY(g, added.name) };
+      await page.mouse.move(press.x, press.y);
+      await page.mouse.down();
+      await page.mouse.move(press.x + 4, press.y, { steps: 2 });
+      await page.mouse.move(press.x + 90, press.y, { steps: 10 });
+      await expect.poll(async () => (await addedClips())[0]?.[0]).toBeGreaterThan(nearStart + 1);
+      await page.mouse.move(press.x, press.y, { steps: 10 });
+      await page.mouse.up();
+      await expect.poll(addedClips).toEqual([[nearStart, 5]]);
+      await editorCaughtUp(page);
+      expect(await addedClips()).toEqual([[nearStart, 5]]);
+      // One Ctrl+Z takes back the step before it (the few pixels left): the drag added none.
+      await shortcut(app, "Control+Z");
+      await expect.poll(addedClips).toEqual([[14, 5]]);
+      await editorCaughtUp(page);
+
+      // A sideways drag in the lane at the bottom edge keeps the clip on its track (issue #262).
+      // With two more audio tracks the timeline has more lanes than it shows; in the default
+      // window the third lane's middle is inside the 32 px at the bottom where a drag scrolls.
+      for (const count of [4, 5]) {
+        await page.getByRole("button", { name: "Add track", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Audio track" }).click();
+        await expect.poll(async () => (await sequence(page)).tracks.length).toBe(count);
+      }
+      await editorCaughtUp(page);
+      await viewSettled(page);
+      g = await timelineGeometry(page);
+      const third = g.tracks[2];
+      if (third === undefined) throw new Error("no third lane");
+      expect(third.name).toBe("A1");
+      const fromBottom = g.box.y + g.box.height - laneY(g, third.name);
+      console.info(
+        `third lane: ${fromBottom.toFixed(0)} px from the bottom edge of a ${g.box.height.toFixed(0)} px timeline`,
+      );
+      expect(fromBottom, "the third lane's middle is inside the auto-scroll zone").toBeLessThan(32);
+      expect(fromBottom).toBeGreaterThan(4);
+      expect(g.scrollY).toBe(0);
+      const sound = third.items.find((i) => Math.abs(i.start - sec(2)) < FRAME / 2);
+      if (sound === undefined) throw new Error("the interview's sound is not at 2 s on A1");
+      box = clipBox(g, sound.id);
+      await page.mouse.move(box.x + 30, box.y);
+      await page.mouse.down();
+      const reach = Math.round(g.pxPerSec);
+      for (let dx = 3; dx < reach; dx += 3) await page.mouse.move(box.x + 30 + dx, box.y);
+      await page.mouse.move(box.x + 30 + reach, box.y);
+      await expect.poll(async () => (await v1Clips(page))[0]).toEqual([3, 10]);
+      await page.mouse.up();
+      await editorCaughtUp(page);
+      await viewSettled(page);
+      // The picture and its sound moved a second right, each on its own track; nothing scrolled.
+      const after = await layout(page);
+      expect(after.find((t) => t.track === "V1")?.clips[0]).toEqual([3, 10]);
+      expect(after.find((t) => t.track === "A1")?.clips[0]).toEqual([3, 10]);
+      expect(
+        after.filter((t) => t.track !== "V1" && t.track !== "A1" && t.track !== added.name),
+      ).toEqual([
+        { track: "A2", clips: [] },
+        { track: "A3", clips: [] },
+      ]);
+      expect((await timelineGeometry(page)).scrollY).toBe(0);
+      await expect(undo).toHaveAccessibleName("Undo Move clip");
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await v1Clips(page))[0]).toEqual([2, 10]);
+      await editorCaughtUp(page);
     } finally {
       await close();
       work.remove();

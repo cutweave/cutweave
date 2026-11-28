@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Snapping a dragged time that has a home (issue #263): where the clip, the trim edge, the cut,
 // the keyframe or the marker was when the drag started.
-import type { FrameRate } from "../model.ts";
-import { snapToFrame } from "../time.ts";
+import { type FrameRate, snapToFrame } from "../time.ts";
 import type { SnapOutcome } from "./types.ts";
 
 /**

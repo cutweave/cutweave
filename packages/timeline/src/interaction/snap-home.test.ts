@@ -85,7 +85,7 @@ describe("a drag with no net movement leaves the clip where it was (#263)", () =
   it("a pixel off the press point is still home, and a candidate wins only once it is nearer", () => {
     const w = new World({ model: modelWithEdgeAt(98) });
     const h = hand(w, clip("Z")(w));
-    const start = (): number | undefined => {
+    const start = (): unknown => {
       const m = w.state.mode;
       const c = m.name === "moving" ? m.tx.pending : null;
       return c !== null && c.name === "item.move" ? c.args.start : undefined;
