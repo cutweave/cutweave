@@ -14,6 +14,7 @@ The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §
 - **Descriptions:** the text below followed by `E.g.` and the example, at most 300 characters. In an example `…` stands for the 32 hex digits of an id.
 - **Parameters:** a listed input schema validates exactly like the command's. On `/mcp` it carries no parameter descriptions (they do not fit the budget); `cutweave_describe_command` returns them, with the output schema. `/mcp/described` lists the same tools in the same order with every parameter description, for clients that defer tool definitions and load one when the model asks for it (ADR-0040); the two lists accept the same values.
 - **Results:** the command's output as `structuredContent`; the document revision after the call is in the result's `_meta` (`io.cutweave/rev`) and in its first text line. An error is a result with `isError`, a `code`, a `message`, the `path` of the argument when known and a `hint` on what to do next.
+- **Revision check:** every tool that is not read-only takes an optional `expected_rev` (the revision a result reported): if the document has moved on, the call fails with `conflict` (`current_rev`, `expected_rev`, and `changed_since`: the items touched in between, or `unknown`) and changes nothing. `/mcp/described` lists the argument on each of those tools; `/mcp`, `/mcp/full` and `/mcp/minimal` accept it without listing it (it does not fit their budget, ADR-0041) and list it on `cutweave_execute`, which reaches every command.
 
 ## Core tools
 

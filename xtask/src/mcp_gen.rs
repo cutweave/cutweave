@@ -124,7 +124,14 @@ fn overview(out: &mut String, registry: &Arc<Registry>, table: &CoreTable) {
          - **Results:** the command's output as `structuredContent`; the document revision \
          after the call is in the result's `_meta` (`io.cutweave/rev`) and in its first text \
          line. An error is a result with `isError`, a `code`, a `message`, the `path` of the \
-         argument when known and a `hint` on what to do next.\n"
+         argument when known and a `hint` on what to do next.\n\
+         - **Revision check:** every tool that is not read-only takes an optional \
+         `expected_rev` (the revision a result reported): if the document has moved on, the \
+         call fails with `conflict` (`current_rev`, `expected_rev`, and `changed_since`: the \
+         items touched in between, or `unknown`) and changes nothing. `/mcp/described` lists \
+         the argument on each of those tools; `/mcp`, `/mcp/full` and `/mcp/minimal` accept \
+         it without listing it (it does not fit their budget, ADR-0041) and list it on \
+         `cutweave_execute`, which reaches every command.\n"
     );
 }
 
