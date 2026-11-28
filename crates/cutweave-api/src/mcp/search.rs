@@ -25,6 +25,48 @@ use crate::mcp::{catalog::Catalog, core::CoreTable};
 pub const DEFAULT_LIMIT: usize = 20;
 /// Most hits returned.
 pub const MAX_LIMIT: usize = 50;
+/// Most hits returned with [`Detail::Schema`]: input schemas are big.
+pub const MAX_SCHEMA_HITS: usize = 5;
+/// Most commands `cutweave_describe_command` describes in one call (`names`).
+pub const MAX_DESCRIBED: usize = 8;
+
+/// What `cutweave_search_commands` returns per hit (`detail`; WP-2I.08, ADR-0040 question 5).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Detail {
+    /// The name only: `matches` is a list of strings.
+    Names,
+    /// Name, summary, kind and how to call it: the default, and the result before `detail`
+    /// existed.
+    #[default]
+    Summary,
+    /// The summary plus the hit's `input_schema`, for at most [`MAX_SCHEMA_HITS`] hits.
+    Schema,
+}
+
+impl Detail {
+    /// The values of `detail`, in listing order.
+    pub const NAMES: [&'static str; 3] = ["names", "summary", "schema"];
+
+    /// Parses a `detail` value.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Detail> {
+        match value {
+            "names" => Some(Detail::Names),
+            "summary" => Some(Detail::Summary),
+            "schema" => Some(Detail::Schema),
+            _ => None,
+        }
+    }
+
+    /// The hits a search returns at this level when `limit` are asked for.
+    #[must_use]
+    pub fn limit(self, limit: usize) -> usize {
+        match self {
+            Detail::Schema => limit.min(MAX_SCHEMA_HITS),
+            Detail::Names | Detail::Summary => limit,
+        }
+    }
+}
 
 /// Words that carry no meaning for finding a command.
 const STOP_WORDS: &[&str] = &[
@@ -163,6 +205,19 @@ mod tests {
         // A keyword is a whole word, not a part of one.
         assert_eq!(score("clip.split", "Split a clip", &keywords, &["cuts"]), 3);
         assert_eq!(score("clip.split", "x", &keywords, &["cu"]), 0);
+    }
+
+    #[test]
+    fn detail_levels_parse_and_only_schema_caps_the_hits() {
+        for name in Detail::NAMES {
+            assert!(Detail::parse(name).is_some(), "{name}");
+        }
+        assert_eq!(Detail::parse("full"), None);
+        assert_eq!(Detail::default(), Detail::Summary);
+        assert_eq!(Detail::Schema.limit(DEFAULT_LIMIT), MAX_SCHEMA_HITS);
+        assert_eq!(Detail::Schema.limit(2), 2);
+        assert_eq!(Detail::Names.limit(MAX_LIMIT), MAX_LIMIT);
+        assert_eq!(Detail::Summary.limit(DEFAULT_LIMIT), DEFAULT_LIMIT);
     }
 
     #[test]

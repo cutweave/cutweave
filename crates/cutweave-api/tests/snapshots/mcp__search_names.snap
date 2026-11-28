@@ -1,0 +1,5 @@
+---
+source: crates/cutweave-api/tests/mcp.rs
+expression: "serde_json::to_string(&names).unwrap()"
+---
+{"matches":["clip.split","clip.freeze_frame","item.apply_layout"],"total":30}

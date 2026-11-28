@@ -186,7 +186,7 @@ example = '{"sequence":"seq_…","t":"12s","label":"Cut here"}'
 [[tool]]
 name = "timeline_get"
 command = "timeline.get"
-description = "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`."
+description = "Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`; `detail` \"concise\" is half the size."
 example = '{"sequence":"seq_…","depth":2,"limit":50}'
 always_load = true
 

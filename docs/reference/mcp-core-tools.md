@@ -4,10 +4,10 @@
 
 The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §14). Generated from the core tool table, `crates/cutweave-api/mcp_core.toml`, and the command registry.
 
-- **Listed:** 32 tools (28 core and the 4 generic ones), 30965 bytes, about 7742 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
-- **`/mcp/minimal`** (minimal): 10 tools, about 1853 tokens of 3000.
-- **`/mcp/full`** (full): 32 tools, about 7742 tokens of 8000.
-- **`/mcp/described`** (described): 32 tools, about 13920 tokens of 16000.
+- **Listed:** 32 tools (28 core and the 4 generic ones), 31389 bytes, about 7848 tokens (`ceil(bytes / 4)`). The budget is 36 tools and 8000 tokens.
+- **`/mcp/minimal`** (minimal): 10 tools, about 1959 tokens of 3000.
+- **`/mcp/full`** (full): 32 tools, about 7848 tokens of 8000.
+- **`/mcp/described`** (described): 32 tools, about 14101 tokens of 16000.
 - **Server instructions:** 3344 characters of at most 4096: a map of the command namespaces, how to find, describe and run a command, batches, the revision and undo. Built from the registry and the `[[namespace]]` lines of the core tool table.
 - **Loaded at the start:** `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` carry `_meta` `"anthropic/alwaysLoad": true`, which asks a client that defers tool definitions (Claude Code's tool search) to load them at the start. They are what an agent needs before it can search; other clients ignore the key. Marked **always** below.
 - **Names:** a tool is named after its command with `.` replaced by `_` (`clip.split` is `clip_split`). A core tool is only that command: the same input schema, result and errors as over JSON-RPC and the CLI.
@@ -42,7 +42,7 @@ The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §
 | `sequence_create` | `sequence.create` | - | Add a sequence from an aspect preset ("16:9", "9:16", "1:1", ...) or an explicit format; returns its id and tracks. | `{"name":"Short","preset":"9:16"}` |
 | `sequence_set_format` | `sequence.set_format` | destructive, idempotent | Change a sequence's size, frame rate, sample rate or background; `reframe` says how items adapt to a new size. | `{"sequence":"seq_…","width":1080,"height":1920}` |
 | `timeline_add_marker` | `timeline.add_marker` | - | Add a marker at a time of a sequence, or on one of its items (`item`; then `t` is from the item's start). `duration` makes it a range. | `{"sequence":"seq_…","t":"12s","label":"Cut here"}` |
-| `timeline_get` | `timeline.get` | read-only, idempotent, **always** | Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`. | `{"sequence":"seq_…","depth":2,"limit":50}` |
+| `timeline_get` | `timeline.get` | read-only, idempotent, **always** | Read a sequence: depth 0 summary, 1 tracks with counts (default), 2 items with ids and times. Page a long one with `range`, `limit` and `cursor`; `detail` "concise" is half the size. | `{"sequence":"seq_…","depth":2,"limit":50}` |
 | `timeline_insert` | `timeline.insert` | - | Place a media clip on a track at a time; video with sound also gets a linked audio clip. Returns the new clip ids. | `{"sequence":"seq_…","track":"trk_…","media":"med_…","at":"0s"}` |
 | `track_add` | `track.add` | - | Add an empty track to a sequence; returns its id. | `{"sequence":"seq_…","kind":"video"}` |
 | `view_get` | `view.get` | idempotent | Read what the user sees in the app: playhead, selection, zoom, active sequence, source in/out marks. | `{}` |
@@ -54,8 +54,8 @@ They reach every command and query that is not hidden, listed or not.
 
 | Tool | Does |
 |---|---|
-| `cutweave_search_commands` (**always**) | Finds commands and queries by keyword or by the words a user would say (the `[keywords]` of the core tool table) and says how to call each |
-| `cutweave_describe_command` (**always**) | Returns one command's docs, annotations and full input and output schemas |
+| `cutweave_search_commands` (**always**) | Finds commands and queries by keyword or by the words a user would say (the `[keywords]` of the core tool table) and says how to call each. `detail`: `summary` (default), `names` (names only) or `schema` (adds each hit's input schema, 5 hits at most) |
+| `cutweave_describe_command` (**always**) | Returns one command's docs, annotations and full input and output schemas (`name`), or those of up to 8 commands in one call (`names`) |
 | `cutweave_execute` (**always**) | Runs one or more commands as one all-or-nothing transaction and one undo step |
 | `cutweave_query` | Runs a read-only query by name |
 

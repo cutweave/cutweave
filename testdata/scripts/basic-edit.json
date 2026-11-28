@@ -1,5 +1,5 @@
 {
-  "description": "Basic edit: create a project, import two stub clips, insert them, add a track, rename the project and read the timeline back.",
+  "description": "Basic edit: create a project, import two stub clips, insert them, add a track, rename the project and read the timeline and the media back, in full and concise (`detail`, WP-2I.08).",
   "steps": [
     { "cmd": "project.new", "args": { "name": "Parity" } },
     { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.mov" }] } },
@@ -26,6 +26,10 @@
     { "cmd": "project.rename", "args": { "name": "Parity cut" } },
     { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
     { "cmd": "project.info" },
-    { "cmd": "media.list" }
+    { "cmd": "media.list" },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2, "detail": "concise" } },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 1, "detail": "full" } },
+    { "cmd": "media.list", "args": { "detail": "concise" } },
+    { "cmd": "media.list", "args": { "detail": "tiny" }, "expect": { "error": "invalid" } }
   ]
 }

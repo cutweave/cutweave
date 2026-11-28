@@ -1005,6 +1005,7 @@ pub struct MediaSummary {
         deserialize_with = "present"
     )]
     #[schemars(with = "Option<FolderId>")]
+    #[specta(type = Option<FolderId>)]
     pub folder: Option<Option<FolderId>>,
     /// Absolute path when it was last found (file kinds). Concise leaves it out.
     #[serde(
@@ -1013,6 +1014,7 @@ pub struct MediaSummary {
         deserialize_with = "present"
     )]
     #[schemars(with = "Option<String>")]
+    #[specta(type = Option<String>)]
     pub path: Option<Option<String>>,
     /// Playable length, if known. Concise leaves out `null`.
     #[serde(
@@ -1021,29 +1023,18 @@ pub struct MediaSummary {
         deserialize_with = "present"
     )]
     #[schemars(with = "Option<Duration>")]
+    #[specta(type = Option<Duration>)]
     pub duration: Option<Option<Duration>>,
     /// Whether it has pictures. Concise leaves it out.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub has_video: Option<bool>,
     /// Whether it has sound. Concise leaves it out.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub has_audio: Option<bool>,
     /// Its tags, sorted ignoring case and accents. Concise leaves out an empty list.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Vec<String>")]
     pub tags: Option<Vec<String>>,
     /// Stars, 1 to 5; absent: unrated. Concise leaves out `null`.
@@ -1053,6 +1044,7 @@ pub struct MediaSummary {
         deserialize_with = "present"
     )]
     #[schemars(with = "Option<u8>")]
+    #[specta(type = Option<u8>)]
     pub rating: Option<Option<u8>>,
     /// Its note; only with `include: ["note"]`, and left out otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]

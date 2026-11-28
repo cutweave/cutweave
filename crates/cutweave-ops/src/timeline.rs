@@ -123,11 +123,7 @@ pub struct TimelineItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Item kind (`clip`). Concise leaves out `clip`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "String")]
     pub kind: Option<String>,
     /// Timeline position of the first frame.
@@ -141,6 +137,7 @@ pub struct TimelineItem {
         deserialize_with = "present"
     )]
     #[schemars(with = "Option<MediaId>")]
+    #[specta(type = Option<MediaId>)]
     pub media: Option<Option<MediaId>>,
     /// The linked group, if any. Concise leaves it out.
     #[serde(
@@ -149,13 +146,10 @@ pub struct TimelineItem {
         deserialize_with = "present"
     )]
     #[schemars(with = "Option<GroupId>")]
+    #[specta(type = Option<GroupId>)]
     pub linked_group: Option<Option<GroupId>>,
     /// Whether the item is rendered and heard. Concise leaves out `true`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub enabled: Option<bool>,
     /// The color label, `#rrggbb`, when it has one (`item.set_label_color`). Concise leaves it
@@ -175,43 +169,23 @@ pub struct TrackSummary {
     /// Display name.
     pub name: String,
     /// Silenced. Concise leaves out `false`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub muted: Option<bool>,
     /// Not rendered. Concise leaves out `false`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub hidden: Option<bool>,
     /// Item edits fail with `Locked`. Concise leaves out `false`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub locked: Option<bool>,
     /// Solo. Concise leaves out `false`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub solo: Option<bool>,
     /// The magnetic main track. Concise leaves out `false`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "bool")]
     pub magnetic: Option<bool>,
     /// Row height in pixels; `None` is the default. Concise leaves out `null`.
@@ -221,13 +195,10 @@ pub struct TrackSummary {
         deserialize_with = "present"
     )]
     #[schemars(with = "Option<u32>")]
+    #[specta(type = Option<u32>)]
     pub height: Option<Option<u32>>,
     /// Gain in dB. Concise leaves out `0`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "f64")]
     pub gain: Option<f64>,
     /// Number of items.

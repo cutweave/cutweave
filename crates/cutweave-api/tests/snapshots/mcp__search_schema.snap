@@ -1,0 +1,5 @@
+---
+source: crates/cutweave-api/tests/mcp.rs
+expression: "serde_json::to_string(&one).unwrap()"
+---
+{"matches":[{"name":"edit.redo","summary":"Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone)","kind":"engine","call":"tool edit_redo","transactional":false,"input_schema":{"type":"object","additionalProperties":false,"properties":{"actor":{"type":["string","null"],"description":"Whose change (see `edit.undo`). Default: the caller's own.","pattern":"^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$","default":null},"steps":{"type":["integer","null"],"format":"uint32","minimum":0,"description":"How many changes to redo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.","default":null}},"description":"Redoes the most recently undone change of an actor (default: yours). A new change by that\nactor clears its redo stack. Refused with `Conflict` when the same things changed since the\nundo.","title":"Redo"}}],"total":5}

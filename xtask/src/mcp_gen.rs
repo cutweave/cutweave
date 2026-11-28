@@ -162,8 +162,8 @@ pub fn reference_markdown(registry: Registry) -> Result<String, String> {
     out.push_str(
         "\n## Generic tools\n\nThey reach every command and query that is not hidden, \
          listed or not.\n\n| Tool | Does |\n|---|---|\n\
-         | `cutweave_search_commands` (**always**) | Finds commands and queries by keyword or by the words a user would say (the `[keywords]` of the core tool table) and says how to call each |\n\
-         | `cutweave_describe_command` (**always**) | Returns one command's docs, annotations and full input and output schemas |\n\
+         | `cutweave_search_commands` (**always**) | Finds commands and queries by keyword or by the words a user would say (the `[keywords]` of the core tool table) and says how to call each. `detail`: `summary` (default), `names` (names only) or `schema` (adds each hit's input schema, 5 hits at most) |\n\
+         | `cutweave_describe_command` (**always**) | Returns one command's docs, annotations and full input and output schemas (`name`), or those of up to 8 commands in one call (`names`) |\n\
          | `cutweave_execute` (**always**) | Runs one or more commands as one all-or-nothing transaction and one undo step |\n\
          | `cutweave_query` | Runs a read-only query by name |\n",
     );

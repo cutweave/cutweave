@@ -1490,6 +1490,9 @@ export type DescribeOptionsOutput = {
 	schema: unknown,
 };
 
+/**  How much a read query returns for each entry: `full` (default) or `concise`. */
+export type Detail = "concise" | "full";
+
 /**
  *  A change of the live document, broadcast in revision order (`doc.patched`, arch §5.1).
  * 
@@ -4444,7 +4447,10 @@ export type MediaKind =
 /**
  *  Lists the media of the project, filtered (also by bin folder, tags, rating and collection)
  *  and ordered, one page at a time. Each asset carries the name the bin shows, its folder, tags
- *  and rating.
+ *  and rating. `detail: "concise"` makes each asset smaller: it keeps `id`, `kind` and `name`,
+ *  leaves out `path`, `has_video` and `has_audio`, and leaves out `folder`, `duration`, `tags`
+ *  and `rating` when they are `null` or empty (a full read returns them). `next_cursor`,
+ *  `total` and `matched` are the same in both.
  */
 export type MediaList = {
 	/**  Page size, `1..=500` (default 50). */
@@ -4457,6 +4463,11 @@ export type MediaList = {
 	sort?: MediaSort | null,
 	/**  Extra fields per asset: `note`. */
 	include?: MediaInclude[] | null,
+	/**
+	 *  `full` (default) or `concise`: id, kind and name, plus folder, duration, tags and
+	 *  rating when set; no path or stream flags.
+	 */
+	detail?: Detail | null,
 };
 
 /**
@@ -4956,7 +4967,11 @@ export type MediaStatus =
  */
 "incomplete";
 
-/**  Summary of one media asset. */
+/**
+ *  Summary of one media asset. With `detail: "concise"` it is `id`, `kind` and `name`, plus
+ *  `folder`, `duration`, `tags` and `rating` when they have a value (and `note` with
+ *  `include`); a full read returns `path`, `has_video` and `has_audio`.
+ */
 export type MediaSummary = {
 	/**  The asset. */
 	id: MediaId,
@@ -4964,20 +4979,20 @@ export type MediaSummary = {
 	kind: MediaKind,
 	/**  The name the bin shows: the display name, else the file name. */
 	name: string,
-	/**  The folder of the bin it is in; absent: the top level. */
-	folder: FolderId | null,
-	/**  Absolute path when it was last found (file kinds). */
-	path: string | null,
-	/**  Playable length, if known. */
-	duration: Duration | null,
-	/**  Whether it has pictures. */
-	has_video: boolean,
-	/**  Whether it has sound. */
-	has_audio: boolean,
-	/**  Its tags, sorted ignoring case and accents. */
-	tags: string[],
-	/**  Stars, 1 to 5; absent: unrated. */
-	rating: number | null,
+	/**  The folder of the bin it is in; absent: the top level. Concise leaves out `null`. */
+	folder?: FolderId | null,
+	/**  Absolute path when it was last found (file kinds). Concise leaves it out. */
+	path?: string | null,
+	/**  Playable length, if known. Concise leaves out `null`. */
+	duration?: Duration | null,
+	/**  Whether it has pictures. Concise leaves it out. */
+	has_video?: boolean | null,
+	/**  Whether it has sound. Concise leaves it out. */
+	has_audio?: boolean | null,
+	/**  Its tags, sorted ignoring case and accents. Concise leaves out an empty list. */
+	tags?: string[] | null,
+	/**  Stars, 1 to 5; absent: unrated. Concise leaves out `null`. */
+	rating?: number | null,
 	/**  Its note; only with `include: ["note"]`, and left out otherwise. */
 	note?: string | null,
 };
@@ -6900,7 +6915,11 @@ export type TimelineExtract = {
  *  whole sequence. At depth 2, `range` lists only the items that overlap `[from, to)`, and
  *  `limit` pages them in track order, then start order: `next_cursor` is the `cursor` of the
  *  next page (absent on the last one). A long timeline is best read as the depth 1 overview,
- *  then depth 2 pages of the part that matters.
+ *  then depth 2 pages of the part that matters. `detail: "concise"` makes each track and item
+ *  smaller: it keeps ids, names, kinds, counts and times, and leaves out a track's toggles,
+ *  `height` and `gain` at their defaults and an item's `media`, `linked_group`, `color_label`,
+ *  `kind: "clip"` and `enabled: true` (`item.get` or a full read returns them). The sequence's
+ *  own fields are the same in both.
  */
 export type TimelineGet = {
 	/**  The sequence. */
@@ -6915,6 +6934,11 @@ export type TimelineGet = {
 	limit?: number | null,
 	/**  Depth 2 with `limit`: the previous page's `next_cursor`. */
 	cursor?: ItemId | null,
+	/**
+	 *  `full` (default) or `concise`: ids, names and times, without track and item values at
+	 *  their defaults or an item's media, link and color label.
+	 */
+	detail?: Detail | null,
 };
 
 /**  Result of `timeline.get`. */
@@ -6990,6 +7014,35 @@ export type TimelineInsertOutput = {
 	created_tracks: TrackId[],
 	/**  What changed (timeline spec §3.1). */
 	report: EditReport,
+};
+
+/**
+ *  One item of a track as `timeline.get` lists it (depth 2). With `detail: "concise"` it is
+ *  `id`, `name` (when it has one), `start` and `duration`, plus `kind` when it is not `clip`
+ *  and `enabled` when it is `false`; `item.get` or a full read returns the rest.
+ */
+export type TimelineItem = {
+	/**  The item. */
+	id: ItemId,
+	/**  Its own name, when it has one (`item.set_props`); otherwise its media's name is shown. */
+	name?: string | null,
+	/**  Item kind (`clip`). Concise leaves out `clip`. */
+	kind?: string | null,
+	/**  Timeline position of the first frame. */
+	start: Time,
+	/**  Length on the timeline. */
+	duration: Duration,
+	/**  The media a clip plays. Concise leaves it out. */
+	media?: MediaId | null,
+	/**  The linked group, if any. Concise leaves it out. */
+	linked_group?: GroupId | null,
+	/**  Whether the item is rendered and heard. Concise leaves out `true`. */
+	enabled?: boolean | null,
+	/**
+	 *  The color label, `#rrggbb`, when it has one (`item.set_label_color`). Concise leaves it
+	 *  out.
+	 */
+	color_label?: Color | null,
 };
 
 /**
@@ -7476,7 +7529,10 @@ export type TrackSetOutput = {
 	gain: number | null,
 };
 
-/**  One track (depth 1 and 2). */
+/**
+ *  One track (depth 1 and 2). With `detail: "concise"` the toggles, `height` and `gain` are
+ *  left out at their defaults (`false`, `null`, `0`).
+ */
 export type TrackSummary = {
 	/**  The track. */
 	id: TrackId,
@@ -7484,26 +7540,26 @@ export type TrackSummary = {
 	kind: TrackKind,
 	/**  Display name. */
 	name: string,
-	/**  Silenced. */
-	muted: boolean,
-	/**  Not rendered. */
-	hidden: boolean,
-	/**  Item edits fail with `Locked`. */
-	locked: boolean,
-	/**  Solo. */
-	solo: boolean,
-	/**  The magnetic main track. */
-	magnetic: boolean,
-	/**  Row height in pixels; `None` is the default. */
-	height: number | null,
-	/**  Gain in dB. */
-	gain: number | null,
+	/**  Silenced. Concise leaves out `false`. */
+	muted?: boolean | null,
+	/**  Not rendered. Concise leaves out `false`. */
+	hidden?: boolean | null,
+	/**  Item edits fail with `Locked`. Concise leaves out `false`. */
+	locked?: boolean | null,
+	/**  Solo. Concise leaves out `false`. */
+	solo?: boolean | null,
+	/**  The magnetic main track. Concise leaves out `false`. */
+	magnetic?: boolean | null,
+	/**  Row height in pixels; `None` is the default. Concise leaves out `null`. */
+	height?: number | null,
+	/**  Gain in dB. Concise leaves out `0`. */
+	gain?: number | null,
 	/**  Number of items. */
 	item_count: number,
 	/**  End of its last item. */
 	end: Time,
 	/**  The items in start order (depth 2 only). */
-	items?: ItemSummary[] | null,
+	items?: TimelineItem[] | null,
 };
 
 /**
