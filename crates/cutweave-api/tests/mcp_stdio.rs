@@ -329,8 +329,14 @@ async fn a_tool_list_change_reaches_stdio_clients_on_both_revisions() {
         );
         assert_eq!(agent.tools().await, before, "{revision:?}");
         assert!(!before.iter().any(|t| t.name == "clip_split"));
+        // Closing stdin ends the proxy at once, also while a `subscriptions/listen` is open:
+        // a subscription is not a request the proxy waits out.
         agent.close().await;
-        let _ = tokio::time::timeout(Duration::from_secs(10), proxy).await;
+        let end = tokio::time::timeout(Duration::from_secs(4), proxy)
+            .await
+            .expect("the proxy ends when its input closes")
+            .unwrap();
+        assert_eq!(end, ProxyEnd::InputClosed, "{revision:?}");
     }
 }
 
