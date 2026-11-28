@@ -60,7 +60,7 @@ impl RevLog {
     /// `None` when the live document was re-composed (`doc.reset`).
     pub(crate) fn record(&mut self, rev: Rev, patch: Option<&Patch>) {
         let items = patch
-            .map(|patch| ItemLocks::of(patch).items())
+            .map(ItemLocks::items_of)
             .filter(|items| items.len() <= CHANGED_SINCE_ITEMS);
         self.changes.push_back(Change { rev, items });
         while self.changes.len() > CHANGED_SINCE_REVS {

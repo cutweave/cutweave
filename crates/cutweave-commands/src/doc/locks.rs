@@ -24,7 +24,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cutweave_model::{ItemId, TrackId};
+use cutweave_model::{ItemId, SequenceId, TrackId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -81,63 +81,30 @@ impl ItemLocks {
     /// Locks the items `patch` touches; returns how many were not locked yet.
     pub(crate) fn extend(&mut self, patch: &Patch) -> usize {
         let before = self.items.len();
-        for op in patch {
-            for path in op.paths() {
-                if let EntityRef::Item {
-                    sequence,
-                    track,
-                    item,
-                } = path.entity()
-                {
-                    self.lock(DocPath::item(sequence, track, item), item);
-                }
+        touched(patch, &mut |sequence, track, item| {
+            // An item a ripple shifts on every update of a drag is locked at this place
+            // already: nothing to write down again.
+            let known = self
+                .items
+                .get(&item)
+                .is_some_and(|places| places.iter().any(|p| is_item_place(p, sequence, track)));
+            if !known {
+                let place = DocPath::item(sequence, track, item);
+                self.places.insert(place.clone());
+                self.items.entry(item).or_default().insert(place);
             }
-            // A whole track or sequence added, removed or replaced: the items inside it.
-            for (path, value) in whole_values(op) {
-                self.lock_nested(path, value);
-            }
-        }
+        });
         self.items.len() - before
     }
 
-    fn lock(&mut self, place: DocPath, item: ItemId) {
-        self.places.insert(place.clone());
-        self.items.entry(item).or_default().insert(place);
-    }
-
-    /// Locks the items of the track (`/sequences/S/tracks/T`), its item map (`…/items`) or the
-    /// sequence (`/sequences/S`) that `value` is at `path`.
-    fn lock_nested(&mut self, path: &DocPath, value: &Value) {
-        match path.entity() {
-            EntityRef::Track { sequence, track } => {
-                let whole = DocPath::track(sequence, track);
-                let items = if *path == whole {
-                    value.get("items")
-                } else if *path == whole.join("items") {
-                    Some(value)
-                } else {
-                    None
-                };
-                for item in items
-                    .and_then(Value::as_object)
-                    .into_iter()
-                    .flat_map(|m| m.keys())
-                {
-                    if let Ok(item) = item.parse::<ItemId>() {
-                        self.lock(DocPath::item(sequence, track, item), item);
-                    }
-                }
-            }
-            EntityRef::Sequence(sequence) if *path == DocPath::sequence(sequence) => {
-                let tracks = value.get("tracks").and_then(Value::as_object);
-                for (track, value) in tracks.into_iter().flatten() {
-                    if let Ok(track) = track.parse::<TrackId>() {
-                        self.lock_nested(&DocPath::track(sequence, track), value);
-                    }
-                }
-            }
-            _ => {}
-        }
+    /// The items `patch` touches, in id order: the items [`of`](Self::of) would lock, without
+    /// the places (the revision log names items only, for every change of the document).
+    pub(crate) fn items_of(patch: &Patch) -> Vec<ItemId> {
+        let mut items = BTreeSet::new();
+        touched(patch, &mut |_, _, item| {
+            items.insert(item);
+        });
+        items.into_iter().collect()
     }
 
     /// The first locked item `patch` touches: an op on the item or inside it, or an op on a
@@ -165,6 +132,82 @@ impl ItemLocks {
                 EntityRef::Item { item, .. } => Some(item),
                 _ => None,
             })
+    }
+}
+
+/// Whether `place` (an item path) is on `track` of `sequence`.
+fn is_item_place(place: &DocPath, sequence: SequenceId, track: TrackId) -> bool {
+    matches!(
+        place.entity(),
+        EntityRef::Item { sequence: s, track: t, .. } if s == sequence && t == track
+    )
+}
+
+/// Calls `found` for every item `patch` touches, with the track and sequence it is touched in:
+/// the item an op's path is at or inside, and the items inside a whole track or sequence an op
+/// adds, removes or replaces.
+fn touched(patch: &Patch, found: &mut dyn FnMut(SequenceId, TrackId, ItemId)) {
+    for op in patch {
+        for path in op.paths() {
+            match path.entity() {
+                EntityRef::Item {
+                    sequence,
+                    track,
+                    item,
+                } => found(sequence, track, item),
+                // A whole track or sequence added, removed or replaced: the items inside it.
+                // (`whole_values` are the values at the op's own path, not at a move's `from`.)
+                at @ (EntityRef::Track { .. } | EntityRef::Sequence(_))
+                    if std::ptr::eq(path, op.path()) =>
+                {
+                    for (path, value) in whole_values(op) {
+                        nested(at, path, value, found);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// The items of the track (`/sequences/S/tracks/T`), its item map (`…/items`) or the sequence
+/// (`/sequences/S`) that `value` is at `path` (which lands in `at`).
+fn nested(
+    at: EntityRef,
+    path: &DocPath,
+    value: &Value,
+    found: &mut dyn FnMut(SequenceId, TrackId, ItemId),
+) {
+    match at {
+        EntityRef::Track { sequence, track } => {
+            let whole = DocPath::track(sequence, track);
+            let items = if *path == whole {
+                value.get("items")
+            } else if *path == whole.join("items") {
+                Some(value)
+            } else {
+                None
+            };
+            for item in items
+                .and_then(Value::as_object)
+                .into_iter()
+                .flat_map(|m| m.keys())
+            {
+                if let Ok(item) = item.parse::<ItemId>() {
+                    found(sequence, track, item);
+                }
+            }
+        }
+        EntityRef::Sequence(sequence) if *path == DocPath::sequence(sequence) => {
+            let tracks = value.get("tracks").and_then(Value::as_object);
+            for (track, value) in tracks.into_iter().flatten() {
+                if let Ok(track) = track.parse::<TrackId>() {
+                    let whole = DocPath::track(sequence, track);
+                    nested(EntityRef::Track { sequence, track }, &whole, value, found);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -247,6 +290,46 @@ mod tests {
             old: json!(1),
             value: json!(2),
         }
+    }
+
+    /// The revision log's shortcut names the items the locks would hold, and locking the same
+    /// items again (every update of a drag that ripples) writes nothing down twice.
+    #[test]
+    fn the_touched_items_are_the_locked_items() {
+        let (s, t1, t2, x, y) = ids();
+        let mut more = SeededGen::new(4);
+        let (on_track, in_sequence): (ItemId, ItemId) = (more.mint(), more.mint());
+        let whole_track = json!({"id": t2, "items": {on_track.to_string(): {}, "not an id": {}}});
+        let whole_sequence =
+            json!({"tracks": {t1.to_string(): {"items": {in_sequence.to_string(): {}}}}});
+        let patch = Patch(vec![
+            replace(DocPath::item(s, t1, x).join("start")),
+            replace(DocPath::item(s, t1, x).join("name")),
+            PatchOp::Move {
+                from: DocPath::item(s, t1, y),
+                path: DocPath::item(s, t2, y),
+            },
+            PatchOp::Add {
+                path: DocPath::track(s, t2),
+                value: whole_track,
+            },
+            PatchOp::Remove {
+                path: DocPath::sequence(s),
+                old: whole_sequence,
+            },
+            replace(DocPath::track(s, t1).join("muted")),
+            replace(DocPath::meta().join("name")),
+        ]);
+        let mut locks = ItemLocks::of(&patch);
+        let mut all = vec![x, y, on_track, in_sequence];
+        all.sort();
+        assert_eq!(locks.items(), all);
+        assert_eq!(ItemLocks::items_of(&patch), all);
+        // `y` was on two tracks: two places. Everything else: one.
+        assert_eq!(locks.places.len(), 5);
+        let again = locks.clone();
+        assert_eq!(locks.extend(&patch), 0);
+        assert_eq!(locks, again);
     }
 
     #[test]

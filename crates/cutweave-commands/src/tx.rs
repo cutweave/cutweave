@@ -235,14 +235,19 @@ fn check_locks(doc: &Project, op: &PatchOp) -> Result<(), CmdError> {
     for (i, path) in op.paths().enumerate() {
         // For a move, `from` (i == 0) is removed: like a removal.
         let removes = whole_track_change || (i == 0 && matches!(op, PatchOp::Move { .. }));
-        let segments = path.to_segments();
-        let [s0, sequence, s2, track, rest @ ..] = segments.as_slice() else {
+        let mut segments = path.segments();
+        let (Some(s0), Some(sequence), Some(s2), Some(track)) = (
+            segments.next(),
+            segments.next(),
+            segments.next(),
+            segments.next(),
+        ) else {
             continue;
         };
         if s0 != "sequences" || s2 != "tracks" {
             continue;
         }
-        let touches_items = match rest.first() {
+        let touches_items = match segments.next() {
             None => removes,
             Some(head) => head == "items",
         };
