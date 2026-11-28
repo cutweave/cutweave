@@ -516,21 +516,23 @@ impl Core {
             Some(roots) => ImportPolicy::restricted(roots),
         };
         // `media.import_frame` renders the document of the moment into the project's folder.
+        let shown = Core::view_state(session).active_sequence;
         let frames = Arc::new(EngineFrames {
             snapshot: handle.snapshot(),
             backend: self.deps.subsystems.frame_backend(),
             project_root: session.project_root().map(Path::to_path_buf),
             seed: self.deps.seed,
+            shown,
         });
-        // The sequence the editor shows (the first one): `media.import_sequence` gives a run
-        // its frame rate when the caller names none (ADR-0035).
-        let sequence_fps = handle
-            .snapshot()
-            .doc
-            .sequences
-            .values()
-            .next()
-            .map(|s| s.format.frame_rate);
+        // The sequence the editor shows: `media.import_sequence` gives a run its frame rate
+        // when the caller names none (ADR-0035).
+        let sequence_fps = {
+            let snapshot = handle.snapshot();
+            shown
+                .and_then(|id| snapshot.doc.sequences.get(&id))
+                .or_else(|| snapshot.doc.sequences.values().next())
+                .map(|s| s.format.frame_rate)
+        };
         // Where `copy_to_project` copies to (WP-2F.04c): the open project's folder, with the
         // free-space probe collect uses; an untitled document has none.
         let project = session.project_root().map(|root| {

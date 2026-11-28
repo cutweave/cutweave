@@ -28,12 +28,12 @@ use cutweave_audio::{
 };
 use cutweave_commands::DocHandle;
 use cutweave_media::MediaBackend;
-use cutweave_model::{Project, SampleRate, Time, TrackId};
+use cutweave_model::{Project, SampleRate, SequenceId, Time, TrackId};
 use cutweave_playback::transport::{AudioControl, PlaybackTarget, VirtualClock};
 use cutweave_render::{AudioSegment, EvalError};
 use serde::Serialize;
 
-use super::preview::{SOURCE_SEQUENCE, active_sequence, source_timeline};
+use super::preview::{SOURCE_SEQUENCE, Shown, active_sequence, source_timeline};
 use crate::config::AudioConfig;
 use crate::export::DecoderPcmFactory;
 use crate::levels::mix_of;
@@ -253,15 +253,16 @@ impl SourceFactory for LivePcm {
     }
 }
 
-/// The sound of `target` in `doc`: the active sequence's clips over its whole length with its
-/// track buses (mute and solo applied by the buses), or the one clip of a source's transient
-/// timeline (nothing when its asset is gone).
+/// The sound of `target` in `doc`: the clips of the sequence the editor shows (`shown`, else
+/// the first one) over its whole length with its track buses (mute and solo applied by the
+/// buses), or the one clip of a source's transient timeline (nothing when its asset is gone).
 pub(crate) fn segments_of(
     doc: &Project,
     target: PlaybackTarget,
+    shown: Option<SequenceId>,
 ) -> Result<(Vec<AudioSegment>, BusGraph), EvalError> {
     let (project, seq) = match target {
-        PlaybackTarget::Sequence => match active_sequence(doc) {
+        PlaybackTarget::Sequence => match active_sequence(doc, shown) {
             Some(seq) => (None, seq),
             None => return Ok((Vec::new(), BusGraph::new())),
         },
@@ -283,6 +284,7 @@ pub(crate) fn segments_of(
 pub(crate) struct AudioFeed {
     mixer: Option<Arc<MixerHandle>>,
     doc: DocHandle,
+    shown: Arc<Shown>,
     target: Mutex<PlaybackTarget>,
 }
 
@@ -297,10 +299,15 @@ impl std::fmt::Debug for AudioFeed {
 
 impl AudioFeed {
     /// The feed of `doc`'s sound into `mixer`, playing the sequence.
-    pub(crate) fn new(mixer: Option<Arc<MixerHandle>>, doc: DocHandle) -> AudioFeed {
+    pub(crate) fn new(
+        mixer: Option<Arc<MixerHandle>>,
+        doc: DocHandle,
+        shown: Arc<Shown>,
+    ) -> AudioFeed {
         AudioFeed {
             mixer,
             doc,
+            shown,
             target: Mutex::new(PlaybackTarget::Sequence),
         }
     }
@@ -318,6 +325,13 @@ impl AudioFeed {
         self.feed(&snapshot.doc, target);
     }
 
+    /// Another sequence shows: the mixer plays its target's sound in the document as it is.
+    pub(crate) fn shown_changed(&self) {
+        let target = self.target.lock().unwrap_or_else(PoisonError::into_inner);
+        let snapshot = self.doc.snapshot();
+        self.feed(&snapshot.doc, *target);
+    }
+
     /// The document changed: the mixer plays its target's sound in `doc`.
     pub(crate) fn document(&self, doc: &Project) {
         let target = self.target.lock().unwrap_or_else(PoisonError::into_inner);
@@ -326,7 +340,7 @@ impl AudioFeed {
 
     fn feed(&self, doc: &Project, target: PlaybackTarget) {
         let Some(mixer) = &self.mixer else { return };
-        match segments_of(doc, target) {
+        match segments_of(doc, target, self.shown.get()) {
             Ok((segments, buses)) => {
                 if let Err(e) = mixer.set_mix(&segments, &buses) {
                     tracing::warn!(error = %e, ?target, "the mixer refused the audio to play");
