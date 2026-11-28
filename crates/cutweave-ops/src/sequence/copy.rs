@@ -5,15 +5,11 @@
 
 use std::collections::BTreeMap;
 
-use cutweave_commands::{CmdError, Tx};
+use cutweave_commands::Tx;
 use cutweave_model::{GroupId, ItemId, MarkerId, Markers, Sequence, SequenceId, Track};
 
 /// A copy of `source` named `name` with fresh IDs, in the same track order.
-pub(super) fn deep_copy(
-    tx: &mut Tx<'_>,
-    source: &Sequence,
-    name: String,
-) -> Result<Sequence, CmdError> {
+pub(super) fn deep_copy(tx: &mut Tx<'_>, source: &Sequence, name: String) -> Sequence {
     let mut copy = Sequence::new(tx.new_id::<SequenceId>(), name, source.format.clone());
     copy.in_out.clone_from(&source.in_out);
     copy.custom.clone_from(&source.custom);
@@ -52,7 +48,7 @@ pub(super) fn deep_copy(
         }
         copy.insert_track(index, t);
     }
-    Ok(copy)
+    copy
 }
 
 /// The same markers under new IDs.
