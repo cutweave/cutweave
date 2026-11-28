@@ -118,7 +118,7 @@ export function findClip(project: Project | null, id: string): Clip | null {
   for (const sequence of Object.values(project.sequences)) {
     for (const track of Object.values(sequence.tracks)) {
       const clip = track.items[id as ItemId];
-      if (clip !== undefined) return clip;
+      if (clip !== undefined && clip.kind !== "text") return clip;
     }
   }
   return null;
@@ -249,7 +249,8 @@ export function laneGroups(
   for (const id of open) {
     let clip: Clip | undefined;
     for (const track of Object.values(tracks)) {
-      clip = track.items[id as ItemId];
+      const found = track.items[id as ItemId];
+      clip = found !== undefined && found.kind !== "text" ? found : undefined;
       if (clip !== undefined) break;
     }
     if (clip === undefined) continue;
@@ -466,7 +467,8 @@ export function keysForTarget(
   if (found === null) return null;
   let clip: Clip | undefined;
   for (const track of Object.values(found.sequence.tracks)) {
-    clip = track.items[item as ItemId];
+    const found = track.items[item as ItemId];
+    clip = found !== undefined && found.kind !== "text" ? found : undefined;
     if (clip !== undefined) break;
   }
   if (clip === undefined) return null;

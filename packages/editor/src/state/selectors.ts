@@ -121,8 +121,30 @@ function toMarker(marker: Marker): TimelineMarker {
   };
 }
 
+/** The first line of a text item's words, for its label on the timeline. */
+function textLabel(item: Extract<Item, { kind: "text" }>): string {
+  const words = item.content.runs.map((run) => run.text).join("");
+  return words.split("\n")[0]?.trim().slice(0, 60) || item.id;
+}
+
 function toItem(item: Item, track: Track, project: Project): TimelineItem {
   const kind: ItemKind = kindOf(track.kind);
+  if (item.kind === "text") {
+    // Text and the items of later versions: a plain clip with the text as its label until
+    // the text UI (WP-3A.07) draws them.
+    return {
+      id: item.id,
+      trackId: track.id,
+      kind,
+      start: item.start,
+      duration: item.duration,
+      label: item.name ?? textLabel(item),
+      ...(item.color_label != null && { colorLabel: item.color_label }),
+      ...(item.linked_group !== null && { linkedGroup: item.linked_group }),
+      source: { sourceIn: 0, mediaDuration: null },
+      ...(!item.enabled && { state: { disabled: true } }),
+    };
+  }
   const media = project.media[item.media];
   const label = item.name ?? mediaName(media, item.media);
   // The engine's trim bounds (`clip.trim`): stills and freeze frames have none, other media end

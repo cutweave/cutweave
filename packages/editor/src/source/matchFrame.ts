@@ -2,7 +2,7 @@
 // Match frame (WP-2A.14): the clip under the timeline's playhead, the position in its media the
 // playhead shows, and the part of the media the clip plays. F opens that media in the Source
 // view at that frame, with the clip's source range as its marks.
-import type { Item, MediaId, Project } from "@cutweave/protocol";
+import type { ClipItem as Item, MediaId, Project } from "@cutweave/protocol";
 import { selectActiveSequenceId } from "../state/selectors.ts";
 
 export interface MatchFrame {

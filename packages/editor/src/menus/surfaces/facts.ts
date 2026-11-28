@@ -30,7 +30,7 @@ export function clipFact(id: string): ClipFact | null {
   if (found === null) return null;
   for (const track of Object.values(found.sequence.tracks)) {
     const item = track.items[id as keyof typeof track.items];
-    if (item !== undefined) return { clip: item, track };
+    if (item !== undefined && item.kind !== "text") return { clip: item, track };
   }
   return null;
 }
