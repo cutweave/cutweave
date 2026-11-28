@@ -12,11 +12,12 @@ All routes live on the engine's server, `http://127.0.0.1:<port>`, behind the Ho
 | `GET /media/{id}/filmstrip?w=&h=&count=&hash=&fmt=` | `image/jpeg`: a sprite of `count` tiles, with its manifest in the `x-cutweave-filmstrip` header; `fmt=json`: the manifest alone (`application/json`) |
 | `GET /media/{id}/waveform?lod=&start=&end=&track=&stream=&hash=&fmt=&w=&h=` | `application/octet-stream`: peak data (`CWPD`, [waveform-format.md](waveform-format.md#peak-data-query-result-and-wire-form)); `fmt=png`: the peaks drawn into a `w × h` PNG |
 | `GET /media/frame?seq=&t=&w=&h=&fmt=&q=` | `image/jpeg` or `image/png`: the sequence frame at `t`, the bytes `render.frame` returns |
+| `GET /media/sheet?seq=&at=&columns=&size=&labels=` | `image/jpeg`: the contact sheet of the sequence frames at the times `at`, the bytes `render.contact_sheet` returns for those frames |
 | `POST /media/sign` | Signed URLs for clients that cannot send a header (see [Auth](#auth)) |
 
 `HEAD` works wherever `GET` does.
 
-The catalog commands `media.filmstrip` and `audio.waveform` (WP-2I.02) name the matching route in their result (`link`: a path on this server with `hash=`, so the answer is immutable and its ETag is the content hash and a hash of the parameters). The link of the whole clip's filmstrip serves the bytes the command returned; the link of a media file's waveform serves the same peaks as a plain PNG, without the command's time ruler. Over MCP a picture asked for above 1568 px is returned as a resource link to that route instead of an image (`crates/cutweave-api/src/mcp/visual.rs`).
+The catalog commands `media.filmstrip` and `audio.waveform` (WP-2I.02) name the matching route in their result (`link`: a path on this server with `hash=`, so the answer is immutable and its ETag is the content hash and a hash of the parameters). The link of the whole clip's filmstrip serves the bytes the command returned; the link of a media file's waveform serves the same peaks as a plain PNG, without the command's time ruler. Over MCP a picture asked for above 1568 px is returned as a resource link to that route instead of an image (`crates/cutweave-api/src/mcp/visual.rs`). A contact sheet (`render.contact_sheet`) above 1568 px is a resource link to `/media/sheet`; its result has no `link` field, and the MCP server writes the URL from the result: the sequence and the times of the cells.
 
 ### Parameters
 
@@ -32,7 +33,11 @@ The catalog commands `media.filmstrip` and `audio.waveform` (WP-2I.02) name the 
 | `start`, `end` | waveform | Media times as for `t`; `end` after `start` | the whole audio |
 | `track` | waveform | `mix`, or a 0-based channel number (needs the per-channel pyramid) | `mix` |
 | `stream` | waveform | An audio stream's container index | the first audio stream |
-| `seq` | frame | A sequence id | the project's only sequence |
+| `seq` | frame, sheet | A sequence id | the project's only sequence |
+| `at` | sheet | The timeline times of the frames, 1 to 64, separated by commas, each as for `t`; the cells are in this order | required |
+| `columns` | sheet | `1..=64` grid columns | `ceil(sqrt(n))` |
+| `size` | sheet | `64..=2048` px: the longest side of the sheet (`render.contact_sheet`'s `max_size`) | `768` |
+| `labels` | sheet | `1` or `0`: the timecode under each cell | `1` |
 | `q` | frame (JPEG) | JPEG quality `1..=100` | `80` |
 
 The defaults of `/thumb` (`t=0&w=320`) and `/filmstrip` (`w=160&count=100`) are what the import analysis caches, so they cost no decode.
@@ -41,6 +46,7 @@ The defaults of `/thumb` (`t=0&w=320`) and `/filmstrip` (`w=160&count=100`) are 
 - **Thumbnails:** `t` is floored to the media's frame grid (its nominal rate), so a scrub never makes more entries than the clip has frames; a `t` before the stream gives the first frame, after it the last.
 - **Filmstrip manifest:** `{tile_w, tile_h, count, columns, rows, sprite_w, sprite_h, start, interval}`. Tile `i` sits at column `i % columns`, row `i / columns` (the sprite wraps at 8192 px) and shows the frame on screen at media time `start + i × interval` (flicks).
 - **Frames:** the image keeps the sequence's aspect and fits inside `w × h` (either may be absent; 768 px longest side when both are). `/media/frame?w=W` is `render.frame{max_size}` with the largest `max_size` whose image fits, so `/media/frame?t=2s&w=640` and `render.frame{t: "2s", max_size: 640}` return the same bytes for a landscape sequence. It decodes in software without the frame cache, exactly as `render.frame` and exports do, and reflects the live document; the `x-cutweave-rev` header names its revision.
+- **Contact sheets:** `/media/sheet?at=T1,T2` is `render.contact_sheet{at: [T1, T2]}` over the range that holds those times, with the same `columns`, `size` (`max_size`) and `labels`, so it returns the same bytes. It renders like `/media/frame` (software decode, the live document, `x-cutweave-rev`).
 - **Unknown parameters** are refused (422): a typo is an error, not a silent default. `exp` and `sig` belong to signed URLs.
 
 Not served: proxies, video streams, range requests.
@@ -84,9 +90,9 @@ A bad or expired signature is a **401** (not 403): the request carries no valid 
 
 Every answer is a pure function of the media's content and the parameters.
 
-- **ETag:** thumbnails and filmstrips use the cache's tags, `"<content hash>-<16 hex of the parameters>"` (a filmstrip's `fmt=json` adds `-json`); waveforms `"<content hash>-<16 hex>"` over level, range, track, stream and format. They are computed from the request alone.
-- **`If-None-Match`** with a matching tag (a list, weak tags and `*` are understood) answers **304** before anything else runs: no decode, no cache read.
-- **`Cache-Control`:** `private, max-age=31536000, immutable` when the URL names the content (`hash=` equal to the media's current content hash); `private, no-cache` without `hash=` (the media id may later point at other content after a relink, so clients revalidate; a 304 is free). Frames: `no-store`. Errors: `no-store`.
+- **ETag:** thumbnails and filmstrips use the cache's tags, `"<content hash>-<16 hex of the parameters>"` (a filmstrip's `fmt=json` adds `-json`); waveforms `"<content hash>-<16 hex>"` over level, range, track, stream and format. They are computed from the request alone. A contact sheet shows the whole document, so its tag is `"<32 hex of a SHA-256 of the JPEG>-<16 hex of the parameters>"` and is known only once the sheet is made.
+- **`If-None-Match`** with a matching tag (a list, weak tags and `*` are understood) answers **304** before anything else runs: no decode, no cache read. For a contact sheet the 304 comes after the sheet was rendered: it saves the transfer, not the work.
+- **`Cache-Control`:** `private, max-age=31536000, immutable` when the URL names the content (`hash=` equal to the media's current content hash); `private, no-cache` without `hash=` (the media id may later point at other content after a relink, so clients revalidate; a 304 is free). Frames: `no-store`. Contact sheets: `private, no-cache`. Errors: `no-store`.
 - **`hash=` that no longer matches:** 409 `content_changed` (the client's document is out of date; ask again with the current hash).
 
 ## Errors

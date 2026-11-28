@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use super::{
     FilmstripFormat, FilmstripRequest, FrameFormat, FrameRequest, MAX_DIMENSION,
-    MAX_FILMSTRIP_TILES, MAX_WAVEFORM_LOD, MediaError, ThumbRequest, TimeParam, WaveformFormat,
-    WaveformRequest, WaveformTrack,
+    MAX_FILMSTRIP_TILES, MAX_SHEET_FRAMES, MAX_WAVEFORM_LOD, MediaError, SHEET_SIZES, SheetRequest,
+    ThumbRequest, TimeParam, WaveformFormat, WaveformRequest, WaveformTrack,
 };
 use crate::media::sign::{EXPIRES_PARAM, SIGNATURE_PARAM};
 
@@ -81,19 +81,15 @@ impl Query {
     }
 
     fn time(&self, name: &str) -> Result<Option<TimeParam>, MediaError> {
-        let Some(raw) = self.get(name) else {
-            return Ok(None);
-        };
-        if let Ok(flicks) = raw.parse::<i64>() {
-            return Ok(Some(TimeParam::Flicks(flicks)));
+        self.get(name).map(|raw| time_of(name, raw)).transpose()
+    }
+
+    fn sequence(&self) -> Result<Option<String>, MediaError> {
+        match self.get("seq") {
+            None => Ok(None),
+            Some(s) if !s.is_empty() && s.len() <= 128 && s.is_ascii() => Ok(Some(s.to_owned())),
+            Some(_) => Err(invalid("seq", "must be a sequence id")),
         }
-        if raw.is_empty() || raw.len() > MAX_TIME_TEXT {
-            return Err(invalid(
-                name,
-                "must be flicks, seconds (\"2.5s\"), a frame (\"f:60\") or a timecode",
-            ));
-        }
-        Ok(Some(TimeParam::Text(raw.to_owned())))
     }
 
     fn hash(&self) -> Result<Option<String>, MediaError> {
@@ -106,6 +102,20 @@ impl Query {
             )),
         }
     }
+}
+
+/// One time of the parameter `name`: integer flicks, or the text of a `TimeInput`.
+fn time_of(name: &str, raw: &str) -> Result<TimeParam, MediaError> {
+    if let Ok(flicks) = raw.parse::<i64>() {
+        return Ok(TimeParam::Flicks(flicks));
+    }
+    if raw.is_empty() || raw.len() > MAX_TIME_TEXT {
+        return Err(invalid(
+            name,
+            "must be flicks, seconds (\"2.5s\"), a frame (\"f:60\") or a timecode",
+        ));
+    }
+    Ok(TimeParam::Text(raw.to_owned()))
 }
 
 /// `GET /media/{id}/thumb?t=&w=&hash=`.
@@ -194,19 +204,48 @@ pub(super) fn frame(raw: Option<&str>) -> Result<FrameRequest, MediaError> {
     if quality.is_some() && format == FrameFormat::Png {
         return Err(invalid("q", "only applies to `fmt=jpeg`"));
     }
-    let sequence = match q.get("seq") {
-        None => None,
-        Some(s) if !s.is_empty() && s.len() <= 128 && s.is_ascii() => Some(s.to_owned()),
-        Some(_) => return Err(invalid("seq", "must be a sequence id")),
-    };
     Ok(FrameRequest {
-        sequence,
+        sequence: q.sequence()?,
         t: q.time("t")?
             .ok_or_else(|| invalid("t", "is required (the timeline time to render)"))?,
         w: q.dimension("w")?,
         h: q.dimension("h")?,
         format,
         quality,
+    })
+}
+
+/// `GET /media/sheet?seq=&at=&columns=&size=&labels=0|1`: `at` is the comma-separated list of
+/// the frames' timeline times.
+pub(super) fn sheet(raw: Option<&str>) -> Result<SheetRequest, MediaError> {
+    let q = Query::parse(raw, &["seq", "at", "columns", "size", "labels"])?;
+    let at = q
+        .get("at")
+        .ok_or_else(|| invalid("at", "is required (the timeline times of the frames)"))?
+        .split(',')
+        .map(|t| time_of("at", t))
+        .collect::<Result<Vec<TimeParam>, MediaError>>()?;
+    if at.len() > MAX_SHEET_FRAMES {
+        return Err(invalid(
+            "at",
+            format!("must name at most {MAX_SHEET_FRAMES} times"),
+        ));
+    }
+    let labels = match q.get("labels") {
+        None | Some("1") => true,
+        Some("0") => false,
+        Some(_) => return Err(invalid("labels", "must be `0` or `1`")),
+    };
+    Ok(SheetRequest {
+        sequence: q.sequence()?,
+        at,
+        columns: q.uint(
+            "columns",
+            1,
+            u32::try_from(MAX_SHEET_FRAMES).unwrap_or(u32::MAX),
+        )?,
+        size: q.uint("size", SHEET_SIZES.0, SHEET_SIZES.1)?,
+        labels,
     })
 }
 
@@ -264,6 +303,45 @@ mod tests {
         assert_eq!(param_of(frame(Some("w=10")).unwrap_err()), "t");
         assert_eq!(param_of(frame(Some("t=0&fmt=png&q=5")).unwrap_err()), "q");
         assert_eq!(param_of(frame(Some("t=0&h=4097")).unwrap_err()), "h");
+    }
+
+    #[test]
+    fn sheets_take_a_list_of_times() {
+        let s = sheet(Some("at=0,2.5s,f%3A60,00%3A00%3A04%3A00")).unwrap();
+        assert_eq!(
+            s.at,
+            [
+                TimeParam::Flicks(0),
+                TimeParam::Text("2.5s".into()),
+                TimeParam::Text("f:60".into()),
+                TimeParam::Text("00:00:04:00".into()),
+            ]
+        );
+        assert_eq!(
+            (s.sequence, s.columns, s.size, s.labels),
+            (None, None, None, true)
+        );
+        let s = sheet(Some("seq=seq_1&at=705600000&columns=4&size=2048&labels=0")).unwrap();
+        assert_eq!(s.sequence.as_deref(), Some("seq_1"));
+        assert_eq!((s.columns, s.size, s.labels), (Some(4), Some(2048), false));
+        let many = vec!["0"; MAX_SHEET_FRAMES + 1].join(",");
+        for (q, param) in [
+            (String::new(), "at"),
+            ("at=".into(), "at"),
+            ("at=0,,1".into(), "at"),
+            (format!("at={many}"), "at"),
+            ("at=0&size=63".into(), "size"),
+            ("at=0&size=2049".into(), "size"),
+            ("at=0&columns=0".into(), "columns"),
+            ("at=0&columns=65".into(), "columns"),
+            ("at=0&labels=yes".into(), "labels"),
+            ("at=0&seq=".into(), "seq"),
+            ("at=0&w=100".into(), "w"),
+        ] {
+            assert_eq!(param_of(sheet(Some(&q)).unwrap_err()), param, "{q}");
+        }
+        let most = format!("at={}", &many[2..]);
+        assert_eq!(sheet(Some(&most)).unwrap().at.len(), MAX_SHEET_FRAMES);
     }
 
     #[test]

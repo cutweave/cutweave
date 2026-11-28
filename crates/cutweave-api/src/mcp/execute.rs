@@ -215,8 +215,9 @@ fn parse_step(catalog: &Catalog, i: usize, step: Value) -> ExecResult<Step> {
 
 /// `render.*` queries render the committed document on the engine's renderer, which a
 /// transaction's working document cannot use: refused before anything runs, with advice
-/// ([`frame::TRANSACTION_HINT`]). This is the smaller of the two fixes (rendering a
-/// transaction's view would put GPU work on the doc actor's thread).
+/// ([`frame::transaction_hint`]: it names the route of the command that was refused). This is
+/// the smaller of the two fixes (rendering a transaction's view would put GPU work on the doc
+/// actor's thread).
 fn check_render_steps(steps: &[Step]) -> ExecResult<()> {
     let Some((i, step)) = steps
         .iter()
@@ -232,7 +233,7 @@ fn check_render_steps(steps: &[Step]) -> ExecResult<()> {
         )),
         failed_step: Some(i),
         args: None,
-        hint: Some(crate::mcp::frame::TRANSACTION_HINT.to_owned()),
+        hint: Some(crate::mcp::frame::transaction_hint(step.name)),
     }))
 }
 

@@ -42,6 +42,23 @@ pub const TRANSACTION_HINT: &str = "render_frame shows the committed document, s
 inside a transaction: run the batch, then call render_frame (cutweave_execute dry_run rolls \
 back, so nothing could be seen there either)";
 
+/// What to do about the `render.*` query `command` in a `cutweave_execute` batch:
+/// [`TRANSACTION_HINT`] for `render.frame`, and for a catalog query (`render.contact_sheet`,
+/// #256) the same advice naming its own route, `cutweave_query`.
+#[must_use]
+pub fn transaction_hint(command: &str) -> String {
+    if command == COMMAND {
+        return TRANSACTION_HINT.to_owned();
+    }
+    format!(
+        "{command} shows the committed document, so it cannot run inside a transaction: run \
+         the batch, then call {query} with {command} ({execute} dry_run rolls back, so nothing \
+         could be seen there either)",
+        query = crate::mcp::catalog::QUERY,
+        execute = crate::mcp::catalog::EXECUTE,
+    )
+}
+
 /// Whether `args` ask for a frame big enough to be returned as a resource link.
 #[must_use]
 pub fn wants_link(args: &Value) -> bool {

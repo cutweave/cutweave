@@ -13,6 +13,9 @@
 //! - **Frames** run `cutweave_render::query::render_frame` on the engine's renderer against the
 //!   live document, decoding in software without the frame cache, so the bytes are the ones
 //!   `render.frame` returns; the request's cancel token stops the decode.
+//! - **Contact sheets** (`/media/sheet`, #256) run `render_contact_sheet` the same way for the
+//!   frames at the times the URL lists, so the bytes are the ones `render.contact_sheet` returns
+//!   for those frames; the ETag is a hash of the JPEG and a hash of the parameters.
 //! - **Cancellation:** every decode gets a `CancelToken` that the request's [`MediaCancel`]
 //!   cancels (waking the decoder at once) when the client disconnects.
 
@@ -23,7 +26,8 @@ use cutweave_api::Mounts;
 use cutweave_api::media::{
     self, FILMSTRIP_HEADER, FilmstripFormat, FilmstripRequest, FrameFormat, FrameRequest,
     MediaBody, MediaCancel, MediaError, MediaOptions, MediaRequest, MediaService, PreparedMedia,
-    REV_HEADER, ThumbRequest, TimeParam, WaveformFormat, WaveformRequest, WaveformTrack,
+    REV_HEADER, SheetRequest, ThumbRequest, TimeParam, WaveformFormat, WaveformRequest,
+    WaveformTrack,
 };
 use cutweave_cache::{
     CacheError, ContentHash, FilmstripManifest, FilmstripSpec, MediaRef, ThumbCache, Track,
@@ -32,11 +36,15 @@ use cutweave_cache::{
 use cutweave_commands::{Access, CmdError, DocSnapshot, QueryCtx};
 use cutweave_media::CancelToken;
 use cutweave_model::{
-    FrameRate, MediaId, ProbeInfo, Rounding, SequenceId, StreamKind, Time, TimeInput,
+    FrameRate, MediaId, ProbeInfo, Project, Rounding, Sequence, SequenceId, StreamKind, Time,
+    TimeInput,
 };
 use cutweave_render::encode::{DEFAULT_MAX_SIZE, ImageFormat, fit_within};
 use cutweave_render::geometry::quarter_turns;
-use cutweave_render::query::{MAX_FRAME_SIZE, MIN_MAX_SIZE, RenderFrame, render_frame};
+use cutweave_render::query::{
+    MAX_FRAME_SIZE, MIN_MAX_SIZE, RenderContactSheet, RenderFrame, SheetAt, render_contact_sheet,
+    render_frame,
+};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -70,6 +78,7 @@ impl MediaService for EngineMedia {
             MediaRequest::Filmstrip(r) => prepare_filmstrip(&state, &r),
             MediaRequest::Waveform(r) => prepare_waveform(&state, r),
             MediaRequest::Frame(r) => prepare_frame(state, &r),
+            MediaRequest::Sheet(r) => prepare_sheet(state, &r),
         }
     }
 }
@@ -571,6 +580,30 @@ fn max_size_for((sw, sh): (u32, u32), w: Option<u32>, h: Option<u32>) -> u32 {
     size
 }
 
+/// The sequence `seq=` names in `doc`, or the project's only one.
+fn sequence_of<'a>(
+    doc: &'a Project,
+    named: Option<&str>,
+) -> Result<(SequenceId, &'a Sequence), MediaError> {
+    if let Some(raw) = named {
+        let not_found = || MediaError::NotFound(format!("no sequence `{raw}` in the open project"));
+        let id: SequenceId = raw.parse().map_err(|_| not_found())?;
+        return Ok((id, doc.sequences.get(&id).ok_or_else(not_found)?));
+    }
+    let mut all = doc.sequences.iter();
+    match (all.next(), all.next()) {
+        (Some((id, seq)), None) => Ok((*id, seq)),
+        (None, _) => Err(MediaError::NotFound("the project has no sequence".into())),
+        (Some(_), Some(_)) => Err(invalid(
+            "seq",
+            format!(
+                "the project has {} sequences; name one",
+                doc.sequences.len()
+            ),
+        )),
+    }
+}
+
 fn prepare_frame(
     state: MediaState,
     r: &FrameRequest,
@@ -578,27 +611,7 @@ fn prepare_frame(
     let snapshot = state
         .snapshot()
         .ok_or_else(|| MediaError::Unavailable("no document is open".into()))?;
-    let doc = &snapshot.doc;
-    let (sequence, seq) = if let Some(raw) = &r.sequence {
-        let not_found = || MediaError::NotFound(format!("no sequence `{raw}` in the open project"));
-        let id: SequenceId = raw.parse().map_err(|_| not_found())?;
-        (id, doc.sequences.get(&id).ok_or_else(not_found)?)
-    } else {
-        let mut all = doc.sequences.iter();
-        match (all.next(), all.next()) {
-            (Some((id, seq)), None) => (*id, seq),
-            (None, _) => return Err(MediaError::NotFound("the project has no sequence".into())),
-            (Some(_), Some(_)) => {
-                return Err(invalid(
-                    "seq",
-                    format!(
-                        "the project has {} sequences; name one",
-                        doc.sequences.len()
-                    ),
-                ));
-            }
-        }
-    };
+    let (sequence, seq) = sequence_of(&snapshot.doc, r.sequence.as_deref())?;
     let rate = seq.format.frame_rate;
     let t = resolve_time(&r.t, Some(rate), "t")?;
     let max_size = max_size_for((seq.format.width, seq.format.height), r.w, r.h);
@@ -661,6 +674,107 @@ impl PreparedMedia for PreparedFrame {
             content_type,
             headers: vec![(REV_HEADER, self.snapshot.rev.to_string())],
             etag: None,
+        })
+    }
+}
+
+// ----- contact sheets ----------------------------------------------------------------------------
+
+struct PreparedSheet {
+    state: MediaState,
+    snapshot: Arc<DocSnapshot>,
+    params: RenderContactSheet,
+    /// The request, as the ETag's parameter hash reads it.
+    key: String,
+}
+
+/// `/media/sheet`: the sheet `render.contact_sheet` makes of the frames `at` the listed times,
+/// over the range that holds them.
+fn prepare_sheet(
+    state: MediaState,
+    r: &SheetRequest,
+) -> Result<Box<dyn PreparedMedia>, MediaError> {
+    let snapshot = state
+        .snapshot()
+        .ok_or_else(|| MediaError::Unavailable("no document is open".into()))?;
+    let (sequence, seq) = sequence_of(&snapshot.doc, r.sequence.as_deref())?;
+    let rate = seq.format.frame_rate;
+    let times =
+        r.at.iter()
+            .map(|t| resolve_time(t, Some(rate), "at"))
+            .collect::<Result<Vec<Time>, MediaError>>()?;
+    let (Some(first), Some(last)) = (times.iter().min(), times.iter().max()) else {
+        return Err(invalid(
+            "at",
+            "is required (the timeline times of the frames)",
+        ));
+    };
+    // `to` is exclusive: one flick past the last frame asked for.
+    let end = Time::from_flicks(last.flicks().saturating_add(1))
+        .map_err(|e| invalid("at", e.to_string()))?;
+    let mut key = format!("sheet|{sequence}|{:?}|{:?}|{}", r.columns, r.size, r.labels);
+    for t in &times {
+        let _ = write!(key, "|{}", t.flicks());
+    }
+    let params = RenderContactSheet {
+        sequence: Some(sequence),
+        from: Some(TimeInput::Absolute(*first)),
+        to: Some(TimeInput::Absolute(end)),
+        count: None,
+        every: None,
+        at: Some(SheetAt::Times(
+            times.iter().copied().map(TimeInput::Absolute).collect(),
+        )),
+        columns: r.columns,
+        max_size: r.size,
+        labels: Some(r.labels),
+    };
+    Ok(Box::new(PreparedSheet {
+        state,
+        snapshot,
+        params,
+        key,
+    }))
+}
+
+impl PreparedMedia for PreparedSheet {
+    /// A sheet shows the whole document (and proxies that arrive later): its tag is known
+    /// only once it is made.
+    fn etag(&self) -> Option<String> {
+        None
+    }
+
+    fn immutable(&self) -> bool {
+        false
+    }
+
+    fn produce(self: Box<Self>, cancel: &MediaCancel) -> Result<MediaBody, MediaError> {
+        let token = decode_token(cancel);
+        let ctx = QueryCtx::new(&self.snapshot.doc, Access::STANDARD).with_rev(self.snapshot.rev);
+        let renderer = Arc::clone(&self.state.renderer);
+        let sheet = MediaFrames::agent_scoped(token, || {
+            let mut backend = renderer.lock().unwrap_or_else(PoisonError::into_inner);
+            render_contact_sheet(&mut *backend, &ctx, &self.params)
+        })
+        .map_err(frame_failure)?;
+        if cancel.is_cancelled() {
+            return Err(MediaError::Cancelled);
+        }
+        let bytes = decode_base64(&sheet.data).ok_or_else(|| {
+            MediaError::Internal("render.contact_sheet returned bad base64".into())
+        })?;
+        let content =
+            Sha256::digest(&bytes)[..16]
+                .iter()
+                .fold(String::with_capacity(32), |mut out, b| {
+                    let _ = write!(out, "{b:02x}");
+                    out
+                });
+        Ok(MediaBody {
+            etag: Some(format!("{content}-{}", params_hash(&self.key))),
+            bytes,
+            content_type: "image/jpeg",
+            headers: vec![(REV_HEADER, self.snapshot.rev.to_string())],
         })
     }
 }

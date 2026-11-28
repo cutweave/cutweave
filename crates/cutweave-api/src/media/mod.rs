@@ -8,6 +8,7 @@
 //! | `GET /media/{id}/filmstrip?w=&h=&count=&hash=&fmt=` | JPEG sprite (manifest in `x-cutweave-filmstrip`), or the manifest as JSON |
 //! | `GET /media/{id}/waveform?lod=&start=&end=&track=&stream=&hash=&fmt=&w=&h=` | binary peak data (`CWPD`) or a PNG |
 //! | `GET /media/frame?seq=&t=&w=&h=&fmt=&q=` | the sequence frame, the bytes `render.frame` returns |
+//! | `GET /media/sheet?seq=&at=&columns=&size=&labels=` | the contact sheet of the frames at these times, the JPEG `render.contact_sheet` returns |
 //! | `POST /media/sign` | signed, expiring URLs for `<img src>` ([`sign`]) |
 //!
 //! # Request flow
@@ -30,7 +31,10 @@
 //! the content (`hash=` equal to the media's content hash) the answer is
 //! `Cache-Control: private, max-age=31536000, immutable`; without it the same media id may later
 //! point at other content (a relink), so it is `private, no-cache` (revalidate: a 304 costs
-//! nothing). Frames depend on the whole document and are `no-store`.
+//! nothing). Frames depend on the whole document and are `no-store`. A contact sheet depends on
+//! the whole document too, so its ETag is known only once it is made (a hash of the JPEG and a
+//! hash of the parameters): it is `private, no-cache`, and `If-None-Match` is answered 304 after
+//! the sheet was rendered, which saves the transfer, not the work.
 //!
 //! The engine implements [`MediaService`] (`cutweave-engine` depends on this crate, so the
 //! contract is a trait here) and mounts [`router`] through `Mounts::media`.
@@ -64,6 +68,11 @@ use crate::server::{Authenticated, RequestId};
 
 /// Largest width or height of any image the routes produce (`w`, `h`).
 pub const MAX_DIMENSION: u32 = 4096;
+/// Most frames on one contact sheet (`at`; the limit of `render.contact_sheet`).
+pub const MAX_SHEET_FRAMES: usize = 64;
+/// Smallest and largest longest side of a contact sheet (`size`; the limits of
+/// `render.contact_sheet`'s `max_size`).
+pub const SHEET_SIZES: (u32, u32) = (64, 2048);
 /// Most tiles in one filmstrip.
 pub const MAX_FILMSTRIP_TILES: u32 = 1000;
 /// Highest waveform level (a pyramid has at most 12, `0..=11`).
@@ -204,6 +213,22 @@ pub struct FrameRequest {
     pub quality: Option<u8>,
 }
 
+/// `GET /media/sheet`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SheetRequest {
+    /// The sequence id; `None`: the project's only sequence.
+    pub sequence: Option<String>,
+    /// The timeline times of the frames, in the order of the cells (1 to
+    /// [`MAX_SHEET_FRAMES`]).
+    pub at: Vec<TimeParam>,
+    /// Grid columns; `None`: `render.contact_sheet`'s default.
+    pub columns: Option<u32>,
+    /// Longest side of the sheet in px; `None`: `render.contact_sheet`'s default (768).
+    pub size: Option<u32>,
+    /// Whether the timecode is burned under each cell (`labels=0` turns it off).
+    pub labels: bool,
+}
+
 /// A parsed, bounds-checked media request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MediaRequest {
@@ -215,6 +240,8 @@ pub enum MediaRequest {
     Waveform(WaveformRequest),
     /// A sequence frame.
     Frame(FrameRequest),
+    /// A contact sheet of sequence frames.
+    Sheet(SheetRequest),
 }
 
 /// Why a media request failed. Each maps to an HTTP status and a JSON error code.
@@ -457,6 +484,7 @@ pub fn router(service: Arc<dyn MediaService>, options: MediaOptions) -> Router {
     };
     Router::new()
         .route("/frame", get(frame))
+        .route("/sheet", get(sheet))
         .route("/sign", post(sign_urls))
         .route("/{id}/thumb", get(thumb))
         .route("/{id}/filmstrip", get(filmstrip))
@@ -508,6 +536,16 @@ async fn frame(
     request_id: Option<Extension<RequestId>>,
 ) -> Response {
     let parsed = params::frame(query.as_deref()).map(MediaRequest::Frame);
+    serve(app, &headers, rid(request_id.as_ref()), parsed).await
+}
+
+async fn sheet(
+    State(app): State<App>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+    request_id: Option<Extension<RequestId>>,
+) -> Response {
+    let parsed = params::sheet(query.as_deref()).map(MediaRequest::Sheet);
     serve(app, &headers, rid(request_id.as_ref()), parsed).await
 }
 
@@ -616,6 +654,15 @@ async fn serve(
                 .into_response(rid);
         }
     };
+    // An ETag known only now (a contact sheet): the client that has these bytes gets a 304.
+    if etag.is_none()
+        && let Some(tag) = &body.etag
+        && none_match(headers, tag)
+    {
+        let mut response = StatusCode::NOT_MODIFIED.into_response();
+        cache_headers(response.headers_mut(), Some(tag), immutable);
+        return response;
+    }
     let etag = etag.or(body.etag);
     let mut response = body.bytes.into_response();
     let out = response.headers_mut();

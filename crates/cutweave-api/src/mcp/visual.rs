@@ -18,9 +18,12 @@
 //!   (`link`: the whole clip's filmstrip, a media file's waveform) is answered with a
 //!   **resource link** to that route on this server and the metadata, without the image. The
 //!   route answers a `GET` with the same bearer token (or a URL signed by `POST /media/sign`)
-//!   and carries an ETag made of the content hash and a hash of the parameters. A contact
-//!   sheet, a part of a clip and the waveform of a clip or a mix have no route: they are
-//!   returned inline. Over stdio there is no HTTP origin to link to, so everything is inline.
+//!   and carries an ETag made of the content hash and a hash of the parameters. A large
+//!   contact sheet is a link to `/media/sheet` (#256), which this module writes from the result
+//!   ([`sheet_route`]): the sequence and the times of the cells, so the route renders the same
+//!   frames whatever chose them. A part of a clip and the waveform of a clip or a mix have no
+//!   route: they are returned inline. Over stdio there is no HTTP origin to link to, so
+//!   everything is inline.
 //! - **Untrusted text.** The names of the items in a contact sheet's cells are text a person
 //!   typed or a file name: they are labelled `untrusted` ([`results::UNTRUSTED_FIELDS`]).
 
@@ -54,6 +57,37 @@ pub fn wants_link(command: &str, args: &Value) -> bool {
         .and_then(|param| args.get(param))
         .and_then(Value::as_u64)
         .is_some_and(|size| size > u64::from(frame::LINK_ABOVE))
+}
+
+/// The command of the contact sheet.
+const SHEET: &str = "render.contact_sheet";
+
+/// The `/media/sheet` route that serves the sheet `output` describes, asked for with `args`:
+/// its sequence, the times of its cells in order, its columns, and the size and labels asked
+/// for. `None` when the output is not a sheet's.
+#[must_use]
+pub fn sheet_route(output: &Value, args: &Value) -> Option<String> {
+    let sequence = output.get("sequence")?.as_str()?;
+    let times = output
+        .get("frames")?
+        .as_array()?
+        .iter()
+        .map(|frame| frame.get("t")?.as_i64().map(|t| t.to_string()))
+        .collect::<Option<Vec<String>>>()?;
+    if times.is_empty() {
+        return None;
+    }
+    let mut route = format!("/media/sheet?seq={sequence}&at={}", times.join(","));
+    if let Some(columns) = output.get("columns").and_then(Value::as_u64) {
+        route.push_str(&format!("&columns={columns}"));
+    }
+    if let Some(size) = args.get("max_size").and_then(Value::as_u64) {
+        route.push_str(&format!("&size={size}"));
+    }
+    if args.get("labels").and_then(Value::as_bool) == Some(false) {
+        route.push_str("&labels=0");
+    }
+    Some(route)
 }
 
 fn take_image(output: &mut Value) -> Option<(String, String)> {
@@ -112,7 +146,11 @@ pub fn result(
 ) -> Result<CallToolResult, usize> {
     let image = take_image(&mut output);
     let mut summary = summary(tool, command, &output, revs.0);
-    let route = output.get("link").and_then(Value::as_str);
+    let route = match output.get("link").and_then(Value::as_str) {
+        Some(route) => Some(route.to_owned()),
+        None if command == SHEET => sheet_route(&output, args),
+        None => None,
+    };
     if let (true, Some(route), Some(origin)) = (wants_link(command, args), route, origin) {
         let uri = format!("{origin}{route}");
         summary.push_str(
@@ -253,6 +291,47 @@ mod tests {
         ));
         assert!(!wants_link("render.frame", &json!({ "max_size": 2048 })));
         assert_eq!(size_param("timeline.get"), None);
+    }
+
+    #[test]
+    fn a_large_contact_sheet_is_a_link_to_the_frames_it_shows() {
+        let revs = (Rev(3), Rev(3));
+        let sheet = || {
+            json!({
+                "mime": "image/jpeg", "data": "QUJD", "bytes": 3, "width": 2048, "height": 600,
+                "sequence": "seq_1", "rev": 3, "columns": 2, "rows": 1,
+                "frames": [{ "t": 0, "items_visible": [] }, { "t": 705_600_000, "items_visible": [] }],
+                "notes": []
+            })
+        };
+        let big = json!({ "count": 2, "max_size": 2048, "labels": false });
+        let origin = Some("http://127.0.0.1:4000");
+        let linked = result("cutweave_query", SHEET, sheet(), &big, revs, origin).unwrap();
+        assert_eq!(images(&linked), 0);
+        assert_eq!(
+            links(&linked),
+            [
+                "http://127.0.0.1:4000/media/sheet?seq=seq_1&at=0,705600000&columns=2&size=2048&labels=0"
+            ]
+        );
+        // The metadata is the command's output without the image: no field is added.
+        let s = linked.structured_content.unwrap();
+        assert!(s.get("data").is_none() && s.get("link").is_none());
+        // Over stdio, and at a size a model reads whole, the sheet is inline.
+        for (args, origin) in [(&big, None), (&json!({ "max_size": 1568 }), origin)] {
+            let inline = result("cutweave_query", SHEET, sheet(), args, revs, origin).unwrap();
+            assert_eq!(images(&inline), 1);
+            assert_eq!(links(&inline), [] as [String; 0]);
+        }
+        assert_eq!(
+            sheet_route(&sheet(), &json!({})).as_deref(),
+            Some("/media/sheet?seq=seq_1&at=0,705600000&columns=2")
+        );
+        assert_eq!(
+            sheet_route(&json!({ "sequence": "seq_1", "frames": [] }), &big),
+            None
+        );
+        assert_eq!(sheet_route(&json!({ "mime": "image/png" }), &big), None);
     }
 
     #[test]

@@ -506,6 +506,40 @@ fn filmstrips_waveforms_and_frames() {
     }
     let boxed = s.get("/media/frame?t=0&w=320&h=90", &[]);
     assert_eq!(jpeg_size(&boxed.body), (160, 90));
+
+    // `/media/sheet` is `render.contact_sheet` at those times, byte for byte (#256), under an
+    // ETag of two hashes that a second request can revalidate with.
+    let reply = s.get("/media/sheet?at=0,1s&size=256&columns=1", &[]);
+    assert_eq!(
+        reply.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&reply.body)
+    );
+    assert_eq!(reply.header("content-type").as_deref(), Some("image/jpeg"));
+    assert_eq!(
+        reply.header("cache-control").as_deref(),
+        Some("private, no-cache")
+    );
+    assert!(reply.header("x-cutweave-rev").is_some());
+    let query = call(
+        &f.conn,
+        "render.contact_sheet",
+        json!({ "at": [0, "1s"], "max_size": 256, "columns": 1 }),
+    )
+    .unwrap();
+    assert_eq!(reply.body, base64_decode(query["data"].as_str().unwrap()));
+    let etag = reply.header("etag").expect("an etag");
+    let again = s.get(
+        "/media/sheet?at=0,1s&size=256&columns=1",
+        &[("If-None-Match", etag.as_str())],
+    );
+    assert_eq!((again.status, again.body.len()), (304, 0));
+    let other = s.get("/media/sheet?at=0,1s&size=128&columns=1", &[]);
+    assert_ne!(other.header("etag"), Some(etag));
+    let outside = s.get("/media/sheet?at=nonsense", &[]);
+    assert_eq!(outside.status, 422);
+    assert_eq!(error_of(&outside)["param"], "at");
 }
 
 #[test]

@@ -173,6 +173,17 @@ impl Full {
 
     /// `GET path` on the engine's HTTP server with the agent token: status, headers, body.
     async fn get(&self, url: &str) -> (u16, String, Vec<u8>) {
+        self.get_with(url, "").await
+    }
+
+    /// [`get`](Self::get) with more header lines (each ends with CRLF).
+    async fn get_with(&self, url: &str, headers: &str) -> (u16, String, Vec<u8>) {
+        let auth = format!("Authorization: Bearer {}\r\n{headers}", self.token);
+        self.get_as(url, Some(&auth)).await
+    }
+
+    /// `GET path` with these header lines (`None`: no credential).
+    async fn get_as(&self, url: &str, headers: Option<&str>) -> (u16, String, Vec<u8>) {
         let path = url
             .strip_prefix(&self.origin())
             .expect("a link to this server");
@@ -180,9 +191,9 @@ impl Full {
             .await
             .unwrap();
         let request = format!(
-            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\n\
-             Connection: close\r\n\r\n",
-            self.port, self.token
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n{}Connection: close\r\n\r\n",
+            self.port,
+            headers.unwrap_or_default()
         );
         stream.write_all(request.as_bytes()).await.unwrap();
         let mut reply = Vec::new();
@@ -436,14 +447,6 @@ async fn a_large_filmstrip_is_a_media_link_over_http_and_inline_over_stdio() {
         )
         .await;
         assert_eq!(jpeg_size(&image(&part).1), (2048, 72));
-        // So has a contact sheet.
-        let sheet = query(
-            &client,
-            "render.contact_sheet",
-            json!({ "count": 2, "max_size": 2048 }),
-        )
-        .await;
-        assert_eq!(image(&sheet).0, "image/jpeg");
         client.close().await;
 
         let client = h.stdio(revision).await;
@@ -454,6 +457,93 @@ async fn a_large_filmstrip_is_a_media_link_over_http_and_inline_over_stdio() {
             "stdio {revision:?}"
         );
         client.close().await;
+    }
+}
+
+/// A contact sheet asked for above 1568 px is a resource link to `/media/sheet` over HTTP
+/// (#256), on both revisions: the route serves the same JPEG to the same token under a hashed
+/// ETag, answers 304 to a client that has it, and follows the same parameter rules as the
+/// other routes. Over stdio, and at a size a model reads whole, the sheet stays inline.
+#[tokio::test]
+async fn a_large_contact_sheet_is_a_media_link_over_http_and_inline_over_stdio() {
+    let h = Full::start();
+    for revision in Revision::ALL {
+        let client = h.http(revision).await;
+        for args in [
+            json!({ "count": 6, "max_size": 2048 }),
+            json!({ "at": "cuts", "max_size": 1600, "labels": false, "columns": 3 }),
+            json!({ "from": "1s", "to": "60s", "every": "5s", "max_size": 2048 }),
+        ] {
+            let what = format!("{revision:?} {args}");
+            let result = query(&client, "render.contact_sheet", args.clone()).await;
+            assert!(
+                !result
+                    .content
+                    .iter()
+                    .any(|c| matches!(c, ContentBlock::Image(_))),
+                "{what}: no image next to the link"
+            );
+            let links = links(&result);
+            assert_eq!(links.len(), 1, "{what}");
+            let (uri, mime) = &links[0];
+            assert_eq!(mime.as_deref(), Some("image/jpeg"));
+            assert!(
+                uri.starts_with(&format!("{}/media/sheet?seq=seq_", h.origin())),
+                "{uri}"
+            );
+            // The metadata is the command's own output: no base64, and no field added.
+            let meta = result.structured_content.clone().unwrap();
+            assert!(meta.get("data").is_none() && meta.get("link").is_none());
+            // The route serves that sheet to the same token: the bytes the query returns
+            // inline over stdio.
+            let (status, head, body) = h.get(uri).await;
+            assert_eq!(status, 200, "{uri}: {head}");
+            assert!(head.contains("content-type: image/jpeg"), "{head}");
+            assert!(head.contains("cache-control: private, no-cache"), "{head}");
+            assert!(head.contains("x-cutweave-rev: "), "{head}");
+            assert_eq!(jpeg_size(&body), size_of(&meta), "{what}");
+            let stdio = h.stdio(revision).await;
+            let inline = query(&stdio, "render.contact_sheet", args.clone()).await;
+            assert_eq!(image(&inline), ("image/jpeg".to_owned(), body), "{what}");
+            assert_eq!(inline.structured_content, Some(meta), "{what}");
+            stdio.close().await;
+            // The ETag is two hashes (the JPEG, the parameters); it answers 304.
+            let etag = head
+                .lines()
+                .find_map(|line| line.strip_prefix("etag: "))
+                .expect("an etag")
+                .trim()
+                .to_owned();
+            let (content, params) = etag.trim_matches('"').split_once('-').expect("two parts");
+            assert_eq!((content.len(), params.len()), (32, 16), "{etag}");
+            let (status, head, body) = h.get_with(uri, &format!("If-None-Match: {etag}\r\n")).await;
+            assert_eq!((status, body.len()), (304, 0), "{head}");
+            assert!(head.contains(&format!("etag: {etag}")), "{head}");
+        }
+        // At a size a model reads whole it is inline, as before.
+        let small = query(
+            &client,
+            "render.contact_sheet",
+            json!({ "count": 2, "max_size": 1568 }),
+        )
+        .await;
+        assert_eq!(image(&small).0, "image/jpeg");
+        assert!(links(&small).is_empty());
+        client.close().await;
+    }
+    // The same auth and parameter rules as the other media routes.
+    let origin = h.origin();
+    let (status, _, _) = h.get_as(&format!("{origin}/media/sheet?at=0"), None).await;
+    assert_eq!(status, 401);
+    for (query, status) in [
+        ("at=0&size=4096", 422),
+        ("at=0&width=10", 422),
+        ("", 422),
+        ("at=0&seq=seq_0190f5c2-0000-7000-8000-000000000000", 404),
+        ("at=1s,2s&size=256&columns=1", 200),
+    ] {
+        let (got, head, _) = h.get(&format!("{origin}/media/sheet?{query}")).await;
+        assert_eq!(got, status, "{query}: {head}");
     }
 }
 
@@ -575,5 +665,26 @@ async fn the_visual_commands_are_found_described_and_kept_out_of_the_list() {
         .execute(json!([{ "cmd": "render.contact_sheet", "args": {} }]))
         .await;
     assert_eq!(refused.is_error, Some(true));
+    // The hint names the route of the command that was refused (#256), not `render_frame`.
+    let e = refused.structured_content.clone().unwrap();
+    assert_eq!(e["error"]["code"], "unsupported");
+    let hint = e["error"]["hint"].as_str().unwrap();
+    assert!(
+        hint.starts_with("render.contact_sheet shows the committed document"),
+        "{hint}"
+    );
+    assert!(
+        hint.contains("then call cutweave_query with render.contact_sheet"),
+        "{hint}"
+    );
+    assert!(!hint.contains("render_frame"), "{hint}");
+    let refused = client
+        .execute(json!([{ "cmd": "render.frame", "args": { "t": 0 } }]))
+        .await;
+    let e = refused.structured_content.clone().unwrap();
+    assert_eq!(
+        e["error"]["hint"],
+        cutweave_api::mcp::frame::TRANSACTION_HINT
+    );
     client.close().await;
 }
