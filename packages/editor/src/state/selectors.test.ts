@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Project } from "@cutweave/protocol";
+import { applyPatch, type Json, type PatchOp, type Project } from "@cutweave/protocol";
 import { EMPTY_MODEL } from "@cutweave/timeline";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,6 +7,7 @@ import {
   selectActiveSequenceId,
   selectInOut,
   selectMedia,
+  selectorWork,
   selectSequenceSummary,
   selectTimelineItems,
   selectTimelineModel,
@@ -249,5 +250,106 @@ describe("selectMedia", () => {
 
   it("names a pathless asset by its ID", () => {
     expect(mediaName(undefined, "med_z" as never)).toBe("med_z");
+  });
+});
+
+// Issues #230 and #231: every `doc.patched` gives the editor a new project object, and the
+// timeline's model was built again from all of it: 5,000 items derived and sorted for a drag
+// update that moved one clip. Counted, not timed, so the tests hold on a busy machine.
+describe("selectTimelineModel after a patch", () => {
+  /** A project with `n` clips on `v1` and a few on the other tracks. */
+  function large(n: number): Project {
+    const p = project();
+    const seq = (p.sequences as unknown as Record<string, { tracks: Record<string, unknown> }>)
+      .seq_1;
+    if (seq === undefined) throw new Error("no sequence");
+    const clips = Array.from({ length: n }, (_, i) => clip(`itm_m${i}`, i * 100, 100));
+    seq.tracks.v1 = track("v1", "video", clips, { magnetic: true });
+    return p;
+  }
+  const patched = (p: Project, ops: object[]): Project =>
+    applyPatch(p as unknown as Json, ops as unknown as PatchOp[]) as unknown as Project;
+  const start = (item: string, old: number, value: number) => ({
+    op: "replace",
+    path: `/sequences/seq_1/tracks/v1/items/${item}/start`,
+    old,
+    value,
+  });
+
+  it("derives only the items that changed, and gives the model a fresh build would", () => {
+    const counts = [10, 1000].map((n) => {
+      const before = large(n);
+      const first = selectTimelineModel(before);
+      const after = patched(before, [start("itm_m3", 300, 310)]);
+      const work = selectorWork.items;
+      const model = selectTimelineModel(after);
+      const derived = selectorWork.items - work;
+      // The same model as one built from a copy that shares nothing with what was seen before.
+      expect(model).toEqual(selectTimelineModel(structuredClone(after)));
+      expect(model).not.toBe(first);
+      // Every other item is the object it was: what is drawn from it stays as it is.
+      const moved = model.items.find((i) => i.id === "itm_m3");
+      expect(moved?.start).toBe(310);
+      expect(moved).not.toBe(first.items.find((i) => i.id === "itm_m3"));
+      const same = model.items.filter((item, i) => item === first.items[i]).length;
+      expect(same).toBe(model.items.length - 1);
+      // The untouched tracks keep their lanes too.
+      expect(model.tracks[0]).toBe(first.tracks[0]);
+      return derived;
+    });
+    expect(counts).toEqual([1, 1]);
+  });
+
+  it("derives a ripple's items once, in their new order", () => {
+    const before = large(50);
+    selectTimelineModel(before);
+    // The last clip moves to the front and the others make room.
+    const ops = [
+      ...Array.from({ length: 49 }, (_, i) => start(`itm_m${i}`, i * 100, i * 100 + 100)),
+      start("itm_m49", 4900, 0),
+    ];
+    const after = patched(before, ops);
+    const work = selectorWork.items;
+    const model = selectTimelineModel(after);
+    expect(selectorWork.items - work).toBe(50);
+    const lane = model.items.filter((i) => i.trackId === "v1").map((i) => i.id);
+    expect(lane[0]).toBe("itm_m49");
+    expect(lane[1]).toBe("itm_m0");
+    expect(model).toEqual(selectTimelineModel(structuredClone(after)));
+  });
+
+  it("derives an item again when its media or its track's kind changes", () => {
+    const before = large(5);
+    const first = selectTimelineModel(before);
+    const renamed = patched(before, [
+      {
+        op: "replace",
+        path: "/media/med_a/path_abs",
+        old: "C:\\media\\beach.mp4",
+        value: "C:\\media\\dune.mp4",
+      },
+    ]);
+    const model = selectTimelineModel(renamed);
+    expect(model.items.find((i) => i.id === "itm_m0")?.label).toBe("dune.mp4");
+    expect(model).toEqual(selectTimelineModel(structuredClone(renamed)));
+    // The audio clip plays other media: it is the item it was.
+    const audio = (m: typeof model) => m.items.find((i) => i.id === "itm_4");
+    expect(audio(model)).toBe(audio(first));
+    const muted = patched(renamed, [
+      { op: "replace", path: "/sequences/seq_1/tracks/v1/muted", old: false, value: true },
+    ]);
+    const lanes = selectTimelineModel(muted);
+    expect(lanes.tracks.find((t) => t.id === "v1")?.muted).toBe(true);
+    expect(lanes.items.find((i) => i.id === "itm_m0")).toBe(
+      model.items.find((i) => i.id === "itm_m0"),
+    );
+    expect(lanes).toEqual(selectTimelineModel(structuredClone(muted)));
+  });
+
+  it("reads the length of the sequence from the tracks that changed", () => {
+    const before = large(20);
+    expect(selectSequenceSummary(before)?.duration).toBe(2000);
+    const after = patched(before, [start("itm_m19", 1900, 2400)]);
+    expect(selectSequenceSummary(after)?.duration).toBe(2500);
   });
 });
