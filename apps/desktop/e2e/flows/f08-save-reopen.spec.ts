@@ -10,6 +10,7 @@ import {
   dirtyDot,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -40,6 +41,7 @@ test.describe("F8 save, close, reopen", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Reopen", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4"), work.file("logo.png")]);
       await dropCard(page, "interview.mp4", "V1", 1);

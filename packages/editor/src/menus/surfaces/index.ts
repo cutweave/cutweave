@@ -24,6 +24,7 @@ import {
   INSPECTOR_SECTION,
   SETTINGS_ROW,
 } from "./inspector.ts";
+import { TIMELINE_KEYFRAME } from "./keyframes.ts";
 import {
   PREVIEW_CANVAS,
   PREVIEW_ITEM,
@@ -181,6 +182,12 @@ export const SURFACE_COMMAND_INFO: readonly CommandInfo[] = [
     undoable: true,
   },
   { name: "track.set_height", label: "contextMenu.command.trackSetHeight", undoable: true },
+  // WP-2C.05: the keyframe's Interpolation ▸ on the timeline.
+  {
+    name: "keyframe.set_interp",
+    label: "contextMenu.command.keyframeSetInterp",
+    undoable: true,
+  },
   { name: "track.reorder", label: "contextMenu.command.trackReorder", undoable: true },
 ];
 
@@ -205,6 +212,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
   TIMELINE_RULER,
   TIMELINE_PLAYHEAD,
   TIMELINE_MARKER,
+  TIMELINE_KEYFRAME,
   INSPECTOR_SECTION,
   INSPECTOR_ROW,
   INSPECTOR_PATH,

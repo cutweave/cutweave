@@ -14,6 +14,7 @@ import {
   dirtyDot,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -62,6 +63,7 @@ test.describe("F12 app crash and recovery", () => {
     try {
       // Saved empty, then three edits that are never saved: an import, a drop, a rename.
       const first = await launchFlowApp(work, home);
+      await freeMainTrack(first.app, first.page); // clips stay where they are dropped
       await createProject(first.app, first.page, "Crashy", work.dir);
       await importWithButton(first.app, first.page, [work.file("interview.mp4")]);
       await dropCard(first.page, "interview.mp4", "V1", 1);

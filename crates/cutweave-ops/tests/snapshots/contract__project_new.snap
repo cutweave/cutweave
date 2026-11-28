@@ -360,6 +360,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "description": "Project settings to start with, as in `project.set_settings`; absent keys take their\ndefault. `default_format` here is the full form of `format`.",
           "additionalProperties": false,
           "default": null
+        },
+        "main_magnetic": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "`true` makes `V1` the magnetic main track (clips stay butted from 0); absent: `false`.\nThe editor passes the person's \"Main track is magnetic in new sequences\" setting.",
+          "default": null
         }
       },
       "required": [
@@ -738,6 +746,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         },
         "description": "Project settings to start with, as in `project.set_settings`; absent keys take their\ndefault. `default_format` here is the full form of `format`.",
         "additionalProperties": false,
+        "default": null
+      },
+      "main_magnetic": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "`true` makes `V1` the magnetic main track (clips stay butted from 0); absent: `false`.\nThe editor passes the person's \"Main track is magnetic in new sequences\" setting.",
         "default": null
       }
     },

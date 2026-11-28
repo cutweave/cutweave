@@ -4373,7 +4373,7 @@
         "WP-2A.09",
         "WP-2A.10"
       ],
-      "scope": "(product owner request, 2026-11-24) the Editing and Timeline pages of the settings catalog (`docs/reference/settings.md`); all rows are app preferences.\n- **Editing page:** keep a clip's video and audio linked when inserted (on); dropping media onto a clip outside the main track overwrites (default) or inserts; nudge step for comma and period (1 frame, Shift ×10); undo steps kept per person or agent (1,000), applied through a new engine command (for example `edit.set_history_limit{steps}`: UI-only, not undoable, not journaled) that drops the oldest steps, with the limit reported by `project.info`. Rows other WPs add to this page: still image duration (WP-2F.05), one-click fade length (WP-2E.05), text duration (WP-3A.07), caption defaults (WP-3E.11), transition duration (WP-4A.09).\n- **Timeline page:** snapping on when a project opens (on); snap to playhead, clip edges, markers and beats (all on; the shared snapping of WP-2A.07); snap distance (8 px); follow the playhead while playing: page (default), smooth, off; main track magnetic in new sequences (on; passed when the editor creates a sequence, as `main_magnetic` on `project.new` and `sequence.create` per ADR-0037, accepted 2026-11-27; built under issue #240); video clip thumbnails: filmstrip (default), first frame, off; audio waveforms on clips (on); height of new tracks: small, medium (default), large; the mouse wheel scrolls (default; Ctrl/Cmd+wheel zooms) or zooms; show time as timecode (default), frames or seconds; drop-frame timecode at 29.97 and 59.94 fps (on).\n- Rows apply at once to the open timeline. Nothing is written to the project except through the commands the defaults feed.",
+      "scope": "(product owner request, 2026-11-24) the Editing and Timeline pages of the settings catalog (`docs/reference/settings.md`); all rows are app preferences.\n- **Editing page:** keep a clip's video and audio linked when inserted (on); dropping media onto a clip outside the main track overwrites (default) or inserts; nudge step for comma and period (1 frame, Shift ×10); undo steps kept per person or agent (1,000), applied through a new engine command (for example `edit.set_history_limit{steps}`: UI-only, not undoable, not journaled) that drops the oldest steps, with the limit reported by `project.info`. Rows other WPs add to this page: still image duration (WP-2F.05), one-click fade length (WP-2E.05), text duration (WP-3A.07), caption defaults (WP-3E.11), transition duration (WP-4A.09).\n- **Timeline page:** snapping on when a project opens (on); snap to playhead, clip edges, markers and beats (all on; the shared snapping of WP-2A.07); snap distance (8 px); follow the playhead while playing: page (default), smooth, off; main track magnetic in new sequences (on; passed when the editor creates a sequence, as `main_magnetic` on `project.new` and `sequence.create` per ADR-0037, accepted 2026-11-27; built under issue #240: the app passes it to `project.new`, its only caller that creates a sequence so far); video clip thumbnails: filmstrip (default), first frame, off; audio waveforms on clips (on); height of new tracks: small, medium (default), large; the mouse wheel scrolls (default; Ctrl/Cmd+wheel zooms) or zooms; show time as timecode (default), frames or seconds; drop-frame timecode at 29.97 and 59.94 fps (on).\n- Rows apply at once to the open timeline. Nothing is written to the project except through the commands the defaults feed.",
       "interfaces": "preference keys `editing.*` and `timeline.*` (catalog); `edit.set_history_limit` (UI-only engine command).",
       "acceptance": [
         "Unit: the history limit drops the oldest steps per actor and undo still works up to it; an agent token calling `edit.set_history_limit` gets `forbidden`.",
@@ -4531,7 +4531,7 @@
         "WP-2B.02",
         "WP-2H.02"
       ],
-      "scope": "- Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin).\n- Active sequence persisted in `viewStore` and the project's `ui` state.\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on the sequence tab (`sequence.tab`): Rename, Duplicate, Settings…, Aspect ▸ (the presets), Close, Close others.",
+      "scope": "- Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin). A sequence the editor creates passes `main_magnetic` from the `timeline.magnetic_main` preference to `sequence.create` (ADR-0037; #240 wired only `project.new`, since the editor had no caller of `sequence.create` yet).\n- Active sequence persisted in `viewStore` and the project's `ui` state.\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on the sequence tab (`sequence.tab`): Rename, Duplicate, Settings…, Aspect ▸ (the presets), Close, Close others.",
       "interfaces": "consumes 2B.01/02 commands.",
       "acceptance": [
         "Playwright: create a 9:16 sequence, switch aspect, the preview canvas changes aspect within one frame of the patch event; the tab state survives save/reopen.",
@@ -7024,7 +7024,7 @@
       },
       "phase": "P2",
       "epic": "2I",
-      "area": "crates/cutweave-cli/tests/agent_eval/ or tools/agent-eval/ (a runner outside the gate), docs/reference/agent-eval.md, docs/examples",
+      "area": "crates/cutweave-bench (`src/agent_eval/`, `tests/agent_eval.rs`; as built, see below), scripts/agent-eval-post.py, docs/reference/agent-eval.md, docs/reference/agent-eval/",
       "size": "M",
       "executor": "opus",
       "executor_note": "",
@@ -7038,7 +7038,7 @@
         "WP-2I.01",
         "WP-2J.01"
       ],
-      "scope": "- A runner that gives a model a task and an MCP connection to a headless engine on a generated fixture, and records every tool call. Ten tasks to start: split and trim, insert and reorder, set speed, add a marker, fade audio, keyframe a move, set a 9:16 format, undo and checkpoint, import and place, and one long-tail task that needs a catalog command.\n- Each task has a checker that reads the final document through `timeline_get` or `cutweave_query`; no judgement by a model.\n- Variants it can compare in one run: the standard list against the described one; a core tool against the same command through `cutweave_execute`; one batch against several calls; MCP against the command line with the skill (when WP-2I.10 exists).\n- Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.\n- It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.\n- A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.",
+      "scope": "- A runner that gives a model a task and an MCP connection to a headless engine on a generated fixture, and records every tool call. Ten tasks to start: split and trim, insert and reorder, set speed, add a marker, fade audio, keyframe a move, set a 9:16 format, undo and checkpoint, import and place, and one long-tail task that needs a catalog command.\n- Each task has a checker that reads the final document through `timeline_get` or `cutweave_query`; no judgement by a model.\n- Variants it can compare in one run: the standard list against the described one; a core tool against the same command through `cutweave_execute`; one batch against several calls; MCP against the command line with the skill (when WP-2I.10 exists).\n- Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.\n- It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.\n- A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.\n- **As built (2026-11-28):**\n  - The runner is a subcommand of the benchmark tool, `cargo run -p cutweave-bench -- agent-eval`, not a folder under `cutweave-cli` or `tools/`: it reuses that crate's engine child process, MCP client and seeded fixtures. It is not a `just` recipe, so starting it does not start a gate. How to run it, what it costs and how to read the report: `docs/reference/agent-eval.md`.\n  - It talks to Anthropic's Messages API with tool use. The workspace has no HTTP client with TLS and none was added: `scripts/agent-eval-post.py` (Python's standard library) carries each request; the key is read from `ANTHROPIC_API_KEY` there and nowhere else.\n  - Two client modes besides the variants: `upfront` (every definition in the model's context) and `deferred` (the API's tool search with `defer_loading`, the server's always-load marks kept). A default run is 57 sessions.\n  - The \"through `cutweave_execute`\" variant leaves the task's core tools out of the list the runner shows the model; the server is not changed.\n  - The gate replays ten sessions written by hand, one per task, covering every variant and both client modes.\n  - Measured besides the list above: tokens of the tool definitions (sent, and in the model's context). Tokens of tool results and definitions are estimates, bytes / 4.\n  - **Open:** the first acceptance criterion. No full run has been made (it needs a key and costs a few dollars), so no report is committed under `docs/reference/agent-eval/` yet and the three questions have no numbers. The command line path is the `cli-skill` variant, named but not built (WP-2I.10).",
       "interfaces": "none in the product.",
       "acceptance": [
         "One full run on the standard and the described list, with the report committed under `docs/reference/agent-eval/`.",
@@ -7053,7 +7053,7 @@
       "title": "The command line with a skill, as a second way in for agents with a shell",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1765
+        "line": 1773
       },
       "phase": "P2",
       "epic": "2I",
@@ -7082,7 +7082,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1783
+        "line": 1791
       },
       "phase": "P2",
       "epic": "2J",
@@ -7139,7 +7139,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1800
+        "line": 1808
       },
       "phase": "P2",
       "epic": "2J",
@@ -7173,7 +7173,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1815
+        "line": 1823
       },
       "phase": "P2",
       "epic": "2J",
@@ -7215,7 +7215,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1830
+        "line": 1838
       },
       "phase": "P2",
       "epic": "2J",
@@ -7256,7 +7256,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1846
+        "line": 1854
       },
       "phase": "P2",
       "epic": "2J",
@@ -7300,7 +7300,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1864
+        "line": 1872
       },
       "phase": "P2",
       "epic": "2J",
@@ -7340,7 +7340,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1879
+        "line": 1887
       },
       "phase": "P2",
       "epic": "2J",
@@ -7378,7 +7378,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1893
+        "line": 1901
       },
       "phase": "P2",
       "epic": "2J",
@@ -7416,7 +7416,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1906
+        "line": 1914
       },
       "phase": "P2",
       "epic": "2J",

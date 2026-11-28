@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Benchmark fixtures, the engine benchmark suite (WP-2J.01) and the crash-injection harness
-//! (WP-2J.05).
+//! Benchmark fixtures, the engine benchmark suite (WP-2J.01), the crash-injection harness
+//! (WP-2J.05) and the agent evaluation (WP-2I.09).
 //!
 //! - [`fixture`]: the seeded projects **P-400**, **P-5K** and **P-short**, built through the
 //!   registered commands (`cargo xtask gen-bench-project`).
@@ -12,10 +12,14 @@
 //! - [`crash`]: the crash harness (`cutweave-bench crash`): a real engine process is killed
 //!   during seeded editing work, restarted, and its recovery compared with a reference
 //!   engine that was never killed.
+//! - [`agent_eval`]: the agent evaluation (`cutweave-bench agent-eval`): a model is given
+//!   tasks over MCP on a real engine and how it uses the tools is measured. On demand only;
+//!   the gate replays a recorded session with no model.
 //!
 //! The UI benchmarks (WP-2J.02) and the playback benchmarks (WP-2J.03) open the same fixture
 //! folders and read the same [`fixture::FixtureManifest`].
 
+pub mod agent_eval;
 pub mod cli;
 pub mod crash;
 pub mod fixture;

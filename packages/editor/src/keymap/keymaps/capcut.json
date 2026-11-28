@@ -216,6 +216,21 @@
       "keys": ["F"]
     },
     {
+      "command": "timeline.toggle_keyframe_lanes",
+      "keys": ["Alt+K"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.keyframe_next",
+      "keys": ["Alt+ArrowRight"],
+      "unverified": true
+    },
+    {
+      "command": "timeline.keyframe_previous",
+      "keys": ["Alt+ArrowLeft"],
+      "unverified": true
+    },
+    {
       "command": "timeline.tool.select",
       "keys": ["V"],
       "unverified": true

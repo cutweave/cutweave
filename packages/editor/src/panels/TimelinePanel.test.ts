@@ -143,6 +143,7 @@ const hover = (x: number): TimelinePointerEvent => ({
     itemIndex: -1,
     keyframeIndex: -1,
     keyframeTime: null,
+    prop: null,
     toggle: null,
   },
   button: 0,

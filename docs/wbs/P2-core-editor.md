@@ -327,7 +327,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Executor:** sonnet
 - **Scope:** (product owner request, 2026-11-24) the Editing and Timeline pages of the settings catalog (`docs/reference/settings.md`); all rows are app preferences.
   - **Editing page:** keep a clip's video and audio linked when inserted (on); dropping media onto a clip outside the main track overwrites (default) or inserts; nudge step for comma and period (1 frame, Shift ×10); undo steps kept per person or agent (1,000), applied through a new engine command (for example `edit.set_history_limit{steps}`: UI-only, not undoable, not journaled) that drops the oldest steps, with the limit reported by `project.info`. Rows other WPs add to this page: still image duration (WP-2F.05), one-click fade length (WP-2E.05), text duration (WP-3A.07), caption defaults (WP-3E.11), transition duration (WP-4A.09).
-  - **Timeline page:** snapping on when a project opens (on); snap to playhead, clip edges, markers and beats (all on; the shared snapping of WP-2A.07); snap distance (8 px); follow the playhead while playing: page (default), smooth, off; main track magnetic in new sequences (on; passed when the editor creates a sequence, as `main_magnetic` on `project.new` and `sequence.create` per ADR-0037, accepted 2026-11-27; built under issue #240); video clip thumbnails: filmstrip (default), first frame, off; audio waveforms on clips (on); height of new tracks: small, medium (default), large; the mouse wheel scrolls (default; Ctrl/Cmd+wheel zooms) or zooms; show time as timecode (default), frames or seconds; drop-frame timecode at 29.97 and 59.94 fps (on).
+  - **Timeline page:** snapping on when a project opens (on); snap to playhead, clip edges, markers and beats (all on; the shared snapping of WP-2A.07); snap distance (8 px); follow the playhead while playing: page (default), smooth, off; main track magnetic in new sequences (on; passed when the editor creates a sequence, as `main_magnetic` on `project.new` and `sequence.create` per ADR-0037, accepted 2026-11-27; built under issue #240: the app passes it to `project.new`, its only caller that creates a sequence so far); video clip thumbnails: filmstrip (default), first frame, off; audio waveforms on clips (on); height of new tracks: small, medium (default), large; the mouse wheel scrolls (default; Ctrl/Cmd+wheel zooms) or zooms; show time as timecode (default), frames or seconds; drop-frame timecode at 29.97 and 59.94 fps (on).
   - Rows apply at once to the open timeline. Nothing is written to the project except through the commands the defaults feed.
 - **Interfaces:** preference keys `editing.*` and `timeline.*` (catalog); `edit.set_history_limit` (UI-only engine command).
 - **Acceptance criteria:**
@@ -407,7 +407,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Size:** S
 - **Executor:** sonnet
 - **Scope:**
-  - Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin).
+  - Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin). A sequence the editor creates passes `main_magnetic` from the `timeline.magnetic_main` preference to `sequence.create` (ADR-0037; #240 wired only `project.new`, since the editor had no caller of `sequence.create` yet).
   - Active sequence persisted in `viewStore` and the project's `ui` state.
   - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on the sequence tab (`sequence.tab`): Rename, Duplicate, Settings…, Aspect ▸ (the presets), Close, Close others.
 - **Interfaces:** consumes 2B.01/02 commands.
@@ -1743,7 +1743,7 @@ The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mc
 - **Out of scope:** changing what `full` returns; pagination beyond what WP-2I.01 added.
 
 ### WP-2I.09 — Agent evaluation: measure how a model uses the tools, on demand
-- **Area:** crates/cutweave-cli/tests/agent_eval/ or tools/agent-eval/ (a runner outside the gate), docs/reference/agent-eval.md, docs/examples
+- **Area:** crates/cutweave-bench (`src/agent_eval/`, `tests/agent_eval.rs`; as built, see below), scripts/agent-eval-post.py, docs/reference/agent-eval.md, docs/reference/agent-eval/
 - **Depends on:** WP-2I.01; WP-2J.01 (fixtures)
 - **Size:** M
 - **Executor:** opus
@@ -1754,6 +1754,14 @@ The research in `docs/research/11-mcp-at-scale.md` and [ADR-0040](../adr/0040-mc
   - Measures per task and variant: success; whether the first call to each tool was valid; describe and search calls; turns; tokens in and out; tokens of tool results.
   - It needs a model and a key, so it never runs in the gate or in CI. It runs on demand (`just agent-eval` or an xtask), reads the key from the environment, and writes a dated result file and a short report. With no key it prints how to run it and exits cleanly.
   - A smoke test in the gate replays one recorded session against the engine with no model, so the runner and the checkers cannot rot.
+  - **As built (2026-11-28):**
+    - The runner is a subcommand of the benchmark tool, `cargo run -p cutweave-bench -- agent-eval`, not a folder under `cutweave-cli` or `tools/`: it reuses that crate's engine child process, MCP client and seeded fixtures. It is not a `just` recipe, so starting it does not start a gate. How to run it, what it costs and how to read the report: `docs/reference/agent-eval.md`.
+    - It talks to Anthropic's Messages API with tool use. The workspace has no HTTP client with TLS and none was added: `scripts/agent-eval-post.py` (Python's standard library) carries each request; the key is read from `ANTHROPIC_API_KEY` there and nowhere else.
+    - Two client modes besides the variants: `upfront` (every definition in the model's context) and `deferred` (the API's tool search with `defer_loading`, the server's always-load marks kept). A default run is 57 sessions.
+    - The "through `cutweave_execute`" variant leaves the task's core tools out of the list the runner shows the model; the server is not changed.
+    - The gate replays ten sessions written by hand, one per task, covering every variant and both client modes.
+    - Measured besides the list above: tokens of the tool definitions (sent, and in the model's context). Tokens of tool results and definitions are estimates, bytes / 4.
+    - **Open:** the first acceptance criterion. No full run has been made (it needs a key and costs a few dollars), so no report is committed under `docs/reference/agent-eval/` yet and the three questions have no numbers. The command line path is the `cli-skill` variant, named but not built (WP-2I.10).
 - **Interfaces:** none in the product.
 - **Acceptance criteria:**
   - One full run on the standard and the described list, with the report committed under `docs/reference/agent-eval/`.

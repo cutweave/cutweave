@@ -28,6 +28,7 @@ import {
   drag,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -236,6 +237,7 @@ test.describe("F47 detached panels", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Detached", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

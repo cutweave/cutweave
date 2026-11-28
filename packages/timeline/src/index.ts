@@ -31,6 +31,7 @@ export { hitTest } from "./hit-test.ts";
 // The interaction state machine (WP-2A.08); the editor wires it (WP-2A.10).
 export * from "./interaction/index.ts";
 export { IntervalIndex } from "./interval-index.ts";
+export * from "./keyframes/index.ts";
 export type { TrackMetrics } from "./layout.ts";
 export { TimelineLayout } from "./layout.ts";
 export type {

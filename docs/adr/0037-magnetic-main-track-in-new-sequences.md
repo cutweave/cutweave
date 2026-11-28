@@ -46,7 +46,7 @@ Accepted by the product owner on 2026-11-27: the preference stays (new sequences
 
 **Pass criteria for the follow-up work package** (either option): a unit test that a sequence created with the value on has a magnetic `V1` and with it off has none, as one history entry; the parity test covers the new parameter (option 1); flow F25 gains "turn the preference off, create a project: the main track is not magnetic"; every timeline flow that assumes a free main track on a new project either turns the preference off first or is rewritten for the magnetic track.
 
-**Until #240 lands:** there is no preference key and no row in Settings > Timeline; the catalog lists the row as waiting on this ADR. `project.new` and `sequence.create` are unchanged.
+**Status note (issue #240, landed):** `project.new` and `sequence.create` take `main_magnetic`; the preference key `timeline.magnetic_main` and its row in Settings > Timeline exist, and the app passes the preference to `project.new` (it has no caller of `sequence.create` yet). Flow F25 has the step above; the flows written for free placement on `V1` turn the preference off first (`docs/user-flows.md`).
 
 ## Consequences
 

@@ -16,6 +16,7 @@ import {
   dropCard,
   editorCaughtUp,
   engineChip,
+  freeMainTrack,
   hasCli,
   hasRealEngine,
   importWithButton,
@@ -81,6 +82,7 @@ test.describe("F40 an agent rolls back to a checkpoint", () => {
     const work = workspace();
     const { app, page, home, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Checkpoints", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

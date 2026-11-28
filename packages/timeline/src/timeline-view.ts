@@ -7,6 +7,7 @@
 import { MediaCaches, type MediaLoaders } from "./cache.ts";
 import { nameRect } from "./geometry.ts";
 import { type HitResult, hitTest } from "./hit-test.ts";
+import { type ItemLanes, laneRowHeight, NO_LANES } from "./keyframes/lanes.ts";
 import { TimelineLayout } from "./layout.ts";
 import {
   DEFAULT_DISPLAY,
@@ -125,6 +126,7 @@ export class TimelineView {
   private loaders: MediaLoaders;
   private state: ViewState = DEFAULT_VIEW_STATE;
   private display: TimelineDisplay = DEFAULT_DISPLAY;
+  private lanes: readonly ItemLanes[] = NO_LANES;
   private readonly vp: Viewport;
   /** A smooth zoom in progress: eases `current` toward `target`, keeping `anchorT` at `anchorX`. */
   private zoomAnim: {
@@ -287,6 +289,22 @@ export class TimelineView {
 
   getDisplay(): TimelineDisplay {
     return this.display;
+  }
+
+  /**
+   * The open keyframe lanes (WP-2C.05): the tracks of their items grow to hold them. Only the
+   * track geometry is rebuilt; the item index is the model's.
+   */
+  setKeyframeLanes(lanes: readonly ItemLanes[]): void {
+    if (lanes === this.lanes || (lanes.length === 0 && this.lanes.length === 0)) return;
+    this.lanes = lanes.length === 0 ? NO_LANES : lanes;
+    this.layout = this.buildLayout(this.layout);
+    this.applyScroll();
+    this.invalidate();
+  }
+
+  getKeyframeLanes(): readonly ItemLanes[] {
+    return this.lanes;
   }
 
   /** Replace the media loaders (clears the caches). */
@@ -914,12 +932,18 @@ export class TimelineView {
     });
   }
 
-  private buildLayout(): TimelineLayout {
+  private buildLayout(from?: TimelineLayout): TimelineLayout {
     const th = this.theme;
-    return new TimelineLayout(this.model, {
-      sizes: { sm: th.trackSm, md: th.trackMd, lg: th.trackLg },
-      pad: th.space1,
-    });
+    return new TimelineLayout(
+      this.model,
+      {
+        sizes: { sm: th.trackSm, md: th.trackMd, lg: th.trackLg },
+        pad: th.space1,
+        laneRow: laneRowHeight(th),
+      },
+      this.lanes,
+      from,
+    );
   }
 
   private applyScroll(): void {
@@ -954,6 +978,8 @@ function cursorFor(hit: HitResult): string {
     case "header-toggle":
     case "keyframe":
       return "pointer";
+    case "keyframe-lane":
+      return "crosshair";
     case "header-name":
       return "text";
     default:

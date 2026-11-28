@@ -11,8 +11,10 @@ import type { TKey } from "../i18n/index.ts";
 import { comboText, strokesOf } from "../keymap/store.ts";
 import { TIMELINE_COMMANDS } from "../keymap/timeline.ts";
 import { usePref } from "../prefs/prefsStore.ts";
+import { useDocStore } from "../state/docStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import type { TimelineHost, TimelineUi } from "./host.ts";
+import type { LanesToggle } from "./keyframes.ts";
 
 interface ToolDef {
   readonly tool: Tool;
@@ -62,6 +64,37 @@ function Button({
     </Tooltip>
   );
 }
+
+/**
+ * The keyframe lanes toggle (WP-2C.05): pressed while the lanes of the selected clips are open,
+ * disabled while no selected clip has a keyframe. Its own memoized component, reading one small
+ * value from the stores: neither a document patch nor a render of the toolbar around it (every
+ * step of a drag causes both) renders it again unless that value changed.
+ */
+const KeyframeLanesButton = memo(function KeyframeLanesButton({
+  host,
+  live,
+}: {
+  readonly host: TimelineHost;
+  readonly live: boolean;
+}): ReactElement {
+  const { t } = useTranslation();
+  // Either store can change the answer (the selection and the open lanes, or the document);
+  // the host answers from memory unless one of them did, and during a drag always.
+  const read = (): LanesToggle => (live ? host.lanesToggleState() : "none");
+  useViewStore(read);
+  const state = useDocStore(read);
+  return (
+    <Button
+      icon="keyframe-diamond"
+      label={t(state === "none" ? "timeline.keyframeLanesNone" : "timeline.keyframeLanes")}
+      command="timeline.toggle_keyframe_lanes"
+      pressed={state === "open"}
+      disabled={state === "none"}
+      onClick={() => host.toggleKeyframeLanes()}
+    />
+  );
+});
 
 export const TimelineToolbar = memo(function TimelineToolbar({
   host,
@@ -139,6 +172,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
         disabled={off}
         onClick={() => host.toggleLinkedSelection()}
       />
+      <KeyframeLanesButton host={host} live={live} />
       <ToolbarSeparator />
       <Button
         icon="zoom-out"

@@ -105,6 +105,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           },
           "description": "Format fields; they win over the preset.",
           "default": null
+        },
+        "main_magnetic": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "`true`: `V1` is the magnetic main track. Absent: `false`.",
+          "default": null
         }
       },
       "required": [
@@ -409,6 +417,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           }
         },
         "description": "Format fields; they win over the preset.",
+        "default": null
+      },
+      "main_magnetic": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "`true`: `V1` is the magnetic main track. Absent: `false`.",
         "default": null
       }
     },

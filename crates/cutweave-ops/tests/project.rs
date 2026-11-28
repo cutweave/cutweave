@@ -37,6 +37,42 @@ fn new_creates_one_sequence_with_v1_and_a1() {
 }
 
 #[test]
+fn new_makes_the_main_track_magnetic_only_when_asked() {
+    // ADR-0037: absent (an agent's or the CLI's call today) and `false` leave `V1` free.
+    for params in [
+        json!({"name": "P"}),
+        json!({"name": "P", "main_magnetic": false}),
+    ] {
+        let mut h = H::empty();
+        let out = h.ok("project.new", params);
+        let doc = h.doc();
+        let seq = &doc.sequences[&id::<cutweave_model::SequenceId>(&out["sequence"])];
+        assert!(seq.tracks.values().all(|t| !t.magnetic));
+    }
+
+    let mut h = H::empty();
+    let before = h.doc();
+    let out = h.ok("project.new", json!({"name": "P", "main_magnetic": true}));
+    assert_eq!(h.commits(), 1, "one history entry");
+    let doc = h.doc();
+    let seq = &doc.sequences[&id::<cutweave_model::SequenceId>(&out["sequence"])];
+    let magnetic: Vec<_> = seq
+        .tracks_in_order()
+        .filter(|t| t.magnetic)
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(
+        magnetic,
+        [id::<cutweave_model::TrackId>(&out["video_track"])]
+    );
+    let step = h.last.as_ref().unwrap();
+    assert_eq!(
+        cutweave_commands::apply_patch(&step.doc, &step.inverse).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn new_applies_a_partial_format() {
     let mut h = H::empty();
     let out = h.ok(

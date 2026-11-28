@@ -30,6 +30,7 @@ import {
   timelineCanvas,
   timelineGeometry,
   toast,
+  viewSettled,
   workspace,
 } from "./helpers.ts";
 
@@ -107,6 +108,11 @@ test.describe("F34 export for a platform", () => {
       await timelineCanvas(page).locator("canvas").focus();
       await page.keyboard.press("-");
       await page.keyboard.press("-");
+      // The drops and the click below are aimed with the zoom the engine reports: wait for it.
+      // (Before the main track was magnetic a drop aimed with the old zoom landed late and the
+      // flow followed it; on the magnetic track the still butts at the cut wherever it is
+      // dropped, and only the click was off.)
+      await viewSettled(page);
       const clips = async () => (await layout(page))[0]?.clips ?? [];
       await dropCard(page, "h264_1080p60.mp4", "V1", 0);
       await expect.poll(async () => (await clips()).length, BOUND).toBe(1);

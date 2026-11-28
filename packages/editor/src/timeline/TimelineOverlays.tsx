@@ -22,6 +22,7 @@ import { useDocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import type { TimelineHost } from "./host.ts";
+import { lanesLaidStore } from "./keyframes.ts";
 
 /** The header toggles in the order the canvas draws them (`HEADER_TOGGLES`). */
 const TOGGLES = [
@@ -78,6 +79,8 @@ function useCanvasFollow(): void {
   useViewStore((s) => s.scroll);
   useViewStore((s) => s.zoom);
   useDocStore((s) => s.project);
+  // A keyframe lane opened or closed: the tracks below it moved (WP-2C.05).
+  useStore(lanesLaidStore);
 }
 
 /**

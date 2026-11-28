@@ -128,6 +128,11 @@ export interface ViewState extends EngineViewState {
   muted: boolean;
   /** Session only: safe-area guides over the preview (WP-1M.04). */
   safeAreas: boolean;
+  /**
+   * Session only: the clips whose keyframe lanes are open on the timeline (WP-2C.05), by item
+   * ID. View state, not project data: nothing here is saved or sent to the engine.
+   */
+  keyframeLanes: readonly string[];
   workspaceId: WorkspaceId;
   assetTab: AssetTabId;
   aspect: AspectId;
@@ -154,6 +159,8 @@ export interface ViewActions {
   setMasterGain: (gain: number) => void;
   setMuted: (muted: boolean) => void;
   setSafeAreas: (on: boolean) => void;
+  /** Replaces the clips whose keyframe lanes are open. */
+  setKeyframeLanes: (items: readonly string[]) => void;
   /**
    * Takes the engine's view state (`view.get` on open, `view.changed` from another client)
    * and, when it carries a panel layout, the workspace, aspect and layouts. `viewSync` calls it;
@@ -171,6 +178,7 @@ export const initialViewState: ViewState = {
   masterGain: 1,
   muted: false,
   safeAreas: false,
+  keyframeLanes: [],
   workspaceId: "short-form",
   assetTab: "media",
   aspect: WORKSPACE_DEFS["short-form"].defaultAspect,
@@ -302,6 +310,7 @@ export function createViewStore(storage?: StateStorage) {
           set(() => (Number.isFinite(gain) ? { masterGain: Math.min(4, Math.max(0, gain)) } : {})),
         setMuted: (muted) => set(() => ({ muted })),
         setSafeAreas: (safeAreas) => set(() => ({ safeAreas })),
+        setKeyframeLanes: (keyframeLanes) => set(() => ({ keyframeLanes })),
         applyEngineView: (ui) =>
           set((s) => {
             const next: Partial<ViewState> = {};

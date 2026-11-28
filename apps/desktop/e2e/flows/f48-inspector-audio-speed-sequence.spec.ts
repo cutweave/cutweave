@@ -11,6 +11,7 @@ import {
   dropCard,
   editorCaughtUp,
   FLICKS,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -41,6 +42,7 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Inspector sound", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

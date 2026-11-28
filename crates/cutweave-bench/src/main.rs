@@ -9,6 +9,9 @@
 //!                               memory probes measure
 //! cutweave-bench crash [...]    the crash-injection harness (WP-2J.05): kill the engine during
 //!                               seeded work, restart it, check that nothing is lost
+//! cutweave-bench agent-eval [...]
+//!                               the agent evaluation (WP-2I.09): a model does tasks over MCP
+//!                               and how it uses the tools is measured; on demand, needs a key
 //! ```
 //!
 //! WP-2J.03 adds `playback`, `scrub`, `sync` and `export`.
@@ -19,14 +22,17 @@ use std::process::ExitCode;
 use cutweave_bench::probes::{Scale, Workspace, run_all};
 use cutweave_bench::{BenchError, cli, workspace_root};
 
-const USAGE: &str = "usage: cutweave-bench <gen|run|engine|crash> [options]
+const USAGE: &str = "usage: cutweave-bench <gen|run|engine|crash|agent-eval> [options]
   gen [...]     write fixture projects (`gen --help`)
   run [--smoke] [--with-media] [--out FILE]
                 run the engine suite once and write the result JSON
   engine [...]  run an engine process (docs/reference/launch-protocol.md)
   crash [--count N] [--seed S] [...]
                 kill the engine N times during editing work and check its recovery
-                (`crash --help`)";
+                (`crash --help`)
+  agent-eval [--model ID] [--dry-run] [--replay FILE] [...]
+                give a model the evaluation's tasks over MCP and measure how it uses the
+                tools; needs ANTHROPIC_API_KEY, never part of the gate (`agent-eval --help`)";
 
 fn run(args: &[String]) -> Result<bool, BenchError> {
     let (mut scale, mut with_media, mut out) = (Scale::full(), false, None);
@@ -80,6 +86,19 @@ fn main() -> ExitCode {
         Some("crash") => std::env::current_exe()
             .map_err(|e| BenchError::Other(e.to_string()))
             .and_then(|exe| cutweave_bench::crash::command(&workspace_root(), &exe, &args[1..]))
+            .map(|(report, passed)| {
+                print!("{report}");
+                passed
+            }),
+        Some("agent-eval") if args.iter().any(|a| a == "--help") => {
+            println!("{}", cutweave_bench::agent_eval::USAGE);
+            Ok(true)
+        }
+        Some("agent-eval") => std::env::current_exe()
+            .map_err(|e| BenchError::Other(e.to_string()))
+            .and_then(|exe| {
+                cutweave_bench::agent_eval::command(&workspace_root(), &exe, &args[1..])
+            })
             .map(|(report, passed)| {
                 print!("{report}");
                 passed

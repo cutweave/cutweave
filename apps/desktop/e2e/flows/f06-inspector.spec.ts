@@ -12,6 +12,7 @@ import {
   dropCard,
   editorCaughtUp,
   FLICKS,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   inspector,
@@ -39,6 +40,7 @@ test.describe("F6 inspector", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Inspector", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);
@@ -187,6 +189,7 @@ test.describe("F6 inspector", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Inspector video", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

@@ -25,6 +25,7 @@ import {
   dropCard,
   editorCaughtUp,
   expectKeptUp,
+  freeMainTrack,
   handPacedDrag,
   hasRealEngine,
   importWithButton,
@@ -109,6 +110,7 @@ test.describe("F61 timeline tools, selection and track headers", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Tools", work.dir);
       await importWithButton(app, page, [
         work.file("interview.mp4"),

@@ -16,6 +16,7 @@ import {
   drag,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasRealEngine,
   importWithButton,
   laneY,
@@ -56,6 +57,7 @@ test.describe("F39 overlays, linked and attached clips", () => {
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Overlays", work.dir);
       await importWithButton(app, page, [
         work.file("interview.mp4"),

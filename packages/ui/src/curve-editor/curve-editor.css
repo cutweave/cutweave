@@ -1,0 +1,136 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* The curve editor (WP-2C.05): kind switch, preset picker, graph with bezier handles, spring numbers. */
+
+.cw-curve {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.cw-curve__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.cw-curve__preset {
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+.cw-curve__select {
+  flex: 0 1 auto;
+  box-sizing: border-box;
+  height: var(--control-sm);
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+.cw-curve__select:hover {
+  background: var(--surface-3);
+}
+.cw-curve__select:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--marigold);
+}
+.cw-curve__select:disabled {
+  border-color: var(--border-subtle);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.cw-curve__plot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1);
+  align-items: center;
+}
+.cw-curve__axis {
+  color: var(--text-muted);
+  user-select: none;
+}
+.cw-curve__axis--value {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+}
+.cw-curve__axis--time {
+  grid-column: 2;
+  text-align: center;
+}
+.cw-curve__graph {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--surface-0);
+  border: var(--border-thin) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  touch-action: none;
+}
+.cw-curve__unit {
+  fill: var(--surface-2);
+  stroke: none;
+}
+.cw-curve__grid {
+  stroke: var(--border-subtle);
+  stroke-width: var(--border-thin);
+  vector-effect: non-scaling-stroke;
+}
+.cw-curve__line {
+  fill: none;
+  stroke: var(--marigold);
+  stroke-width: var(--border-thick);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.cw-curve__arm {
+  stroke: var(--text-secondary);
+  stroke-width: var(--border-thin);
+  vector-effect: non-scaling-stroke;
+}
+.cw-curve__handle {
+  cursor: grab;
+  outline: none;
+}
+.cw-curve__handle:active {
+  cursor: grabbing;
+}
+.cw-curve__hit {
+  fill: transparent;
+  stroke: none;
+}
+.cw-curve__knob {
+  fill: var(--surface-1);
+  stroke: var(--text-primary);
+  stroke-width: var(--border-thick);
+  vector-effect: non-scaling-stroke;
+}
+.cw-curve__handle:hover .cw-curve__knob {
+  fill: var(--surface-3);
+}
+.cw-curve__handle:focus-visible .cw-curve__knob {
+  stroke: var(--focus-ring);
+  fill: var(--marigold);
+}
+.cw-curve__handle[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+.cw-curve__handle[aria-disabled="true"] .cw-curve__knob {
+  stroke: var(--text-disabled);
+}
+.cw-curve__spring {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cw-curve__bounce {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}

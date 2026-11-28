@@ -25427,6 +25427,14 @@
               "null"
             ]
           },
+          "main_magnetic": {
+            "default": null,
+            "description": "`true` makes `V1` the magnetic main track (clips stay butted from 0); absent: `false`.\nThe editor passes the person's \"Main track is magnetic in new sequences\" setting.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "name": {
             "description": "Project name (1..=200 characters).",
             "type": "string"
@@ -26997,6 +27005,14 @@
             },
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "main_magnetic": {
+            "default": null,
+            "description": "`true`: `V1` is the magnetic main track. Absent: `false`.",
+            "type": [
+              "boolean",
               "null"
             ]
           },

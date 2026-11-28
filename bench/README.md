@@ -85,6 +85,18 @@ A run takes every point once in a seeded order, then again. After each crash: th
 
 One crash at every point, and the self-test, run as ordinary tests (`crates/cutweave-bench/tests/crash.rs`, about 10 s, no GPU), so a change that breaks recovery or the harness fails `just check-affected`. Not covered here: GPU device loss (the engine has no way to inject it), recording (not built yet), power loss, and the Electron side (`apps/desktop/e2e/m1/m1-crash.spec.ts` kills the engine and the app under the UI).
 
+## Agent evaluation (WP-2I.09)
+
+```
+ANTHROPIC_API_KEY=... cargo run -p cutweave-bench -- agent-eval     # 57 sessions with a model; costs money
+cargo run -p cutweave-bench -- agent-eval --dry-run                  # the first request, nothing sent
+cargo run -p cutweave-bench -- agent-eval --replay crates/cutweave-bench/tests/fixtures/agent-eval/split-and-trim.json
+```
+
+It gives a model ten editing tasks over MCP on fresh headless engines (stub media, no GPU), records every tool call, checks the final document with a deterministic checker per task and writes a dated result and report to `docs/reference/agent-eval/`. One run compares the standard tool list with the described one, a core tool with the same command through `cutweave_execute`, and one batch with several calls. It needs a key and a model, so it is never part of the gate; without `ANTHROPIC_API_KEY` it prints how to run it and exits 0. Everything else is in [docs/reference/agent-eval.md](../docs/reference/agent-eval.md).
+
+Ten sessions written by hand, one per task, are replayed on real engines with no model and no network as an ordinary test (`crates/cutweave-bench/tests/agent_eval.rs`, about 10 s), so a change that breaks the runner, a checker or a tool the tasks use fails `just check-affected`.
+
 ## Adding a metric
 
 1. Add the budget row (or reuse the §19 id) in `budgets.toml`; keep §19 in sync if a §19 row changes.

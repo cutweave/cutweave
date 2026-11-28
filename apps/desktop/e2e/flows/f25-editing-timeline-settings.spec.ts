@@ -2,6 +2,9 @@
 // F25 Editing and timeline preferences (docs/user-flows.md, WP-2A.13): Settings > Timeline and
 // Settings > Editing, each changed the way a person does and seen where it shows.
 //
+// - "Main track is magnetic in new sequences" (ADR-0037): a project made with it on (as it is
+//   at first) has a magnetic V1; turned off, the next project made has none. The rest of the
+//   flow works on that free main track.
 // - "Snapping on when a project opens" off, relaunch, open the project: the timeline's Snapping
 //   button is off.
 // - "Show time as" Frames: the time under the preview and the Inspector's Start and Duration
@@ -28,6 +31,8 @@ import {
   inspector,
   launchFlowApp,
   layout,
+  MAGNETIC_MAIN,
+  mainTrackIsMagnetic,
   mediaCard,
   mediaCards,
   movePlayhead,
@@ -117,7 +122,20 @@ test.describe("F25 editing and timeline preferences", () => {
       const first = await launchFlowApp(work, home);
       try {
         const { app, page } = first;
+        // ---- "Main track is magnetic in new sequences": on at first, so the first project's
+        // V1 is the magnetic main track; off, the next project's is not.
+        await createProject(app, page, "Magnetic", work.dir);
+        expect(await mainTrackIsMagnetic(page)).toBe(true);
+        const timeline = await settingsPage(page, app, "Timeline");
+        const magnetic = timeline.getByRole("switch", { name: MAGNETIC_MAIN });
+        await expect(magnetic).toHaveAttribute("aria-checked", "true");
+        await magnetic.click();
+        await expect(magnetic).toHaveAttribute("aria-checked", "false");
+        await closeSettings(timeline);
+        // The setting is for sequences made from now on: the open project keeps its magnet.
+        expect(await mainTrackIsMagnetic(page)).toBe(true);
         await createProject(app, page, "Prefs", work.dir);
+        expect(await mainTrackIsMagnetic(page)).toBe(false);
         await importWithButton(app, page, [work.file("interview.mp4")]);
         await expect(snappingButton(page)).toHaveAttribute("aria-pressed", "true");
         const settings = await settingsPage(page, app, "Timeline");

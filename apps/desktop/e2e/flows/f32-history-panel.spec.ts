@@ -19,6 +19,7 @@ import {
   drag,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasCli,
   hasRealEngine,
   importWithButton,
@@ -91,6 +92,7 @@ test.describe("F32 history panel", () => {
       };
 
       // Import a clip and drop it at 1 s.
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "History", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);

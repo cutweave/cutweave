@@ -23,6 +23,7 @@ import {
   dropCard,
   editorCaughtUp,
   expectKeptUp,
+  freeMainTrack,
   handPacedDrag,
   hasRealEngine,
   launchFlowApp,
@@ -177,6 +178,9 @@ test.describe("F17 real media", () => {
         caps.available !== true,
         "this engine has no media backend; build it with --features cutweave-engine/ffmpeg",
       );
+      // The hand-paced drag below moves the last clip right and back: on the magnetic main
+      // track of a new project (ADR-0037) it would have nowhere to go and nothing to measure.
+      await freeMainTrack(app, page);
       await createProject(app, page, "Real", work.dir);
 
       // Import: the cards show what FFmpeg found in each file.

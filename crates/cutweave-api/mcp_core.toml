@@ -168,7 +168,7 @@ example = '{"t":"2.5s"}'
 [[tool]]
 name = "sequence_create"
 command = "sequence.create"
-description = "Add a sequence from an aspect preset (\"16:9\", \"9:16\", \"1:1\", ...) or an explicit format; returns its id and tracks."
+description = "Add a sequence from an aspect preset (\"16:9\", \"9:16\", \"1:1\", ...) or an explicit format; `main_magnetic: true` makes V1 the magnetic main track; returns its id and tracks."
 example = '{"name":"Short","preset":"9:16"}'
 
 [[tool]]

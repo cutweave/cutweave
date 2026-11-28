@@ -22,6 +22,7 @@ import {
   createProject,
   dropCard,
   editorCaughtUp,
+  freeMainTrack,
   hasCli,
   hasRealEngine,
   importWithButton,
@@ -162,6 +163,7 @@ test.describe("F46 soft locks", () => {
     const { app, page, home, close } = await launchFlowApp(work);
     let copilot: Copilot | undefined;
     try {
+      await freeMainTrack(app, page); // clips stay where they are dropped
       await createProject(app, page, "Locks", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await dropCard(page, "interview.mp4", "V1", 1);
