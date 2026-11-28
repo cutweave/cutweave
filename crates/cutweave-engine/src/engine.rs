@@ -705,8 +705,13 @@ impl Core {
         let Some(session) = guard.as_ref() else {
             return Err(stopped());
         };
-        let (result, change) = {
+        let (pruned, result, change) = {
             let mut view = session.view.lock().unwrap_or_else(PoisonError::into_inner);
+            // The view first drops what the committed document no longer has (a deleted
+            // sequence that was shown, deleted clips that were selected): the document event
+            // forwarder does the same, but a moment after the command that deleted them has
+            // answered, and a caller that reads the view right then must not be told of them.
+            let pruned = view.prune(&session.handle().committed_snapshot().doc);
             let result = view.with_ctx(|vc| {
                 self.deps
                     .registry
@@ -714,9 +719,20 @@ impl Core {
             });
             let change =
                 view.with_ctx(|vc| vc.take_event().map(|change| (change, vc.state().clone())));
-            (result, change)
+            (pruned, result, change)
         };
         drop(guard);
+        // What the document took away is everyone's news (no origin), and comes first.
+        let (dropped, shown) = pruned;
+        if let Some(change) = dropped {
+            self.deps.events.publish(EngineEvent::View {
+                change,
+                origin: None,
+            });
+        }
+        if let (Some(state), None) = (&shown, &change) {
+            self.deps.subsystems.on_view(state, false);
+        }
         if let Some((change, state)) = change {
             self.deps.events.publish(EngineEvent::View {
                 change,
