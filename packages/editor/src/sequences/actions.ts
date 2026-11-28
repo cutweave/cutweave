@@ -78,7 +78,12 @@ export function showSequence(sequence: SequenceId, deps: SequenceDeps = sequence
 
 /** Shows the next (`1`) or the previous (`-1`) open tab, wrapping around. */
 export function showNeighbour(by: -1 | 1, deps: SequenceDeps = sequenceDeps()): void {
-  const next = neighbour(sequences(deps), deps.view.getState().sequenceTabs, shownSequence(deps), by);
+  const next = neighbour(
+    sequences(deps),
+    deps.view.getState().sequenceTabs,
+    shownSequence(deps),
+    by,
+  );
   if (next !== null) showSequence(next, deps);
 }
 

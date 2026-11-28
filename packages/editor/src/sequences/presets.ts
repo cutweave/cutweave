@@ -32,7 +32,5 @@ export function presetOfFormat(
   format: Pick<SequenceFormat, "width" | "height"> | undefined,
 ): AspectPreset | null {
   if (format === undefined) return null;
-  return (
-    ASPECT_PRESETS.find((p) => p.width === format.width && p.height === format.height) ?? null
-  );
+  return ASPECT_PRESETS.find((p) => p.width === format.width && p.height === format.height) ?? null;
 }

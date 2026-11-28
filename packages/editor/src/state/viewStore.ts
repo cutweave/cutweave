@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type {
-  MediaId,
-  SelectionRef,
-  SequenceId,
-  SourceMarks,
-  UiState,
-} from "@cutweave/protocol";
+import type { MediaId, SelectionRef, SequenceId, SourceMarks, UiState } from "@cutweave/protocol";
 import type { SerializedDockview } from "dockview-react";
 import { useStore } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";

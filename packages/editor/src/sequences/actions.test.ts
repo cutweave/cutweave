@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The sequence actions (WP-2B.03): each sends one catalog command, shows what it made, and keeps
 // the tabs in step. The engine here is a mock transport that records what was asked.
-import { MockTransport, type Project, RpcClient, RpcError, type SequenceId } from "@cutweave/protocol";
+import {
+  MockTransport,
+  type Project,
+  RpcClient,
+  RpcError,
+  type SequenceId,
+} from "@cutweave/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { createEngineStore } from "../engine/engineStore.ts";
 import { createDocStore } from "../state/docStore.ts";
@@ -21,8 +27,8 @@ import {
   type SequenceDeps,
   setSequenceAspect,
   showNeighbour,
-  showSequence,
   shownSequence,
+  showSequence,
 } from "./actions.ts";
 
 const A = "seq_1" as SequenceId;

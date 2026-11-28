@@ -101,7 +101,16 @@ function mount() {
       h(
         TooltipProvider,
         null,
-        h(Profiler, { id: "tabs", onRender: () => void (commits.n += 1) }, h(SequenceTabs)),
+        h(
+          Profiler,
+          {
+            id: "tabs",
+            onRender: () => {
+              commits.n += 1;
+            },
+          },
+          h(SequenceTabs),
+        ),
       ),
     ),
   );
@@ -157,7 +166,10 @@ describe("the tab strip renders only when the tabs change (#241)", () => {
       docStore.getState().resync({
         rev: 2,
         committed_rev: 2,
-        project: { ...project, sequences: { ...project.sequences, [B]: { ...second, name: "Reel" } } },
+        project: {
+          ...project,
+          sequences: { ...project.sequences, [B]: { ...second, name: "Reel" } },
+        },
       });
     });
     expect(tabStripRenders.count - before).toBe(1);

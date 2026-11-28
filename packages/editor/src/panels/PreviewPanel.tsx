@@ -151,7 +151,10 @@ function useGuideItems(): readonly MenuEntry[] {
  * has checked, and Custom size… (Sequence settings, where any width and height can be typed).
  * A preset is one `sequence.set_format`; the clips follow as its `reframe` says (fit).
  */
-function useSizeItems(): { readonly sequence: string | null; readonly items: readonly MenuEntry[] } {
+function useSizeItems(): {
+  readonly sequence: string | null;
+  readonly items: readonly MenuEntry[];
+} {
   const { t } = useTranslation();
   const sequence = useDocStore((s) => selectActiveSequenceId(s.project));
   // The canvas as one string, so a patch that leaves it alone renders nothing again.

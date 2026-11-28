@@ -77,7 +77,9 @@ export function SequenceSettingsDialog() {
           label={t("sequences.settingsDialog.formLabel")}
         />
       </div>
-      {images.length === 0 ? <DialogNote>{t("sequences.settingsDialog.noImages")}</DialogNote> : null}
+      {images.length === 0 ? (
+        <DialogNote>{t("sequences.settingsDialog.noImages")}</DialogNote>
+      ) : null}
     </Dialog>
   );
 }

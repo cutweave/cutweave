@@ -247,17 +247,23 @@ describe("diffView and panel layout", () => {
     store.getState().setSequenceTabs({ order: [b, a], closed: [a] });
     timers.advance(VIEW_SYNC_DEBOUNCE_MS);
     await settle();
-    const sent = (sets().at(-1)?.params as { patch: { panel_layout: unknown } }).patch.panel_layout;
-    expect((sent as { sequenceTabs: unknown }).sequenceTabs).toEqual({ order: [b, a], closed: [a] });
+    const last = sets().at(-1)?.params as { patch: { panel_layout: unknown } } | undefined;
+    const sent = last?.patch.panel_layout;
+    expect((sent as { sequenceTabs: unknown }).sequenceTabs).toEqual({
+      order: [b, a],
+      closed: [a],
+    });
     // Another launch reads the same blob.
     const next = setup(engineView({ panel_layout: sent as UiState["panel_layout"] }));
     await next.sync.restore();
     expect(next.store.getState().sequenceTabs).toEqual({ order: [b, a], closed: [a] });
     // A blob from before there were tabs: every sequence has one.
-    expect(panelLayoutFrom({ ...(sent as object), sequenceTabs: undefined })?.sequenceTabs).toEqual({
-      order: [],
-      closed: [],
-    });
+    expect(panelLayoutFrom({ ...(sent as object), sequenceTabs: undefined })?.sequenceTabs).toEqual(
+      {
+        order: [],
+        closed: [],
+      },
+    );
   });
 
   it("source marks go to the engine at once, per asset, and a cleared asset as {}", async () => {

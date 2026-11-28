@@ -141,7 +141,8 @@ export const SequenceTabs = memo(function SequenceTabs() {
 
   return (
     <div className="cw-seqtabs" ref={surface}>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: a tab dropped past the last one goes to the end; the tab menu's Move left and Move right do the same from the keyboard */}
+      {/* A tab dropped past the last one goes to the end; the tab menu's Move left and Move right
+          do the same from the keyboard. */}
       <div
         ref={listRef}
         className="cw-tabs cw-seqtabs__list"
@@ -153,7 +154,7 @@ export const SequenceTabs = memo(function SequenceTabs() {
         {tabs.map((tab) => {
           const selected = tab.id === active;
           return (
-            // biome-ignore lint/a11y/useKeyWithClickEvents: the wrapper only takes the middle click and the drop; the tab inside has the keys
+            // biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only takes the middle click and the drop; the tab inside has the keys, and the tab menu closes and moves from the keyboard
             <div
               key={tab.id}
               role="presentation"
