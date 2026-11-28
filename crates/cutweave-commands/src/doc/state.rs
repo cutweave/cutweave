@@ -67,6 +67,22 @@ pub const GESTURE_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// documents, WP-1B.08).
 const REQUEST_ID_STREAM: u64 = 0x5245_5155_4553_5453; // "REQUESTS"
 
+/// Transaction ids set aside per millisecond of wall-clock time when ids are per run
+/// ([`DocConfig::with_tx_ids_per_run`]): a run that starts at millisecond `t` numbers its
+/// transactions from `t * TX_IDS_PER_MILLI + 1`. No run opens a million transactions per
+/// millisecond, so a run never reaches the ids of one that started later.
+const TX_IDS_PER_MILLI: u64 = 1_000_000;
+
+/// The first transaction id of a run that starts at `now` with per-run ids: past every id a
+/// run that started earlier issued, and never before `floor` (one past the last journaled).
+/// With the clock at the Unix epoch (frozen, `--deterministic-ids`) that is `floor` itself.
+fn first_tx_of_run(floor: u64, now: WallTime) -> u64 {
+    now.as_millis()
+        .checked_mul(TX_IDS_PER_MILLI)
+        .and_then(|base| base.checked_add(1))
+        .map_or(floor, |first| first.max(floor))
+}
+
 /// Persists committed transactions (the journal, WP-1C.02).
 ///
 /// Called on the actor thread for every committed transaction, **before** the transaction
@@ -238,6 +254,7 @@ pub struct DocConfig {
     dedup_capacity: usize,
     restored: Vec<DedupRecord>,
     first_tx: u64,
+    tx_ids_per_run: bool,
     history_limits: HistoryLimits,
     gesture_timeout: Duration,
     recovered: Vec<JournaledCommit>,
@@ -303,6 +320,7 @@ impl DocConfig {
             dedup_capacity: DEDUP_CAPACITY,
             restored: Vec::new(),
             first_tx: 1,
+            tx_ids_per_run: false,
             history_limits: HistoryLimits::default(),
             gesture_timeout: GESTURE_IDLE_TIMEOUT,
             recovered: Vec::new(),
@@ -371,6 +389,23 @@ impl DocConfig {
     #[must_use]
     pub fn with_first_tx_id(mut self, first: TxId) -> DocConfig {
         self.first_tx = first.get().max(1);
+        self
+    }
+
+    /// Numbers this run's transactions past every id an earlier run issued, also the ids the
+    /// journal never saw (issue #251): transactions cancelled, or still open when the engine
+    /// died. Without it a restarted engine hands those ids out again, and a commit or cancel
+    /// sent again for the old transaction would close a new one.
+    ///
+    /// The first id is derived from the clock when the state is built (milliseconds since the
+    /// Unix epoch times 1,000,000, plus one), and is never below
+    /// [`with_first_tx_id`](Self::with_first_tx_id). Ids stay `tx_<n>` and increasing. A clock
+    /// frozen at the Unix epoch (`--deterministic-ids`) gives the plain numbering, so such
+    /// runs stay reproducible and keep the reuse; so does a wall clock that stepped back
+    /// across the restart to before the earlier run's start.
+    #[must_use]
+    pub fn with_tx_ids_per_run(mut self) -> DocConfig {
+        self.tx_ids_per_run = true;
         self
     }
 
@@ -829,6 +864,11 @@ impl DocState {
                     .unwrap_or(u64::MAX - 1)
             }
         });
+        let next_tx = if config.tx_ids_per_run {
+            first_tx_of_run(config.first_tx, config.clock.now())
+        } else {
+            config.first_tx
+        };
         let mut history = History::new(config.history_limits);
         for commit in config.recovered {
             history.replay(commit.into_record());
@@ -845,7 +885,7 @@ impl DocState {
             rev: config.rev,
             open: BTreeMap::new(),
             closed_conns: ClosedConns::default(),
-            next_tx: config.first_tx,
+            next_tx,
             dedup,
             history,
             checkpoints,
