@@ -194,6 +194,14 @@ pub(crate) enum Start {
 }
 
 impl Start {
+    /// The highest transaction id the journal said may be handed out (none for a new segment).
+    fn tx_issued(&self) -> u64 {
+        match self {
+            Start::Fresh { .. } => 0,
+            Start::Resume { tx_issued, .. } => *tx_issued,
+        }
+    }
+
     /// The checkpoints to start with (none for a new segment).
     fn take_checkpoints(&mut self) -> CheckpointLedger {
         match self {
@@ -582,6 +590,42 @@ fn resume_segment(
     Ok((segment, on_disk != valid_len))
 }
 
+/// After the tail of the resumed segment was cut (discarded work, or a torn record): it may
+/// have held the marker that said which transaction ids were handed out, so it is said again,
+/// and they stay taken if this engine dies before it opens a transaction (ADR-0043).
+fn restate_tx_issued(
+    state: &mut State,
+    now: WallTime,
+    ids: Option<&IdTracker>,
+) -> Result<(), JournalError> {
+    if state.tx_issued == 0 {
+        return Ok(());
+    }
+    let marker = TxMarker {
+        issued: state.tx_issued,
+        at: now,
+        closed: None,
+        steps: &[],
+    };
+    let frame = tx_frame(&marker, ids.map(IdTracker::state))?;
+    write_frame(state, &frame).map(drop)
+}
+
+/// The group-commit flusher thread, if the policy has one.
+fn spawn_flusher(shared: &Arc<Shared>, dir: &Path) -> Result<Option<JoinHandle<()>>, JournalError> {
+    match shared.sync {
+        SyncPolicy::Group { max_delay } => {
+            let shared = Arc::clone(shared);
+            std::thread::Builder::new()
+                .name("cutweave-journal".to_owned())
+                .spawn(move || flush_loop(&shared, max_delay))
+                .map(Some)
+                .map_err(|e| JournalError::io("start journal flusher", dir, e))
+        }
+        SyncPolicy::EveryCommit | SyncPolicy::Manual => Ok(None),
+    }
+}
+
 impl Journal {
     /// Starts appending (see [`Start`]).
     pub(crate) fn start(
@@ -591,10 +635,7 @@ impl Journal {
     ) -> Result<Journal, JournalError> {
         let now = config.clock.now();
         let checkpoints = start.take_checkpoints();
-        let tx_issued = match &start {
-            Start::Fresh { .. } => 0,
-            Start::Resume { tx_issued, .. } => *tx_issued,
-        };
+        let tx_issued = start.tx_issued();
         let mut cut = false;
         let (seg, chain, retained, next_generation, last_rev, requests) = match start {
             Start::Fresh {
@@ -667,18 +708,8 @@ impl Journal {
             stats: JournalStats::default(),
         };
         state.remember(requests.into_iter(), now, config.dedup_window);
-        if cut && tx_issued > 0 {
-            // The cut tail (discarded work, or a torn record) may have held the marker that
-            // said which transaction ids were handed out: say it again, so they stay taken
-            // if this engine dies before it opens a transaction.
-            let marker = TxMarker {
-                issued: tx_issued,
-                at: now,
-                closed: None,
-                steps: &[],
-            };
-            let frame = tx_frame(&marker, config.ids.as_ref().map(IdTracker::state))?;
-            write_frame(&mut state, &frame)?;
+        if cut {
+            restate_tx_issued(&mut state, now, config.ids.as_ref())?;
         }
         let shared = Arc::new(Shared {
             state: Mutex::new(state),
@@ -689,18 +720,7 @@ impl Journal {
             registry: config.registry,
             ids: config.ids,
         });
-        let flusher = match config.sync {
-            SyncPolicy::Group { max_delay } => {
-                let shared = Arc::clone(&shared);
-                Some(
-                    std::thread::Builder::new()
-                        .name("cutweave-journal".to_owned())
-                        .spawn(move || flush_loop(&shared, max_delay))
-                        .map_err(|e| JournalError::io("start journal flusher", dir, e))?,
-                )
-            }
-            SyncPolicy::EveryCommit | SyncPolicy::Manual => None,
-        };
+        let flusher = spawn_flusher(&shared, dir)?;
         Ok(Journal {
             handle: Arc::new(Handle {
                 shared,

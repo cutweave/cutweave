@@ -913,7 +913,7 @@ fn transaction_ids_are_reserved_in_the_journal_before_they_are_handed_out() {
     let markers = journal.markers.lock().unwrap().clone();
     assert_eq!(markers.len(), 1, "one reservation, nothing else");
     assert_eq!(markers[0].closed, None);
-    assert!(markers[0].steps.is_empty());
+    assert_eq!(markers[0].steps.len(), 0);
 
     let restarted = restarted_from(&journal, saved.doc.clone(), saved.rev);
     let h = restarted.handle();

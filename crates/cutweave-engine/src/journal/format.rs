@@ -459,7 +459,7 @@ mod tests {
         let Entry::Tx(reserved) = &entries[3].entry else {
             panic!("{:?}", entries[3].entry);
         };
-        assert_eq!(reserved.tx.to_owned(), reservation.to_owned());
+        assert_eq!(reserved.tx, reservation.to_owned());
         assert_eq!(reserved.ids.unwrap().request, 4);
         // The written form: a reservation is just the number and the time.
         let frame = tx_frame(&reservation, None).unwrap();
@@ -508,7 +508,7 @@ mod tests {
         let EntryV2::Carry(old) = old else {
             panic!("{old:?}");
         };
-        assert!(old.requests.is_empty());
+        assert_eq!(old.requests.len(), 0);
         assert_eq!(old.checkpoints_issued, 2);
         for known in [
             serde_json::json!({"type": "header"}),

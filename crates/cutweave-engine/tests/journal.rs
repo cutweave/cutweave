@@ -731,7 +731,7 @@ fn opened_tx(opened: &Applied) -> TxId {
     serde_json::from_value(opened.output["tx"].clone()).unwrap()
 }
 
-fn is_not_found(result: Result<Applied, cutweave_commands::CmdError>) -> bool {
+fn is_not_found(result: &Result<Applied, cutweave_commands::CmdError>) -> bool {
     matches!(result, Err(cutweave_commands::CmdError::NotFound { .. }))
 }
 
@@ -777,7 +777,7 @@ fn a_cancel_and_an_empty_commit_sent_again_after_a_restart_get_their_results_bac
         assert_eq!(h.committed_snapshot().doc, live.doc, "{when}");
         // Under a request id the journal never saw, the same close is a new request.
         let fresh = send(h, 9, "edit.cancel_tx", json!({"tx": a}), None);
-        assert!(is_not_found(fresh), "{when}");
+        assert!(is_not_found(&fresh), "{when}");
     };
     {
         let mut s = open_session(&folder, &SessionOptions::default());
@@ -830,9 +830,9 @@ fn transaction_ids_never_repeat_across_restarts() {
         assert!(b > a);
         // The close of A sent again finds nothing, and B is still there.
         let commit = send(&s.handle, 1, "edit.commit_tx", json!({"tx": a}), None);
-        assert!(is_not_found(commit));
+        assert!(is_not_found(&commit));
         let cancel = send(&s.handle, 2, "edit.cancel_tx", json!({"tx": a}), None);
-        assert!(is_not_found(cancel));
+        assert!(is_not_found(&cancel));
         assert_eq!(s.handle.locks(&ui()).wait().unwrap().transactions.len(), 1);
         s.handle.cancel_tx(&ui(), b).wait().unwrap();
         s.store
@@ -908,7 +908,7 @@ fn a_torn_marker_loses_only_what_it_remembered() {
     {
         let s = open_session(&folder, &SessionOptions::default());
         let again = send(&s.handle, 2, "edit.cancel_tx", json!({"tx": a}), None);
-        assert!(is_not_found(again));
+        assert!(is_not_found(&again));
         append(&s.handle, tracks(&s.handle.snapshot().doc)[0], 2);
     }
     let s = open_session(&folder, &SessionOptions::default());
