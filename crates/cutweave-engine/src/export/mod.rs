@@ -55,7 +55,7 @@ use cutweave_commands::CmdError;
 use cutweave_jobs::queue::{
     ExportQueue, MemoryQueueStore, QUEUE_FILE, QueueItem, QueueStore, SqliteQueueStore,
 };
-use cutweave_jobs::{JobCtx, JobError, JobId, JobManager, JobProgress};
+use cutweave_jobs::{JobCtx, JobError, JobId, JobManager, JobProgress, error_code};
 use cutweave_media::Capabilities;
 use cutweave_ops::export::encoders::EncoderEntry;
 use cutweave_ops::export::queue::{PlanCodec, queue_error};
@@ -89,7 +89,8 @@ pub type ExportJobs = ExportQueue<ExportPlan>;
 pub fn export_queue(jobs: JobManager, subsystems: Arc<dyn Subsystems>, slots: usize) -> ExportJobs {
     let runner = Arc::new(move |plan: &ExportPlan, ctx: &JobCtx| {
         let services = subsystems.export_services().ok_or_else(|| {
-            JobError::failed(
+            JobError::coded(
+                error_code::ENGINE_UNAVAILABLE,
                 "this engine cannot export now: its media backend or renderer is not running",
             )
         })?;

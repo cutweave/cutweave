@@ -147,7 +147,6 @@ pub struct JobInfo {
     /// What kind of failure it was, for programs: a short stable code in lower snake case
     /// ([`error_code`]; `failed` when nothing more specific is known). Only a failed job has
     /// one; a cancelled job and a job stored before codes existed have none (ADR-0038).
-    #[serde(default)]
     pub error_code: Option<String>,
 }
 

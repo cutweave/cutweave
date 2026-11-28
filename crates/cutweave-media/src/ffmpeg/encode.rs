@@ -40,7 +40,8 @@
 //! - **Output file.** Written to a sibling `.<name>.<pid>-<n>.partial` through a Rust writer
 //!   (custom AVIO) and renamed over the target when `finish` succeeds; removed on cancel, failure
 //!   or drop, so an existing target survives until then. The writer keeps the OS error that
-//!   FFmpeg only sees as `EIO` (a full disk becomes [`MediaError::Io`] with the OS message) and
+//!   FFmpeg only sees as `EIO` (a full disk becomes [`MediaError::DiskFull`] with the OS message,
+//!   any other write error [`MediaError::Io`]) and
 //!   polls the cancel check, so a cancel also stops a `finish` that is flushing or moving the
 //!   index.
 
@@ -744,8 +745,8 @@ impl Drop for PartialFile {
 /// What the writer shares with the encoder.
 #[derive(Debug, Default)]
 struct SinkState {
-    /// The first I/O error, as the OS reported it.
-    error: Mutex<Option<String>>,
+    /// The first I/O error, as the OS reported it, and whether it means the drive is full.
+    error: Mutex<Option<(String, bool)>>,
     /// Bytes in the file so far (the furthest position written).
     size: AtomicU64,
 }
@@ -754,15 +755,29 @@ impl SinkState {
     fn record(&self, e: &io::Error) {
         let mut slot = self.error.lock().unwrap_or_else(PoisonError::into_inner);
         if slot.is_none() {
-            *slot = Some(e.to_string());
+            let full = matches!(
+                e.kind(),
+                io::ErrorKind::StorageFull | io::ErrorKind::QuotaExceeded
+            );
+            *slot = Some((e.to_string(), full));
         }
     }
 
-    fn error(&self) -> Option<String> {
-        self.error
+    /// The write error the sink saw, as the error of an encode into `path`: a full drive is
+    /// [`MediaError::DiskFull`], anything else [`MediaError::Io`].
+    fn error(&self, path: &Path) -> Option<MediaError> {
+        let (cause, full) = self
+            .error
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .clone()?;
+        let path = display(path);
+        let message = format!("writing the output failed: {cause}");
+        Some(if full {
+            MediaError::DiskFull { path, message }
+        } else {
+            MediaError::Io { path, message }
+        })
     }
 }
 
@@ -1380,11 +1395,8 @@ impl FfmpegEncoder {
         if self.cancelled() || matches!(fault, Fault::Cancelled) {
             return MediaError::Cancelled;
         }
-        if let Some(message) = self.io.error() {
-            return MediaError::Io {
-                path: display(&self.path),
-                message: format!("writing the output failed: {message}"),
-            };
+        if let Some(e) = self.io.error(&self.path) {
+            return e;
         }
         match fault {
             Fault::Encode(which, e) => MediaError::Backend {
@@ -1692,11 +1704,8 @@ impl Encoder for FfmpegEncoder {
         self.out = None;
         self.video = None;
         self.audio = None;
-        if let Some(message) = self.io.error() {
-            return Err(self.fail(Fault::Media(MediaError::Io {
-                path: display(&self.path),
-                message: format!("writing the output failed: {message}"),
-            })));
+        if let Some(e) = self.io.error(&self.path) {
+            return Err(self.fail(Fault::Media(e)));
         }
         if self.cancelled() {
             return Err(self.fail(Fault::Cancelled));
@@ -1963,16 +1972,16 @@ mod tests {
 
     fn assert_disk_full(result: Result<EncodeSummary, MediaError>, path: &Path, when: &str) {
         match result {
-            Err(MediaError::Io { path: p, message }) => {
+            Err(MediaError::DiskFull { path: p, message }) => {
                 assert_eq!(p, display(path), "{when}");
                 assert!(message.contains("simulated"), "{when}: {message}");
             }
-            other => panic!("{when}: want Io, got {other:?}"),
+            other => panic!("{when}: want DiskFull, got {other:?}"),
         }
     }
 
     #[test]
-    fn a_full_disk_is_an_io_error_and_leaves_no_file() {
+    fn a_full_disk_is_a_disk_full_error_and_leaves_no_file() {
         FfmpegBackend::new().expect("backend");
         let dir = TempDir::new("disk-full");
         let path = dir.path().join("out.mp4");

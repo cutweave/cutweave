@@ -469,6 +469,75 @@ fn a_failure_keeps_its_code_across_a_restart_and_a_retry_clears_it() {
 }
 
 #[test]
+fn a_queue_file_written_before_error_codes_opens_with_its_failures_uncoded() {
+    // The file as a build before ADR-0038 wrote it: schema version 1, no `error_code` column.
+    let dir = temp("old-file");
+    let file = dir.join(QUEUE_FILE);
+    let (old_failure, waiting) = (JobId::from_u128(0xA1), JobId::from_u128(0xA2));
+    {
+        let db = rusqlite::Connection::open(&file).unwrap();
+        db.execute_batch(
+            "CREATE TABLE export_jobs (
+                id TEXT PRIMARY KEY,
+                position INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                output TEXT,
+                state TEXT NOT NULL,
+                error TEXT,
+                payload BLOB NOT NULL
+            );
+            CREATE TABLE queue_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            PRAGMA user_version = 1;",
+        )
+        .unwrap();
+        for (position, id, task, state, error) in [
+            (1, old_failure, 1u32, "failed", Some("the disk is full")),
+            (2, waiting, 2u32, "queued", None),
+        ] {
+            db.execute(
+                "INSERT INTO export_jobs (id, position, label, output, state, error, payload)                  VALUES (?1, ?2, 'export', ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    id.to_string(),
+                    position,
+                    format!("/out/{task}.mp4"),
+                    state,
+                    error,
+                    task.to_le_bytes().to_vec()
+                ],
+            )
+            .unwrap();
+        }
+    }
+    let (jobs, rig) = (manager(), Rig::default());
+    let q = queue(&jobs, &rig);
+    q.attach(
+        Box::new(SqliteQueueStore::open(&file).unwrap()),
+        Attach::Suspend,
+    );
+    // The old failure reads as it was written: its message, and no code.
+    let old = jobs.status(old_failure).unwrap();
+    assert_eq!(old.state, JobState::Failed);
+    assert_eq!(old.error.as_deref(), Some("the disk is full"));
+    assert_eq!(old.error_code, None);
+    assert_eq!(q.view().entries.len(), 2);
+    // The queued job runs; when it fails now, its code is stored in the same file.
+    q.start();
+    assert_eq!(rig.await_started(1), [2]);
+    rig.end(2, End::DiskFull);
+    assert_eq!(
+        wait(&jobs, waiting).error_code.as_deref(),
+        Some("disk_full")
+    );
+    q.shutdown();
+    let stored = SqliteQueueStore::open(&file).unwrap().load().unwrap();
+    assert_eq!(stored.entries[0].error_code, None);
+    assert_eq!(stored.entries[1].error_code.as_deref(), Some("disk_full"));
+    drop(q);
+    drop(jobs);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn an_untitled_queue_moves_into_a_project_and_a_project_queue_stays_behind() {
     let dir = temp("switch");
     let (jobs, rig) = (manager(), Rig::default());
