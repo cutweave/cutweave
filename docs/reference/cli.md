@@ -40,6 +40,8 @@ Stdout carries protocol frames only. Closing stdin ends the session, and the eng
 
 `project.open` and `project.close` never drop unsaved changes unasked (ADR-0029): when the app holds an untitled document with changes, or a project with changes autosave would not save, they fail with `conflict` (`reason` `unsaved_changes`, exit 1) and change nothing. Ask the person to save; pass `discard_unsaved: true` (`project.open`) or `save: false` (`project.close`) only if they agree to lose the changes.
 
+`exec --expected-rev <REV>` applies the request only if the document is still at that revision (the `rev` of an earlier result). If it has moved on, `exec` fails with `conflict` (`reason` `stale_rev`, exit 1) and changes nothing. The error names `current_rev`, `expected_rev` and `changed_since`: the items touched in between (`{"items": [...]}`) or `"unknown"` when the engine no longer knows (more than 200 changes ago, or more than 100 items). Read the document again and retry with `current_rev`. Every mutating command checks it, engine commands included.
+
 Results are one JSON object on stdout: `{"rev", "committed_rev", "output"}` for one step, `{"rev", "committed_rev", "steps": [{"cmd", "output"}]}` for a batch. Errors are one JSON object on stderr in the engine's wire form (`{"code": "not_found", "message": ..., ...}`).
 
 ## Exit codes
