@@ -1298,8 +1298,8 @@ mod tests {
             secs(5.0)
         );
         let audible = vec![0.001_122_f32; 400];
-        assert!(silences(&audible, secs(5.0), 256, 48_000, at).is_empty());
-        assert!(silences(&[], Time::ZERO, 256, 48_000, at).is_empty());
+        assert_eq!(silences(&audible, secs(5.0), 256, 48_000, at), []);
+        assert_eq!(silences(&[], Time::ZERO, 256, 48_000, at), []);
     }
 
     #[test]

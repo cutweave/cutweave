@@ -131,7 +131,9 @@ fn decode_png(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
     let data = match info.color_type {
         png::ColorType::Rgba => buf[..info.buffer_size()].to_vec(),
         png::ColorType::Rgb => buf[..info.buffer_size()]
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         other => panic!("unexpected PNG colour type {other:?}"),
@@ -199,13 +201,13 @@ fn a_filmstrip_is_one_jpeg_within_max_size_and_links_the_media_route() {
         (json!(128), json!(18))
     );
     assert_eq!(jpeg_size(&picture_bytes(&part)), (128, 18));
-    let times: Vec<i64> = part["tiles"]
+    let shown: Vec<i64> = part["tiles"]
         .as_array()
         .unwrap()
         .iter()
         .map(|t| t["t"].as_i64().unwrap())
         .collect();
-    assert_eq!(times, [secs(1.0), secs(1.5), secs(2.0), secs(2.5)]);
+    assert_eq!(shown, [secs(1.0), secs(1.5), secs(2.0), secs(2.5)]);
     assert!(part.get("link").is_none());
     assert_ne!(part["etag"], out["etag"]);
 

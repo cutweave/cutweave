@@ -338,8 +338,8 @@ mod tests {
         assert_eq!(row_of(1.0, 101, db), 0);
         assert_eq!(row_of(0.0, 101, db), 50);
         assert_eq!(row_of(0.001, 101, db), 50);
-        assert_eq!(row_of(0.031_622_777, 101, db), 25);
-        assert_eq!(row_of(-0.031_622_777, 101, db), 75);
+        assert_eq!(row_of(0.031_622_78, 101, db), 25);
+        assert_eq!(row_of(-0.031_622_78, 101, db), 75);
         // -6 dBFS is 90% of the way out on a 60 dB scale.
         assert_eq!(row_of(0.5, 101, db), 5);
         assert_eq!(row_of(0.5, 1, None), 0);
@@ -394,7 +394,7 @@ mod tests {
         let t = ticks(secs(1.0), secs(1.5), 500);
         assert_eq!(t[0].label, "0:01.0");
         assert_eq!(t[1].label, "0:01.1");
-        assert!(ticks(secs(2.0), secs(2.0), 100).is_empty());
+        assert_eq!(ticks(secs(2.0), secs(2.0), 100), []);
         // Labels never touch.
         for width in [64, 100, 333, 2048] {
             let t = ticks(secs(0.0), secs(3600.0), width);
@@ -414,8 +414,13 @@ mod tests {
             };
             width as usize
         ];
-        let (image, layout) =
-            draw(&[lane.clone()], (secs(0.0), secs(4.0)), (width, 120), None).unwrap();
+        let (image, layout) = draw(
+            std::slice::from_ref(&lane),
+            (secs(0.0), secs(4.0)),
+            (width, 120),
+            None,
+        )
+        .unwrap();
         let rect = layout.lanes[0];
         for x in [0, 57, width - 1] {
             let lit: Vec<u32> = (rect.y..rect.y + rect.height)

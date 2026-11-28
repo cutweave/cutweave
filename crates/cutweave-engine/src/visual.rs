@@ -400,7 +400,7 @@ impl Measure {
     /// Adds interleaved stereo frames.
     fn add(&mut self, samples: &[f32]) {
         let block = i64::from(BASE_SAMPLES_PER_BIN);
-        for (i, frame) in (0i64..).zip(samples.chunks_exact(CHANNELS)) {
+        for (i, frame) in (0i64..).zip(samples.as_chunks::<CHANNELS>().0) {
             let at = self.seen + i;
             let (left, right) = (frame[0], frame[1]);
             let x = usize::try_from(at * i64::from(self.width) / self.total)

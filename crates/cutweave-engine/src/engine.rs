@@ -332,6 +332,24 @@ impl Core {
         }
     }
 
+    /// `media.filmstrip` and `audio.waveform` (WP-2I.02): they decode, or mix a range, on this
+    /// (non-async) thread, like `audio.get_levels`; the document of the moment is drawn.
+    fn visual(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let subsystems = &self.deps.subsystems;
+        let mut call = VisualCall {
+            snapshot: self.doc()?.snapshot(),
+            service: subsystems.media_state().map(|state| {
+                let sources = subsystems
+                    .export_services()
+                    .map(|services| services.sources);
+                Arc::new(crate::visual::EngineVisual::new(state, sources)) as Arc<dyn VisualService>
+            }),
+        };
+        let registry = &self.deps.registry;
+        let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+        Ok(self.reply(output))
+    }
+
     // ----- engine commands ---------------------------------------------------------------------
 
     /// Runs an engine command whose context is not the doc actor's.
@@ -375,21 +393,7 @@ impl Core {
             return Ok(self.reply(output));
         }
         if context == TypeId::of::<VisualCall>() {
-            // `media.filmstrip` and `audio.waveform` (WP-2I.02) decode, or mix a range, on
-            // this (non-async) thread, like `audio.get_levels`.
-            let subsystems = &self.deps.subsystems;
-            let mut call = VisualCall {
-                snapshot: self.doc()?.snapshot(),
-                service: subsystems.media_state().map(|state| {
-                    let sources = subsystems
-                        .export_services()
-                        .map(|services| services.sources);
-                    Arc::new(crate::visual::EngineVisual::new(state, sources))
-                        as Arc<dyn VisualService>
-                }),
-            };
-            let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
-            return Ok(self.reply(output));
+            return self.visual(ctx, name, params);
         }
         if context == TypeId::of::<PresetCtx>() {
             let mut call = PresetCtx {

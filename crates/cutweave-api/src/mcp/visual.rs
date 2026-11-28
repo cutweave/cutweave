@@ -240,7 +240,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(images(&inline), 1);
-            assert!(links(&inline).is_empty());
+            assert_eq!(links(&inline), [] as [String; 0]);
         }
         assert!(wants_link("audio.waveform", &json!({ "width": 1569 })));
         assert!(!wants_link(
