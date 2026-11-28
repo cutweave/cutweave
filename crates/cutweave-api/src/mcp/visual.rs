@@ -27,6 +27,8 @@
 //! - **Untrusted text.** The names of the items in a contact sheet's cells are text a person
 //!   typed or a file name: they are labelled `untrusted` ([`results::UNTRUSTED_FIELDS`]).
 
+use std::fmt::Write as _;
+
 use cutweave_commands::Rev;
 use rmcp::model::{CallToolResult, ContentBlock, Resource};
 use serde_json::Value;
@@ -79,10 +81,10 @@ pub fn sheet_route(output: &Value, args: &Value) -> Option<String> {
     }
     let mut route = format!("/media/sheet?seq={sequence}&at={}", times.join(","));
     if let Some(columns) = output.get("columns").and_then(Value::as_u64) {
-        route.push_str(&format!("&columns={columns}"));
+        let _ = write!(route, "&columns={columns}");
     }
     if let Some(size) = args.get("max_size").and_then(Value::as_u64) {
-        route.push_str(&format!("&size={size}"));
+        let _ = write!(route, "&size={size}");
     }
     if args.get("labels").and_then(Value::as_bool) == Some(false) {
         route.push_str("&labels=0");

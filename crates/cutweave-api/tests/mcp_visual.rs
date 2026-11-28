@@ -528,7 +528,7 @@ async fn a_large_contact_sheet_is_a_media_link_over_http_and_inline_over_stdio()
         )
         .await;
         assert_eq!(image(&small).0, "image/jpeg");
-        assert!(links(&small).is_empty());
+        assert_eq!(links(&small).len(), 0);
         client.close().await;
     }
     // The same auth and parameter rules as the other media routes.

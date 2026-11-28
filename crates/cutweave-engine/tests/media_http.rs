@@ -506,9 +506,14 @@ fn filmstrips_waveforms_and_frames() {
     }
     let boxed = s.get("/media/frame?t=0&w=320&h=90", &[]);
     assert_eq!(jpeg_size(&boxed.body), (160, 90));
+}
 
-    // `/media/sheet` is `render.contact_sheet` at those times, byte for byte (#256), under an
-    // ETag of two hashes that a second request can revalidate with.
+/// `/media/sheet` is `render.contact_sheet` at those times, byte for byte (#256), under an ETag
+/// of two hashes that a second request can revalidate with.
+#[test]
+fn a_contact_sheet_is_served_like_the_query_returns_it() {
+    let f = fixture("sheet", true, Wall::ZERO, 4);
+    let s = &f.server;
     let reply = s.get("/media/sheet?at=0,1s&size=256&columns=1", &[]);
     assert_eq!(
         reply.status,
