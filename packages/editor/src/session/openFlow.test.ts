@@ -127,13 +127,13 @@ describe("File > Open with unsaved changes", () => {
       await new Promise((r) => setTimeout(r, 5));
       order.push("view");
     });
-    expect(await projectController().open("C:\p\Other")).toBe(true);
+    expect(await projectController().open("C:\\p\\Other")).toBe(true);
     expect(order).toEqual(["view", "open"]);
   });
 
   it("opens all the same when the view could not be sent", async () => {
     projectController().setBeforeLeave(() => Promise.reject(new Error("gone")));
-    expect(await projectController().open("C:\p\Other")).toBe(true);
-    expect(opens()).toEqual([{ path: "C:\p\Other" }]);
+    expect(await projectController().open("C:\\p\\Other")).toBe(true);
+    expect(opens()).toEqual([{ path: "C:\\p\\Other" }]);
   });
 });

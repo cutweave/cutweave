@@ -28,7 +28,17 @@ import {
   test,
   unsavedPrompt,
 } from "../fixtures.ts";
-import { chooseMenu, chooseTheme } from "./helpers.ts";
+import {
+  chooseMenu,
+  chooseTheme,
+  clickClip,
+  movePlayhead,
+  sequence,
+  timecode,
+  timelineGeometry,
+  timelineTools,
+  viewSettled,
+} from "./helpers.ts";
 import {
   osClick,
   osDoubleClick,
@@ -349,6 +359,102 @@ test.describe("F18 window and menu", () => {
       await expect(fileAgain).toBeHidden();
       await page.keyboard.press("Control+M");
       await expect(anyDialog(page)).toHaveCount(0);
+    } finally {
+      await close();
+    }
+  });
+
+  // Issue #233: the view is the project's. One opened in the running app shows its own
+  // playhead, zoom and selection, as a launch on it does, and nothing of the one before.
+  test("Open recent brings back each project's playhead, zoom and selection", async () => {
+    test.setTimeout(180_000);
+    const { app, page, close } = await launchFlow(work.dir);
+    try {
+      const zoomIn = timelineTools(page).getByRole("button", { name: "Zoom in", exact: true });
+      const clipInspector = page.getByTestId("clip-inspector");
+      const zoom = async () => (await timelineGeometry(page)).pxPerSec;
+      /** Imports the clip, inserts it with Enter and returns its item on the timeline. */
+      const placeClip = async () => {
+        const card = await importClip(app, page, work.clip);
+        await card.click();
+        await page.keyboard.press("Enter");
+        await expect.poll(() => timelineItems(page)).toBeGreaterThan(0);
+        const video = (await sequence(page)).tracks.find((t) => t.kind === "video" && t.items[0]);
+        if (video?.items[0] === undefined) throw new Error("no clip on a video track");
+        return video.items[0];
+      };
+      const openFromRecent = async (name: string) => {
+        const file = await openMenu(page, "File");
+        await item(file, "Open recent").click();
+        const recent = page.getByRole("menu", { name: "Open recent" });
+        await recent.getByRole("menuitem", { name: new RegExp(`^${name}`) }).click();
+        await expect(recent).toBeHidden();
+        await expect(page).toHaveTitle(`${name} — Cutweave`);
+        await projectActionsReady(page);
+      };
+
+      // Alpha: its clip selected, the playhead at 2 s, zoomed in twice.
+      await chooseMenu(page, app, "File", "New project…");
+      await nameProject(page, "New project", "Alpha", work.projects);
+      const clipA = await placeClip();
+      await clickClip(page, clipA.id);
+      await movePlayhead(page, 2);
+      await zoomIn.click();
+      await zoomIn.click();
+      await viewSettled(page);
+      const zoomA = await zoom();
+      expect(zoomA).toBeGreaterThan(100);
+      await expect(timecode(page)).toHaveText("00:00:02:00");
+      await expect(clipInspector).toBeVisible();
+      await page.keyboard.press("Control+S");
+      await expect(dirtyDot(page)).toBeHidden();
+
+      // A new project starts with none of it: the playhead at 0, nothing selected, and the
+      // timeline drawn at the zoom every project starts with (the ruler click lands on 1 s).
+      await page.keyboard.press("Control+N");
+      await nameProject(page, "New project", "Beta", work.projects);
+      await expect(timecode(page)).toHaveText("00:00:00:00");
+      await expect(clipInspector).toBeHidden();
+      expect(await zoom()).toBe(100);
+      await placeClip();
+      await movePlayhead(page, 1);
+      await expect(timecode(page)).toHaveText("00:00:01:00");
+      // Beta: nothing selected, the playhead at 1 s, zoomed in once.
+      await zoomIn.click();
+      await viewSettled(page);
+      const zoomB = await zoom();
+      expect(zoomB).toBeGreaterThan(100);
+      expect(zoomB).toBeLessThan(zoomA);
+      const selectedInBeta = await clipInspector.isVisible();
+      await page.keyboard.press("Control+S");
+      await expect(dirtyDot(page)).toBeHidden();
+
+      // Open recent > Alpha, in the running app: its playhead, its selection and its zoom. The
+      // timeline is drawn at that zoom: a click on the ruler lands on the time it shows there.
+      await openFromRecent("Alpha");
+      await expect(timecode(page)).toHaveText("00:00:02:00");
+      await expect(clipInspector).toBeVisible();
+      expect(await zoom()).toBe(zoomA);
+      await movePlayhead(page, 2.2);
+      await expect(timecode(page)).toHaveText("00:00:02:06");
+      // One more zoom step, and away at once: the project being left keeps it.
+      await zoomIn.click();
+
+      // Open recent > Beta: Beta's own.
+      await openFromRecent("Beta");
+      await expect(timecode(page)).toHaveText("00:00:01:00");
+      expect(await clipInspector.isVisible()).toBe(selectedInBeta);
+      expect(await zoom()).toBe(zoomB);
+      await movePlayhead(page, 1.2);
+      await expect(timecode(page)).toHaveText("00:00:01:06");
+
+      // And Alpha again: where it was left, with the zoom step made just before leaving.
+      await openFromRecent("Alpha");
+      await expect(timecode(page)).toHaveText("00:00:02:06");
+      await expect(clipInspector).toBeVisible();
+      expect(await zoom()).toBeGreaterThan(zoomA);
+      await movePlayhead(page, 2);
+      await expect(timecode(page)).toHaveText("00:00:02:00");
     } finally {
       await close();
     }
