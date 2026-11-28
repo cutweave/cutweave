@@ -2272,9 +2272,6 @@ body {
   padding: 0 var(--space-1);
   color: var(--text-primary);
 }
-.cw-graph-panel__curve[data-hidden] .cw-graph-panel__name {
-  color: var(--text-muted);
-}
 .cw-graph-panel__swatches {
   display: inline-flex;
   flex: none;
@@ -2291,6 +2288,9 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.cw-graph-panel__curve[data-hidden] .cw-graph-panel__name {
+  color: var(--text-muted);
 }
 .cw-graph-panel__canvas {
   position: relative;
