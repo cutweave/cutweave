@@ -451,3 +451,51 @@ fn the_generic_edits_treat_text_like_any_item() {
     let _: &Project = &h.doc();
     let _ = Item::Text;
 }
+
+/// Copies of text: `item.duplicate` makes a new item and leaves the first where it is, a
+/// copy and paste does the same, and `sequence.duplicate` carries the text over with new IDs.
+#[test]
+fn copies_of_text_are_new_items() {
+    let (mut h, ids) = project();
+    let first = add(
+        &mut h,
+        json!({"text": "Copy me", "at": "1s", "duration": "2s"}),
+    );
+    let item = item_id(&first["item"]);
+    let dup = h.ok(
+        "item.duplicate",
+        json!({"items": [item], "offset": "5s", "mode": "new_track"}),
+    );
+    let copy = item_id(&dup["copies"][0]["copy"]);
+    assert_ne!(copy, item, "{dup}");
+    let (a, b) = (text_of(&h, item), text_of(&h, copy));
+    assert_eq!(a.start.flicks(), 705_600_000);
+    assert_eq!(b.start.flicks(), 6 * 705_600_000, "the copy is 5 s later");
+    assert_eq!(a.content, b.content);
+    // Paste (copy first, then paste at another time).
+    let copied = h.query("timeline.copy", json!({"items": [item]})).unwrap();
+    let pasted = h.ok(
+        "timeline.paste",
+        json!({"payload": copied["clipboard"], "at": "20s"}),
+    );
+    assert!(pasted.to_string().contains("itm_"), "{pasted}");
+    assert_eq!(
+        h.doc().sequences[&ids.sequence]
+            .tracks
+            .values()
+            .flat_map(|t| t.items.iter())
+            .filter(|i| i.as_text().is_some())
+            .count(),
+        3
+    );
+    // A duplicated sequence carries its text.
+    let seq = h.ok("sequence.duplicate", json!({"sequence": ids.sequence}));
+    let new_seq: cutweave_model::SequenceId = id(&seq["sequence"]);
+    let texts: Vec<_> = h.doc().sequences[&new_seq]
+        .tracks
+        .values()
+        .flat_map(|t| t.items.iter())
+        .filter_map(|i| i.as_text().map(|t| t.content.to_plain()))
+        .collect();
+    assert_eq!(texts.len(), 3);
+}

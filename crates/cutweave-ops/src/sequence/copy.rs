@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use cutweave_commands::{CmdError, Tx};
-use cutweave_model::{GroupId, Item, ItemId, MarkerId, Markers, Sequence, SequenceId, Track};
+use cutweave_model::{GroupId, ItemId, MarkerId, Markers, Sequence, SequenceId, Track};
 
 /// A copy of `source` named `name` with fresh IDs, in the same track order.
 pub(super) fn deep_copy(
@@ -43,17 +43,12 @@ pub(super) fn deep_copy(
         t.custom.clone_from(&track.custom);
         t.extra.clone_from(&track.extra);
         for item in track.items.iter() {
-            let Some(clip) = item.as_clip() else {
-                return Err(CmdError::unsupported(
-                    "this item kind cannot be duplicated yet",
-                ));
-            };
-            let mut c = clip.clone();
-            c.id = items[&clip.id];
-            c.linked_group = clip.linked_group.map(|g| groups[&g]);
-            c.attached_to = clip.attached_to.and_then(|p| items.get(&p).copied());
-            c.markers = remark(tx, &clip.markers);
-            t.items.insert(Item::Clip(c));
+            let mut c = item.clone();
+            c.set_id(items[&item.id()]);
+            c.set_linked_group(item.linked_group().map(|g| groups[&g]));
+            c.set_attached_to(item.attached_to().and_then(|p| items.get(&p).copied()));
+            *c.markers_mut() = remark(tx, item.markers());
+            t.items.insert(c);
         }
         copy.insert_track(index, t);
     }
