@@ -347,7 +347,7 @@ export function GraphEditorPanel(): ReactElement {
             ...(key.point !== null && { point: key.point }),
           };
         },
-        { name: "graph.keyframe" },
+        { name: "graph-editor" },
       );
     },
     [controller],

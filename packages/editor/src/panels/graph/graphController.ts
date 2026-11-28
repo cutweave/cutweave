@@ -75,6 +75,7 @@ import {
   graphShellStore,
   graphViewStore,
   graphWork,
+  initialGraphShell,
   NO_READOUT,
   type ShellProp,
   type ShellReadout,
@@ -263,6 +264,10 @@ export class GraphController {
     this.#handle = null;
     this.#built = NO_CURVES;
     this.#cache.dispose();
+    // Nothing is shown any more: the next opening starts from what it finds then.
+    if (this.#deps.shell.getState() !== initialGraphShell) {
+      this.#deps.shell.setState(initialGraphShell, true);
+    }
   }
 
   // ---- the document and the selection -------------------------------------------------------
