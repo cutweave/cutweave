@@ -1,0 +1,52 @@
+{
+  "description": "Optimistic concurrency (WP-2I.04): an edit that expects a revision the document has left is a conflict naming both revisions and the items touched in between, and changes nothing; the same edit with the current revision succeeds. A listed tool, a command without a tool of its own, a batch, an engine command outside the document actor and undo.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0
+      }
+    },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
+    { "cmd": "item.set_props", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "props": { "name": "Renamed since" } } },
+    {
+      "cmd": "clip.split",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "2s" },
+      "expected_rev": { "$rev": 3 },
+      "expect": { "error": "conflict" }
+    },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
+    {
+      "cmd": "clip.split",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "2s" },
+      "expected_rev": { "$rev": 6 }
+    },
+    { "cmd": "project.rename", "args": { "name": "Stale" }, "expected_rev": { "$rev": 4 }, "expect": { "error": "conflict" } },
+    { "cmd": "project.rename", "args": { "name": "Fresh" }, "expected_rev": { "$rev": 7 } },
+    {
+      "batch": [
+        { "cmd": "clip.trim", "args": { "item": { "$script": "steps[7].output.right" }, "edge": "end", "delta": "-1s" } },
+        { "cmd": "item.set_props", "args": { "item": { "$script": "steps[7].output.left" }, "props": { "name": "Never" } } }
+      ],
+      "expected_rev": { "$rev": 7 },
+      "expect": { "error": "conflict" }
+    },
+    {
+      "batch": [
+        { "cmd": "clip.trim", "args": { "item": { "$script": "steps[7].output.right" }, "edge": "end", "delta": "-1s" } },
+        { "cmd": "item.set_props", "args": { "item": { "$script": "steps[7].output.left" }, "props": { "name": "Left" } } }
+      ],
+      "expected_rev": { "$rev": 9 }
+    },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "b.mp4" }] }, "expected_rev": { "$rev": 9 }, "expect": { "error": "conflict" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "b.mp4" }] }, "expected_rev": { "$rev": 11 } },
+    { "cmd": "edit.undo", "args": {}, "expected_rev": { "$rev": 11 }, "expect": { "error": "conflict" } },
+    { "cmd": "edit.undo", "args": {}, "expected_rev": { "$rev": 13 } },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } }
+  ]
+}

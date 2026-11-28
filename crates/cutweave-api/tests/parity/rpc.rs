@@ -21,6 +21,8 @@ pub struct Rpc<'a> {
     rt: Runtime,
     ws: Option<Ws>,
     registry: &'a Registry,
+    /// The revision the last successful request reported (`result._meta.rev`).
+    rev: Option<u64>,
 }
 
 impl<'a> Rpc<'a> {
@@ -35,6 +37,7 @@ impl<'a> Rpc<'a> {
             rt,
             ws: Some(ws),
             registry,
+            rev: None,
         }
     }
 
@@ -51,15 +54,34 @@ impl<'a> Rpc<'a> {
             });
         }
         let mut result = response["result"].clone();
+        self.rev = result["_meta"]["rev"].as_u64();
         if let Value::Object(map) = &mut result {
             map.remove("_meta");
         }
         Ok(result)
     }
 
-    /// One call.
-    pub fn call(&mut self, call: &Call) -> Outcome {
-        self.request(&call.cmd, with_rid(call.args.clone()))
+    /// The revision the last successful request reported.
+    pub fn rev(&self) -> Option<u64> {
+        self.rev
+    }
+
+    /// `params` with a fresh `_meta.request_id` and, when given, `_meta.expected_rev`.
+    fn envelope(params: Value, expected_rev: Option<u64>) -> Value {
+        match expected_rev {
+            Some(rev) => with_meta(with_rid(params), json!({ "expected_rev": rev })),
+            None => with_rid(params),
+        }
+    }
+
+    /// One call (`_meta.expected_rev` when the step expects a revision; a read takes none).
+    pub fn call(&mut self, call: &Call, expected_rev: Option<u64>) -> Outcome {
+        let read_only = self
+            .registry
+            .get(&call.cmd)
+            .is_some_and(|e| e.meta.annotations.read_only);
+        let expected_rev = expected_rev.filter(|_| !read_only);
+        self.request(&call.cmd, Self::envelope(call.args.clone(), expected_rev))
             .map(|out| vec![out])
     }
 
@@ -69,19 +91,23 @@ impl<'a> Rpc<'a> {
             .is_some_and(|e| e.kind() == EntryKind::Engine)
     }
 
-    /// A batch as one transaction.
-    pub fn batch(&mut self, calls: &[Call]) -> Outcome {
+    /// A batch as one transaction. The expected revision goes with `edit.begin_tx` and with
+    /// `edit.commit_tx`, as `cutweave exec` and `cutweave_execute` send it.
+    pub fn batch(&mut self, calls: &[Call], expected_rev: Option<u64>) -> Outcome {
         if let [call] = calls
             && self.is_engine(&call.cmd)
         {
-            return self.call(call).map_err(|mut failed| {
+            return self.call(call, expected_rev).map_err(|mut failed| {
                 failed.failed_step = Some(0);
                 failed
             });
         }
         let opened = self.request(
             "edit.begin_tx",
-            with_rid(json!({ "kind": "batch", "label": "parity rpc batch" })),
+            Self::envelope(
+                json!({ "kind": "batch", "label": "parity rpc batch" }),
+                expected_rev,
+            ),
         )?;
         let tx = opened["tx"].clone();
         let mut outputs = Vec::with_capacity(calls.len());
@@ -109,7 +135,10 @@ impl<'a> Rpc<'a> {
                 }
             }
         }
-        if let Err(failed) = self.request("edit.commit_tx", with_rid(json!({ "tx": tx }))) {
+        if let Err(failed) = self.request(
+            "edit.commit_tx",
+            Self::envelope(json!({ "tx": tx }), expected_rev),
+        ) {
             let _ = self.request("edit.cancel_tx", with_rid(json!({ "tx": tx })));
             return Err(failed);
         }

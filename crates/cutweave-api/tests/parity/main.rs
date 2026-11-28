@@ -114,19 +114,28 @@ enum Driver<'a> {
 }
 
 impl Driver<'_> {
-    fn call(&mut self, call: &Call) -> Outcome {
+    fn call(&mut self, call: &Call, expected_rev: Option<u64>) -> Outcome {
         match self {
-            Driver::Cli(d) => d.call(call),
-            Driver::Mcp(d) => d.call(call),
-            Driver::Rpc(d) => d.call(call),
+            Driver::Cli(d) => d.call(call, expected_rev),
+            Driver::Mcp(d) => d.call(call, expected_rev),
+            Driver::Rpc(d) => d.call(call, expected_rev),
         }
     }
 
-    fn batch(&mut self, calls: &[Call]) -> Outcome {
+    fn batch(&mut self, calls: &[Call], expected_rev: Option<u64>) -> Outcome {
         match self {
-            Driver::Cli(d) => d.batch(calls),
-            Driver::Mcp(d) => d.batch(calls),
-            Driver::Rpc(d) => d.batch(calls),
+            Driver::Cli(d) => d.batch(calls, expected_rev),
+            Driver::Mcp(d) => d.batch(calls, expected_rev),
+            Driver::Rpc(d) => d.batch(calls, expected_rev),
+        }
+    }
+
+    /// The document revision the last successful step reported on this surface.
+    fn rev(&self) -> Option<u64> {
+        match self {
+            Driver::Cli(d) => d.rev.get(),
+            Driver::Mcp(d) => d.rev(),
+            Driver::Rpc(d) => d.rev(),
         }
     }
 
@@ -143,6 +152,8 @@ impl Driver<'_> {
 struct Run {
     surface: Surface,
     outcomes: Vec<Outcome>,
+    /// The revision each successful step reported (WP-2I.04: every result carries it).
+    revs: Vec<Option<u64>>,
     /// The `doc.patched` sequence (`None`: the engine is in another process).
     patches: Option<Vec<Value>>,
     document: Vec<u8>,
@@ -201,6 +212,7 @@ fn run(script: &Script, surface: Surface, root: &Path) -> Run {
         (Surface::Cli, _) => Driver::Cli(Cli {
             run_dir: &run_dir,
             registry: &registry,
+            rev: std::cell::Cell::new(None),
         }),
         (Surface::Mcp, Some(e)) => {
             Driver::Mcp(Box::new(Mcp::connect(&e.engine, Revision::Stateful)))
@@ -214,15 +226,25 @@ fn run(script: &Script, surface: Surface, root: &Path) -> Run {
     let at = |i: usize| format!("{} on {}: steps[{i}]", script.name, surface.name());
     let mut outputs: Vec<Option<Value>> = Vec::new();
     let mut outcomes = Vec::new();
+    let mut revs: Vec<Option<u64>> = Vec::new();
     for (i, step) in script.steps.iter().enumerate() {
+        let expected_rev = step.expected_rev.map(|n| {
+            revs.get(n)
+                .copied()
+                .flatten()
+                .unwrap_or_else(|| panic!("{}: steps[{n}] reported no revision", at(i)))
+        });
         let outcome = match &step.action {
             Action::Call(call) => {
                 let args = resolve(&call.args, Scope::Script, &outputs, &media)
                     .unwrap_or_else(|e| panic!("{}: {e}", at(i)));
-                driver.call(&Call {
-                    cmd: call.cmd.clone(),
-                    args,
-                })
+                driver.call(
+                    &Call {
+                        cmd: call.cmd.clone(),
+                        args,
+                    },
+                    expected_rev,
+                )
             }
             Action::Batch(calls) => {
                 let calls: Vec<Call> = calls
@@ -233,11 +255,31 @@ fn run(script: &Script, surface: Surface, root: &Path) -> Run {
                             .unwrap_or_else(|e| panic!("{}: {e}", at(i))),
                     })
                     .collect();
-                driver.batch(&calls)
+                driver.batch(&calls, expected_rev)
             }
         };
         if let Err(e) = step.check(&outcome) {
             panic!("{}: {e}", at(i));
+        }
+        match &outcome {
+            // Every successful result names the document's revision, on every surface.
+            Ok(_) => {
+                revs.push(Some(driver.rev().unwrap_or_else(|| {
+                    panic!("{}: the result carries no revision", at(i))
+                })))
+            }
+            Err(failed) => {
+                revs.push(None);
+                // A stale `expected_rev`: the conflict names the revision sent and the current one.
+                let error = engine_error(&failed.raw);
+                if let (Some(sent), "stale_rev") =
+                    (expected_rev, error["reason"].as_str().unwrap_or_default())
+                {
+                    assert_eq!(error["expected_rev"], sent, "{}: {error}", at(i));
+                    let current = revs.iter().rev().find_map(|r| *r);
+                    assert_eq!(error["current_rev"], json!(current), "{}: {error}", at(i));
+                }
+            }
         }
         outputs.push(match (&step.action, &outcome) {
             (Action::Call(_), Ok(out)) => Some(out[0].clone()),
@@ -260,10 +302,13 @@ fn run(script: &Script, surface: Surface, root: &Path) -> Run {
     let folder = root.join(surface.name()).join("Parity");
     std::fs::create_dir_all(folder.parent().unwrap()).unwrap();
     let saved = driver
-        .call(&Call {
-            cmd: "project.save_as".into(),
-            args: json!({ "path": folder.to_string_lossy() }),
-        })
+        .call(
+            &Call {
+                cmd: "project.save_as".into(),
+                args: json!({ "path": folder.to_string_lossy() }),
+            },
+            None,
+        )
         .unwrap_or_else(|e| {
             panic!(
                 "{} on {}: save failed: {}",
@@ -283,6 +328,7 @@ fn run(script: &Script, surface: Surface, root: &Path) -> Run {
     Run {
         surface,
         outcomes,
+        revs,
         patches,
         sha256: sha256(&document),
         document,
@@ -319,6 +365,21 @@ fn comparable_patch(patch: &Value) -> Value {
         "committed_rev": patch["committed_rev"],
         "ops": patch["ops"],
     })
+}
+
+/// What must be equal in a `conflict` on every surface: the reason, both revisions and what
+/// changed in between.
+fn comparable_conflict(error: &Value) -> Value {
+    let mut same = json!({
+        "code": error["code"], "reason": error["reason"], "current_rev": error["current_rev"],
+        "expected_rev": error["expected_rev"], "changed_since": error["changed_since"],
+    });
+    // The text of a stale revision names no actor; other conflicts name the surface's own.
+    if error["reason"] == "stale_rev" {
+        same["detail"] = error["detail"].clone();
+        same["message"] = error["message"].clone();
+    }
+    same
 }
 
 /// A step output without what names the caller rather than the change. History results
@@ -399,8 +460,30 @@ fn compare(script: &Script, runs: &[Run]) -> Vec<String> {
                 (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
                     problems.push(format!("steps[{i}]: one of {r}, {o} failed: {}", e.raw));
                 }
+                // WP-2I.04: a conflict is the same error on every surface, down to what it
+                // says changed.
+                (Err(x), Err(y)) if x.code == "conflict" => {
+                    let (x, y) = (engine_error(&x.raw), engine_error(&y.raw));
+                    let (x, y) = (comparable_conflict(&x), comparable_conflict(&y));
+                    if x != y {
+                        problems.push(format!("steps[{i}] conflict: {r} {x} != {o} {y}"));
+                    }
+                }
                 _ => {}
             }
+        }
+        if other.revs != reference.revs {
+            let at = reference
+                .revs
+                .iter()
+                .zip(&other.revs)
+                .position(|(x, y)| x != y)
+                .unwrap_or_default();
+            problems.push(format!(
+                "revisions: {r} and {o} report different revisions from steps[{at}]: {:?} vs {:?}",
+                reference.revs.get(at),
+                other.revs.get(at)
+            ));
         }
         let (Some(pa), Some(pb)) = (&reference.patches, &other.patches) else {
             continue;
@@ -574,7 +657,7 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
         } else {
             "invalid"
         };
-        match mcp.call(&call) {
+        match mcp.call(&call, None) {
             Err(e) if e.code == expected => {}
             other => problems.push(format!(
                 "`{name}`: MCP call with an unknown field: expected `{expected}`, got {:?}",
@@ -584,7 +667,7 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
         // RPC: a method under the registry name. This client holds an agent credential, which a
         // UI-only entry refuses before it looks at the params (ADR-0016).
         let expected = if ui_only { "forbidden" } else { "invalid" };
-        match rpc.call(&call) {
+        match rpc.call(&call, None) {
             Err(e) if e.code == expected => {}
             other => problems.push(format!(
                 "`{name}`: RPC call with an unknown field: expected `{expected}`, got {:?}",
@@ -693,6 +776,7 @@ fn a_soft_lock_conflict_is_the_same_error_on_cli_mcp_and_rpc() {
             Surface::Cli => Driver::Cli(Cli {
                 run_dir: &run_dir,
                 registry: &registry,
+                rev: std::cell::Cell::new(None),
             }),
             Surface::Mcp => Driver::Mcp(Box::new(Mcp::connect(&engine.engine, Revision::Stateful))),
             _ => Driver::Rpc(Box::new(Rpc::connect(
@@ -706,7 +790,7 @@ fn a_soft_lock_conflict_is_the_same_error_on_cli_mcp_and_rpc() {
             args: json!({ "item": item, "start": "5s" }),
         };
         let refused = driver
-            .call(&agent_move)
+            .call(&agent_move, None)
             .expect_err("the agent's move of a clip in another actor's gesture is refused");
         assert_eq!(
             refused.code,
@@ -719,7 +803,7 @@ fn a_soft_lock_conflict_is_the_same_error_on_cli_mcp_and_rpc() {
         // Retry semantics: after the holder commits, the same call succeeds.
         call("edit.commit_tx", json!({ "tx": tx }));
         driver
-            .call(&agent_move)
+            .call(&agent_move, None)
             .unwrap_or_else(|e| panic!("{}: the retry failed: {}", surface.name(), e.raw));
         driver.close();
         drop(holder);

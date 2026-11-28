@@ -12,6 +12,7 @@
 //! standard profile lists it (`clip_split`), `cutweave_query` for a read-only entry, otherwise
 //! `cutweave_execute` with one step. A batch is one `cutweave_execute`.
 
+use std::cell::Cell;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -43,6 +44,9 @@ pub struct Mcp {
     client: Option<Client>,
     server: Option<Server>,
     catalog: Arc<Catalog>,
+    /// The revision the last successful call reported: a listed tool's `_meta`
+    /// (`io.cutweave/rev`), `cutweave_execute`'s `rev`.
+    rev: Cell<Option<u64>>,
 }
 
 fn runtime() -> Runtime {
@@ -79,6 +83,7 @@ impl Mcp {
             client: Some(client),
             server: Some(Server::InProcess(server)),
             catalog,
+            rev: Cell::new(None),
         }
     }
 
@@ -131,6 +136,7 @@ impl Mcp {
             client: Some(client),
             server: Some(Server::Process(Box::new(child))),
             catalog: Arc::new(Catalog::new(registry, Profile::Standard)),
+            rev: Cell::new(None),
         }
     }
 
@@ -158,16 +164,34 @@ impl Mcp {
                 raw: structured,
             });
         }
+        let reported = result
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.get("io.cutweave/rev"))
+            .or_else(|| structured.get("rev"));
+        self.rev.set(reported.and_then(Value::as_u64));
         Ok(structured)
     }
 
-    /// One call, the way an agent makes it.
-    pub fn call(&self, call: &Call) -> Outcome {
+    /// The revision the last successful call reported.
+    pub fn rev(&self) -> Option<u64> {
+        self.rev.get()
+    }
+
+    /// One call, the way an agent makes it. A step that expects a revision sends it as the
+    /// tool's `expected_rev` argument (WP-2I.04), or as `cutweave_execute`'s for a command
+    /// without a tool of its own; a read takes none.
+    pub fn call(&self, call: &Call, expected_rev: Option<u64>) -> Outcome {
         let entry = self.catalog.reachable(&call.cmd);
         match entry {
-            Some(e) if self.catalog.lists(&e.meta) => self
-                .raw(&e.meta.mcp_tool_name(), call.args.clone())
-                .map(|out| vec![trusted(out)]),
+            Some(e) if self.catalog.lists(&e.meta) => {
+                let mut args = call.args.clone();
+                if let Some(rev) = expected_rev.filter(|_| !e.meta.annotations.read_only) {
+                    args["expected_rev"] = json!(rev);
+                }
+                self.raw(&e.meta.mcp_tool_name(), args)
+                    .map(|out| vec![trusted(out)])
+            }
             Some(e) if e.meta.annotations.read_only => self
                 .raw(
                     "cutweave_query",
@@ -175,25 +199,28 @@ impl Mcp {
                 )
                 .map(|out| vec![trusted(out)]),
             // Not reachable (`hidden`, unknown): `cutweave_execute` reports it.
-            _ => self.batch(std::slice::from_ref(call)),
+            _ => self.batch(std::slice::from_ref(call), expected_rev),
         }
     }
 
     /// A batch: one `cutweave_execute`.
-    pub fn batch(&self, calls: &[Call]) -> Outcome {
+    pub fn batch(&self, calls: &[Call], expected_rev: Option<u64>) -> Outcome {
         let steps: Vec<Value> = calls
             .iter()
             .map(|c| json!({ "cmd": c.cmd, "args": c.args }))
             .collect();
-        self.raw("cutweave_execute", json!({ "steps": steps }))
-            .map(|out| {
-                out["steps"]
-                    .as_array()
-                    .expect("cutweave_execute returns steps")
-                    .iter()
-                    .map(|s| trusted(s["output"].clone()))
-                    .collect()
-            })
+        let mut request = json!({ "steps": steps });
+        if let Some(rev) = expected_rev {
+            request["expected_rev"] = json!(rev);
+        }
+        self.raw("cutweave_execute", request).map(|out| {
+            out["steps"]
+                .as_array()
+                .expect("cutweave_execute returns steps")
+                .iter()
+                .map(|s| trusted(s["output"].clone()))
+                .collect()
+        })
     }
 
     /// Closes the session (the server ends when its input closes).

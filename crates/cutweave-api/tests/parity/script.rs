@@ -27,6 +27,10 @@
 //! - `{"$media": "<name>"}` is the absolute path of a stub media file `<root>/media/<name>` the
 //!   harness creates (the same path for every surface).
 //! - `expect` is `{"error": "<code>", "failed_step"?: N}`; without it the step must succeed.
+//! - `"expected_rev": {"$rev": N}` on a step that changes something (WP-2I.04) sends it with
+//!   the revision script step `N`'s result reported on this surface: `cutweave exec
+//!   --expected-rev`, the tool's `expected_rev` argument (or `cutweave_execute`'s), JSON-RPC's
+//!   `_meta.expected_rev`.
 
 use std::path::Path;
 
@@ -45,6 +49,8 @@ pub struct Script {
 pub struct Step {
     pub action: Action,
     pub expect: Expect,
+    /// `{"$rev": N}`: send the revision step `N` reported as `expected_rev`.
+    pub expected_rev: Option<usize>,
 }
 
 /// What a step runs.
@@ -184,12 +190,24 @@ fn parse_step(value: &Value) -> Result<Step, String> {
     let Value::Object(map) = value else {
         return Err("expected an object".into());
     };
-    if let Some(key) = map
-        .keys()
-        .find(|k| !matches!(k.as_str(), "cmd" | "args" | "batch" | "expect"))
-    {
+    if let Some(key) = map.keys().find(|k| {
+        !matches!(
+            k.as_str(),
+            "cmd" | "args" | "batch" | "expect" | "expected_rev"
+        )
+    }) {
         return Err(format!("unknown field `{key}`"));
     }
+    let expected_rev = match map.get("expected_rev") {
+        None => None,
+        Some(Value::Object(r)) if r.len() == 1 => Some(
+            r.get("$rev")
+                .and_then(Value::as_u64)
+                .and_then(|n| usize::try_from(n).ok())
+                .ok_or("expected_rev must be {\"$rev\": N}")?,
+        ),
+        Some(_) => return Err("expected_rev must be {\"$rev\": N}".into()),
+    };
     let action = match (map.get("cmd"), map.get("batch")) {
         (Some(_), None) => Action::Call(parse_call(value)?),
         (None, Some(Value::Array(calls))) if !calls.is_empty() => Action::Batch(
@@ -220,7 +238,11 @@ fn parse_step(value: &Value) -> Result<Step, String> {
         }
         Some(_) => return Err("expect must be {error, failed_step?}".into()),
     };
-    Ok(Step { action, expect })
+    Ok(Step {
+        action,
+        expect,
+        expected_rev,
+    })
 }
 
 fn parse_call(value: &Value) -> Result<Call, String> {

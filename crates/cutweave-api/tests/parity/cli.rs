@@ -9,6 +9,7 @@
 //! harness re-executes this binary filtered to that one test (the pattern of the engine's crash
 //! tests). Libtest prints a `running 1 test` preamble on stdout before the CLI's own output.
 
+use std::cell::Cell;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
@@ -87,6 +88,8 @@ fn stderr_json(out: &Output) -> Value {
 pub struct Cli<'a> {
     pub run_dir: &'a Path,
     pub registry: &'a Registry,
+    /// The revision the last successful step reported (`rev` of the stdout JSON).
+    pub rev: Cell<Option<u64>>,
 }
 
 impl Cli<'_> {
@@ -97,8 +100,23 @@ impl Cli<'_> {
         ]
     }
 
-    /// One call: `cutweave query` for a query, `cutweave exec` with one step otherwise.
-    pub fn call(&self, call: &Call) -> Outcome {
+    /// `--expected-rev N` for `cutweave exec`.
+    fn expecting(expected_rev: Option<u64>) -> Vec<String> {
+        expected_rev
+            .map(|rev| vec!["--expected-rev".to_owned(), rev.to_string()])
+            .unwrap_or_default()
+    }
+
+    /// The stdout JSON of a finished step; remembers the revision it reports.
+    fn finish(&self, out: &Output) -> Result<Value, StepError> {
+        let value = finish(out)?;
+        self.rev.set(value["rev"].as_u64());
+        Ok(value)
+    }
+
+    /// One call: `cutweave query` for a query, `cutweave exec` with one step otherwise
+    /// (`--expected-rev` when the step expects a revision; a query takes none).
+    pub fn call(&self, call: &Call, expected_rev: Option<u64>) -> Outcome {
         let is_query = self
             .registry
             .get(&call.cmd)
@@ -106,26 +124,29 @@ impl Cli<'_> {
         let mut args: Vec<String> = if is_query {
             vec!["query".into(), call.cmd.clone(), call.args.to_string()]
         } else {
-            vec![
+            let mut args = vec![
                 "exec".into(),
                 json!({ "cmd": call.cmd, "args": call.args }).to_string(),
-            ]
+            ];
+            args.extend(Self::expecting(expected_rev));
+            args
         };
         args.extend(self.target());
         let out = cutweave(&args);
-        finish(&out).map(|v| vec![v["output"].clone()])
+        self.finish(&out).map(|v| vec![v["output"].clone()])
     }
 
     /// A batch: `cutweave exec` with an array of steps (one transaction).
-    pub fn batch(&self, calls: &[Call]) -> Outcome {
+    pub fn batch(&self, calls: &[Call], expected_rev: Option<u64>) -> Outcome {
         let steps: Vec<Value> = calls
             .iter()
             .map(|c| json!({ "cmd": c.cmd, "args": c.args }))
             .collect();
         let mut args = vec!["exec".to_owned(), Value::Array(steps).to_string()];
+        args.extend(Self::expecting(expected_rev));
         args.extend(self.target());
         let out = cutweave(&args);
-        finish(&out).map(|v| {
+        self.finish(&out).map(|v| {
             v["steps"]
                 .as_array()
                 .expect("a batch result has steps")
