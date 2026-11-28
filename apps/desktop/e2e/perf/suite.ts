@@ -700,6 +700,27 @@ async function mainTrackDrag(
   const { scale, projects, log } = options;
   const manifest = projects.stress.manifest;
   await viewSettled(page);
+  // The main track's lane may be below the fold: bring it to the middle of the lanes.
+  const main = manifest.tracks.find((t) => t.main);
+  for (let n = 0; n < 4 && main !== undefined; n += 1) {
+    const g = await timelineGeometry(page);
+    const name = g.tracks.find((t) => t.id === main.id)?.name;
+    if (name === undefined) break;
+    const lanesTop = g.box.y + g.rulerHeight;
+    const middle = lanesTop + (g.box.height - g.rulerHeight) / 2;
+    const off = laneY(g, name) - middle;
+    const inView =
+      laneY(g, name) >= lanesTop + EDGE_CLEARANCE_PX &&
+      laneY(g, name) <= g.box.y + g.box.height - EDGE_CLEARANCE_PX;
+    if (inView) break;
+    await page.mouse.move(g.box.x + g.headerWidth + (g.box.width - g.headerWidth) / 2, middle);
+    await page.mouse.wheel(0, off);
+    await expect
+      .poll(async () => (await timelineGeometry(page)).scrollY, { timeout: 5_000 })
+      .not.toBe(g.scrollY)
+      .catch(() => undefined);
+    await viewSettled(page);
+  }
   const found: { target: ReturnType<typeof mainDragTarget> } = { target: null };
   const look = async (): Promise<boolean> => {
     found.target = mainDragTarget(await timelineGeometry(page), manifest);
@@ -713,8 +734,11 @@ async function mainTrackDrag(
     async () => (await look()) && (found.target?.clipPx ?? 0) <= MAIN_CLIP_MAX_PX,
   );
   if (!(await look()) || found.target === null) {
+    const g = await timelineGeometry(page);
     throw new Error(
-      "no clip of the main track can be dragged on screen, clear of the lanes' edges",
+      "no clip of the main track can be dragged on screen, clear of the lanes' edges " +
+        `(${round(g.pxPerSec, 2)} px/s, scroll ${g.scrollX}/${g.scrollY}, lanes ` +
+        `${g.tracks.map((t) => t.name).join(",")})`,
     );
   }
   const { from, reach, item, track, clipPx } = found.target;
