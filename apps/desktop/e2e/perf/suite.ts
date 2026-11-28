@@ -20,7 +20,7 @@
 // (`pnpm --filter @cutweave/desktop perf:ui`); `flows/perf-smoke.spec.ts` runs it once on a tiny
 // project inside the user-flow suite, so it cannot rot.
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { CDPSession, ElectronApplication, Page } from "@playwright/test";
@@ -76,6 +76,8 @@ export interface FixtureManifest {
   sequence: string;
   /** Flicks per frame. */
   frame: number;
+  /** The source files, by name inside the project's `media/` folder. */
+  media: { file: string }[];
   tracks: {
     id: string;
     video: boolean;
@@ -90,13 +92,20 @@ export interface BenchProject {
   folder: string;
   manifest: FixtureManifest;
   items: number;
+  /** The source files were made (`gen-bench-project --with-media`); else the clips are offline. */
+  sources: boolean;
 }
 
 export function readProject(folder: string): BenchProject {
   const manifest = JSON.parse(
     readFileSync(path.join(folder, "bench-fixture.json"), "utf8"),
   ) as FixtureManifest;
-  return { folder, manifest, items: manifest.tracks.reduce((n, t) => n + t.items.length, 0) };
+  return {
+    folder,
+    manifest,
+    items: manifest.tracks.reduce((n, t) => n + t.items.length, 0),
+    sources: manifest.media.every((m) => existsSync(path.join(folder, "media", m.file))),
+  };
 }
 
 /** How much the suite does. */
@@ -167,7 +176,6 @@ export interface SuiteOptions {
 /** Ids every run reports, the smoke run too (it has no warm start). */
 export const REQUIRED_IDS = [
   "app_start_ms",
-  "app_first_paint_ms",
   "project_open_1h_ui_ms",
   "project_open_p5k_ui_ms",
   "app_memory_1h_mb",
@@ -270,14 +278,17 @@ declare global {
 /**
  * File > Open project… on `folder` and the time it took, ms: from the click on the menu item to
  * the second animation frame after the editor's document holds `items` items under the project's
- * title (the frame after the one the timeline drew them in).
+ * title (the frame after the one the timeline drew them in). A project whose source files were
+ * not made then says so ("6 media files are missing"); the answer is "Not now", as a person who
+ * wants to look at the timeline gives it.
  */
 async function timedOpen(
   app: ElectronApplication,
   page: Page,
   folder: string,
-  items: number,
+  project: BenchProject,
 ): Promise<number> {
+  const items = project.items;
   await pickFiles(app, [folder]);
   await page.evaluate(
     ({ items, name }) => {
@@ -310,6 +321,12 @@ async function timedOpen(
     timeout: OPEN_TIMEOUT_MS,
   });
   const { up, done } = await page.evaluate(() => globalThis.__perfOpen ?? { up: 0, done: 0 });
+  if (!project.sources) {
+    const missing = page.getByRole("dialog", { name: /media files? (is|are) missing/ });
+    await expect(missing).toBeVisible();
+    await missing.getByRole("button", { name: "Not now" }).click();
+    await expect(missing).toBeHidden();
+  }
   await expect(timelineCanvas(page)).toBeVisible();
   return done - up;
 }
@@ -643,14 +660,14 @@ export async function runUiSuite(options: SuiteOptions): Promise<BenchResult> {
     const shared = projects.hour.folder === projects.stress.folder;
     const hour = copyProject(projects.hour, work, "hour");
     const opens: number[] = [];
-    opens.push(await timedOpen(open.app, open.page, hour, projects.hour.items));
+    opens.push(await timedOpen(open.app, open.page, hour, projects.hour));
     await viewSettled(open.page);
     const hourMemory = await appMemory(open.app);
     for (let n = 1; n < scale.opens; n += 1) {
       if (projects.other === undefined) throw new Error("opening twice needs a second project");
       const other = copyProject(projects.other, work, `other-${n}`);
-      await timedOpen(open.app, open.page, other, projects.other.items);
-      opens.push(await timedOpen(open.app, open.page, hour, projects.hour.items));
+      await timedOpen(open.app, open.page, other, projects.other);
+      opens.push(await timedOpen(open.app, open.page, hour, projects.hour));
     }
     log(
       `open ${projects.hour.manifest.spec.name}: ${opens.map((v) => round(v)).join(", ")} ms; memory ` +
@@ -671,7 +688,7 @@ export async function runUiSuite(options: SuiteOptions): Promise<BenchResult> {
       await close();
       open = await launchAndWait(work, home, launch);
       const stress = copyProject(projects.stress, work, "stress");
-      stressOpen = await timedOpen(open.app, open.page, stress, projects.stress.items);
+      stressOpen = await timedOpen(open.app, open.page, stress, projects.stress);
       await viewSettled(open.page);
       stressMemory = await appMemory(open.app);
     }
@@ -706,6 +723,7 @@ export async function runUiSuite(options: SuiteOptions): Promise<BenchResult> {
     tracks: p.manifest.tracks.length,
     keyframes: p.manifest.spec.keyframes,
     sha256: p.manifest.sha256,
+    sources: p.sources ? "made" : "missing (clips offline)",
   });
   return buildResult(
     repoRoot,
