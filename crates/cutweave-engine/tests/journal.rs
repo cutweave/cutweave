@@ -624,6 +624,94 @@ fn gestures_are_journaled_once_on_commit_and_cancelled_ones_never() {
     assert_eq!(name, None);
 }
 
+/// Issue #235. A client that lost the engine mid-drag sends what it had in flight again,
+/// under the same request ids. The journal had the first drag's commit: its begin, update and
+/// commit get their original results back and nothing is applied twice. The engine died with
+/// the second drag open: its edits are gone, its update and commit are refused, and its begin
+/// (never journaled) runs now and opens a new, empty transaction.
+#[test]
+fn a_recovered_gesture_answers_its_requests_again_and_a_lost_one_is_refused() {
+    let t = TempDir::new("gesture-resend");
+    let folder = create_project(&t.0, "Resend", &fixture(1));
+    let send = |h: &cutweave_commands::DocHandle, n: u128, name: &str, params, tx: Option<TxId>| {
+        let request = Submit::new(ui(), name, params).with_request_id(rid(n));
+        h.submit(tx.map_or(request.clone(), |tx| request.in_tx(tx)))
+            .wait()
+    };
+    let begin = json!({"kind": "gesture", "label": "Drag"});
+    let name_of = |h: &cutweave_commands::DocHandle, item: ItemId| {
+        let doc = h.committed_snapshot().doc.clone();
+        doc.find_item(&item)
+            .and_then(|r| r.item.as_clip().and_then(|c| c.name.clone()))
+    };
+    let tx_of =
+        |opened: &Applied| -> TxId { serde_json::from_value(opened.output["tx"].clone()).unwrap() };
+
+    let (item, opened, renamed, committed, orphan) = {
+        let s = open_session(&folder, &SessionOptions::default());
+        let h = &s.handle;
+        let item = append(h, tracks(&h.snapshot().doc)[0], 4);
+        let opened = send(h, 1, "edit.begin_tx", begin.clone(), None).unwrap();
+        let rename = json!({"item": item, "name": "kept"});
+        let renamed = send(h, 2, "item.rename", rename, Some(tx_of(&opened))).unwrap();
+        let committed = send(h, 3, "edit.commit_tx", json!({}), None).unwrap();
+        let orphan = send(h, 4, "edit.begin_tx", begin.clone(), None).unwrap();
+        let rename = json!({"item": item, "name": "lost"});
+        send(h, 5, "item.rename", rename, Some(tx_of(&orphan))).unwrap();
+        (item, opened, renamed, committed, tx_of(&orphan))
+    };
+
+    let s = open_session(&folder, &SessionOptions::default());
+    let h = &s.handle;
+    let recovered = h.snapshot();
+    assert_eq!(name_of(h, item).as_deref(), Some("kept"));
+    let last = s.recovered.commits.last().unwrap();
+    let commands: Vec<&str> = last.steps.iter().map(|s| s.command.as_str()).collect();
+    assert_eq!(commands, ["item.rename", "edit.begin_tx", "edit.commit_tx"]);
+    assert_eq!(last.label.as_deref(), Some("Drag"));
+
+    // The committed drag: every request is answered from the journal, as often as it is sent.
+    for _ in 0..2 {
+        let again = send(h, 3, "edit.commit_tx", json!({}), None).unwrap();
+        assert!(again.replayed);
+        assert_eq!(again.output, committed.output);
+        assert_eq!(again.rev, committed.rev);
+        assert_eq!(again.committed_rev, committed.committed_rev);
+    }
+    let again = send(h, 1, "edit.begin_tx", begin.clone(), None).unwrap();
+    assert!(again.replayed);
+    assert_eq!(again.output, opened.output);
+    let rename = json!({"item": item, "name": "kept"});
+    let again = send(h, 2, "item.rename", rename, Some(tx_of(&opened))).unwrap();
+    assert!(again.replayed);
+    assert_eq!(again.output, renamed.output);
+    assert_eq!(h.snapshot().rev, recovered.rev, "nothing was applied again");
+    assert_eq!(h.locks(&ui()).wait().unwrap().transactions.len(), 0);
+
+    // The drag the engine died with: nothing of it is answered as done.
+    let rename = json!({"item": item, "name": "lost"});
+    let err = send(h, 5, "item.rename", rename, Some(orphan)).unwrap_err();
+    assert!(
+        matches!(err, cutweave_commands::CmdError::NotFound { .. }),
+        "{err:?}"
+    );
+    let err = send(h, 6, "edit.commit_tx", json!({}), None).unwrap_err();
+    let none =
+        cutweave_commands::CmdError::invalid("/tx", "this connection has no open transaction");
+    assert_eq!(err, none);
+    let err = send(h, 7, "edit.cancel_tx", json!({}), None).unwrap_err();
+    assert_eq!(err, none);
+    assert_eq!(h.snapshot().doc, recovered.doc);
+    let reopened = send(h, 4, "edit.begin_tx", begin, None).unwrap();
+    assert!(!reopened.replayed, "its begin was never journaled: it runs");
+    assert_eq!(h.locks(&ui()).wait().unwrap().transactions.len(), 1);
+    send(h, 8, "edit.cancel_tx", json!({}), None).unwrap();
+
+    // Still one undo step for the whole recovered drag.
+    submit(h, &ui(), "edit.undo", json!({})).unwrap();
+    assert_eq!(name_of(h, item), None);
+}
+
 #[test]
 fn discarding_keeps_the_saved_document_and_preserves_the_journal() {
     let t = TempDir::new("discard");

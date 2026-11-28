@@ -13,8 +13,8 @@ use std::{
 };
 
 use cutweave_commands::{
-    ActorCtx, CmdError, CommitRecord, ConflictReason, ConnId, DedupRecord, DocActor, ManualClock,
-    RequestId, Rev, Submit, TxKind, WallTime,
+    ActorCtx, Applied, CmdError, CommitRecord, CommitSink, ConflictReason, ConnId, DedupRecord,
+    DocActor, ManualClock, RequestId, Rev, Submit, TxId, TxKind, WallTime,
 };
 use cutweave_model::SeededGen;
 use doc_support::{agent, config, drain, project, spawn, ui};
@@ -308,4 +308,247 @@ fn requests_inside_an_open_transaction_are_remembered_until_it_closes() {
     assert!(!rerun.replayed);
     assert_ne!(rerun.output, cancelled.output);
     assert_eq!(h.snapshot().doc.item_count(), 2);
+}
+
+/// A journal that keeps what every commit asks it to remember, and can refuse a write.
+#[derive(Clone, Default)]
+struct Remembering {
+    records: Arc<Mutex<Vec<DedupRecord>>>,
+    refuse: Arc<Mutex<bool>>,
+}
+
+impl Remembering {
+    /// The remembered requests, round-tripped through JSON like the real journal's.
+    fn persisted(&self) -> Vec<DedupRecord> {
+        serde_json::from_value(serde_json::to_value(&*self.records.lock().unwrap()).unwrap())
+            .unwrap()
+    }
+}
+
+impl CommitSink for Remembering {
+    fn commit(&mut self, record: &CommitRecord<'_>) -> Result<(), CmdError> {
+        if *self.refuse.lock().unwrap() {
+            return Err(CmdError::internal("disk full"));
+        }
+        self.records
+            .lock()
+            .unwrap()
+            .extend(record.steps.iter().map(|s| s.record.clone()));
+        Ok(())
+    }
+}
+
+fn request(id: u128, ctx: &ActorCtx, name: &str, params: Value) -> Submit {
+    Submit::new(ctx.clone(), name, params).with_request_id(RequestId::from_u128(id))
+}
+
+fn opened_tx(opened: &Applied) -> TxId {
+    serde_json::from_value(opened.output["tx"].clone()).unwrap()
+}
+
+/// Issue #235: the requests that open and commit a transaction are journaled with it, so a
+/// restarted engine answers a repeat of either with the original result, like its steps.
+#[test]
+fn a_committed_transaction_answers_its_begin_and_commit_again_after_a_restart() {
+    for kind in ["gesture", "batch", "proposal"] {
+        let (doc, tracks, _) = project(1);
+        let clock = clock();
+        let journal = Remembering::default();
+        let ctx = ui();
+        let begin = || {
+            let params = json!({"kind": kind, "label": "Drag"});
+            request(41, &ctx, "edit.begin_tx", params)
+        };
+        let step = |tx: Option<TxId>| {
+            let step = append_with(RequestId::from_u128(42), &ctx, tracks[0]);
+            tx.map_or(step.clone(), |tx| step.in_tx(tx))
+        };
+        let commit = || request(43, &ctx, "edit.commit_tx", json!({}));
+        let (opened, stepped, committed, saved) = {
+            let actor = DocActor::spawn(
+                config(doc)
+                    .with_clock(clock.clone())
+                    .with_journal(Box::new(journal.clone())),
+            )
+            .unwrap();
+            let h = actor.handle();
+            let opened = h.submit(begin()).wait().unwrap();
+            let stepped = h.submit(step(Some(opened_tx(&opened)))).wait().unwrap();
+            let committed = h.submit(commit()).wait().unwrap();
+            assert_eq!(committed.output["changed"], true);
+            // Live: a repeat returns the same result.
+            let again = h.submit(commit()).wait().unwrap();
+            assert!(again.replayed);
+            assert_eq!(again.output, committed.output);
+            assert_eq!(again.rev, committed.rev);
+            (opened, stepped, committed, h.committed_snapshot())
+        };
+
+        let persisted = journal.persisted();
+        assert_eq!(persisted.len(), 3, "begin, the step and the commit");
+        clock.advance(MINUTE);
+        let restarted = DocActor::spawn(
+            config(saved.doc.clone())
+                .with_rev(saved.rev)
+                .with_ids(Box::new(SeededGen::new(43)))
+                .with_clock(clock.clone())
+                .with_restored_requests(persisted),
+        )
+        .unwrap();
+        let h = restarted.handle();
+        // Twice: a repeat is answered as often as it is sent.
+        for _ in 0..2 {
+            let again = h.submit(commit()).wait().unwrap();
+            assert!(again.replayed, "{kind}");
+            assert_eq!(again.output, committed.output);
+            assert_eq!(again.rev, committed.rev);
+            assert_eq!(again.committed_rev, committed.committed_rev);
+            assert_eq!(again.ops, committed.ops);
+        }
+        let again = h.submit(begin()).wait().unwrap();
+        assert!(again.replayed, "{kind}");
+        assert_eq!(again.output, opened.output);
+        let again = h.submit(step(None)).wait().unwrap();
+        assert!(again.replayed);
+        assert_eq!(again.output, stepped.output);
+        // Nothing was applied again and the repeated begin opened nothing.
+        assert_eq!(h.snapshot().doc, saved.doc);
+        assert_eq!(h.snapshot().rev, saved.rev);
+        assert_eq!(h.locks(&ctx).wait().unwrap().transactions.len(), 0);
+    }
+}
+
+/// The request id of a journaled commit stays bound to it: another request under it is a
+/// conflict, as for any remembered request.
+#[test]
+fn the_request_id_of_a_journaled_commit_cannot_be_reused_after_a_restart() {
+    let (doc, tracks, _) = project(1);
+    let journal = Remembering::default();
+    let ctx = ui();
+    let saved = {
+        let actor = DocActor::spawn(config(doc).with_journal(Box::new(journal.clone()))).unwrap();
+        let h = actor.handle();
+        let begin = json!({"label": "Batch"});
+        let opened = h
+            .submit(request(51, &ctx, "edit.begin_tx", begin))
+            .wait()
+            .unwrap();
+        let step = append_with(RequestId::from_u128(52), &ctx, tracks[0]);
+        h.submit(step.in_tx(opened_tx(&opened))).wait().unwrap();
+        h.submit(request(53, &ctx, "edit.commit_tx", json!({})))
+            .wait()
+            .unwrap();
+        h.committed_snapshot()
+    };
+    let restarted = DocActor::spawn(
+        config(saved.doc.clone())
+            .with_rev(saved.rev)
+            .with_ids(Box::new(SeededGen::new(43)))
+            .with_restored_requests(journal.persisted()),
+    )
+    .unwrap();
+    let h = restarted.handle();
+    for other in [
+        request(53, &ctx, "edit.cancel_tx", json!({})),
+        request(53, &agent(), "edit.commit_tx", json!({})),
+    ] {
+        let err = h.submit(other).wait().unwrap_err();
+        let reused = matches!(
+            err,
+            CmdError::Conflict {
+                reason: ConflictReason::RequestIdReused,
+                ..
+            }
+        );
+        assert!(reused, "{err:?}");
+    }
+}
+
+/// A commit the journal refuses changes nothing: the transaction stays open with the steps it
+/// had, and the commit sent again (it failed, so it runs) is journaled once.
+#[test]
+fn a_commit_the_journal_refuses_leaves_the_transaction_as_it_was() {
+    let (doc, tracks, _) = project(1);
+    let journal = Remembering::default();
+    let actor = DocActor::spawn(config(doc).with_journal(Box::new(journal.clone()))).unwrap();
+    let h = actor.handle();
+    let ctx = ui();
+    let begin = json!({"kind": "gesture", "label": "Drag"});
+    let opened = h
+        .submit(request(61, &ctx, "edit.begin_tx", begin))
+        .wait()
+        .unwrap();
+    let tx = opened_tx(&opened);
+    let step = append_with(RequestId::from_u128(62), &ctx, tracks[0]);
+    h.submit(step.in_tx(tx)).wait().unwrap();
+    let commit = || request(63, &ctx, "edit.commit_tx", json!({}));
+
+    *journal.refuse.lock().unwrap() = true;
+    let err = h.submit(commit()).wait().unwrap_err();
+    assert!(matches!(err, CmdError::Internal { .. }), "{err:?}");
+    let steps = h
+        .run(move |state| state.transaction(tx).map(|t| t.steps))
+        .wait()
+        .unwrap();
+    assert_eq!(steps, Some(1), "still open, with its one step");
+    assert_eq!(h.committed_snapshot().doc.item_count(), 0);
+
+    *journal.refuse.lock().unwrap() = false;
+    let committed = h.submit(commit()).wait().unwrap();
+    assert!(!committed.replayed);
+    assert_eq!(h.committed_snapshot().doc.item_count(), 1);
+    let ids: Vec<RequestId> = journal
+        .records
+        .lock()
+        .unwrap()
+        .iter()
+        .map(DedupRecord::request_id)
+        .collect();
+    assert_eq!(ids, [62, 61, 63].map(RequestId::from_u128));
+}
+
+/// A cancelled transaction never reaches the journal, and neither does one the engine died
+/// with: after a restart its cancel or commit sent again is not answered from memory and
+/// finds no transaction. It does not report a success: the transaction's changes are gone.
+#[test]
+fn a_cancel_or_commit_the_journal_never_had_is_refused_after_a_restart() {
+    let (doc, tracks, _) = project(1);
+    let journal = Remembering::default();
+    let ctx = ui();
+    let (saved, tx) = {
+        let actor = DocActor::spawn(config(doc).with_journal(Box::new(journal.clone()))).unwrap();
+        let h = actor.handle();
+        let begin = json!({"kind": "gesture", "label": "Drag"});
+        let opened = h
+            .submit(request(71, &ctx, "edit.begin_tx", begin))
+            .wait()
+            .unwrap();
+        let tx = opened_tx(&opened);
+        let step = append_with(RequestId::from_u128(72), &ctx, tracks[0]);
+        h.submit(step.in_tx(tx)).wait().unwrap();
+        h.submit(request(73, &ctx, "edit.cancel_tx", json!({})))
+            .wait()
+            .unwrap();
+        (h.committed_snapshot(), tx)
+    };
+    assert_eq!(journal.records.lock().unwrap().len(), 0);
+    // The restarted engine issues transaction ids past the last journaled one, as recovery
+    // does; here none was journaled, so `tx` would be the next one.
+    let restarted = DocActor::spawn(config(saved.doc.clone()).with_rev(saved.rev)).unwrap();
+    let h = restarted.handle();
+    let none = CmdError::invalid("/tx", "this connection has no open transaction");
+    for (id, name) in [(73, "edit.cancel_tx"), (74, "edit.commit_tx")] {
+        let err = h
+            .submit(request(id, &ctx, name, json!({})))
+            .wait()
+            .unwrap_err();
+        assert_eq!(err, none);
+        let err = h
+            .submit(request(id, &ctx, name, json!({"tx": tx})))
+            .wait()
+            .unwrap_err();
+        assert!(matches!(err, CmdError::NotFound { .. }), "{err:?}");
+    }
+    assert_eq!(h.snapshot().doc, saved.doc);
+    assert_eq!(h.snapshot().rev, saved.rev);
 }

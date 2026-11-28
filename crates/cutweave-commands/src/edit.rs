@@ -35,8 +35,8 @@
 use crate::{
     Actor, Annotations, CheckpointInfo, CmdError, CommandSpec, Described, DocState, EngineCommand,
     EntryKind, HistoryMoved, HistoryPage, HistoryScope, LockList, MAX_HISTORY_PAGE, MAX_UNDO_DEPTH,
-    McpExposure, Registrable, Registry, RegistryError, Restored, Rev, Scope, TxId, TxKind, command,
-    wire,
+    McpExposure, Registrable, Registry, RegistryError, Restored, Rev, Scope, TxClosed, TxId,
+    TxInfo, TxKind, command, wire,
 };
 
 /// Longest transaction label, in characters.
@@ -132,12 +132,19 @@ impl EngineCommand for BeginTx {
         }
         let ctx = caller(state)?;
         let info = state.begin_tx(&ctx, self.kind.unwrap_or(TxKind::Batch), &self.label)?;
-        Ok(TxOpened {
+        Ok(TxOpened::of(&info))
+    }
+}
+
+impl TxOpened {
+    /// What `edit.begin_tx` answers for the transaction it opened.
+    pub(crate) fn of(info: &TxInfo) -> TxOpened {
+        TxOpened {
             tx: info.id,
             kind: info.kind,
-            label: info.label,
+            label: info.label.clone(),
             rev: info.opened_rev,
-        })
+        }
     }
 }
 
@@ -180,13 +187,20 @@ impl EngineCommand for CommitTx {
         let ctx = caller(state)?;
         let tx = own_tx(state, &ctx, self.tx)?;
         let closed = state.commit_tx(&ctx, tx)?;
-        Ok(TxCommitted {
-            tx,
+        Ok(TxCommitted::of(&closed))
+    }
+}
+
+impl TxCommitted {
+    /// What `edit.commit_tx` answers for the transaction it committed.
+    pub(crate) fn of(closed: &TxClosed) -> TxCommitted {
+        TxCommitted {
+            tx: closed.tx_id,
             kind: closed.kind,
             changed: !closed.patch.is_empty(),
             rev: closed.rev,
             committed_rev: closed.committed_rev,
-        })
+        }
     }
 }
 

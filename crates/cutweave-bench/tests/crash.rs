@@ -146,7 +146,6 @@ fn edits_after_a_save_survive_a_crash_when_one_removes_media_imported_before_the
 /// commit, and after the recovery the commit sent again under its request id must get its
 /// original result, as a live engine gives and as `docs/reference/rpc.md` says.
 #[test]
-#[ignore = "issue #235: a resent edit.commit_tx is refused after a recovery"]
 fn a_drag_commit_sent_again_after_a_recovery_returns_its_original_result() {
     let (fixture, spec, _) = smoke_project("crash-commit-resend");
     let id = |n: u32| format!("0190f5c2-0235-7000-8000-{n:012x}");
