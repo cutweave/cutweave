@@ -3,12 +3,13 @@ import {
   type MediaId,
   MockTransport,
   RpcClient,
+  RpcError,
   type SequenceId,
   type UiState,
 } from "@cutweave/protocol";
 import { describe, expect, it } from "vitest";
 import { createViewStore, initialViewState, panelLayoutFrom, panelLayoutOf } from "./viewStore.ts";
-import { diffView, VIEW_SYNC_DEBOUNCE_MS, ViewSync } from "./viewSync.ts";
+import { ACTIVE_SEQUENCE_RETRIES, diffView, VIEW_SYNC_DEBOUNCE_MS, ViewSync } from "./viewSync.ts";
 
 class FakeTimers {
   #tasks = new Map<number, { at: number; run: () => void }>();
@@ -237,6 +238,54 @@ describe("diffView and panel layout", () => {
     store.getState().setActiveSequence(b);
     await settle();
     expect(sets()).toHaveLength(1);
+  });
+
+  it("a choice of sequence the engine refuses is sent again by itself, a few times only", async () => {
+    const b = "seq_b" as SequenceId;
+    let refusals = 2;
+    const transport = new MockTransport()
+      .handle("view.get", () => engineView())
+      .handle("view.set", () => {
+        // The engine's view has not seen the new sequence yet.
+        if (refusals-- > 0) throw new RpcError("not_found", "sequence seq_b does not exist");
+        return engineView({ active_sequence: b });
+      });
+    const store = createViewStore();
+    const timers = new FakeTimers();
+    const errors: unknown[] = [];
+    const sync = new ViewSync({
+      store,
+      rpc: new RpcClient(transport),
+      timers,
+      onError: (e) => errors.push(e),
+    });
+    const sets = () => transport.requests.filter((r) => r.method === "view.set");
+    await sync.restore();
+    store.getState().setActiveSequence(b);
+    await settle();
+    expect(sets()).toHaveLength(1);
+    // Refused: it waits its debounce and goes again, with nothing else changing.
+    for (let i = 0; i < 2; i++) {
+      expect(timers.pending).toBe(1);
+      timers.advance(VIEW_SYNC_DEBOUNCE_MS);
+      await settle();
+    }
+    expect(sets()).toHaveLength(3);
+    expect(sets().at(-1)?.params).toEqual({ patch: { active_sequence: b } });
+    expect(errors).toHaveLength(2);
+    // Accepted: nothing is left to send.
+    expect(timers.pending).toBe(0);
+
+    // A sequence the engine never accepts is given up after ACTIVE_SEQUENCE_RETRIES.
+    refusals = 100;
+    store.getState().setActiveSequence("seq_gone" as SequenceId);
+    await settle();
+    for (let i = 0; i < ACTIVE_SEQUENCE_RETRIES + 2; i++) {
+      timers.advance(VIEW_SYNC_DEBOUNCE_MS);
+      await settle();
+    }
+    expect(sets()).toHaveLength(3 + 1 + ACTIVE_SEQUENCE_RETRIES);
+    expect(timers.pending).toBe(0);
   });
 
   it("the sequence tabs ride the panel layout and come back with it", async () => {

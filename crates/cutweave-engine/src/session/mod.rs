@@ -923,6 +923,7 @@ fn spawn_doc(deps: &Deps, config: DocConfig, view: &Arc<Mutex<ViewHost>>) -> Res
     let handle = actor.handle();
     let mut stream = handle.subscribe();
     let (bus, view, reader) = (deps.events.clone(), Arc::clone(view), handle.clone());
+    let subsystems = Arc::clone(&deps.subsystems);
     let forwarder = std::thread::Builder::new()
         .name("cutweave-doc-events".into())
         .spawn(move || {
@@ -933,12 +934,17 @@ fn spawn_doc(deps: &Deps, config: DocConfig, view: &Arc<Mutex<ViewHost>>) -> Res
                         bus.publish(EngineEvent::Doc(event));
                         if patched {
                             let doc = reader.committed_snapshot();
-                            let change = {
+                            let (change, shown) = {
                                 let mut view = lock(&view);
+                                let before = view.with_ctx(|vc| vc.state().active_sequence);
                                 if view.set_doc(&doc.doc) {
-                                    view.with_ctx(ViewCtx::take_event)
+                                    // The sequence the editor showed was deleted: playback
+                                    // follows the view to the first one (WP-2B.03).
+                                    let after = view.with_ctx(|vc| vc.state().clone());
+                                    let shown = (after.active_sequence != before).then_some(after);
+                                    (view.with_ctx(ViewCtx::take_event), shown)
                                 } else {
-                                    None
+                                    (None, None)
                                 }
                             };
                             if let Some(change) = change {
@@ -946,6 +952,9 @@ fn spawn_doc(deps: &Deps, config: DocConfig, view: &Arc<Mutex<ViewHost>>) -> Res
                                     change,
                                     origin: None,
                                 });
+                            }
+                            if let Some(state) = shown {
+                                subsystems.on_view(&state, false);
                             }
                         }
                     }

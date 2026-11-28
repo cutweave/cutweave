@@ -23,6 +23,14 @@ import {
 /** The engine mirror is flushed this long after the last change (WP-1M.02). */
 export const VIEW_SYNC_DEBOUNCE_MS = 500;
 
+/**
+ * How often a refused "show this sequence" is sent again on its own (WP-2B.03). The engine's
+ * view learns of a new sequence a moment after the command that made it answers, so the choice
+ * of a sequence just created can arrive too early; the engine must end up playing what the
+ * timeline shows, so this one field does not wait for the next change.
+ */
+export const ACTIVE_SEQUENCE_RETRIES = 3;
+
 export interface ViewSyncTimers {
   setTimeout(callback: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
@@ -139,6 +147,8 @@ export class ViewSync {
   #offProject: (() => void)[] = [];
   /** Grows with every project change: what was asked of the project before is not taken. */
   #project = 0;
+  /** Refused sends of the sequence shown since the last accepted one. */
+  #activeRetries = 0;
 
   constructor(options: ViewSyncOptions) {
     this.#store = options.store;
@@ -214,8 +224,18 @@ export class ViewSync {
       await this.#rpc.call("view.set", { patch });
       // Another project opened meanwhile: what the engine holds now is what was read from it.
       if (project === this.#project) this.#sent = now;
+      this.#activeRetries = 0;
     } catch (error) {
       this.#onError(error); // `#sent` is unchanged: the next change retries the difference
+      // The sequence shown is sent again on its own, a few times (see ACTIVE_SEQUENCE_RETRIES).
+      if (
+        patch.active_sequence !== undefined &&
+        project === this.#project &&
+        this.#activeRetries < ACTIVE_SEQUENCE_RETRIES
+      ) {
+        this.#activeRetries += 1;
+        this.#schedule();
+      }
     }
   }
 
@@ -271,6 +291,7 @@ export class ViewSync {
    */
   async #reload(): Promise<void> {
     const project = ++this.#project;
+    this.#activeRetries = 0;
     this.#cancelTimer();
     this.#dirtyAgain = false;
     this.#adopting = true;
