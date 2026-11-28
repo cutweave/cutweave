@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (166 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (168 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -14,6 +14,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | audio | `audio.set_gain` | Give a clip one flat gain in dB, removing its volume keys | command, undoable, idempotent | catalog |
 | audio | `audio.set_pan` | Set a clip's stereo pan (-1 left, 1 right; keyed at the playhead when animated) | command, undoable, idempotent | catalog |
 | audio | `audio.set_volume` | Set a clip's volume in dB (keyed at the playhead when animated) | command, undoable, idempotent | catalog |
+| audio | `audio.waveform` | Draw the sound of a media file, a clip or a mix as a waveform image, with levels and silences | engine, read-only, idempotent | catalog |
 | clip | `clip.freeze_frame` | Freeze a clip's frame at a time: split there and insert a still of it (3 s by default) | command, undoable | catalog |
 | clip | `clip.paste_attributes` | Copy transform, crop, flip, compositing or audio settings of a clip onto other clips | command, undoable, idempotent | catalog |
 | clip | `clip.replace` | Replace a clip's media and keep its transform, keyframes, audio settings, links and position | command, undoable | catalog |
@@ -88,6 +89,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.delete_collection` | Delete a collection of media (the assets stay) | command, undoable, destructive | catalog |
 | media | `media.delete_folder` | Delete a media bin folder: lift its contents one level, or remove unused media in it | command, undoable, destructive | catalog |
 | media | `media.delete_proxy` | Remove the proxies of video assets (the preview uses the originals again) | engine, destructive, idempotent | catalog |
+| media | `media.filmstrip` | Show frames of a video asset at even intervals as one strip image (JPEG) | engine, read-only, idempotent | catalog |
 | media | `media.find_missing` | List the media whose file is missing (or, with verify, changed) on this computer | engine, read-only, idempotent | catalog |
 | media | `media.generate_proxy` | Make proxies (small intra-frame copies the preview scrubs) of video assets now | engine, idempotent | catalog |
 | media | `media.import` | Import media files: probe and register them now, return media ids and analysis job ids | engine, idempotent | core |

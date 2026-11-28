@@ -33,7 +33,7 @@ use cutweave_playback::transport::{PlaybackTarget, Transport};
 
 use super::audio::{AudioFeed, LivePcm};
 use super::frames::MediaFrames;
-use super::preview::{source_info, timing_of};
+use super::preview::{Shown, source_info, timing_of};
 use super::proxy::FullProxies;
 
 /// How long the thread waits for an event before looking at its stop flag.
@@ -43,6 +43,8 @@ const POLL: StdDuration = StdDuration::from_millis(50);
 pub(crate) struct Targets {
     pub(crate) transport: Transport,
     pub(crate) feed: Arc<AudioFeed>,
+    /// The sequence the editor shows: its grid and extent are the transport's.
+    pub(crate) shown: Arc<Shown>,
     pub(crate) pcm: Arc<LivePcm>,
     pub(crate) frames: Arc<MediaFrames>,
     pub(crate) thumbs: Option<Arc<ThumbCache>>,
@@ -54,7 +56,7 @@ impl Targets {
     /// Brings everything in line with `doc`, which follows `previous` (`None`: the document
     /// playback attached to).
     fn apply(&self, doc: &Project, previous: Option<&Project>) {
-        let timing = timing_of(doc);
+        let timing = timing_of(doc, self.shown.get());
         match previous {
             None => {
                 if timing != self.transport.sequence_timing() {

@@ -222,17 +222,15 @@ example = '{"patch":{"playhead":"12s","selection":[{"kind":"item","id":"itm_…"
 
 # ----- not listed yet ------------------------------------------------------------------------
 
+# The visual tools of WP-2I.02 exist as commands and are reached through `cutweave_query`
+# (`render.contact_sheet`, `media.filmstrip`, `audio.waveform`). ADR-0039 keeps the last two in
+# the catalog for good and lists `render_contact_sheet` only if the standard list still fits
+# 8,000 tokens with it. It does not: the listing is 1,186 bytes (about 297 tokens) and 511
+# bytes (about 127 tokens) are free, so it waits here.
+
 [[pending]]
 name = "render_contact_sheet"
-arrives = "WP-2I.02"
-
-[[pending]]
-name = "media_filmstrip"
-arrives = "WP-2I.02"
-
-[[pending]]
-name = "audio_waveform"
-arrives = "WP-2I.02"
+arrives = "room in the standard list (ADR-0039); the command exists: cutweave_query render.contact_sheet"
 
 # Text, caption, effect, transition, composition and AI tools arrive in P3-P5 with their
 # commands (WBS WP-2I.01); the names are the plan's, not a contract yet.
@@ -282,7 +280,7 @@ name = "cutweave_query"
 
 [[namespace]]
 name = "audio"
-purpose = "a clip's volume, fades and pan; loudness of the mix"
+purpose = "a clip's volume, fades and pan; loudness of the mix; a picture of the sound"
 
 [[namespace]]
 name = "clip"
@@ -310,7 +308,7 @@ purpose = "animate a property over time: set, move, delete keys, easing"
 
 [[namespace]]
 name = "media"
-purpose = "the media bin: import, list, folders, tags, collections, proxies, relink missing files"
+purpose = "the media bin: import, list, folders, tags, collections, proxies, relink missing files, filmstrips"
 
 [[namespace]]
 name = "project"
@@ -318,7 +316,7 @@ purpose = "open, save, close, settings, collect and archive"
 
 [[namespace]]
 name = "render"
-purpose = "see a frame of the timeline as a picture"
+purpose = "see the timeline as pictures: one frame, or a grid of frames over a range"
 
 [[namespace]]
 name = "sequence"
@@ -345,6 +343,7 @@ purpose = "what the user sees in the app: playhead, selection, zoom"
 "audio.set_gain" = ["boost", "louder", "quieter", "normalize"]
 "audio.set_pan" = ["left", "right", "stereo", "balance", "sound"]
 "audio.set_volume" = ["louder", "quieter", "loud", "quiet", "sound", "music", "turn"]
+"audio.waveform" = ["silence", "silent", "pause", "peaks", "graph", "see", "shape"]
 "clip.freeze_frame" = ["still", "pause", "hold", "picture"]
 "clip.paste_attributes" = ["look", "style", "settings", "same", "match"]
 "clip.replace" = ["swap", "exchange", "footage", "different"]
@@ -369,6 +368,7 @@ purpose = "what the user sees in the app: playhead, selection, zoom"
 "item.set_props" = ["zoom", "scale", "resize", "bigger", "smaller", "rotate", "position", "transparent", "mirror", "hide", "disable", "rename", "size", "crop", "clip", "flip"]
 "item.unlink" = ["separate", "ungroup", "sound", "apart"]
 "keyframe.set" = ["animate", "animation", "keyframe", "ramp", "move"]
+"media.filmstrip" = ["thumbnails", "thumbnail", "strip", "frames", "look", "inside", "preview"]
 "media.find_missing" = ["offline", "lost", "broken"]
 "media.generate_proxy" = ["smooth", "laggy", "preview", "optimize"]
 "media.import" = ["add", "load", "footage", "file", "bring", "photo"]
@@ -378,6 +378,7 @@ purpose = "what the user sees in the app: playhead, selection, zoom"
 "media.set_rating" = ["star", "favorite", "best"]
 "project.collect" = ["consolidate", "gather", "portable", "share"]
 "project.archive" = ["backup", "zip", "bundle"]
+"render.contact_sheet" = ["thumbnail", "thumbnails", "grid", "overview", "storyboard", "see", "look", "edit", "glance", "frames"]
 "sequence.create" = ["timeline", "new", "vertical", "square", "short"]
 "sequence.duplicate" = ["timeline", "version", "clone"]
 "sequence.set_background" = ["blurred", "fill", "bars"]

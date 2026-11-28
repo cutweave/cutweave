@@ -33,6 +33,7 @@ import {
   TRANSPORT_TIME,
   TRANSPORT_VOLUME,
 } from "./preview.ts";
+import { SEQUENCE_PALETTE_COMMANDS, SEQUENCE_TAB, SEQUENCE_UI_COMMANDS } from "./sequence.ts";
 import {
   TIMELINE_CLIP,
   TIMELINE_EDGE,
@@ -213,6 +214,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
   TIMELINE_PLAYHEAD,
   TIMELINE_MARKER,
   TIMELINE_KEYFRAME,
+  SEQUENCE_TAB,
   INSPECTOR_SECTION,
   INSPECTOR_ROW,
   INSPECTOR_PATH,
@@ -260,14 +262,18 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
  * UI commands the palette lists too: they read the editor's own state, not a menu's target. Save
  * as smart collection… stores the bin's search and filters (WP-2F.06c).
  */
-const PALETTE_UI_COMMANDS: ReadonlySet<string> = new Set(["bin.save_smart_collection"]);
+const PALETTE_UI_COMMANDS: ReadonlySet<string> = new Set([
+  "bin.save_smart_collection",
+  // The sequence that shows: new, rename, duplicate, settings, close, next, delete (WP-2B.03).
+  ...SEQUENCE_PALETTE_COMMANDS,
+]);
 
 /** Puts the surface tables, UI commands, command texts and hints into `services`. */
 export function registerSurfaceMenus(services: MenuServices): void {
   for (const info of SURFACE_COMMAND_INFO) services.commands.register(info);
   // Menu-only: they take their arguments from the menu's target, so the palette does not list
   // them, except the few that need none (`PALETTE_UI_COMMANDS`).
-  for (const command of UI_COMMANDS) {
+  for (const command of [...UI_COMMANDS, ...SEQUENCE_UI_COMMANDS]) {
     services.ui.register({ ...command, hidden: !PALETTE_UI_COMMANDS.has(command.id) });
   }
   for (const surface of SURFACES) services.surfaces.register(surface);
@@ -276,5 +282,7 @@ export function registerSurfaceMenus(services: MenuServices): void {
 
 /** Ids the i18n test must not mistake for catalog keys (they share roots with it). */
 export const SURFACE_IDS: readonly string[] = SURFACES.map((s) => s.id);
-export const UI_COMMAND_IDS: readonly string[] = UI_COMMANDS.map((c) => c.id);
+export const UI_COMMAND_IDS: readonly string[] = [...UI_COMMANDS, ...SEQUENCE_UI_COMMANDS].map(
+  (c) => c.id,
+);
 export const HINT_BINDING_IDS: readonly string[] = Object.values(KEY_HINTS);

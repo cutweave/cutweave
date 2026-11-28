@@ -1717,6 +1717,472 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Draws sound as a picture (PNG): the peaks of a media file, of one clip as it plays, or of a\nsequence's mix, over a time ruler, so loud, quiet and silent stretches can be seen. Also\nreturns `audio_levels`: the loudest peak, the peak of up to 64 equal slices of the range and\nthe silent stretches (at least 0.3 s at or below -60 dBFS), and with `loudness` the\nintegrated loudness and its short-term course in LUFS. Read-only. A clip or a mix is decoded\nand mixed while the call waits (at most one hour of it per call); a media file is read from\nits cached peaks.",
+        "properties": {
+          "channels": {
+            "anyOf": [
+              {
+                "description": "Which signals a waveform shows.",
+                "oneOf": [
+                  {
+                    "const": "mix",
+                    "description": "One lane: all channels mixed.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "split",
+                    "description": "One lane per channel (left and right for a clip or a mix).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`mix` (default: one lane) or `split` (one lane per channel)."
+          },
+          "from": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode. Media time for a media file, else sequence\ntime (default: the start of the file, the clip or the sequence)."
+          },
+          "height": {
+            "default": null,
+            "description": "Picture height in px (32-1024, default 192).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loudness": {
+            "default": null,
+            "description": "Also measure loudness (LUFS). For a clip or a sequence's mix, not for a media file.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "scale_db": {
+            "default": null,
+            "description": "Draw on a dB scale of this range (12-144; e.g. 60 puts -60 dBFS at the lane's middle and\n0 dBFS at its edge) so quiet sound shows. Default: linear.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "What to draw: `{\"kind\":\"media\",\"media\":id}`, `{\"kind\":\"item\",\"item\":id}` or\n`{\"kind\":\"range\"}` (a sequence's mix; add `sequence` when the project has several).",
+            "oneOf": [
+              {
+                "description": "A media file's own sound (its cached peaks; `from` and `to` are media times).",
+                "properties": {
+                  "kind": {
+                    "const": "media",
+                    "type": "string"
+                  },
+                  "media": {
+                    "description": "The asset.",
+                    "pattern": "^med_[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  "stream": {
+                    "default": null,
+                    "description": "The audio stream by container index (default: the first).",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "media"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "One clip as it plays on the timeline, with its speed, gain and fades (`from` and `to`\nare sequence times inside the clip).",
+                "properties": {
+                  "item": {
+                    "description": "The clip.",
+                    "pattern": "^itm_[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "item",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "item"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The mix of a sequence over a range, as an export hears it.",
+                "properties": {
+                  "kind": {
+                    "const": "range",
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "default": null,
+                    "description": "The sequence; optional when the project has one.",
+                    "pattern": "^seq_[0-9a-f]{32}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "to": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "End, exclusive (default: the end of the file, the clip or the sequence)."
+          },
+          "width": {
+            "default": null,
+            "description": "Picture width in px (64-2048, default 768).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "AudioWaveform",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "audio_waveform",
+      "name": "audio.waveform",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `audio.waveform`.",
+        "properties": {
+          "audio_levels": {
+            "additionalProperties": false,
+            "description": "Peaks, silences and (on request) loudness of the range.",
+            "properties": {
+              "lufs_integrated": {
+                "description": "Integrated loudness in LUFS (with `loudness`; null below the gate).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lufs_short_term": {
+                "description": "Short-term loudness (3 s window) over the range (with `loudness`).",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A loudness reading.",
+                  "properties": {
+                    "lufs": {
+                      "description": "Short-term loudness in LUFS; null below the -70 LUFS gate or before any sound.",
+                      "format": "double",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "t": {
+                      "description": "When (flicks): the short-term window ends here.",
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "t",
+                    "lufs"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "peak_db": {
+                "description": "The loudest sample peak in dBFS; null when the range is silent.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "peaks_db": {
+                "description": "The peak of each of up to 64 equal slices of the range, in dBFS (null: silent).",
+                "items": {
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "type": "array"
+              },
+              "silence_below_db": {
+                "description": "A peak at or below this, in dBFS, counts as silence.",
+                "format": "double",
+                "type": "number"
+              },
+              "silences": {
+                "description": "The silent stretches of at least 0.3 s, in time order.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A stretch of time.",
+                  "properties": {
+                    "from": {
+                      "description": "Start (flicks).",
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "to": {
+                      "description": "End, exclusive.",
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "slice": {
+                "description": "Length of one slice (flicks).",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "peak_db",
+              "peaks_db",
+              "slice",
+              "silence_below_db",
+              "silences"
+            ],
+            "type": "object"
+          },
+          "bytes": {
+            "description": "Encoded size in bytes.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "data": {
+            "description": "The picture, base64 (returned over MCP as image content).",
+            "type": "string"
+          },
+          "from": {
+            "description": "Start of the range drawn (flicks; media time for a media file, else sequence time).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Picture height in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lanes": {
+            "description": "The lanes, top to bottom; the ruler is under them.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One lane of a waveform picture.",
+              "properties": {
+                "channel": {
+                  "description": "The signal: `mix`, `left`, `right`, or `ch1`, `ch2`, ... of a media file.",
+                  "type": "string"
+                },
+                "height": {
+                  "description": "Height in px (full scale at the top and the bottom edge).",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "width": {
+                  "description": "Width in px (the whole range).",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "x": {
+                  "description": "Left edge on the picture, in px.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "y": {
+                  "description": "Top edge, in px.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "channel",
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "link": {
+            "description": "The `/media/...` path that serves the same peaks over HTTP (a media file only), as a\nplain PNG without the ruler.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mime": {
+            "description": "MIME type of `data` (`image/png`).",
+            "type": "string"
+          },
+          "rev": {
+            "description": "Document revision drawn.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sample_rate": {
+            "description": "Sample rate of the sound measured, in Hz.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scale_db": {
+            "description": "The dB range of the vertical axis; absent: linear.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence, for a clip or a mix.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_errors": {
+            "description": "Clips whose sound could not be decoded (drawn as silence).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "to": {
+            "description": "End of the range drawn, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "width": {
+            "description": "Picture width in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mime",
+          "data",
+          "bytes",
+          "width",
+          "height",
+          "from",
+          "to",
+          "sample_rate",
+          "lanes",
+          "audio_levels",
+          "source_errors",
+          "rev"
+        ],
+        "title": "WaveformOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Draw the sound of a media file, a clip or a mix as a waveform image, with levels and silences",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -19790,6 +20256,214 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Remove the proxies of video assets (the preview uses the originals again)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Frames of a video asset at even intervals, side by side in one JPEG: a quick look at what a\nclip shows before placing or trimming it. Without `from` and `to` it is the whole clip (the\nstrip the timeline shows, from the thumbnail cache); with them, that part of it. `tiles`\nsays which media time each tile shows. Read-only; the first call for a clip decodes it.",
+        "properties": {
+          "count": {
+            "default": null,
+            "description": "Tiles (default 8, at most 64).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "from": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start in media time: flicks, \"2.5s\", \"f:60\" or a timecode (default: the clip's start)."
+          },
+          "max_size": {
+            "default": null,
+            "description": "Longer side of the strip in px (64-2048, default 768). Tiles are never upscaled.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "media": {
+            "description": "The video (or image-sequence) asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "End in media time, exclusive (default: the clip's end)."
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaFilmstrip",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_filmstrip",
+      "name": "media.filmstrip",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.filmstrip`.",
+        "properties": {
+          "bytes": {
+            "description": "Encoded size in bytes.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "data": {
+            "description": "The strip, base64 (returned over MCP as image content).",
+            "type": "string"
+          },
+          "etag": {
+            "description": "Entity tag of the picture: the asset's content hash and a hash of the parameters.",
+            "type": "string"
+          },
+          "from": {
+            "description": "Start of the part shown (media time, flicks).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Strip height in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "link": {
+            "description": "The `/media/...` path that serves the same JPEG over HTTP with that tag (the whole\nclip's strip only).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "mime": {
+            "description": "MIME type of `data` (`image/jpeg`).",
+            "type": "string"
+          },
+          "tile_width": {
+            "description": "Width of one tile in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tiles": {
+            "description": "The tiles, left to right.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One tile of a filmstrip.",
+              "properties": {
+                "t": {
+                  "description": "Media time of the frame it shows (flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "x": {
+                  "description": "Its left edge on the strip, in px.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "t",
+                "x"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "to": {
+            "description": "End of the part shown, exclusive.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "width": {
+            "description": "Strip width in px.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mime",
+          "data",
+          "bytes",
+          "width",
+          "height",
+          "media",
+          "from",
+          "to",
+          "tile_width",
+          "tiles",
+          "etag"
+        ],
+        "title": "FilmstripOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Show frames of a video asset at even intervals as one strip image (JPEG)",
       "undoable": false,
       "view": false
     },

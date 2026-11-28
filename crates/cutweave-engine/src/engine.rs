@@ -52,6 +52,7 @@ use cutweave_ops::media::{
 use cutweave_ops::project::collect::on_import::ProjectFolder;
 use cutweave_ops::project::collect::{CollectCtx, CollectHost};
 use cutweave_ops::view::{UiState, ViewCtx};
+use cutweave_ops::visual::{VisualCall, VisualService};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
@@ -331,6 +332,24 @@ impl Core {
         }
     }
 
+    /// `media.filmstrip` and `audio.waveform` (WP-2I.02): they decode, or mix a range, on this
+    /// (non-async) thread, like `audio.get_levels`; the document of the moment is drawn.
+    fn visual(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let subsystems = &self.deps.subsystems;
+        let mut call = VisualCall {
+            snapshot: self.doc()?.snapshot(),
+            service: subsystems.media_state().map(|state| {
+                let sources = subsystems
+                    .export_services()
+                    .map(|services| services.sources);
+                Arc::new(crate::visual::EngineVisual::new(state, sources)) as Arc<dyn VisualService>
+            }),
+        };
+        let registry = &self.deps.registry;
+        let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+        Ok(self.reply(output))
+    }
+
     // ----- engine commands ---------------------------------------------------------------------
 
     /// Runs an engine command whose context is not the doc actor's.
@@ -372,6 +391,9 @@ impl Core {
             };
             let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
             return Ok(self.reply(output));
+        }
+        if context == TypeId::of::<VisualCall>() {
+            return self.visual(ctx, name, params);
         }
         if context == TypeId::of::<PresetCtx>() {
             let mut call = PresetCtx {
@@ -516,21 +538,23 @@ impl Core {
             Some(roots) => ImportPolicy::restricted(roots),
         };
         // `media.import_frame` renders the document of the moment into the project's folder.
+        let shown = Core::view_state(session).active_sequence;
         let frames = Arc::new(EngineFrames {
             snapshot: handle.snapshot(),
             backend: self.deps.subsystems.frame_backend(),
             project_root: session.project_root().map(Path::to_path_buf),
             seed: self.deps.seed,
+            shown,
         });
-        // The sequence the editor shows (the first one): `media.import_sequence` gives a run
-        // its frame rate when the caller names none (ADR-0035).
-        let sequence_fps = handle
-            .snapshot()
-            .doc
-            .sequences
-            .values()
-            .next()
-            .map(|s| s.format.frame_rate);
+        // The sequence the editor shows: `media.import_sequence` gives a run its frame rate
+        // when the caller names none (ADR-0035).
+        let sequence_fps = {
+            let snapshot = handle.snapshot();
+            shown
+                .and_then(|id| snapshot.doc.sequences.get(&id))
+                .or_else(|| snapshot.doc.sequences.values().next())
+                .map(|s| s.format.frame_rate)
+        };
         // Where `copy_to_project` copies to (WP-2F.04c): the open project's folder, with the
         // free-space probe collect uses; an untitled document has none.
         let project = session.project_root().map(|root| {

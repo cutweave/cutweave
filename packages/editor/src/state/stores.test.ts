@@ -30,13 +30,29 @@ const patched = (rev: number, prev: number, from: string, to: string): DocPatche
   }) as unknown as DocPatched;
 
 describe("docStore", () => {
-  it("starts empty and exposes only applyEvent and resync as actions", () => {
+  it("starts empty; applyEvent and resync are its only writers, republish changes nothing", () => {
     const store = createDocStore();
     const s = store.getState();
     expect(s.status).toBe("empty");
     expect(s.project).toBeNull();
     const actions = Object.keys(s).filter((k) => typeof s[k as keyof typeof s] === "function");
-    expect(actions.sort()).toEqual(["applyEvent", "resync"]);
+    expect(actions.sort()).toEqual(["applyEvent", "republish", "resync"]);
+    // Republishing (the editor shows another sequence, WP-2B.03) tells the subscribers to read
+    // the document again: the same revision and the same contents, every part shared.
+    store.getState().republish(); // no document: nothing to publish
+    expect(store.getState().project).toBeNull();
+    store.getState().resync({ rev: 3, committed_rev: 3, project: project("a") });
+    const before = store.getState();
+    let published = 0;
+    store.subscribe(() => published++);
+    store.getState().republish();
+    const after = store.getState();
+    expect(published).toBe(1);
+    expect(after.rev).toBe(before.rev);
+    expect(after.project).toEqual(before.project);
+    expect(after.project).not.toBe(before.project);
+    expect(after.project?.sequences).toBe(before.project?.sequences);
+    expect(after.project?.media).toBe(before.project?.media);
   });
 
   it("applies the next revision, drops stale ones and reports gaps without changing", () => {

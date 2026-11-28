@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import type { SequenceId } from "@cutweave/protocol";
 import { IconButton, Menu, type MenuEntry, SegmentedControl, Tooltip } from "@cutweave/ui";
 import {
   type DragEvent,
   type KeyboardEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -29,8 +31,11 @@ import {
   usePreviewAspect,
 } from "../preview/PreviewCanvas.tsx";
 import { sourceKeyAction } from "../preview/sourceKeys.ts";
+import { openSequenceSettings, setSequenceAspect } from "../sequences/actions.ts";
+import { ASPECT_PRESETS } from "../sequences/presets.ts";
 import { clearMarks, placeShownSource, setSourceMark } from "../source/actions.ts";
-import { docStore } from "../state/docStore.ts";
+import { docStore, useDocStore } from "../state/docStore.ts";
+import { selectActiveSequenceId } from "../state/selectors.ts";
 import { usePreviewFrozen, usePreviewShowsSource } from "../state/sourceViewStore.ts";
 import { ASPECTS, type AspectId, useViewStore, viewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
@@ -142,6 +147,51 @@ function useGuideItems(): readonly MenuEntry[] {
 }
 
 /**
+ * The aspect switcher's menu (WP-2B.03): every size preset of the engine, the one the sequence
+ * has checked, and Custom size… (Sequence settings, where any width and height can be typed).
+ * A preset is one `sequence.set_format`; the clips follow as its `reframe` says (fit).
+ */
+function useSizeItems(): {
+  readonly sequence: string | null;
+  readonly items: readonly MenuEntry[];
+} {
+  const { t } = useTranslation();
+  const sequence = useDocStore((s) => selectActiveSequenceId(s.project));
+  // The canvas as one string, so a patch that leaves it alone renders nothing again.
+  const size = useDocStore((s) => {
+    const format = sequence === null ? undefined : s.project?.sequences[sequence]?.format;
+    return format === undefined ? "" : `${format.width}x${format.height}`;
+  });
+  const items = useMemo<readonly MenuEntry[]>(
+    () =>
+      sequence === null
+        ? []
+        : [
+            ...ASPECT_PRESETS.map((preset) => ({
+              id: `size-${preset.id}`,
+              label: t("sequences.presetSize", {
+                ratio: preset.ratio,
+                width: preset.width,
+                height: preset.height,
+              }),
+              checked: size === `${preset.width}x${preset.height}`,
+              choice: "radio" as const,
+              onSelect: () => void setSequenceAspect(sequence, preset.id),
+            })),
+            { kind: "separator" as const, id: "sep-custom" },
+            {
+              id: "size-custom",
+              label: t("preview.sizeCustom"),
+              icon: "sliders-horizontal" as const,
+              onSelect: () => openSequenceSettings(sequence),
+            },
+          ],
+    [t, sequence, size],
+  );
+  return { sequence, items };
+}
+
+/**
  * Centre dock panel: the preview bar (aspect, safe areas), the frame at the playhead on
  * `surface-preview` with its overlay, and the transport bar (WP-1M.04). Without an engine it
  * keeps the empty frame.
@@ -152,6 +202,7 @@ export function PreviewPanel() {
   const safeAreas = useViewStore((s) => s.safeAreas);
   const cropMode = useGuides((s) => s.cropMode);
   const guideItems = useGuideItems();
+  const sizes = useSizeItems();
   const engine = useEngineStore((s) => s.connection !== "none");
   const aspect = usePreviewAspect();
   const [path, setPath] = useState<PreviewPath>({ kind: "pending" });
@@ -231,12 +282,28 @@ export function PreviewPanel() {
         <SegmentedControl<AspectId>
           aria-label={t("preview.aspectLabel")}
           // The sequence's own canvas sets the shape once there is one: the control then shows
-          // that shape (none of the presets for a custom one) and is off.
+          // that shape (none of the presets for a custom one), and a choice gives the sequence
+          // that preset's canvas (WP-2B.03). Without a sequence it only shapes the empty frame.
           value={aspect.fromSequence ? aspect.presetId : aspectId}
-          disabled={aspect.fromSequence}
-          onChange={(next) => viewStore.getState().setAspect(next)}
+          onChange={(next) => {
+            if (aspect.fromSequence && sizes.sequence !== null) {
+              void setSequenceAspect(sizes.sequence as SequenceId, next);
+            } else viewStore.getState().setAspect(next);
+          }}
           options={ASPECTS.map((a) => ({ value: a.id, label: t(a.labelKey) }))}
         />
+        {aspect.fromSequence && sizes.sequence !== null ? (
+          <Menu mode="dropdown" items={sizes.items} aria-label={t("preview.sizeMenu")}>
+            <Tooltip label={t("preview.sizeMenu")}>
+              <IconButton
+                icon="chevron-down"
+                size="sm"
+                label={t("preview.sizeMenu")}
+                data-testid="preview-size-menu"
+              />
+            </Tooltip>
+          </Menu>
+        ) : null}
         <Tooltip label={t("preview.safeAreas")}>
           <IconButton
             icon="layout-grid"

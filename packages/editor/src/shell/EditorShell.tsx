@@ -17,6 +17,7 @@ import { MenuDialogs } from "../menus/MenuDialogs.tsx";
 import { CommandPalette } from "../palette/index.ts";
 import { usePref } from "../prefs/prefsStore.ts";
 import { ProjectSettingsDialog } from "../project/ProjectSettingsDialog.tsx";
+import { SequenceSettingsDialog } from "../sequences/SequenceSettingsDialog.tsx";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useTransportWiring } from "../transport/useTransport.ts";
@@ -112,6 +113,7 @@ function Shell() {
         <CollectDialog />
         <ArchiveDialog />
         <ProjectSettingsDialog />
+        <SequenceSettingsDialog />
         <SequenceOffer />
         <ContextMenuHost />
       </ToastProvider>

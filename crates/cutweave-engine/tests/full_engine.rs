@@ -902,3 +902,66 @@ fn an_audio_only_media_item_plays_its_sound() {
     drop(conn);
     engine.shutdown();
 }
+
+/// WP-2B.03: playback is of the sequence the editor shows (`view.set_active_sequence`), not of
+/// the first one. A second, shorter sequence is shown: the transport takes its extent (a seek
+/// past its end is clamped to it). Deleting it puts the first sequence back, and undoing the
+/// delete does not bring the choice back with it (the view names no sequence then).
+#[test]
+fn playback_is_of_the_sequence_the_editor_shows() {
+    let t = TempDir::new("shown");
+    let (fake, clip) = fake_clip(t.path(), "a.mp4", FakeBackend::new());
+    let clocks = Clocks::new();
+    let (engine, _handle) = manual_engine(t.path(), fake, &clocks);
+    let conn = agent(&engine);
+    // The first sequence holds 2 s.
+    let (media, _item, _imported) = build_timeline(&conn, &clip);
+    let seek = |to: &str| call(&conn, "view.seek", json!({ "t": to })).unwrap()["t"].clone();
+    assert_eq!(seek("1.5s"), json!(SEC * 3 / 2));
+
+    // A second sequence with 1 s in it; nothing changes until it is shown.
+    let second = call(&conn, "sequence.create", json!({ "name": "Short" })).unwrap();
+    call(
+        &conn,
+        "timeline.insert",
+        json!({
+            "sequence": second["sequence"], "track": second["video_track"],
+            "media": media, "at": 0, "duration": "1s",
+        }),
+    )
+    .unwrap();
+    assert_eq!(seek("1.5s"), json!(SEC * 3 / 2));
+
+    let shown = call(
+        &conn,
+        "view.set_active_sequence",
+        json!({ "sequence": second["sequence"] }),
+    )
+    .unwrap();
+    assert_eq!(shown["sequence"], second["sequence"]);
+    // Its extent is the transport's now: 1.5 s is past its end.
+    let clamped = seek("1.5s").as_i64().unwrap();
+    assert!(clamped <= SEC, "clamped to the 1 s sequence: {clamped}");
+    assert_eq!(seek("0.5s"), json!(SEC / 2));
+
+    // Deleted: the view forgets it and the first sequence plays again.
+    call(
+        &conn,
+        "sequence.delete",
+        json!({ "sequence": second["sequence"] }),
+    )
+    .unwrap();
+    eventually("the first sequence's extent", || {
+        (seek("1.5s") == json!(SEC * 3 / 2)).then_some(())
+    });
+    let view = call(&conn, "view.get", json!({})).unwrap();
+    assert_eq!(view["active_sequence"], Value::Null, "{view}");
+
+    // The undo brings the sequence back, not the choice: the first one still plays.
+    call(&conn, "edit.undo", json!({})).unwrap();
+    assert_eq!(seek("1.5s"), json!(SEC * 3 / 2));
+    let view = call(&conn, "view.get", json!({})).unwrap();
+    assert_eq!(view["active_sequence"], Value::Null, "{view}");
+    drop(conn);
+    engine.shutdown();
+}

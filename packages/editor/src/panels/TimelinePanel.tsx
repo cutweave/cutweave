@@ -12,6 +12,7 @@ import { useEngineStore } from "../engine/engineStore.ts";
 import { useMediaLoaders } from "../media/mediaWiring.ts";
 import { loadersForWindow } from "../media/timelineLoaders.ts";
 import { usePrefs } from "../prefs/prefsStore.ts";
+import { SequenceTabs } from "../sequences/SequenceTabs.tsx";
 import { useDocStore } from "../state/docStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
@@ -177,6 +178,8 @@ export function TimelinePanel() {
       data-state={intents.ui.state}
       onPointerDownCapture={() => void transportController().closeSource()}
     >
+      {/* One tab per sequence (WP-2B.03); it renders only when the list or the choice changes. */}
+      {live ? <SequenceTabs /> : null}
       <TimelineToolbar
         host={intents.host}
         tool={intents.ui.tool}

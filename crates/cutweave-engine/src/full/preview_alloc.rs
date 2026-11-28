@@ -205,6 +205,7 @@ impl Rig {
         ));
         let source = PreviewSource::new(
             doc,
+            Arc::default(),
             CompositorSlot::new(gpu),
             frames,
             SubsystemEvents(EventBus::new(16)),

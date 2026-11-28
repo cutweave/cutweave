@@ -54,6 +54,7 @@ pub mod session;
 mod startup;
 pub mod subsystems;
 pub mod ui_state;
+pub mod visual;
 
 pub use agents::{AgentConnection, MAX_ALLOWED_ROOTS};
 pub use config::{ApiOptions, AudioConfig, EngineConfig, EngineMode, GpuConfig, MountFactory};

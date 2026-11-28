@@ -8,7 +8,7 @@ The tools an agent sees in `tools/list` on `/mcp` (the standard profile; arch §
 - **`/mcp/minimal`** (`--profile minimal`): 10 tools of 12, about 1959 tokens of 3000.
 - **`/mcp/full`** (`--profile full`): 32 tools of 36, about 7873 tokens of 8000.
 - **`/mcp/described`** (`--profile described`): 32 tools of 36, about 14930 tokens of 16000.
-- **Server instructions:** 3344 characters of at most 4096: a map of the command namespaces, how to find, describe and run a command, batches, the revision and undo. Built from the registry and the `[[namespace]]` lines of the core tool table.
+- **Server instructions:** 3413 characters of at most 4096: a map of the command namespaces, how to find, describe and run a command, batches, the revision and undo. Built from the registry and the `[[namespace]]` lines of the core tool table.
 - **Loaded at the start:** `project_info`, `timeline_get`, `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` carry `_meta` `"anthropic/alwaysLoad": true`, which asks a client that defers tool definitions (Claude Code's tool search) to load them at the start. They are what an agent needs before it can search; other clients ignore the key. Marked **always** below.
 - **Names:** a tool is named after its command with `.` replaced by `_` (`clip.split` is `clip_split`). A core tool is only that command: the same input schema, result and errors as over JSON-RPC and the CLI.
 - **Descriptions:** the text below followed by `E.g.` and the example, at most 300 characters. In an example `…` stands for the 32 hex digits of an id.
@@ -66,9 +66,7 @@ Planned core tools. Until they are listed, a command that exists is reached thro
 
 | Tool | Arrives with |
 |---|---|
-| `render_contact_sheet` | WP-2I.02 |
-| `media_filmstrip` | WP-2I.02 |
-| `audio_waveform` | WP-2I.02 |
+| `render_contact_sheet` | room in the standard list (ADR-0039); the command exists: cutweave_query render.contact_sheet |
 | `text_add` | P3-P5 |
 | `caption_generate` | P3-P5 |
 | `effect_add` | P3-P5 |

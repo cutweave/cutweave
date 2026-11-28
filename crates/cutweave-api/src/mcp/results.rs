@@ -50,12 +50,21 @@ pub const UNTRUSTED_FIELDS: &[(&str, &str)] = &[
     ("media.list_collections", "/collections/*/filter/tags/*"),
     ("media.create_collection", "/name"),
     ("media.rename_collection", "/name"),
+    // The names of the items a contact-sheet cell shows (WP-2I.02): a clip's name, its media's
+    // name in the bin, or a file name.
+    ("render.contact_sheet", "/frames/*/items_visible/*/name"),
 ];
 
 /// Output fields the MCP layer moves out of `structuredContent` into a content block, by
 /// registry name and JSON Pointer into the engine's output: `render_frame`'s picture becomes an
-/// image block (see [`frame`](crate::mcp::frame)).
-pub const IMAGE_FIELDS: &[(&str, &str)] = &[("render.frame", "/data")];
+/// image block (see [`frame`](crate::mcp::frame)), and so do the pictures of the contact sheet,
+/// the filmstrip and the waveform (see [`visual`](crate::mcp::visual)).
+pub const IMAGE_FIELDS: &[(&str, &str)] = &[
+    ("render.frame", "/data"),
+    ("render.contact_sheet", "/data"),
+    ("media.filmstrip", "/data"),
+    ("audio.waveform", "/data"),
+];
 
 /// The schema of an [untrusted](UNTRUSTED_FIELDS) string as MCP returns it.
 fn untrusted_schema() -> Value {

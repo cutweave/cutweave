@@ -86,7 +86,7 @@ use cutweave_playback::transport::{
     PlayingQuality, PublisherSink, RenderConfig, SystemClock, Transport,
 };
 use cutweave_render::gpu::AdapterChoice;
-use cutweave_render::query::{RenderFrame, SharedBackend};
+use cutweave_render::query::SharedBackend;
 use serde_json::Value;
 
 pub use audio::AudioMode;
@@ -264,6 +264,8 @@ struct Started {
 /// Playback of the open document.
 struct PerDoc {
     transport: Transport,
+    /// The mixer's feed: told when another sequence shows.
+    feed: Arc<AudioFeed>,
     playback: PlaybackEngine,
     pump: Option<cutweave_playback::shm::ClockPump>,
     watcher: DocWatcher,
@@ -272,6 +274,9 @@ struct PerDoc {
 struct Inner {
     config: FullConfig,
     doc: CurrentDoc,
+    /// The sequence the editor shows (`view.set_active_sequence`): what "the sequence" is to
+    /// the preview, the mixer and the transport.
+    shown: Arc<preview::Shown>,
     pcm: Arc<LivePcm>,
     frame_cache: Arc<FrameCache>,
     /// Hardware or software preview decoding (`media.set_decode_policy`).
@@ -415,6 +420,7 @@ impl FullSubsystems {
             .unwrap_or_else(|| FrameCache::default_budget(total_ram()));
         FullSubsystems {
             inner: Arc::new(Inner {
+                shown: Arc::default(),
                 pcm: Arc::new(LivePcm::new(config.media.clone())),
                 frame_cache: Arc::new(FrameCache::new(budget)),
                 decode: Arc::default(),
@@ -545,6 +551,7 @@ impl FullSubsystems {
     fn attach(&self, started: &mut Started, doc: &DocHandle) {
         let source = PreviewSource::new(
             doc.clone(),
+            Arc::clone(&self.inner.shown),
             CompositorSlot::new(Arc::clone(&started.gpu)),
             Arc::clone(&started.frames),
             started.events.clone(),
@@ -565,7 +572,11 @@ impl FullSubsystems {
             ),
         };
         // The mixer plays the sound of what the transport plays (ADR-0022).
-        let feed = Arc::new(AudioFeed::new(started.audio.mixer().cloned(), doc.clone()));
+        let feed = Arc::new(AudioFeed::new(
+            started.audio.mixer().cloned(),
+            doc.clone(),
+            Arc::clone(&self.inner.shown),
+        ));
         let audio = Box::new(TargetedAudio::new(audio, Arc::clone(&feed)));
         let config = PlaybackConfig {
             render: RenderConfig::default(),
@@ -611,7 +622,8 @@ impl FullSubsystems {
         let transport = playback.transport().clone();
         let targets = Targets {
             transport: transport.clone(),
-            feed,
+            feed: Arc::clone(&feed),
+            shown: Arc::clone(&self.inner.shown),
             pcm: Arc::clone(&self.inner.pcm),
             frames: Arc::clone(&started.frames),
             thumbs: started.caches.thumbs.clone(),
@@ -627,6 +639,7 @@ impl FullSubsystems {
         };
         *lock(&self.inner.per_doc) = Some(PerDoc {
             transport,
+            feed,
             playback,
             pump,
             watcher,
@@ -991,8 +1004,8 @@ impl CacheControl for FullCacheControl {
 impl Subsystems for FullSubsystems {
     fn register(&self, registry: &mut Registry) -> Result<(), RegistryError> {
         cutweave_playback::transport::register(registry)?;
-        // `render.contact_sheet` stays out of the MCP surface until P2 (WP-1J.02).
-        registry.register::<RenderFrame>()?;
+        // The agent-vision queries (WP-1F.03, WP-2I.02): only an engine with a renderer has them.
+        cutweave_render::query::register(registry)?;
         Ok(())
     }
 
@@ -1150,6 +1163,19 @@ impl Subsystems for FullSubsystems {
         {
             mixer.set_master_gain_linear(view.master_gain);
         }
+        // Another sequence shows (`view.set_active_sequence`, or the view of the project just
+        // opened): the transport takes its grid and extent and draws its frame, and the mixer
+        // plays its sound.
+        if self.inner.shown.set(view.active_sequence) {
+            let per_doc = lock(&self.inner.per_doc)
+                .as_ref()
+                .map(|p| (p.transport.clone(), Arc::clone(&p.feed)));
+            if let (Some((transport, feed)), Some(snapshot)) = (per_doc, self.inner.doc.snapshot())
+            {
+                transport.sequence_edited(preview::timing_of(&snapshot.doc, view.active_sequence));
+                feed.shown_changed();
+            }
+        }
         if opened && let Some(transport) = self.transport() {
             // Opening a project shows its saved playhead.
             transport.seek(view.playhead);
@@ -1167,7 +1193,7 @@ impl Subsystems for FullSubsystems {
         };
         // The document watcher follows edits asynchronously; a command right after an edit
         // (insert, then play) must already see the new extent.
-        let timing = preview::timing_of(&call.doc.snapshot().doc);
+        let timing = preview::timing_of(&call.doc.snapshot().doc, self.inner.shown.get());
         if timing != transport.sequence_timing() {
             transport.set_timing(timing);
         }

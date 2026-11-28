@@ -41,6 +41,7 @@ import { type OpenNotice, SessionSync } from "../session/sessionSync.ts";
 import { docSink, type docStore } from "../state/docStore.ts";
 import type { jobStore } from "../state/jobStore.ts";
 import type { playbackStore } from "../state/playbackStore.ts";
+import { bindShownSequence } from "../state/shownSequence.ts";
 import type { viewStore } from "../state/viewStore.ts";
 import { ViewSync, type ViewSyncOptions } from "../state/viewSync.ts";
 import type { EngineBlock, engineStore, SupervisorStatus } from "./engineStore.ts";
@@ -224,6 +225,8 @@ export function startEngineRuntime(
         });
   let started = false;
   const offs: (() => void)[] = [];
+  // The timeline, the preview and the menus show the sequence the view names (WP-2B.03).
+  offs.push(bindShownSequence(stores.view, stores.doc));
 
   /**
    * After every handshake: the document snapshot first, then the commands still waiting (their

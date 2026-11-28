@@ -43,7 +43,11 @@
     "reload": "Reload",
     "toggleDevTools": "Toggle developer tools",
     "about": "About {{name}}",
-    "panels": "Panels"
+    "panels": "Panels",
+    "newSequence": "New sequence",
+    "sequenceSettings": "Sequence settings…",
+    "nextSequence": "Next sequence",
+    "previousSequence": "Previous sequence"
   },
   "saveStatus": {
     "saved": "All changes saved",
@@ -663,7 +667,11 @@
       "fullScreen": "View menu. Fills the screen with the window.",
       "reload": "View menu, development builds only. Reloads the window.",
       "devTools": "View menu, development builds only. Shows the developer tools.",
-      "commandPalette": "Opens the command palette: search every command, panel and setting and run it."
+      "commandPalette": "Opens the command palette: search every command, panel and setting and run it.",
+      "newSequence": "File menu. Adds a sequence in the project's format and shows it.",
+      "sequenceSettings": "File menu. Opens the size, frame rate and background of the sequence that shows.",
+      "nextSequence": "View menu. Shows the sequence of the next tab above the timeline.",
+      "previousSequence": "View menu. Shows the sequence of the previous tab above the timeline."
     },
     "playback": {
       "togglePlay": "Play or pause",
@@ -1388,7 +1396,9 @@
       "ring": "The preview stream stopped, so frames arrive as still images at up to 15 fps."
     },
     "noFramesTitle": "No preview frames",
-    "noFramesBody": "The engine sent no frame for the playhead. You can still edit and move the playhead."
+    "noFramesBody": "The engine sent no frame for the playhead. You can still edit and move the playhead.",
+    "sizeMenu": "More sizes and sequence settings",
+    "sizeCustom": "Custom size…"
   },
   "transport": {
     "label": "Transport",
@@ -1601,6 +1611,16 @@
         "blur": "Blurred picture",
         "image": "Image",
         "transparent": "Transparent"
+      },
+      "image": "Image",
+      "fit": "Fit",
+      "imageName": "background image",
+      "fitName": "background image fit",
+      "imageGone": "Missing image",
+      "fits": {
+        "cover": "Fill the frame",
+        "contain": "Show all of it",
+        "stretch": "Stretch"
       }
     },
     "track": {
@@ -2498,7 +2518,8 @@
       "engine": "Engine actions",
       "binCollection": "Collection actions for {{name}}",
       "marker": "Marker actions for {{name}}",
-      "keyframe": "Keyframe actions"
+      "keyframe": "Keyframe actions",
+      "sequenceTab": "Sequence actions for {{name}}"
     },
     "item": {
       "cut": "Cut",
@@ -2803,6 +2824,47 @@
       "damping": "Damping",
       "mass": "Mass",
       "bounce": "Bounce"
+    }
+  },
+  "sequences": {
+    "tabsLabel": "Sequences",
+    "newName": "Sequence {{n}}",
+    "new": "New sequence",
+    "newWithSize": "New sequence with a size",
+    "presetSize": "{{ratio}} ({{width}} × {{height}})",
+    "addMenu": "Add or open a sequence",
+    "reopen": "Closed sequences",
+    "rename": "Rename",
+    "renameLabel": "Sequence name",
+    "duplicate": "Duplicate",
+    "settings": "Sequence settings…",
+    "aspect": "Aspect",
+    "moveLeft": "Move left",
+    "moveRight": "Move right",
+    "close": "Close tab",
+    "closeOthers": "Close other tabs",
+    "next": "Next sequence",
+    "previous": "Previous sequence",
+    "delete": "Delete sequence",
+    "reason": {
+      "firstTab": "This is the first tab",
+      "lastInRow": "This is the last tab",
+      "lastTab": "The last tab stays open",
+      "lastSequence": "A project keeps at least one sequence"
+    },
+    "failed": {
+      "create": "The sequence was not added",
+      "duplicate": "The sequence was not duplicated",
+      "rename": "The sequence was not renamed",
+      "delete": "The sequence was not deleted",
+      "aspect": "The sequence's size was not changed"
+    },
+    "settingsDialog": {
+      "title": "Sequence settings",
+      "hint": "{{name}}: its size, frame rate and background. Each change is one undo step.",
+      "formLabel": "Sequence settings",
+      "done": "Done",
+      "noImages": "To use a picture as the background, import it into the media bin first."
     }
   },
   "graph": {

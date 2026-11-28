@@ -316,6 +316,8 @@ describe("every key handler in the editor is accounted for", () => {
       "the graph editor's Time and Value fields: Enter commits, Escape puts the shown number back (dialogs group); the canvas's own keys while it has the focus (arrows nudge the selected keys, Alt+arrows step between keys, Delete, Enter, F) are the widget's, in @cutweave/ui",
     "preview/overlays/TransformOverlay.tsx":
       "the picture's handles: the keymap's `preview` context (nudges, crop); Escape ends a drag or crop mode",
+    "sequences/SequenceTabs.tsx":
+      "the sequence tabs' own keys while a tab has the focus: Left, Right, Home and End move between tabs, F2 renames",
     "settings/shortcuts.tsx": "record-a-shortcut: the next key press is the shortcut",
     "shell/appCommands.ts": "the menu shortcuts: appMenu.ts, from the keymap",
     "timeline/TrackRenameInput.tsx":

@@ -15,6 +15,8 @@
 //!   queries `render.frame` / `render.contact_sheet` ([`query`], registered with [`register`];
 //!   arch §14): images encoded by [`encode`] with what is on screen from [`inspect`], contact
 //!   sheets laid out by [`sheet`] with timecodes in the built-in [`font`].
+//! * WP-2I.02: contact sheets at cuts, markers or given times, and waveform pictures ([`wave`]:
+//!   peak lanes over a time ruler) for the engine's `audio.waveform`.
 //!
 //! Frames come from a [`FrameSource`] (the decoder pool / frame cache, WP-1D); until FFmpeg
 //! decode lands, [`testcard::SyntheticSource`] serves generated test cards.
@@ -47,6 +49,7 @@ pub mod testcard;
 mod testkit;
 #[cfg(test)]
 mod tests;
+pub mod wave;
 
 #[cfg(all(
     feature = "gpu",

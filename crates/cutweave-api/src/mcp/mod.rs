@@ -37,6 +37,13 @@
 //! behind one [`Notifier`]; [`frame`] maps `render.frame` to an image content block under a
 //! 1 MB payload cap.
 //!
+//! # Pictures of the timeline, of media and of sound (WP-2I.02)
+//!
+//! [`visual`] does the same for `render.contact_sheet`, `media.filmstrip` and
+//! `audio.waveform`, catalog commands reached through `cutweave_query`: an image content block
+//! with the metadata as structured content, or a resource link to the `/media/...` route that
+//! serves the picture when a large one is asked for.
+//!
 //! # Profiles and the tool list (WP-2I.05, ADR-0040)
 //!
 //! A profile belongs to an endpoint (or to `cutweave mcp --profile`), never to a connection:
@@ -67,6 +74,7 @@ pub mod results;
 pub mod search;
 pub mod stdio;
 pub mod switch;
+pub mod visual;
 
 use std::sync::Arc;
 

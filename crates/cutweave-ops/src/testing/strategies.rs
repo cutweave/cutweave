@@ -605,6 +605,8 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "audio.set_pan" => (edits.div_ceil(2), audio_set_pan(p)),
         "audio.set_gain" => (edits.div_ceil(3), audio_set_gain(p)),
         "audio.get_levels" => (1, audio_get_levels(p)),
+        "audio.waveform" => (1, audio_waveform(p)),
+        "media.filmstrip" => (1, media_filmstrip(p)),
         "keyframe.set" => (edits, keyframe_set(p)),
         "keyframe.delete" => (edits.div_ceil(3), keyframe_delete(p)),
         "keyframe.move" => (edits.div_ceil(3), keyframe_move(p)),
@@ -2328,6 +2330,87 @@ fn audio_get_levels(p: &Pools) -> BoxedStrategy<Value> {
         one_of(p.seqs.clone())
             .prop_map(|sequence| json!({"sequence": sequence, "in": "2s", "out": "1s"})),
         one_of(p.seqs.clone()).prop_map(|sequence| json!({"sequence": sequence, "out": "99999s"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// `media.filmstrip` (WP-2I.02): an asset, sometimes a part of it, a tile count and a size;
+/// sometimes a count or a size out of bounds, or a range that is empty.
+fn media_filmstrip(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.proxy_ids()),
+        option::of(select(vec![
+            ("0s", "1s"),
+            ("f:3", "0.5s"),
+            ("0.25s", "f:30"),
+        ])),
+        option::of(1..=12_u32),
+        option::of(select(vec![64_u32, 128, 500, 768, 2048])),
+    )
+        .prop_map(|(media, range, count, max_size)| {
+            let mut v = json!({"media": media, "count": count, "max_size": max_size});
+            if let Some((from, to)) = range {
+                v["from"] = json!(from);
+                v["to"] = json!(to);
+            }
+            v
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        one_of(p.media_ids()).prop_map(|media| json!({"media": media, "count": 0})),
+        one_of(p.media_ids()).prop_map(|media| json!({"media": media, "max_size": 4096})),
+        one_of(p.media_ids()).prop_map(|media| json!({"media": media, "from": "1s", "to": "1s"})),
+        Just(json!({})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// `audio.waveform` (WP-2I.02): a media file, a clip or a sequence's mix, sometimes a range,
+/// a size, the lanes, a dB scale and the loudness; sometimes a size or a scale out of bounds,
+/// a range past the end, or no target.
+fn audio_waveform(p: &Pools) -> BoxedStrategy<Value> {
+    let target = prop_oneof![
+        one_of(p.media_ids()).prop_map(|media| json!({"kind": "media", "media": media})),
+        one_of(p.item_ids()).prop_map(|item| json!({"kind": "item", "item": item})),
+        one_of(p.seqs.clone()).prop_map(|sequence| json!({"kind": "range", "sequence": sequence})),
+    ]
+    .boxed();
+    let valid = (
+        target.clone(),
+        option::of(select(vec![("0s", "1s"), ("0.5s", "f:30"), ("f:0", "2s")])),
+        option::of((64..=400_u32, 32..=200_u32)),
+        option::of(select(vec!["mix", "split"])),
+        option::of(select(vec![24.0, 60.0, 96.0])),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|(target, range, size, channels, scale_db, loudness)| {
+            let mut v = json!({
+                "target": target, "channels": channels, "scale_db": scale_db,
+                "loudness": loudness,
+            });
+            if let Some((from, to)) = range {
+                v["from"] = json!(from);
+                v["to"] = json!(to);
+            }
+            if let Some((width, height)) = size {
+                v["width"] = json!(width);
+                v["height"] = json!(height);
+            }
+            v
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        target
+            .clone()
+            .prop_map(|target| json!({"target": target, "width": 9000})),
+        target
+            .clone()
+            .prop_map(|target| json!({"target": target, "scale_db": 1})),
+        target.prop_map(|target| json!({"target": target, "from": "2s", "to": "1s"})),
+        Just(json!({"target": {"kind": "song"}})),
+        Just(json!({})),
     ]
     .boxed();
     mix(valid, invalid)
@@ -4151,6 +4234,62 @@ fn export_reorder() -> BoxedStrategy<Value> {
 
 /// The job id [`export_ctx`]'s starter returns for every export it is given.
 pub const EXPORT_JOB_ID: JobId = JobId::from_u128(0xE0);
+
+/// A picture maker that draws nothing (the engine context of `media.filmstrip` and
+/// `audio.waveform` in a harness, WP-2I.02): an empty picture of the size asked for and one
+/// second of silence. The harness has no decoders.
+#[derive(Debug, Default)]
+pub struct BlankPictures;
+
+impl crate::visual::VisualService for BlankPictures {
+    fn filmstrip(
+        &self,
+        doc: &cutweave_model::Project,
+        request: &crate::visual::StripRequest,
+    ) -> Result<crate::visual::StripMade, cutweave_commands::CmdError> {
+        assert!(doc.media.contains_key(&request.media));
+        assert!((1..=crate::visual::MAX_STRIP_TILES).contains(&request.count));
+        assert!(request.range.is_none_or(|(from, to)| from < to));
+        Ok(crate::visual::StripMade {
+            data: String::new(),
+            bytes: 0,
+            tile_width: request.tile_width,
+            tile_height: 1,
+            start: request.range.map_or(cutweave_model::Time::ZERO, |r| r.0),
+            interval: cutweave_model::Duration::ZERO,
+            etag: "blank".to_owned(),
+            link: None,
+        })
+    }
+
+    fn waveform(
+        &self,
+        doc: &cutweave_model::Project,
+        request: &crate::visual::WaveRequest,
+    ) -> Result<crate::visual::WaveMade, cutweave_commands::CmdError> {
+        use crate::visual::WaveSource;
+        assert!(request.from < request.to);
+        match request.source {
+            WaveSource::Media { media, .. } => assert!(doc.media.contains_key(&media)),
+            WaveSource::Item { sequence, item } => {
+                assert!(doc.sequences[&sequence].find_item(&item).is_some());
+            }
+            WaveSource::Mix { sequence } => assert!(doc.sequences.contains_key(&sequence)),
+        }
+        Ok(crate::visual::WaveMade {
+            data: String::new(),
+            bytes: 0,
+            lanes: Vec::new(),
+            sample_rate: 48_000,
+            envelope: vec![0.0; 188],
+            envelope_start: request.from,
+            block_samples: 256,
+            loudness: None,
+            source_errors: 0,
+            link: None,
+        })
+    }
+}
 
 /// A proxy service that makes none (the engine context of the proxy commands in a harness,
 /// WP-2F.01): every asset reports `none`, and generating or deleting changes nothing.

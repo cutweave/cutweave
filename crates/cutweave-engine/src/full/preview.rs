@@ -2,7 +2,8 @@
 //! [`PreviewSource`]: the transport's frame source over the render core (WP-1I.05, R31;
 //! arch §8, §10): the plan in `cutweave_playback::transport::source`.
 //!
-//! `render` takes the live document snapshot, evaluates the first sequence at the requested
+//! `render` takes the live document snapshot, evaluates the sequence the editor shows
+//! ([`Shown`]: `view.set_active_sequence`, else the first one) at the requested
 //! frame, applies the quality rung (the proxy toggle and each layer's drawn size), builds the render graph for the output
 //! size with source pictures from [`PreviewFrames`] (decodes cancelled with the render's epoch),
 //! composites it on the preview's own [`Compositor`] (the GPU device is shared with
@@ -28,8 +29,8 @@
 //! [`PreviewFrames`]); the CPU fallback and error paths allocate too. The engine's
 //! `preview_alloc` test holds it to that.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_commands::{CmdError, DocHandle, DocSnapshot, Rev};
 use cutweave_media::DecodeMode;
@@ -52,16 +53,55 @@ use super::frames::{MediaFrames, PreviewFrames};
 use super::gpu::LateGpu;
 use crate::subsystems::SubsystemEvents;
 
-/// The first sequence of `doc` (the one the editor shows: lowest id).
+/// The sequence the editor shows (`view.set_active_sequence`, WP-2B.03), shared by everything
+/// that plays "the sequence": the preview, the mixer's feed and the transport's timing.
+///
+/// The render thread reads [`generation`](Self::generation) (one atomic load) every frame and
+/// takes the lock only after it moved.
+#[derive(Debug, Default)]
+pub(crate) struct Shown {
+    generation: AtomicU64,
+    id: Mutex<Option<SequenceId>>,
+}
+
+impl Shown {
+    /// The chosen sequence; `None`: none chosen (the first one shows).
+    #[must_use]
+    pub(crate) fn get(&self) -> Option<SequenceId> {
+        *self.id.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Chooses `id`; returns whether that is a change.
+    pub(crate) fn set(&self, id: Option<SequenceId>) -> bool {
+        let mut current = self.id.lock().unwrap_or_else(PoisonError::into_inner);
+        if *current == id {
+            return false;
+        }
+        *current = id;
+        self.generation.fetch_add(1, Ordering::Release);
+        true
+    }
+
+    /// Grows with every change of the choice.
+    #[must_use]
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
+    }
+}
+
+/// The sequence of `doc` the editor shows: `shown` while the document has it, else the first
+/// one (lowest id).
 #[must_use]
-pub(crate) fn active_sequence(doc: &Project) -> Option<SequenceId> {
-    doc.sequences.keys().next().copied()
+pub(crate) fn active_sequence(doc: &Project, shown: Option<SequenceId>) -> Option<SequenceId> {
+    shown
+        .filter(|id| doc.sequences.contains_key(id))
+        .or_else(|| doc.sequences.keys().next().copied())
 }
 
 /// The frame grid and extent of the sequence playback shows (30 fps and empty without one).
 #[must_use]
-pub(crate) fn timing_of(doc: &Project) -> SequenceTiming {
-    match active_sequence(doc).and_then(|id| doc.sequences.get(&id)) {
+pub(crate) fn timing_of(doc: &Project, shown: Option<SequenceId>) -> SequenceTiming {
+    match active_sequence(doc, shown).and_then(|id| doc.sequences.get(&id)) {
         Some(seq) => SequenceTiming::new(seq.format.frame_rate, Time::from(seq.duration())),
         None => SequenceTiming::new(FrameRate::FPS_30, Time::ZERO),
     }
@@ -245,9 +285,11 @@ impl Drop for CompositorSlot {
     }
 }
 
-/// The active sequence indexed at one document revision.
+/// The shown sequence indexed at one document revision and one choice of sequence.
 struct Indexed {
     rev: Rev,
+    /// [`Shown::generation`] when it was indexed.
+    shown: u64,
     /// `None`: the document has no sequence.
     index: Option<TimelineIndex>,
 }
@@ -274,6 +316,7 @@ struct Reused {
 /// The transport's frame source over the render core (see the module docs).
 pub(crate) struct PreviewSource {
     doc: DocHandle,
+    shown: Arc<Shown>,
     timing: SequenceTiming,
     compositor: CompositorSlot,
     frames: PreviewFrames,
@@ -297,16 +340,18 @@ impl std::fmt::Debug for PreviewSource {
 impl PreviewSource {
     pub(crate) fn new(
         doc: DocHandle,
+        shown: Arc<Shown>,
         compositor: CompositorSlot,
         frames: Arc<MediaFrames>,
         events: SubsystemEvents,
         lost_reported: Arc<AtomicBool>,
     ) -> PreviewSource {
-        let timing = timing_of(&doc.snapshot().doc);
+        let timing = timing_of(&doc.snapshot().doc, shown.get());
         // The compositor's graph options (`CompositorOptions::default().graph`).
         let options = CompositorOptions::default().graph;
         PreviewSource {
             doc,
+            shown,
             timing,
             compositor,
             frames: PreviewFrames::new(frames),
@@ -360,19 +405,27 @@ fn fill_black(layout: &FrameLayout, out: &mut [u8]) {
     }
 }
 
-/// The sequence of `snapshot` indexed for rendering (re-indexed when the revision moved).
+/// The shown sequence of `snapshot` indexed for rendering (re-indexed when the revision moved
+/// or another sequence was chosen).
 fn indexed<'a>(
     slot: &'a mut Option<Indexed>,
     frames: &PreviewFrames,
     snapshot: &DocSnapshot,
+    shown: &Shown,
 ) -> Option<&'a TimelineIndex> {
-    if slot.as_ref().is_none_or(|i| i.rev != snapshot.rev) {
-        // An edit: index the new revision (allocates, once) and let go of media it dropped.
-        let index = active_sequence(&snapshot.doc)
+    let generation = shown.generation();
+    if slot
+        .as_ref()
+        .is_none_or(|i| i.rev != snapshot.rev || i.shown != generation)
+    {
+        // An edit, or another sequence: index it (allocates, once) and let go of media the
+        // document dropped.
+        let index = active_sequence(&snapshot.doc, shown.get())
             .and_then(|seq| TimelineIndex::new(&snapshot.doc, seq).ok());
         frames.retain_current(&snapshot.doc);
         *slot = Some(Indexed {
             rev: snapshot.rev,
+            shown: generation,
             index,
         });
     }
@@ -435,10 +488,11 @@ impl FrameSource for PreviewSource {
             events,
             lost_reported,
             reused,
+            shown,
             ..
         } = self;
         let index = match request.target {
-            PlaybackTarget::Sequence => indexed(&mut reused.sequence, frames, &snapshot),
+            PlaybackTarget::Sequence => indexed(&mut reused.sequence, frames, &snapshot, shown),
             PlaybackTarget::Media(media) => {
                 source_indexed(&mut reused.source, frames, &snapshot, media)
             }
@@ -548,5 +602,44 @@ mod tests {
         // A size mismatch gives an opaque black frame, never garbage.
         copy_rgba(&[9; 4], (1, 1), &layout, &mut out);
         assert_eq!(&out[..4], &[0, 0, 0, 255]);
+    }
+
+    fn two_sequences() -> (Project, SequenceId, SequenceId) {
+        let (a, b) = (SequenceId::from_u128(1), SequenceId::from_u128(2));
+        let mut doc = Project::new("Two");
+        let wide = SequenceFormat::new(1920, 1080, FrameRate::FPS_30, SampleRate::HZ_48_000);
+        let tall = SequenceFormat::new(1080, 1920, FrameRate::FPS_24, SampleRate::HZ_48_000);
+        doc.sequences.insert(a, Sequence::new(a, "Wide", wide));
+        doc.sequences.insert(b, Sequence::new(b, "Tall", tall));
+        (doc, a, b)
+    }
+
+    #[test]
+    fn the_shown_sequence_is_the_chosen_one_while_the_document_has_it() {
+        let (mut doc, a, b) = two_sequences();
+        // None chosen: the first one, as before there were tabs.
+        assert_eq!(active_sequence(&doc, None), Some(a));
+        assert_eq!(active_sequence(&doc, Some(b)), Some(b));
+        assert_eq!(timing_of(&doc, None).rate, FrameRate::FPS_30);
+        assert_eq!(timing_of(&doc, Some(b)).rate, FrameRate::FPS_24);
+        // The chosen one was deleted (or belongs to the project open before): the first one.
+        doc.sequences.remove(&b);
+        assert_eq!(active_sequence(&doc, Some(b)), Some(a));
+        assert_eq!(active_sequence(&Project::new("Empty"), Some(b)), None);
+    }
+
+    #[test]
+    fn choosing_another_sequence_moves_the_generation_once() {
+        let shown = Shown::default();
+        let b = SequenceId::from_u128(2);
+        let before = shown.generation();
+        assert!(shown.set(Some(b)));
+        assert_eq!(shown.get(), Some(b));
+        assert_eq!(shown.generation(), before + 1);
+        // The same choice again is no change: nothing is re-indexed.
+        assert!(!shown.set(Some(b)));
+        assert_eq!(shown.generation(), before + 1);
+        assert!(shown.set(None));
+        assert_eq!(shown.get(), None);
     }
 }
