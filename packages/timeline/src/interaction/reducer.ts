@@ -17,6 +17,7 @@ import type { Rect, SnapGuide, TimelineModel } from "../model.ts";
 import { FLICKS_PER_SECOND, frameDurationFlicks, snapToFrame } from "../time.ts";
 import {
   AUTO_SCROLL_EDGE_PX,
+  AUTO_SCROLL_INTENT_PX,
   AUTO_SCROLL_MAX_PX,
   DRAG_THRESHOLD_PX,
   NUDGE_FAR_FRAMES,
@@ -974,7 +975,8 @@ function evaluate(st: Step): void {
     }
   }
   const tx = withPending(next.tx, place.command);
-  const scroll = next.name === "slipping" ? null : autoScroll(st, p, next.name === "moving");
+  const scroll =
+    next.name === "slipping" ? null : autoScroll(st, p, m.origin, next.name === "moving");
   st.set({ ...next, tx, scroll });
   st.guides(place.guide === null || tx.clamped ? [] : [place.guide]);
   st.preview(place.preview);
@@ -1073,10 +1075,18 @@ function placeMove(
   };
 }
 
-/** The auto-scroll step near a lane edge (faster the deeper), or null away from them. */
+/**
+ * The auto-scroll step near a lane edge (faster the deeper), or null away from them. An edge
+ * scrolls only when the pointer is inside its zone and has also come `AUTO_SCROLL_INTENT_PX`
+ * nearer to it than the press (`origin`) was: a drag pressed inside a zone and moved along the
+ * edge, or away from it and back, scrolls nothing, so what is under a pointer that never moved
+ * toward the edge stays there (issue #262). A press further than that from a zone is not
+ * affected: it scrolls as soon as the pointer enters the zone.
+ */
 function autoScroll(
   st: Step,
   p: { x: number; y: number },
+  origin: { readonly x: number; readonly y: number },
   vertical: boolean,
 ): { dx: number; dy: number } | null {
   const l = st.deps.lanes();
@@ -1086,12 +1096,15 @@ function autoScroll(
   let dx = 0;
   let dy = 0;
   if (p.x < l.left + AUTO_SCROLL_EDGE_PX) {
-    if (env.scrollX > 0) dx = -step(l.left + AUTO_SCROLL_EDGE_PX - p.x);
-  } else if (p.x > l.right - AUTO_SCROLL_EDGE_PX) dx = step(p.x - (l.right - AUTO_SCROLL_EDGE_PX));
+    if (env.scrollX > 0 && p.x <= origin.x - AUTO_SCROLL_INTENT_PX)
+      dx = -step(l.left + AUTO_SCROLL_EDGE_PX - p.x);
+  } else if (p.x > l.right - AUTO_SCROLL_EDGE_PX && p.x >= origin.x + AUTO_SCROLL_INTENT_PX)
+    dx = step(p.x - (l.right - AUTO_SCROLL_EDGE_PX));
   if (vertical) {
     if (p.y < l.top + AUTO_SCROLL_EDGE_PX) {
-      if (env.scrollY > 0) dy = -step(l.top + AUTO_SCROLL_EDGE_PX - p.y);
-    } else if (p.y > l.bottom - AUTO_SCROLL_EDGE_PX)
+      if (env.scrollY > 0 && p.y <= origin.y - AUTO_SCROLL_INTENT_PX)
+        dy = -step(l.top + AUTO_SCROLL_EDGE_PX - p.y);
+    } else if (p.y > l.bottom - AUTO_SCROLL_EDGE_PX && p.y >= origin.y + AUTO_SCROLL_INTENT_PX)
       dy = step(p.y - (l.bottom - AUTO_SCROLL_EDGE_PX));
   }
   return dx === 0 && dy === 0 ? null : { dx, dy };

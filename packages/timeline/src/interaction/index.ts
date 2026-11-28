@@ -3,6 +3,7 @@
 // state chart, the gestures and how the editor wires it (WP-2A.10).
 export {
   AUTO_SCROLL_EDGE_PX,
+  AUTO_SCROLL_INTENT_PX,
   AUTO_SCROLL_MAX_PX,
   DEFAULT_SNAP_PX,
   DRAG_THRESHOLD_PX,
