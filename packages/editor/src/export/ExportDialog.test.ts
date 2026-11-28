@@ -21,6 +21,7 @@ import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import {
+  ALPHA_PRESET,
   ENCODERS,
   exportProject,
   H264_OPTIONS,
@@ -59,7 +60,7 @@ const running = (fraction: number, message: string): JobInfo => ({
 });
 
 let call: ReturnType<typeof vi.fn>;
-let seq: { width: number; height: number; seconds: number };
+let seq: { width: number; height: number; seconds: number; transparent?: boolean };
 
 const mount = () =>
   render(
@@ -499,6 +500,69 @@ describe("ExportDialog", () => {
     expect(exportStore.getState().active).toBeNull();
     expect(toastStore.getState().notices[0]?.title).toBe("Export cancelled");
     expect(screen.queryByTestId("export-chip")).toBeNull();
+  });
+
+  // Issue #238: the engine's warning for a transparent background going to a file without an
+  // alpha channel, in the dialog's own words, among the other notes. Export stays possible.
+  describe("a transparent background", () => {
+    const TRANSPARENT = /background is transparent.*black/;
+    const transparentProject = () =>
+      exportProject(1920, 1080, 10, { background_fill: { kind: "transparent" } });
+
+    it("warns that a file without an alpha channel shows it black, and still exports", async () => {
+      useProject(transparentProject(), {
+        width: 1920,
+        height: 1080,
+        seconds: 10,
+        transparent: true,
+      });
+      const user = userEvent.setup();
+      const dialog = await openDialog();
+      const note = await within(dialog).findByText(TRANSPARENT);
+      const item = note.closest("li");
+      expect(item?.getAttribute("data-code")).toBe("TransparentBackground");
+      expect(item?.parentElement?.getAttribute("aria-label")).toBe("Platform notes");
+      // On every preset without alpha, not only the first.
+      await user.selectOptions(presetSelect(dialog), "prores-422-hq");
+      await waitFor(() => expect(lastCall("export.resolve_preset")?.preset).toBe("prores-422-hq"));
+      await within(dialog).findByText(TRANSPARENT);
+      // A warning, not a refusal.
+      const start = within(dialog).getByRole("button", { name: "Export" });
+      expect((start as HTMLButtonElement).disabled).toBe(false);
+      await user.click(start);
+      await waitFor(() => expect(lastCall("export.start")).toBeDefined());
+    });
+
+    it("says nothing when the background is a color", async () => {
+      const dialog = await openDialog();
+      await waitFor(() => expect(lastCall("export.resolve_preset")).toBeDefined());
+      await within(dialog).findByText(/1920 × 1080/);
+      expect(within(dialog).queryByText(TRANSPARENT)).toBeNull();
+    });
+
+    it("says nothing for a preset that keeps alpha", async () => {
+      const answer = call.getMockImplementation() as (
+        name: string,
+        input: Record<string, unknown>,
+      ) => Promise<unknown>;
+      call.mockImplementation(async (name: string, input: Record<string, unknown>) =>
+        name === "export.list_presets"
+          ? { presets: [...PRESET_ENTRIES, ALPHA_PRESET], problems: [] }
+          : answer(name, input),
+      );
+      useProject(transparentProject(), {
+        width: 1920,
+        height: 1080,
+        seconds: 10,
+        transparent: true,
+      });
+      const user = userEvent.setup();
+      const dialog = await openDialog();
+      await within(dialog).findByText(TRANSPARENT);
+      await user.selectOptions(presetSelect(dialog), "my-alpha");
+      await waitFor(() => expect(lastCall("export.resolve_preset")?.preset).toBe("my-alpha"));
+      await waitFor(() => expect(within(dialog).queryByText(TRANSPARENT)).toBeNull());
+    });
   });
 
   it("has no axe violations, with Advanced open and a warning shown", async () => {

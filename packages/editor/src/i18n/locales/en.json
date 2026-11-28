@@ -2075,7 +2075,8 @@
       "duration": "{{platform}} takes videos up to {{limit}}; this export is {{length}}. You can still export it.",
       "size": "The file would be about {{size}}; {{platform}} takes files up to {{limit}}.",
       "fps": "{{platform}} takes at most {{max}} fps, so the file uses {{fps}} fps.",
-      "software": "An advanced setting needs the software encoder, so this export does not use the hardware one."
+      "software": "An advanced setting needs the software encoder, so this export does not use the hardware one.",
+      "transparent": "The sequence's background is transparent, but this format has no alpha channel, so the background will be black in the file. To keep it transparent, export ProRes 4444 with the pixel format yuva444p10le (a preset of your own)."
     },
     "files": "{{count}} files",
     "range": {

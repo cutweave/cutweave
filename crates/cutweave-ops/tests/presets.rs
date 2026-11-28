@@ -726,3 +726,124 @@ fn export_list_encoders_asks_the_engine_and_lists_the_four_codecs() {
         .unwrap_err();
     assert_eq!(err.code(), "unsupported");
 }
+
+// Issue #238: a transparent background only shows in a file that keeps alpha; any other export
+// says so (a warning, the export runs), in the pre-check and in what the export answers.
+
+fn warning_codes(out: &Value) -> Vec<String> {
+    out["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w["code"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+fn prores_preset(id: &str, profile: &str, pix: &str) -> Value {
+    json!({
+        "schema_version": 1, "id": id, "name": id, "container": "mov",
+        "video": {"codec": "prores", "rate_control": {"mode": "profile"},
+                  "profile": profile, "pix_fmt": pix, "hw_preferred": false},
+        "audio": {"codec": "pcm", "sample_rate": 48000, "channels": 2},
+        "size": {"kind": "follow_sequence"}, "fps": {"kind": "follow_sequence"}
+    })
+}
+
+#[test]
+fn a_transparent_background_warns_when_the_file_keeps_no_alpha() {
+    let (mut h, p) = project();
+    let store = Arc::new(PresetStore::default());
+    let resolve = |h: &H, preset: &str| {
+        run(
+            h,
+            &store,
+            "export.resolve_preset",
+            json!({"preset": preset}),
+        )
+        .unwrap()
+    };
+    // A color background: nothing to say.
+    assert_eq!(resolve(&h, "youtube-4k")["warnings"], json!([]));
+    h.ok(
+        "sequence.set_background",
+        json!({"sequence": p.sequence, "kind": "transparent"}),
+    );
+    // H.264 has no alpha channel: the pre-check and the export both say what the file shows.
+    let out = resolve(&h, "youtube-4k");
+    assert_eq!(warning_codes(&out), ["TransparentBackground"]);
+    let message = out["warnings"][0]["message"].as_str().unwrap();
+    assert!(message.contains("black"), "{message}");
+    let (out, plans) = export(
+        &h,
+        &store,
+        json!({"path": out_path(), "preset": "youtube-4k", "overwrite": true}),
+    );
+    assert_eq!(warning_codes(&out.unwrap()), ["TransparentBackground"]);
+    assert_eq!(plans.len(), 1, "a warning: the export runs");
+    // So does the export that names no preset (the default H.264 MP4).
+    let (out, _) = export(&h, &store, json!({"path": out_path(), "overwrite": true}));
+    assert_eq!(warning_codes(&out.unwrap()), ["TransparentBackground"]);
+    // No built-in preset keeps alpha today: every one with a picture that this build can
+    // export warns (GIF is not exported yet, and says that instead).
+    let mut warned = 0;
+    for preset in &presets::builtin().presets {
+        let out = resolve(&h, &preset.id);
+        if preset.video.is_none() || out["supported"] == json!(false) {
+            continue;
+        }
+        assert!(
+            warning_codes(&out).contains(&"TransparentBackground".to_owned()),
+            "{}",
+            preset.id
+        );
+        warned += 1;
+    }
+    assert!(warned > 10, "{warned}");
+}
+
+#[test]
+fn a_transparent_background_goes_to_an_alpha_file_without_a_warning() {
+    let (mut h, p) = project();
+    let store = Arc::new(PresetStore::default());
+    h.ok(
+        "sequence.set_background",
+        json!({"sequence": p.sequence, "kind": "transparent"}),
+    );
+    let save = |preset: Value| {
+        run(&h, &store, "export.save_preset", json!({"preset": preset})).unwrap();
+    };
+    // ProRes 4444 with an alpha pixel format keeps it.
+    save(prores_preset("with-alpha", "4444", "yuva444p10le"));
+    let out = run(
+        &h,
+        &store,
+        "export.resolve_preset",
+        json!({"preset": "with-alpha"}),
+    )
+    .unwrap();
+    assert_eq!(out["warnings"], json!([]));
+    let (out, plans) = export(
+        &h,
+        &store,
+        json!({"path": out_path_ext("mov"), "preset": "with-alpha", "overwrite": true}),
+    );
+    assert_eq!(out.unwrap()["warnings"], json!([]));
+    assert!(plans[0].output.alpha);
+    // ProRes 4444 without the alpha plane does not, until the request asks for it.
+    save(prores_preset("no-alpha", "4444", "yuv444p10le"));
+    let out = run(
+        &h,
+        &store,
+        "export.resolve_preset",
+        json!({"preset": "no-alpha"}),
+    )
+    .unwrap();
+    assert_eq!(warning_codes(&out), ["TransparentBackground"]);
+    let (out, _) = export(
+        &h,
+        &store,
+        json!({"path": out_path_ext("mov"), "preset": "no-alpha", "overwrite": true,
+               "advanced": {"video": {"pix_fmt": "yuva444p10le"}}}),
+    );
+    assert_eq!(out.unwrap()["warnings"], json!([]));
+}

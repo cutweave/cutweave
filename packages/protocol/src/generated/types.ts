@@ -5291,7 +5291,12 @@ export type PresetWarningCode =
 /**  The sequence's frame rate is above the platform's maximum, so the file uses a lower one. */
 "FrameRateCapped" | 
 /**  An advanced setting needs the software encoder, so the export does not use the hardware one. */
-"SoftwareEncoder";
+"SoftwareEncoder" | 
+/**
+ *  The sequence's background is transparent and the file keeps no alpha channel, so the
+ *  background is black in it.
+ */
+"TransparentBackground";
 
 /**  Preview resolution (arch §8 quality ladder). */
 export type PreviewQuality = 
