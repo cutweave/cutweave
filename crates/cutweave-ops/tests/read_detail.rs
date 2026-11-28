@@ -3,7 +3,11 @@
 //! `detail: "concise" | "full"`. The `*_default` snapshots were taken before the parameter
 //! existed: a call without it (and one with `"full"`) still returns those bytes.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::needless_pass_by_value
+)]
 
 mod common;
 

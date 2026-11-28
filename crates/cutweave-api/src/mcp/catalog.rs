@@ -883,6 +883,13 @@ fn generic_tools(described: bool) -> Vec<(Tool, Target)> {
 }
 
 fn standard_generic_tools() -> Vec<(Tool, Target)> {
+    let mut tools = discovery_tools();
+    tools.extend(run_tools());
+    tools
+}
+
+/// [`SEARCH`] and [`DESCRIBE`]: how an agent finds a command and reads its parameters.
+fn discovery_tools() -> Vec<(Tool, Target)> {
     vec![
         (
             Tool::new(
@@ -931,6 +938,12 @@ fn standard_generic_tools() -> Vec<(Tool, Target)> {
             .with_annotations(generic_annotations(true)),
             Target::Describe,
         ),
+    ]
+}
+
+/// [`EXECUTE`] and [`QUERY`]: how an agent runs a command that is not a listed tool.
+fn run_tools() -> Vec<(Tool, Target)> {
+    vec![
         (
             Tool::new(
                 EXECUTE,

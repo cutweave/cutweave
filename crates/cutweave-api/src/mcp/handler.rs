@@ -357,17 +357,15 @@ impl CutweaveMcp {
 
     fn search(&self, args: &Value) -> CallToolResult {
         let detail = match args.get("detail") {
-            None | Some(Value::Null) => search::Detail::default(),
-            Some(value) => match value.as_str().and_then(search::Detail::parse) {
-                Some(detail) => detail,
-                None => {
-                    let e = CmdError::invalid(
-                        "/detail",
-                        format!("expected one of {}", search::Detail::NAMES.join(", ")),
-                    );
-                    return error_result(catalog::SEARCH, &e, None);
-                }
-            },
+            None | Some(Value::Null) => Some(search::Detail::default()),
+            Some(value) => value.as_str().and_then(search::Detail::parse),
+        };
+        let Some(detail) = detail else {
+            let e = CmdError::invalid(
+                "/detail",
+                format!("expected one of {}", search::Detail::NAMES.join(", ")),
+            );
+            return error_result(catalog::SEARCH, &e, None);
         };
         let limit = args["limit"]
             .as_u64()
