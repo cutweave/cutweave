@@ -8984,6 +8984,11 @@ expression: text
                       "const": "SoftwareEncoder",
                       "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
                       "type": "string"
+                    },
+                    {
+                      "const": "TransparentBackground",
+                      "description": "The sequence's background is transparent and the file keeps no alpha channel, so the\nbackground is black in it.",
+                      "type": "string"
                     }
                   ]
                 },
@@ -11390,6 +11395,11 @@ expression: text
                       "const": "SoftwareEncoder",
                       "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
                       "type": "string"
+                    },
+                    {
+                      "const": "TransparentBackground",
+                      "description": "The sequence's background is transparent and the file keeps no alpha channel, so the\nbackground is black in it.",
+                      "type": "string"
                     }
                   ]
                 },
@@ -12886,6 +12896,11 @@ expression: text
                     {
                       "const": "SoftwareEncoder",
                       "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "TransparentBackground",
+                      "description": "The sequence's background is transparent and the file keeps no alpha channel, so the\nbackground is black in it.",
                       "type": "string"
                     }
                   ]

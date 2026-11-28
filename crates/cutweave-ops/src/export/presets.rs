@@ -958,6 +958,9 @@ pub enum PresetWarningCode {
     FrameRateCapped,
     /// An advanced setting needs the software encoder, so the export does not use the hardware one.
     SoftwareEncoder,
+    /// The sequence's background is transparent and the file keeps no alpha channel, so the
+    /// background is black in it.
+    TransparentBackground,
 }
 
 /// One warning about a preset on a sequence.
@@ -967,6 +970,37 @@ pub struct PresetWarning {
     pub code: PresetWarningCode,
     /// A sentence for the person.
     pub message: String,
+}
+
+/// The warning for a sequence with a transparent background exported to `output`, when that
+/// keeps no alpha channel (issue #238): the picture is right, its background is black.
+#[must_use]
+pub fn transparent_background_warning(
+    seq: &Sequence,
+    output: &super::PlanOutput,
+) -> Option<PresetWarning> {
+    let transparent = matches!(
+        seq.format.background_fill,
+        Some(cutweave_model::BackgroundFill::Transparent)
+    );
+    (transparent && !output.alpha).then(|| PresetWarning {
+        code: PresetWarningCode::TransparentBackground,
+        message: "The sequence's background is transparent, but this format has no alpha \
+                  channel: the background will be black in the file. ProRes 4444 with the \
+                  pixel format yuva444p10le keeps it transparent."
+            .to_owned(),
+    })
+}
+
+/// `warnings` with [`transparent_background_warning`] added when it applies.
+#[must_use]
+pub fn with_background_warning(
+    mut warnings: Vec<PresetWarning>,
+    seq: &Sequence,
+    output: &super::PlanOutput,
+) -> Vec<PresetWarning> {
+    warnings.extend(transparent_background_warning(seq, output));
+    warnings
 }
 
 /// The rate control the encoder gets from a preset (stored with queued exports, WP-2G.03a).
@@ -1425,7 +1459,23 @@ impl EngineCommand for ResolvePreset {
             .end
             .duration_since(first.start)
             .map_err(|e| bad("/range", e.to_string()))?;
-        let plan = plan_preset(&spec, seq, length, self.overrides.as_ref())?;
+        let mut plan = plan_preset(&spec, seq, length, self.overrides.as_ref())?;
+        // What the file holds, with the preset's own advanced settings (they can ask for the
+        // alpha pixel format); a preset this build cannot plan says so in `supported`.
+        if let Ok(mut output) = spec.plan_output() {
+            if let Some(adv) = &spec.advanced {
+                let mut rate = plan.rate;
+                let _ = super::advanced::apply(
+                    adv,
+                    &mut output,
+                    &mut rate,
+                    plan.hw.clone(),
+                    plan.frame_rate,
+                    &mut Vec::new(),
+                );
+            }
+            plan.warnings = with_background_warning(plan.warnings, seq, &output);
+        }
         let support = spec.engine_support();
         Ok(ResolvePresetOutput {
             preset: spec.id,

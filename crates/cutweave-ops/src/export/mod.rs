@@ -922,7 +922,7 @@ impl ExportRequest<'_> {
                 quality,
                 hw,
                 rate,
-                warnings,
+                warnings: presets::with_background_warning(warnings, seq, &output),
                 output,
             });
         }
